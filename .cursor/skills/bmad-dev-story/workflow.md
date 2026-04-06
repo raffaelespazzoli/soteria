@@ -50,6 +50,25 @@ Load config from `{project-root}/_bmad/bmm/config.yaml` and resolve:
   <critical>Do NOT schedule a "next session" or request review pauses unless a HALT condition applies. Only Step 6 decides completion.</critical>
   <critical>User skill level ({user_skill_level}) affects conversation style ONLY, not code updates.</critical>
 
+  <step n="0" goal="Verify clean git working tree before starting">
+    <action>Run `git status --porcelain` to check for uncommitted changes</action>
+    <check if="output is non-empty (working tree is dirty)">
+      <output>🛑 **Cannot start story development — working tree is not clean.**
+
+        The following uncommitted changes were detected:
+        {{git_status_output}}
+
+        Please commit or stash your changes before starting story development.
+        A clean working tree ensures the story implementation starts from a known state
+        and makes it easy to isolate, review, and revert the story's changes.
+      </output>
+      <action>HALT: "Working tree is not clean. Commit or stash changes before running dev-story."</action>
+    </check>
+    <check if="output is empty (working tree is clean)">
+      <action>Continue to Step 1</action>
+    </check>
+  </step>
+
   <step n="1" goal="Find next ready story and load it" tag="sprint-status">
     <check if="{{story_path}} is provided">
       <action>Use {{story_path}} directly</action>
