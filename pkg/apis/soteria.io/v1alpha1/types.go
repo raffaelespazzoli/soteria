@@ -1,0 +1,207 @@
+/*
+Copyright 2026 The Soteria Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package v1alpha1
+
+import (
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
+// DRPlan Phase values.
+const (
+	PhaseSteadyState     = "SteadyState"
+	PhaseFailingOver     = "FailingOver"
+	PhaseFailedOver      = "FailedOver"
+	PhaseReprotecting    = "Reprotecting"
+	PhaseDRedSteadyState = "DRedSteadyState"
+	PhaseFailingBack     = "FailingBack"
+)
+
+// DRPlan defines a disaster recovery plan for a set of VMs selected by labels.
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+type DRPlan struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	Spec              DRPlanSpec   `json:"spec"`
+	Status            DRPlanStatus `json:"status,omitempty"`
+}
+
+type DRPlanSpec struct {
+	// VMSelector selects VMs to include in this DR plan.
+	VMSelector metav1.LabelSelector `json:"vmSelector"`
+	// WaveLabel is the label key used to assign VMs to execution waves.
+	WaveLabel string `json:"waveLabel"`
+	// MaxConcurrentFailovers limits concurrent VM failovers per wave chunk.
+	MaxConcurrentFailovers int `json:"maxConcurrentFailovers"`
+}
+
+type DRPlanStatus struct {
+	// Phase represents the current DR lifecycle state.
+	// Valid values: SteadyState, FailingOver, FailedOver, Reprotecting, DRedSteadyState, FailingBack
+	Phase string `json:"phase,omitempty"`
+	// Conditions represent the latest observations of the DRPlan's state.
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+	// ObservedGeneration is the most recent generation observed.
+	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+}
+
+// DRPlanList contains a list of DRPlans.
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+type DRPlanList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []DRPlan `json:"items"`
+}
+
+// ExecutionMode defines how a DRPlan is executed.
+type ExecutionMode string
+
+const (
+	ExecutionModePlannedMigration ExecutionMode = "planned_migration"
+	ExecutionModeDisaster         ExecutionMode = "disaster"
+)
+
+// ExecutionResult is the overall outcome of a DRExecution.
+type ExecutionResult string
+
+const (
+	ExecutionResultSucceeded          ExecutionResult = "Succeeded"
+	ExecutionResultPartiallySucceeded ExecutionResult = "PartiallySucceeded"
+	ExecutionResultFailed             ExecutionResult = "Failed"
+)
+
+// DRGroupResult is the outcome of a single DRGroup within a wave.
+type DRGroupResult string
+
+const (
+	DRGroupResultPending    DRGroupResult = "Pending"
+	DRGroupResultInProgress DRGroupResult = "InProgress"
+	DRGroupResultCompleted  DRGroupResult = "Completed"
+	DRGroupResultFailed     DRGroupResult = "Failed"
+)
+
+// DRExecution records an immutable execution of a DRPlan.
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+type DRExecution struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	Spec              DRExecutionSpec   `json:"spec"`
+	Status            DRExecutionStatus `json:"status,omitempty"`
+}
+
+type DRExecutionSpec struct {
+	// PlanName references the DRPlan being executed.
+	PlanName string `json:"planName"`
+	// Mode specifies the execution type — chosen at runtime, not on the plan.
+	Mode ExecutionMode `json:"mode"`
+}
+
+type DRExecutionStatus struct {
+	// Result is the overall execution outcome.
+	Result ExecutionResult `json:"result,omitempty"`
+	// Waves contains per-wave execution status.
+	Waves []WaveStatus `json:"waves,omitempty"`
+	// StartTime is when execution began.
+	StartTime *metav1.Time `json:"startTime,omitempty"`
+	// CompletionTime is when execution finished.
+	CompletionTime *metav1.Time `json:"completionTime,omitempty"`
+	// Conditions represent the latest observations.
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+}
+
+type WaveStatus struct {
+	// WaveIndex is the 0-based wave ordinal.
+	WaveIndex int `json:"waveIndex"`
+	// Groups contains per-DRGroup status within this wave.
+	Groups []DRGroupExecutionStatus `json:"groups,omitempty"`
+	// StartTime is when this wave began.
+	StartTime *metav1.Time `json:"startTime,omitempty"`
+	// CompletionTime is when this wave finished.
+	CompletionTime *metav1.Time `json:"completionTime,omitempty"`
+}
+
+type DRGroupExecutionStatus struct {
+	// Name identifies this DRGroup within the wave.
+	Name string `json:"name"`
+	// Result is the outcome of this DRGroup.
+	Result DRGroupResult `json:"result,omitempty"`
+	// VMNames lists VMs in this DRGroup.
+	VMNames []string `json:"vmNames,omitempty"`
+	// Error contains error details if the group failed.
+	Error string `json:"error,omitempty"`
+	// StartTime is when this group began processing.
+	StartTime *metav1.Time `json:"startTime,omitempty"`
+	// CompletionTime is when this group finished.
+	CompletionTime *metav1.Time `json:"completionTime,omitempty"`
+}
+
+// DRExecutionList contains a list of DRExecutions.
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+type DRExecutionList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []DRExecution `json:"items"`
+}
+
+// DRGroupStatus tracks the real-time state of a DRGroup during execution.
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+type DRGroupStatus struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	Spec              DRGroupStatusSpec  `json:"spec"`
+	Status            DRGroupStatusState `json:"status,omitempty"`
+}
+
+type DRGroupStatusSpec struct {
+	// ExecutionName references the parent DRExecution.
+	ExecutionName string `json:"executionName"`
+	// WaveIndex is the wave this group belongs to.
+	WaveIndex int `json:"waveIndex"`
+	// GroupName is the name of this DRGroup within the wave.
+	GroupName string `json:"groupName"`
+	// VMNames lists VMs in this group.
+	VMNames []string `json:"vmNames,omitempty"`
+}
+
+type DRGroupStatusState struct {
+	// Phase is the current processing state.
+	Phase DRGroupResult `json:"phase,omitempty"`
+	// Conditions represent the latest observations.
+	Conditions []metav1.Condition `json:"conditions,omitempty"`
+	// Steps records per-step execution details.
+	Steps []StepStatus `json:"steps,omitempty"`
+	// LastTransitionTime is when the phase last changed.
+	LastTransitionTime *metav1.Time `json:"lastTransitionTime,omitempty"`
+}
+
+type StepStatus struct {
+	// Name describes this step (e.g., "PromoteVolume", "StartVM").
+	Name string `json:"name"`
+	// Status is the step outcome.
+	Status string `json:"status,omitempty"`
+	// Message provides human-readable detail.
+	Message string `json:"message,omitempty"`
+	// Timestamp is when this step completed.
+	Timestamp *metav1.Time `json:"timestamp,omitempty"`
+}
+
+// DRGroupStatusList contains a list of DRGroupStatuses.
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+type DRGroupStatusList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []DRGroupStatus `json:"items"`
+}

@@ -44,7 +44,7 @@ story_location: "{project-root}/_bmad-output/implementation-artifacts"
 development_status:
   # Epic 1: Project Foundation & Cross-Site DR State
   epic-1: in-progress
-  1-1-project-initialization-api-type-definitions: ready-for-dev
+  1-1-project-initialization-api-type-definitions: done
   1-2-scylladb-connection-generic-kv-schema: ready-for-dev
   1-3-scylladb-storage-interface-crud-operations: ready-for-dev
   1-4-scylladb-storage-interface-watch-via-cdc: ready-for-dev
