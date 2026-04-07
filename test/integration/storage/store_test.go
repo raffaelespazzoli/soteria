@@ -113,6 +113,27 @@ func cleanupKey(t *testing.T, key string) {
 	_ = testSession.Query(cql, kc.APIGroup, kc.ResourceType, kc.Namespace, kc.Name).Exec()
 }
 
+func cleanupLabelRow(t *testing.T, apiGroup, resourceType, labelKey, labelValue, namespace, name string) {
+	t.Helper()
+	cql := fmt.Sprintf(
+		`DELETE FROM %s.kv_store_labels WHERE api_group = ? AND resource_type = ?`+
+			` AND label_key = ? AND label_value = ? AND namespace = ? AND name = ?`,
+		storeTestKeyspace,
+	)
+	_ = testSession.Query(cql, apiGroup, resourceType, labelKey, labelValue, namespace, name).Exec()
+}
+
+func cleanupObjectLabels(t *testing.T, key string, lbls map[string]string) {
+	t.Helper()
+	kc, err := scyllastore.KeyToComponents(key)
+	if err != nil {
+		return
+	}
+	for k, v := range lbls {
+		cleanupLabelRow(t, kc.APIGroup, kc.ResourceType, k, v, kc.Namespace, kc.Name)
+	}
+}
+
 func newDRPlan(namespace, name string) *v1alpha1.DRPlan {
 	return &v1alpha1.DRPlan{
 		TypeMeta: metav1.TypeMeta{
@@ -948,5 +969,611 @@ func TestStore_GetCurrentResourceVersion(t *testing.T) {
 	}
 	if rv == 0 {
 		t.Fatal("expected non-zero current resource version")
+	}
+}
+
+// ---- Label-indexed pagination tests (Story 1.3.1) ----
+
+func newDRPlanWithLabels(namespace, name string, lbls map[string]string) *v1alpha1.DRPlan {
+	plan := newDRPlan(namespace, name)
+	plan.Labels = lbls
+	return plan
+}
+
+func TestStore_LabelIndex_EqualityPagination(t *testing.T) {
+	store := setupStoreTest(t)
+	ctx := context.Background()
+
+	// Create 20 objects: 10 with app=web, 10 with app=api
+	var allKeys []string
+	var allLabels []map[string]string
+	for i := 0; i < 10; i++ {
+		name := fmt.Sprintf("li-web-%02d", i)
+		key := "/soteria.io/drplans/default/" + name
+		lbls := map[string]string{"app": "web"}
+		allKeys = append(allKeys, key)
+		allLabels = append(allLabels, lbls)
+		t.Cleanup(func() { cleanupKey(t, key); cleanupObjectLabels(t, key, lbls) })
+		if err := store.Create(ctx, key, newDRPlanWithLabels("default", name, lbls), &v1alpha1.DRPlan{}, 0); err != nil {
+			t.Fatalf("Create %s failed: %v", name, err)
+		}
+	}
+	for i := 0; i < 10; i++ {
+		name := fmt.Sprintf("li-api-%02d", i)
+		key := "/soteria.io/drplans/default/" + name
+		lbls := map[string]string{"app": "api"}
+		allKeys = append(allKeys, key)
+		allLabels = append(allLabels, lbls)
+		t.Cleanup(func() { cleanupKey(t, key); cleanupObjectLabels(t, key, lbls) })
+		if err := store.Create(ctx, key, newDRPlanWithLabels("default", name, lbls), &v1alpha1.DRPlan{}, 0); err != nil {
+			t.Fatalf("Create %s failed: %v", name, err)
+		}
+	}
+
+	selector, _ := labels.Parse("app=web")
+
+	// Page 1: limit=3
+	list1 := &v1alpha1.DRPlanList{}
+	err := store.GetList(ctx, "/soteria.io/drplans", storage.ListOptions{
+		Recursive: true,
+		Predicate: storage.SelectionPredicate{
+			Label:    selector,
+			Field:    fields.Everything(),
+			GetAttrs: storage.DefaultNamespaceScopedAttr,
+			Limit:    3,
+		},
+	}, list1)
+	if err != nil {
+		t.Fatalf("GetList page 1 failed: %v", err)
+	}
+	if len(list1.Items) != 3 {
+		t.Fatalf("expected 3 items on page 1, got %d", len(list1.Items))
+	}
+	for _, item := range list1.Items {
+		if item.Labels["app"] != "web" {
+			t.Fatalf("expected all items to have app=web, got %v", item.Labels)
+		}
+	}
+	if list1.Continue == "" {
+		t.Fatal("expected continue token for page 1")
+	}
+
+	// Page 2
+	list2 := &v1alpha1.DRPlanList{}
+	err = store.GetList(ctx, "/soteria.io/drplans", storage.ListOptions{
+		Recursive: true,
+		Predicate: storage.SelectionPredicate{
+			Label:    selector,
+			Field:    fields.Everything(),
+			GetAttrs: storage.DefaultNamespaceScopedAttr,
+			Limit:    3,
+			Continue: list1.Continue,
+		},
+	}, list2)
+	if err != nil {
+		t.Fatalf("GetList page 2 failed: %v", err)
+	}
+	if len(list2.Items) != 3 {
+		t.Fatalf("expected 3 items on page 2, got %d", len(list2.Items))
+	}
+
+	// Verify no overlap
+	page1Names := make(map[string]bool)
+	for _, item := range list1.Items {
+		page1Names[item.Name] = true
+	}
+	for _, item := range list2.Items {
+		if page1Names[item.Name] {
+			t.Fatalf("item %q appears on both pages", item.Name)
+		}
+	}
+}
+
+func TestStore_LabelIndex_MultiLabelAND(t *testing.T) {
+	store := setupStoreTest(t)
+	ctx := context.Background()
+
+	objects := []struct {
+		name   string
+		labels map[string]string
+	}{
+		{"ml-both-01", map[string]string{"app": "web", "tier": "frontend"}},
+		{"ml-both-02", map[string]string{"app": "web", "tier": "frontend"}},
+		{"ml-app-only", map[string]string{"app": "web", "tier": "backend"}},
+		{"ml-tier-only", map[string]string{"app": "api", "tier": "frontend"}},
+		{"ml-neither", map[string]string{"app": "api", "tier": "backend"}},
+	}
+
+	for _, obj := range objects {
+		key := "/soteria.io/drplans/default/" + obj.name
+		lbls := obj.labels
+		t.Cleanup(func() { cleanupKey(t, key); cleanupObjectLabels(t, key, lbls) })
+		if err := store.Create(ctx, key, newDRPlanWithLabels("default", obj.name, obj.labels), &v1alpha1.DRPlan{}, 0); err != nil {
+			t.Fatalf("Create %s failed: %v", obj.name, err)
+		}
+	}
+
+	selector, _ := labels.Parse("app=web,tier=frontend")
+	list := &v1alpha1.DRPlanList{}
+	err := store.GetList(ctx, "/soteria.io/drplans", storage.ListOptions{
+		Recursive: true,
+		Predicate: storage.SelectionPredicate{
+			Label:    selector,
+			Field:    fields.Everything(),
+			GetAttrs: storage.DefaultNamespaceScopedAttr,
+		},
+	}, list)
+	if err != nil {
+		t.Fatalf("GetList multi-label AND failed: %v", err)
+	}
+
+	if len(list.Items) != 2 {
+		t.Fatalf("expected 2 items matching app=web,tier=frontend, got %d", len(list.Items))
+	}
+	for _, item := range list.Items {
+		if item.Labels["app"] != "web" || item.Labels["tier"] != "frontend" {
+			t.Fatalf("unexpected item labels: %v", item.Labels)
+		}
+	}
+}
+
+func TestStore_LabelIndex_InSelector(t *testing.T) {
+	store := setupStoreTest(t)
+	ctx := context.Background()
+
+	objects := []struct {
+		name   string
+		labels map[string]string
+	}{
+		{"in-frontend", map[string]string{"tier": "frontend"}},
+		{"in-backend", map[string]string{"tier": "backend"}},
+		{"in-middleware", map[string]string{"tier": "middleware"}},
+	}
+
+	for _, obj := range objects {
+		key := "/soteria.io/drplans/default/" + obj.name
+		lbls := obj.labels
+		t.Cleanup(func() { cleanupKey(t, key); cleanupObjectLabels(t, key, lbls) })
+		if err := store.Create(ctx, key, newDRPlanWithLabels("default", obj.name, obj.labels), &v1alpha1.DRPlan{}, 0); err != nil {
+			t.Fatalf("Create %s failed: %v", obj.name, err)
+		}
+	}
+
+	selector, _ := labels.Parse("tier in (frontend,backend)")
+	list := &v1alpha1.DRPlanList{}
+	err := store.GetList(ctx, "/soteria.io/drplans", storage.ListOptions{
+		Recursive: true,
+		Predicate: storage.SelectionPredicate{
+			Label:    selector,
+			Field:    fields.Everything(),
+			GetAttrs: storage.DefaultNamespaceScopedAttr,
+		},
+	}, list)
+	if err != nil {
+		t.Fatalf("GetList in selector failed: %v", err)
+	}
+
+	if len(list.Items) != 2 {
+		t.Fatalf("expected 2 items matching tier in (frontend,backend), got %d", len(list.Items))
+	}
+	for _, item := range list.Items {
+		tier := item.Labels["tier"]
+		if tier != "frontend" && tier != "backend" {
+			t.Fatalf("unexpected tier label: %q", tier)
+		}
+	}
+}
+
+func TestStore_LabelIndex_ExistsSelector(t *testing.T) {
+	store := setupStoreTest(t)
+	ctx := context.Background()
+
+	objects := []struct {
+		name   string
+		labels map[string]string
+	}{
+		{"exists-has", map[string]string{"canary": "true"}},
+		{"exists-has2", map[string]string{"canary": "false"}},
+		{"exists-no", map[string]string{"app": "web"}},
+	}
+
+	for _, obj := range objects {
+		key := "/soteria.io/drplans/default/" + obj.name
+		lbls := obj.labels
+		t.Cleanup(func() { cleanupKey(t, key); cleanupObjectLabels(t, key, lbls) })
+		if err := store.Create(ctx, key, newDRPlanWithLabels("default", obj.name, obj.labels), &v1alpha1.DRPlan{}, 0); err != nil {
+			t.Fatalf("Create %s failed: %v", obj.name, err)
+		}
+	}
+
+	selector, _ := labels.Parse("canary")
+	list := &v1alpha1.DRPlanList{}
+	err := store.GetList(ctx, "/soteria.io/drplans", storage.ListOptions{
+		Recursive: true,
+		Predicate: storage.SelectionPredicate{
+			Label:    selector,
+			Field:    fields.Everything(),
+			GetAttrs: storage.DefaultNamespaceScopedAttr,
+		},
+	}, list)
+	if err != nil {
+		t.Fatalf("GetList exists selector failed: %v", err)
+	}
+
+	if len(list.Items) != 2 {
+		t.Fatalf("expected 2 items with canary label, got %d", len(list.Items))
+	}
+	for _, item := range list.Items {
+		if _, ok := item.Labels["canary"]; !ok {
+			t.Fatalf("expected canary label, got %v", item.Labels)
+		}
+	}
+}
+
+func TestStore_LabelIndex_NegativeSelector(t *testing.T) {
+	store := setupStoreTest(t)
+	ctx := context.Background()
+
+	objects := []struct {
+		name   string
+		labels map[string]string
+	}{
+		{"neg-frontend", map[string]string{"tier": "frontend"}},
+		{"neg-backend", map[string]string{"tier": "backend"}},
+		{"neg-middle", map[string]string{"tier": "middleware"}},
+	}
+
+	for _, obj := range objects {
+		key := "/soteria.io/drplans/default/" + obj.name
+		lbls := obj.labels
+		t.Cleanup(func() { cleanupKey(t, key); cleanupObjectLabels(t, key, lbls) })
+		if err := store.Create(ctx, key, newDRPlanWithLabels("default", obj.name, obj.labels), &v1alpha1.DRPlan{}, 0); err != nil {
+			t.Fatalf("Create %s failed: %v", obj.name, err)
+		}
+	}
+
+	selector, _ := labels.Parse("tier!=backend")
+	list := &v1alpha1.DRPlanList{}
+	err := store.GetList(ctx, "/soteria.io/drplans", storage.ListOptions{
+		Recursive: true,
+		Predicate: storage.SelectionPredicate{
+			Label:    selector,
+			Field:    fields.Everything(),
+			GetAttrs: storage.DefaultNamespaceScopedAttr,
+		},
+	}, list)
+	if err != nil {
+		t.Fatalf("GetList negative selector failed: %v", err)
+	}
+
+	for _, item := range list.Items {
+		if item.Labels["tier"] == "backend" {
+			t.Fatalf("expected no backend items, got %v", item.Labels)
+		}
+	}
+}
+
+func TestStore_LabelIndex_UpdateSyncsLabels(t *testing.T) {
+	store := setupStoreTest(t)
+	ctx := context.Background()
+
+	key := "/soteria.io/drplans/default/label-update"
+	initialLabels := map[string]string{"app": "web", "tier": "frontend"}
+	updatedLabels := map[string]string{"app": "web", "tier": "backend"}
+	t.Cleanup(func() {
+		cleanupKey(t, key)
+		cleanupObjectLabels(t, key, initialLabels)
+		cleanupObjectLabels(t, key, updatedLabels)
+	})
+
+	plan := newDRPlanWithLabels("default", "label-update", initialLabels)
+	if err := store.Create(ctx, key, plan, &v1alpha1.DRPlan{}, 0); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	// Verify initial labels via label selector
+	selector, _ := labels.Parse("tier=frontend")
+	list := &v1alpha1.DRPlanList{}
+	if err := store.GetList(ctx, "/soteria.io/drplans", storage.ListOptions{
+		Recursive: true,
+		Predicate: storage.SelectionPredicate{
+			Label:    selector,
+			Field:    fields.Everything(),
+			GetAttrs: storage.DefaultNamespaceScopedAttr,
+		},
+	}, list); err != nil {
+		t.Fatalf("GetList initial failed: %v", err)
+	}
+	found := false
+	for _, item := range list.Items {
+		if item.Name == "label-update" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected label-update in tier=frontend results before update")
+	}
+
+	// Update labels: change tier from frontend to backend
+	dest := &v1alpha1.DRPlan{}
+	err := store.GuaranteedUpdate(ctx, key, dest, false, nil,
+		func(input runtime.Object, _ storage.ResponseMeta) (runtime.Object, *uint64, error) {
+			p := input.(*v1alpha1.DRPlan)
+			p.Labels = updatedLabels
+			return p, nil, nil
+		}, nil)
+	if err != nil {
+		t.Fatalf("GuaranteedUpdate failed: %v", err)
+	}
+
+	// After update: should NOT appear in tier=frontend results
+	list2 := &v1alpha1.DRPlanList{}
+	if err := store.GetList(ctx, "/soteria.io/drplans", storage.ListOptions{
+		Recursive: true,
+		Predicate: storage.SelectionPredicate{
+			Label:    selector,
+			Field:    fields.Everything(),
+			GetAttrs: storage.DefaultNamespaceScopedAttr,
+		},
+	}, list2); err != nil {
+		t.Fatalf("GetList after update failed: %v", err)
+	}
+	for _, item := range list2.Items {
+		if item.Name == "label-update" {
+			t.Fatal("label-update should not appear in tier=frontend after label change")
+		}
+	}
+
+	// Should appear in tier=backend results
+	selector2, _ := labels.Parse("tier=backend")
+	list3 := &v1alpha1.DRPlanList{}
+	if err := store.GetList(ctx, "/soteria.io/drplans", storage.ListOptions{
+		Recursive: true,
+		Predicate: storage.SelectionPredicate{
+			Label:    selector2,
+			Field:    fields.Everything(),
+			GetAttrs: storage.DefaultNamespaceScopedAttr,
+		},
+	}, list3); err != nil {
+		t.Fatalf("GetList tier=backend failed: %v", err)
+	}
+	found = false
+	for _, item := range list3.Items {
+		if item.Name == "label-update" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected label-update in tier=backend results after update")
+	}
+}
+
+func TestStore_LabelIndex_DeleteCleansUpLabels(t *testing.T) {
+	store := setupStoreTest(t)
+	ctx := context.Background()
+
+	key := "/soteria.io/drplans/default/label-delete"
+	lbls := map[string]string{"app": "web"}
+	t.Cleanup(func() { cleanupKey(t, key); cleanupObjectLabels(t, key, lbls) })
+
+	plan := newDRPlanWithLabels("default", "label-delete", lbls)
+	if err := store.Create(ctx, key, plan, &v1alpha1.DRPlan{}, 0); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	// Verify it appears in label query
+	selector, _ := labels.Parse("app=web")
+	list := &v1alpha1.DRPlanList{}
+	if err := store.GetList(ctx, "/soteria.io/drplans", storage.ListOptions{
+		Recursive: true,
+		Predicate: storage.SelectionPredicate{
+			Label:    selector,
+			Field:    fields.Everything(),
+			GetAttrs: storage.DefaultNamespaceScopedAttr,
+		},
+	}, list); err != nil {
+		t.Fatalf("GetList before delete failed: %v", err)
+	}
+	found := false
+	for _, item := range list.Items {
+		if item.Name == "label-delete" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected label-delete in app=web results before delete")
+	}
+
+	// Delete the object
+	out := &v1alpha1.DRPlan{}
+	if err := store.Delete(ctx, key, out, nil, storage.ValidateAllObjectFunc, nil, storage.DeleteOptions{}); err != nil {
+		t.Fatalf("Delete failed: %v", err)
+	}
+
+	// Verify label index row is cleaned up — the object should not appear
+	// in label query results even via the index
+	list2 := &v1alpha1.DRPlanList{}
+	if err := store.GetList(ctx, "/soteria.io/drplans", storage.ListOptions{
+		Recursive: true,
+		Predicate: storage.SelectionPredicate{
+			Label:    selector,
+			Field:    fields.Everything(),
+			GetAttrs: storage.DefaultNamespaceScopedAttr,
+		},
+	}, list2); err != nil {
+		t.Fatalf("GetList after delete failed: %v", err)
+	}
+	for _, item := range list2.Items {
+		if item.Name == "label-delete" {
+			t.Fatal("label-delete should not appear after deletion")
+		}
+	}
+}
+
+func TestStore_LabelIndex_PaginationStableResourceVersion(t *testing.T) {
+	store := setupStoreTest(t)
+	ctx := context.Background()
+
+	for i := 0; i < 8; i++ {
+		name := fmt.Sprintf("li-rv-%02d", i)
+		key := "/soteria.io/drplans/default/" + name
+		lbls := map[string]string{"app": "web"}
+		t.Cleanup(func() { cleanupKey(t, key); cleanupObjectLabels(t, key, lbls) })
+		if err := store.Create(ctx, key, newDRPlanWithLabels("default", name, lbls), &v1alpha1.DRPlan{}, 0); err != nil {
+			t.Fatalf("Create %s failed: %v", name, err)
+		}
+	}
+
+	selector, _ := labels.Parse("app=web")
+	list1 := &v1alpha1.DRPlanList{}
+	err := store.GetList(ctx, "/soteria.io/drplans", storage.ListOptions{
+		Recursive: true,
+		Predicate: storage.SelectionPredicate{
+			Label:    selector,
+			Field:    fields.Everything(),
+			GetAttrs: storage.DefaultNamespaceScopedAttr,
+			Limit:    3,
+		},
+	}, list1)
+	if err != nil {
+		t.Fatalf("GetList page 1 failed: %v", err)
+	}
+	if list1.Continue == "" {
+		t.Fatal("expected continue token on page 1")
+	}
+	page1RV := list1.ResourceVersion
+
+	list2 := &v1alpha1.DRPlanList{}
+	err = store.GetList(ctx, "/soteria.io/drplans", storage.ListOptions{
+		Recursive: true,
+		Predicate: storage.SelectionPredicate{
+			Label:    selector,
+			Field:    fields.Everything(),
+			GetAttrs: storage.DefaultNamespaceScopedAttr,
+			Limit:    3,
+			Continue: list1.Continue,
+		},
+	}, list2)
+	if err != nil {
+		t.Fatalf("GetList page 2 failed: %v", err)
+	}
+	page2RV := list2.ResourceVersion
+
+	if page1RV != page2RV {
+		t.Fatalf("expected stable resourceVersion across pages, page1=%s page2=%s", page1RV, page2RV)
+	}
+}
+
+func TestStore_LabelIndex_DRExecution(t *testing.T) {
+	store := setupStoreForResource(t, "drexecutions",
+		func() runtime.Object { return &v1alpha1.DRExecution{} },
+		func() runtime.Object { return &v1alpha1.DRExecutionList{} },
+	)
+	ctx := context.Background()
+
+	exec := &v1alpha1.DRExecution{
+		TypeMeta: metav1.TypeMeta{APIVersion: "soteria.io/v1alpha1", Kind: "DRExecution"},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "default",
+			Name:      "exec-label-test",
+			UID:       types.UID(gocql.TimeUUID().String()),
+			Labels:    map[string]string{"mode": "planned"},
+		},
+		Spec: v1alpha1.DRExecutionSpec{
+			PlanName: "erp-full-stack",
+			Mode:     v1alpha1.ExecutionModePlannedMigration,
+		},
+	}
+
+	key := "/soteria.io/drexecutions/default/exec-label-test"
+	t.Cleanup(func() {
+		cleanupKey(t, key)
+		cleanupObjectLabels(t, key, map[string]string{"mode": "planned"})
+	})
+
+	if err := store.Create(ctx, key, exec, &v1alpha1.DRExecution{}, 0); err != nil {
+		t.Fatalf("Create DRExecution failed: %v", err)
+	}
+
+	selector, _ := labels.Parse("mode=planned")
+	list := &v1alpha1.DRExecutionList{}
+	err := store.GetList(ctx, "/soteria.io/drexecutions", storage.ListOptions{
+		Recursive: true,
+		Predicate: storage.SelectionPredicate{
+			Label:    selector,
+			Field:    fields.Everything(),
+			GetAttrs: storage.DefaultNamespaceScopedAttr,
+		},
+	}, list)
+	if err != nil {
+		t.Fatalf("GetList DRExecution with label failed: %v", err)
+	}
+
+	found := false
+	for _, item := range list.Items {
+		if item.Name == "exec-label-test" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected exec-label-test in mode=planned results")
+	}
+}
+
+func TestStore_LabelIndex_DRGroupStatus(t *testing.T) {
+	store := setupStoreForResource(t, "drgroupstatuses",
+		func() runtime.Object { return &v1alpha1.DRGroupStatus{} },
+		func() runtime.Object { return &v1alpha1.DRGroupStatusList{} },
+	)
+	ctx := context.Background()
+
+	gs := &v1alpha1.DRGroupStatus{
+		TypeMeta: metav1.TypeMeta{APIVersion: "soteria.io/v1alpha1", Kind: "DRGroupStatus"},
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "default",
+			Name:      "gs-label-test",
+			UID:       types.UID(gocql.TimeUUID().String()),
+			Labels:    map[string]string{"wave": "0"},
+		},
+		Spec: v1alpha1.DRGroupStatusSpec{
+			ExecutionName: "exec-001",
+			WaveIndex:     0,
+			GroupName:     "group0",
+			VMNames:       []string{"vm-1"},
+		},
+	}
+
+	key := "/soteria.io/drgroupstatuses/default/gs-label-test"
+	t.Cleanup(func() {
+		cleanupKey(t, key)
+		cleanupObjectLabels(t, key, map[string]string{"wave": "0"})
+	})
+
+	if err := store.Create(ctx, key, gs, &v1alpha1.DRGroupStatus{}, 0); err != nil {
+		t.Fatalf("Create DRGroupStatus failed: %v", err)
+	}
+
+	selector, _ := labels.Parse("wave=0")
+	list := &v1alpha1.DRGroupStatusList{}
+	err := store.GetList(ctx, "/soteria.io/drgroupstatuses", storage.ListOptions{
+		Recursive: true,
+		Predicate: storage.SelectionPredicate{
+			Label:    selector,
+			Field:    fields.Everything(),
+			GetAttrs: storage.DefaultNamespaceScopedAttr,
+		},
+	}, list)
+	if err != nil {
+		t.Fatalf("GetList DRGroupStatus with label failed: %v", err)
+	}
+
+	found := false
+	for _, item := range list.Items {
+		if item.Name == "gs-label-test" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("expected gs-label-test in wave=0 results")
 	}
 }

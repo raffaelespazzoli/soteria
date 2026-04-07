@@ -189,6 +189,122 @@ func TestEnsureTable_CDCEnabled(t *testing.T) {
 	}
 }
 
+func TestEnsureLabelsTable_CreatesTable(t *testing.T) {
+	cfg := scylladb.SchemaConfig{
+		Keyspace:          testKeyspace,
+		Strategy:          "SimpleStrategy",
+		ReplicationFactor: 1,
+	}
+	if err := scylladb.EnsureKeyspace(testSession, cfg); err != nil {
+		t.Fatalf("EnsureKeyspace failed: %v", err)
+	}
+
+	if err := scylladb.EnsureLabelsTable(testSession, testKeyspace); err != nil {
+		t.Fatalf("EnsureLabelsTable failed: %v", err)
+	}
+
+	// Idempotent
+	if err := scylladb.EnsureLabelsTable(testSession, testKeyspace); err != nil {
+		t.Fatalf("idempotent EnsureLabelsTable failed: %v", err)
+	}
+}
+
+func TestEnsureLabelsTable_EmptyKeyspace(t *testing.T) {
+	if err := scylladb.EnsureLabelsTable(testSession, ""); err == nil {
+		t.Fatal("expected error for empty keyspace")
+	}
+}
+
+func TestEnsureLabelsTable_SchemaStructure(t *testing.T) {
+	cfg := scylladb.SchemaConfig{
+		Keyspace:          testKeyspace,
+		Strategy:          "SimpleStrategy",
+		ReplicationFactor: 1,
+	}
+	if err := scylladb.EnsureSchema(testSession, cfg); err != nil {
+		t.Fatalf("EnsureSchema failed: %v", err)
+	}
+
+	expectedColumns := map[string]string{
+		"api_group":     "text",
+		"resource_type": "text",
+		"label_key":     "text",
+		"label_value":   "text",
+		"namespace":     "text",
+		"name":          "text",
+	}
+
+	iter := testSession.Query(
+		"SELECT column_name, type FROM system_schema.columns WHERE keyspace_name = ? AND table_name = ?",
+		testKeyspace, "kv_store_labels",
+	).Iter()
+
+	foundColumns := make(map[string]string)
+	var colName, colType string
+	for iter.Scan(&colName, &colType) {
+		foundColumns[colName] = colType
+	}
+	if err := iter.Close(); err != nil {
+		t.Fatalf("iterating columns: %v", err)
+	}
+
+	for name, expectedType := range expectedColumns {
+		actualType, ok := foundColumns[name]
+		if !ok {
+			t.Errorf("expected column %q not found", name)
+			continue
+		}
+		if actualType != expectedType {
+			t.Errorf("column %q: expected type %q, got %q", name, expectedType, actualType)
+		}
+	}
+
+	if len(foundColumns) != len(expectedColumns) {
+		t.Errorf("expected %d columns, found %d: %v", len(expectedColumns), len(foundColumns), foundColumns)
+	}
+}
+
+func TestEnsureLabelsTable_PrimaryKey(t *testing.T) {
+	cfg := scylladb.SchemaConfig{
+		Keyspace:          testKeyspace,
+		Strategy:          "SimpleStrategy",
+		ReplicationFactor: 1,
+	}
+	if err := scylladb.EnsureSchema(testSession, cfg); err != nil {
+		t.Fatalf("EnsureSchema failed: %v", err)
+	}
+
+	iter := testSession.Query(
+		"SELECT column_name, kind FROM system_schema.columns WHERE keyspace_name = ? AND table_name = ?",
+		testKeyspace, "kv_store_labels",
+	).Iter()
+
+	columnKinds := make(map[string]string)
+	var colName, kind string
+	for iter.Scan(&colName, &kind) {
+		columnKinds[colName] = kind
+	}
+	if err := iter.Close(); err != nil {
+		t.Fatalf("iterating columns: %v", err)
+	}
+
+	// Partition key columns have kind "partition_key"
+	// Clustering key columns have kind "clustering"
+	expectedKinds := map[string]string{
+		"api_group":     "partition_key",
+		"resource_type": "partition_key",
+		"label_key":     "partition_key",
+		"label_value":   "clustering",
+		"namespace":     "clustering",
+		"name":          "clustering",
+	}
+	for col, expectedKind := range expectedKinds {
+		if columnKinds[col] != expectedKind {
+			t.Errorf("column %q: expected kind %q, got %q", col, expectedKind, columnKinds[col])
+		}
+	}
+}
+
 func TestEnsureSchema_Orchestration(t *testing.T) {
 	ks := "soteria_schema_test"
 	cfg := scylladb.SchemaConfig{

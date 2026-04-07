@@ -95,13 +95,39 @@ func EnsureTable(session *gocql.Session, keyspace string) error {
 	return session.Query(cql).Exec()
 }
 
-// EnsureSchema orchestrates idempotent keyspace and kv_store table creation.
+// EnsureLabelsTable creates the kv_store_labels index table if it does not
+// already exist. This normalized table enables server-side label filtering
+// for GetList queries, working around ScyllaDB's lack of SAI/ENTRIES indexes
+// on map columns.
+func EnsureLabelsTable(session *gocql.Session, keyspace string) error {
+	if keyspace == "" {
+		return fmt.Errorf("keyspace name is required")
+	}
+
+	cql := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s.kv_store_labels (
+    api_group text,
+    resource_type text,
+    label_key text,
+    label_value text,
+    namespace text,
+    name text,
+    PRIMARY KEY ((api_group, resource_type, label_key), label_value, namespace, name)
+)`, keyspace)
+
+	return session.Query(cql).Exec()
+}
+
+// EnsureSchema orchestrates idempotent keyspace, kv_store table, and
+// kv_store_labels index table creation.
 func EnsureSchema(session *gocql.Session, cfg SchemaConfig) error {
 	if err := EnsureKeyspace(session, cfg); err != nil {
 		return fmt.Errorf("ensuring keyspace: %w", err)
 	}
 	if err := EnsureTable(session, cfg.Keyspace); err != nil {
 		return fmt.Errorf("ensuring kv_store table: %w", err)
+	}
+	if err := EnsureLabelsTable(session, cfg.Keyspace); err != nil {
+		return fmt.Errorf("ensuring kv_store_labels table: %w", err)
 	}
 	return nil
 }

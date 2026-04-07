@@ -119,6 +119,14 @@ func (s *Store) Create(ctx context.Context, key string, obj, out runtime.Object,
 		return storage.NewKeyExistsError(preparedKey, 0)
 	}
 
+	// Sync label index (best-effort: kv_store blob is authoritative)
+	newLabels := extractLabels(obj)
+	if len(newLabels) > 0 {
+		if serr := syncLabels(s.session, s.keyspace, kc, nil, newLabels); serr != nil {
+			klog.ErrorS(serr, "Failed to sync label index on create", "key", preparedKey)
+		}
+	}
+
 	if out != nil {
 		if err := decode(s.codec, data, out); err != nil {
 			return storage.NewCorruptObjError(preparedKey, err)
@@ -190,6 +198,11 @@ func (s *Store) Delete(
 			continue
 		}
 
+		// Clean up label index rows (best-effort)
+		if serr := deleteAllLabels(s.session, s.keyspace, kc, extractLabels(existing)); serr != nil {
+			klog.ErrorS(serr, "Failed to delete label index on delete", "key", preparedKey)
+		}
+
 		if out != nil {
 			if err := decode(s.codec, data, out); err != nil {
 				return storage.NewCorruptObjError(preparedKey, err)
@@ -237,6 +250,13 @@ func (s *Store) Get(ctx context.Context, key string, opts storage.GetOptions, ob
 	return s.versioner.UpdateObject(objPtr, TimeuuidToResourceVersion(rv))
 }
 
+// defaultOverscanFactor controls how many extra rows to fetch per re-fetch
+// iteration relative to the remaining items needed.
+const defaultOverscanFactor = 3
+
+// maxScanMultiplier caps total rows scanned to limit * maxScanMultiplier.
+const maxScanMultiplier = 10
+
 // GetList implements storage.Interface.
 func (s *Store) GetList(ctx context.Context, key string, opts storage.ListOptions, listObj runtime.Object) error {
 	preparedKey, err := s.prepareKey(key, opts.Recursive)
@@ -267,73 +287,51 @@ func (s *Store) GetList(ctx context.Context, key string, opts storage.ListOption
 		return storage.NewInternalError(err)
 	}
 
-	var continueNS, continueName string
+	var continueNS, continueName, continueLabelValue string
 	if continueKey != "" {
-		continueNS, continueName, err = parseContinueKey(continueKey, preparedKey)
+		continueNS, continueName, continueLabelValue, err = parseContinueKey(continueKey, preparedKey)
 		if err != nil {
 			return err
 		}
 	}
 
 	limit := opts.Predicate.Limit
-	paging := limit > 0
+	sel := opts.Predicate.Label
 
-	// Fetch one extra row to detect whether more items exist beyond this page.
-	var fetchLimit int64
-	if paging {
-		fetchLimit = limit + 1
+	var cs classifiedSelector
+	hasLabelSelector := sel != nil && !sel.Empty()
+	if hasLabelSelector {
+		cs = classifySelector(sel)
 	}
 
-	rows, err := s.queryList(ctx, apiGroup, resourceType, namespace, continueNS, continueName, fetchLimit)
-	if err != nil {
-		return storage.NewInternalError(err)
-	}
-
-	newItemFunc := getNewItemFunc(v)
 	var maxRV uint64
 	var lastItemKey string
+	var lastLabelValue string
 	var hasMore bool
+	newItemFunc := getNewItemFunc(v)
 
-	for _, row := range rows {
-		if paging && int64(v.Len()) >= limit {
-			hasMore = true
-			break
-		}
-
-		obj := newItemFunc()
-		itemKey := ComponentsToKey(apiGroup, resourceType, row.namespace, row.name)
-		if err := decode(s.codec, row.value, obj); err != nil {
-			return storage.NewCorruptObjError(itemKey, err)
-		}
-		rv := TimeuuidToResourceVersion(row.resourceVersion)
-		if err := s.versioner.UpdateObject(obj, rv); err != nil {
+	if hasLabelSelector && cs.hasPushable {
+		maxRV, lastItemKey, lastLabelValue, hasMore, err = s.getListViaLabelIndex(
+			ctx, apiGroup, resourceType, namespace,
+			continueLabelValue, continueNS, continueName,
+			cs, opts, limit, v, newItemFunc)
+		if err != nil {
 			return err
 		}
-		if rv > maxRV {
-			maxRV = rv
+	} else {
+		maxRV, lastItemKey, hasMore, err = s.getListBaseTable(
+			ctx, apiGroup, resourceType, namespace,
+			continueNS, continueName,
+			opts, limit, v, newItemFunc)
+		if err != nil {
+			return err
 		}
-
-		if opts.Predicate.GetAttrs != nil {
-			if matched, err := opts.Predicate.Matches(obj); err != nil {
-				return err
-			} else if !matched {
-				continue
-			}
-		}
-
-		v.Set(reflect.Append(v, reflect.ValueOf(obj).Elem()))
-		lastItemKey = itemKey
 	}
 
 	if v.IsNil() {
 		v.Set(reflect.MakeSlice(v.Type(), 0, 0))
 	}
 
-	// Establish a stable list resourceVersion:
-	// - If withRev > 0 (from continue token or explicit RV), preserve it
-	//   across pages so paginated lists see a consistent version.
-	// - Otherwise use the max RV observed in this page.
-	// - For empty results fall back to the current time.
 	var listRV uint64
 	switch {
 	case withRev > 0:
@@ -344,16 +342,273 @@ func (s *Store) GetList(ctx context.Context, key string, opts storage.ListOption
 		listRV = TimeuuidToResourceVersion(gocql.TimeUUID())
 	}
 
-	var continueValue string
+	var continueEncoded string
 	if hasMore && lastItemKey != "" {
-		continueValue, err = storage.EncodeContinue(
-			lastItemKey+"\x00", preparedKey, int64(listRV))
+		encodeKey := lastItemKey
+		if lastLabelValue != "" {
+			encodeKey += "\x01" + lastLabelValue
+		}
+		continueEncoded, err = storage.EncodeContinue(
+			encodeKey+"\x00", preparedKey, int64(listRV))
 		if err != nil {
 			return err
 		}
 	}
 
-	return s.versioner.UpdateList(listObj, listRV, continueValue, nil)
+	return s.versioner.UpdateList(listObj, listRV, continueEncoded, nil)
+}
+
+// getListBaseTable implements GetList using the kv_store base table with a
+// bounded re-fetch loop for predicate filtering.
+func (s *Store) getListBaseTable(
+	ctx context.Context,
+	apiGroup, resourceType, namespace string,
+	continueNS, continueName string,
+	opts storage.ListOptions,
+	limit int64,
+	v reflect.Value,
+	newItemFunc func() runtime.Object,
+) (maxRV uint64, lastItemKey string, hasMore bool, err error) {
+	paging := limit > 0
+	hasPredicate := opts.Predicate.GetAttrs != nil
+
+	if !paging || !hasPredicate {
+		// No filtering or no pagination: single fetch, original path.
+		var fetchLimit int64
+		if paging {
+			fetchLimit = limit + 1
+		}
+		rows, qerr := s.queryList(ctx, apiGroup, resourceType, namespace, continueNS, continueName, fetchLimit)
+		if qerr != nil {
+			return 0, "", false, storage.NewInternalError(qerr)
+		}
+		for _, row := range rows {
+			if paging && int64(v.Len()) >= limit {
+				hasMore = true
+				break
+			}
+			obj := newItemFunc()
+			itemKey := ComponentsToKey(apiGroup, resourceType, row.namespace, row.name)
+			if derr := decode(s.codec, row.value, obj); derr != nil {
+				return 0, "", false, storage.NewCorruptObjError(itemKey, derr)
+			}
+			rv := TimeuuidToResourceVersion(row.resourceVersion)
+			if uerr := s.versioner.UpdateObject(obj, rv); uerr != nil {
+				return 0, "", false, uerr
+			}
+			if rv > maxRV {
+				maxRV = rv
+			}
+			if hasPredicate {
+				if matched, merr := opts.Predicate.Matches(obj); merr != nil {
+					return 0, "", false, merr
+				} else if !matched {
+					continue
+				}
+			}
+			v.Set(reflect.Append(v, reflect.ValueOf(obj).Elem()))
+			lastItemKey = itemKey
+		}
+		return maxRV, lastItemKey, hasMore, nil
+	}
+
+	// Bounded re-fetch loop: keep fetching from the base table until
+	// limit items are accepted or scan cap is reached.
+	remaining := limit
+	maxScan := limit * maxScanMultiplier
+	var scanned int64
+	curNS, curName := continueNS, continueName
+
+	for remaining > 0 && scanned < maxScan {
+		fetchSize := min(remaining*int64(defaultOverscanFactor), maxScan-scanned)
+		// Fetch one extra to detect hasMore
+		rows, qerr := s.queryList(ctx, apiGroup, resourceType, namespace, curNS, curName, fetchSize+1)
+		if qerr != nil {
+			return 0, "", false, storage.NewInternalError(qerr)
+		}
+		if len(rows) == 0 {
+			break
+		}
+
+		exhaustedPage := len(rows) <= int(fetchSize)
+		if len(rows) > int(fetchSize) {
+			rows = rows[:fetchSize]
+		}
+
+		for _, row := range rows {
+			scanned++
+			obj := newItemFunc()
+			itemKey := ComponentsToKey(apiGroup, resourceType, row.namespace, row.name)
+			if derr := decode(s.codec, row.value, obj); derr != nil {
+				return 0, "", false, storage.NewCorruptObjError(itemKey, derr)
+			}
+			rv := TimeuuidToResourceVersion(row.resourceVersion)
+			if uerr := s.versioner.UpdateObject(obj, rv); uerr != nil {
+				return 0, "", false, uerr
+			}
+			if rv > maxRV {
+				maxRV = rv
+			}
+			curNS = row.namespace
+			curName = row.name
+
+			if matched, merr := opts.Predicate.Matches(obj); merr != nil {
+				return 0, "", false, merr
+			} else if !matched {
+				continue
+			}
+			v.Set(reflect.Append(v, reflect.ValueOf(obj).Elem()))
+			lastItemKey = itemKey
+			remaining--
+			if remaining == 0 {
+				hasMore = !exhaustedPage || scanned < int64(len(rows))
+				break
+			}
+		}
+		if exhaustedPage {
+			break
+		}
+	}
+
+	// If we hit the scan cap but still have remaining items, signal hasMore
+	if remaining > 0 && scanned >= maxScan {
+		hasMore = true
+	}
+
+	return maxRV, lastItemKey, hasMore, nil
+}
+
+// getListViaLabelIndex implements GetList using the kv_store_labels index
+// table with a bounded re-fetch loop.
+func (s *Store) getListViaLabelIndex(
+	ctx context.Context,
+	apiGroup, resourceType, namespace string,
+	continueValue, continueNS, continueName string,
+	cs classifiedSelector,
+	opts storage.ListOptions,
+	limit int64,
+	v reflect.Value,
+	newItemFunc func() runtime.Object,
+) (maxRV uint64, lastItemKey string, lastLabelValue string, hasMore bool, err error) {
+	paging := limit > 0
+	remaining := limit
+	maxScan := limit * maxScanMultiplier
+
+	var scanned int64
+	curNS, curName := continueNS, continueName
+	curValue := continueValue
+
+	for !paging || (remaining > 0 && scanned < maxScan) {
+
+		var fetchSize int64
+		if paging {
+			fetchSize = max(min(remaining*int64(defaultOverscanFactor), maxScan-scanned), 1)
+		}
+
+		var queryLimit int64
+		if paging {
+			queryLimit = fetchSize + 1
+		}
+
+		candidates, rawCount, qerr := queryLabelIndex(
+			ctx, s.session, s.keyspace,
+			apiGroup, resourceType, *cs.primary,
+			namespace,
+			curValue, curNS, curName,
+			queryLimit,
+		)
+		if qerr != nil {
+			return 0, "", "", false, storage.NewInternalError(qerr)
+		}
+
+		// Use rawCount (pre-filter) to detect true CQL exhaustion.
+		// len(candidates)==0 after filtering doesn't mean no more data.
+		if rawCount == 0 {
+			break
+		}
+
+		var exhaustedPage bool
+		if !paging {
+			exhaustedPage = true
+		} else {
+			exhaustedPage = len(candidates) <= int(fetchSize)
+			if len(candidates) > int(fetchSize) {
+				candidates = candidates[:fetchSize]
+			}
+		}
+
+		for i, cand := range candidates {
+			scanned++
+			kc := KeyComponents{
+				APIGroup:     apiGroup,
+				ResourceType: resourceType,
+				Namespace:    cand.namespace,
+				Name:         cand.name,
+			}
+			data, rv, gerr := s.getRow(ctx, kc)
+			if gerr != nil {
+				return 0, "", "", false, storage.NewInternalError(gerr)
+			}
+			if data == nil {
+				curValue = cand.labelValue
+				curNS = cand.namespace
+				curName = cand.name
+				continue
+			}
+
+			obj := newItemFunc()
+			itemKey := ComponentsToKey(apiGroup, resourceType, cand.namespace, cand.name)
+			if derr := decode(s.codec, data, obj); derr != nil {
+				return 0, "", "", false, storage.NewCorruptObjError(itemKey, derr)
+			}
+			rvVal := TimeuuidToResourceVersion(rv)
+			if uerr := s.versioner.UpdateObject(obj, rvVal); uerr != nil {
+				return 0, "", "", false, uerr
+			}
+			if rvVal > maxRV {
+				maxRV = rvVal
+			}
+
+			curValue = cand.labelValue
+			curNS = cand.namespace
+			curName = cand.name
+
+			if len(cs.residual) > 0 {
+				objLabels := extractLabels(obj)
+				if !residualMatches(objLabels, cs.residual) {
+					continue
+				}
+			}
+			if opts.Predicate.GetAttrs != nil {
+				if matched, merr := opts.Predicate.Matches(obj); merr != nil {
+					return 0, "", "", false, merr
+				} else if !matched {
+					continue
+				}
+			}
+
+			v.Set(reflect.Append(v, reflect.ValueOf(obj).Elem()))
+			lastItemKey = itemKey
+			lastLabelValue = cand.labelValue
+			if paging {
+				remaining--
+				if remaining == 0 {
+					hasMore = !exhaustedPage || i < len(candidates)-1
+					break
+				}
+			}
+		}
+
+		if exhaustedPage {
+			break
+		}
+	}
+
+	if paging && remaining > 0 && scanned >= maxScan {
+		hasMore = true
+	}
+
+	return maxRV, lastItemKey, lastLabelValue, hasMore, nil
 }
 
 // GuaranteedUpdate implements storage.Interface.
@@ -404,6 +659,9 @@ func (s *Store) GuaranteedUpdate(
 			return err
 		}
 
+		// Capture labels before tryUpdate mutates the existing object in-place
+		oldLabels := extractLabels(existing)
+
 		ret, _, err := tryUpdate(existing, storage.ResponseMeta{ResourceVersion: currentRV})
 		if err != nil {
 			return err
@@ -437,6 +695,7 @@ func (s *Store) GuaranteedUpdate(
 					"key", preparedKey)
 				continue
 			}
+			oldLabels = nil
 		} else {
 			applied, casErr := s.casUpdate(ctx, kc, newData, newRV, existingRV)
 			if casErr != nil {
@@ -446,6 +705,14 @@ func (s *Store) GuaranteedUpdate(
 				klog.V(4).InfoS("GuaranteedUpdate CAS failed, retrying",
 					"key", preparedKey)
 				continue
+			}
+		}
+
+		// Sync label index (best-effort)
+		newLabels := extractLabels(ret)
+		if len(oldLabels) > 0 || len(newLabels) > 0 {
+			if serr := syncLabels(s.session, s.keyspace, kc, oldLabels, newLabels); serr != nil {
+				klog.ErrorS(serr, "Failed to sync label index on update", "key", preparedKey)
 			}
 		}
 
@@ -719,10 +986,11 @@ func (s *Store) getSingleItemList(
 	return s.versioner.UpdateList(listObj, listRV, "", nil)
 }
 
-// parseContinueKey extracts namespace and name from a decoded continue key.
-// The continue key includes a trailing \x00 appended by the standard k8s
-// continue token encoding; we strip it here.
-func parseContinueKey(continueKey, keyPrefix string) (namespace, name string, err error) {
+// parseContinueKey extracts namespace, name, and an optional labelValue from a
+// decoded continue key. The label-index path encodes the last candidate's
+// label_value after the name using a \x01 separator so that in/exists
+// selectors can resume from the correct (label_value, namespace, name) position.
+func parseContinueKey(continueKey, keyPrefix string) (namespace, name, labelValue string, err error) {
 	relative := strings.TrimPrefix(continueKey, keyPrefix)
 	relative = strings.TrimSuffix(relative, "\x00")
 	relative = strings.TrimPrefix(relative, "/")
@@ -731,12 +999,20 @@ func parseContinueKey(continueKey, keyPrefix string) (namespace, name string, er
 	parts := strings.SplitN(relative, "/", 2)
 	switch len(parts) {
 	case 2:
-		return parts[0], parts[1], nil
+		namespace = parts[0]
+		name = parts[1]
 	case 1:
-		return "", parts[0], nil
+		name = parts[0]
 	default:
-		return "", "", fmt.Errorf("invalid continue key %q", continueKey)
+		return "", "", "", fmt.Errorf("invalid continue key %q", continueKey)
 	}
+
+	// Extract embedded label_value (used by label-index pagination)
+	if idx := strings.IndexByte(name, '\x01'); idx >= 0 {
+		labelValue = name[idx+1:]
+		name = name[:idx]
+	}
+	return namespace, name, labelValue, nil
 }
 
 func getNewItemFunc(v reflect.Value) func() runtime.Object {

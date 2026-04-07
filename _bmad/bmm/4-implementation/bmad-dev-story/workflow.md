@@ -65,6 +65,26 @@ Load config from `{project-root}/_bmad/bmm/config.yaml` and resolve:
       <action>HALT: "Working tree is not clean. Commit or stash changes before running dev-story."</action>
     </check>
     <check if="output is empty (working tree is clean)">
+      <action>Continue to Step 0.5</action>
+    </check>
+  </step>
+
+  <step n="0.5" goal="Verify all existing tests pass before starting">
+    <action>Determine how to run tests for this repo (infer test framework from project structure, e.g., Makefile, package.json)</action>
+    <action>Run the project test suite (e.g., `make test`)</action>
+    <check if="any tests fail">
+      <output>🛑 **Cannot start story development — existing tests are failing.**
+
+        The following test failures were detected:
+        {{test_failure_output}}
+
+        Please fix all failing tests before starting story development.
+        Starting from a green test suite ensures new work does not mask
+        pre-existing regressions.
+      </output>
+      <action>HALT: "Test suite is not green. Fix failing tests before running dev-story."</action>
+    </check>
+    <check if="all tests pass">
       <action>Continue to Step 1</action>
     </check>
   </step>
