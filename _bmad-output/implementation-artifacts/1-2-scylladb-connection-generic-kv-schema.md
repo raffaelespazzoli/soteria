@@ -1,6 +1,6 @@
 # Story 1.2: ScyllaDB Connection & Generic KV Schema
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -20,41 +20,41 @@ so that the storage backend is ready for storage.Interface implementation.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Add Go dependencies (AC: #1, #2, #4)
-  - [ ] 1.1 Add `github.com/gocql/gocql` (ScyllaDB/Cassandra Go driver)
-  - [ ] 1.2 Add `github.com/testcontainers/testcontainers-go` (integration test infrastructure)
-  - [ ] 1.3 Run `go mod tidy` to resolve dependency graph
+- [x] Task 1: Add Go dependencies (AC: #1, #2, #4)
+  - [x] 1.1 Add `github.com/gocql/gocql` (ScyllaDB/Cassandra Go driver)
+  - [x] 1.2 Add `github.com/testcontainers/testcontainers-go` (integration test infrastructure)
+  - [x] 1.3 Run `go mod tidy` to resolve dependency graph
 
-- [ ] Task 2: ScyllaDB client connection management (AC: #1, #3)
-  - [ ] 2.1 Create `pkg/storage/scylladb/client.go` with `ClientConfig` struct (contact points, port, keyspace, TLS cert/key/CA paths)
-  - [ ] 2.2 Implement `NewClient(cfg ClientConfig) (*Client, error)` — builds gocql ClusterConfig with mTLS via `crypto/tls`, configures retry policy and reconnection
-  - [ ] 2.3 Implement `Client.Session() *gocql.Session` accessor
-  - [ ] 2.4 Implement `Client.HealthCheck(ctx context.Context) error` — executes lightweight CQL query to verify connection liveness
-  - [ ] 2.5 Implement `Client.Close()` for graceful session shutdown
-  - [ ] 2.6 Support non-TLS mode for local development and testcontainers (TLS fields optional)
+- [x] Task 2: ScyllaDB client connection management (AC: #1, #3)
+  - [x] 2.1 Create `pkg/storage/scylladb/client.go` with `ClientConfig` struct (contact points, port, keyspace, TLS cert/key/CA paths)
+  - [x] 2.2 Implement `NewClient(cfg ClientConfig) (*Client, error)` — builds gocql ClusterConfig with mTLS via `crypto/tls`, configures retry policy and reconnection
+  - [x] 2.3 Implement `Client.Session() *gocql.Session` accessor
+  - [x] 2.4 Implement `Client.HealthCheck(ctx context.Context) error` — executes lightweight CQL query to verify connection liveness
+  - [x] 2.5 Implement `Client.Close()` for graceful session shutdown
+  - [x] 2.6 Support non-TLS mode for local development and testcontainers (TLS fields optional)
 
-- [ ] Task 3: Schema initializer (AC: #2)
-  - [ ] 3.1 Create `pkg/storage/scylladb/schema.go` with `SchemaConfig` struct (keyspace name, replication strategy, replication factor per DC)
-  - [ ] 3.2 Implement `EnsureKeyspace(session *gocql.Session, cfg SchemaConfig) error` — idempotent keyspace creation with configurable replication strategy (SimpleStrategy for test, NetworkTopologyStrategy for production)
-  - [ ] 3.3 Implement `EnsureTable(session *gocql.Session, keyspace string) error` — idempotent `kv_store` table creation with CDC enabled
-  - [ ] 3.4 Implement `EnsureSchema(session *gocql.Session, cfg SchemaConfig) error` — orchestrates keyspace + table creation
+- [x] Task 3: Schema initializer (AC: #2)
+  - [x] 3.1 Create `pkg/storage/scylladb/schema.go` with `SchemaConfig` struct (keyspace name, replication strategy, replication factor per DC)
+  - [x] 3.2 Implement `EnsureKeyspace(session *gocql.Session, cfg SchemaConfig) error` — idempotent keyspace creation with configurable replication strategy (SimpleStrategy for test, NetworkTopologyStrategy for production)
+  - [x] 3.3 Implement `EnsureTable(session *gocql.Session, keyspace string) error` — idempotent `kv_store` table creation with CDC enabled
+  - [x] 3.4 Implement `EnsureSchema(session *gocql.Session, cfg SchemaConfig) error` — orchestrates keyspace + table creation
 
-- [ ] Task 4: Integration tests with testcontainers (AC: #4)
-  - [ ] 4.1 Create `test/integration/storage/suite_test.go` — testcontainers ScyllaDB lifecycle (start container, wait for CQL port, create client, tear down)
-  - [ ] 4.2 Create `test/integration/storage/client_test.go` — test connection establishment, session access, health check pass, close and reconnect
-  - [ ] 4.3 Create `test/integration/storage/schema_test.go` — test keyspace creation, kv_store table creation, CDC enabled on table, idempotent re-runs
-  - [ ] 4.4 Verify table structure matches expected schema (query system_schema.columns)
-  - [ ] 4.5 Verify CDC is enabled by querying table properties
+- [x] Task 4: Integration tests with testcontainers (AC: #4)
+  - [x] 4.1 Create `test/integration/storage/suite_test.go` — testcontainers ScyllaDB lifecycle (start container, wait for CQL port, create client, tear down)
+  - [x] 4.2 Create `test/integration/storage/client_test.go` — test connection establishment, session access, health check pass, close and reconnect
+  - [x] 4.3 Create `test/integration/storage/schema_test.go` — test keyspace creation, kv_store table creation, CDC enabled on table, idempotent re-runs
+  - [x] 4.4 Verify table structure matches expected schema (query system_schema.columns)
+  - [x] 4.5 Verify CDC is enabled by querying table properties
 
-- [ ] Task 5: Makefile integration (AC: #4)
-  - [ ] 5.1 Ensure `make integration` target runs `go test ./test/integration/...` with appropriate build tags
-  - [ ] 5.2 Add `integration` build tag to integration test files to avoid running in `make test`
+- [x] Task 5: Makefile integration (AC: #4)
+  - [x] 5.1 Ensure `make integration` target runs `go test ./test/integration/...` with appropriate build tags
+  - [x] 5.2 Add `integration` build tag to integration test files to avoid running in `make test`
 
-- [ ] Task 6: Final validation
-  - [ ] 6.1 `make build` passes
-  - [ ] 6.2 `make test` passes (unit tests only, no integration tests without build tag)
-  - [ ] 6.3 `make lint` passes
-  - [ ] 6.4 `make integration` passes with Docker available (testcontainers requires Docker)
+- [x] Task 6: Final validation
+  - [x] 6.1 `make build` passes
+  - [x] 6.2 `make test` passes (unit tests only, no integration tests without build tag)
+  - [x] 6.3 `make lint` passes
+  - [x] 6.4 `make integration` passes with Docker available (testcontainers requires Docker)
 
 ## Dev Notes
 
@@ -323,8 +323,29 @@ test/integration/storage/
 
 ### Agent Model Used
 
+claude-4.6-opus-high-thinking
+
 ### Debug Log References
+
+None — all tasks completed without errors.
 
 ### Completion Notes List
 
+- Added `github.com/gocql/gocql` v1.7.0 and `github.com/testcontainers/testcontainers-go` v0.41.0 as dependencies
+- Implemented `Client` struct in `client.go` wrapping gocql with mTLS support (cert/key/CA paths), `ExponentialBackoffRetryPolicy` for reconnection, `DCAwareRoundRobinPolicy` for DC-aware routing, `LOCAL_ONE` default consistency, and non-TLS mode when cert paths are empty
+- Implemented `NewClient`, `Session()`, `HealthCheck(ctx)`, and `Close()` methods
+- Implemented `SchemaConfig`, `EnsureKeyspace` (supports SimpleStrategy and NetworkTopologyStrategy), `EnsureTable` (kv_store with CDC enabled), and `EnsureSchema` orchestrator in `schema.go`
+- kv_store table has correct schema: `(api_group, resource_type)` partition key, `(namespace, name)` clustering columns, `value` blob, `resource_version` timeuuid, CDC enabled
+- Created 11 integration tests using testcontainers with `scylladb/scylla:latest` image: client connection, health check, session close, default consistency, keyspace creation, keyspace validation (5 sub-tests), table creation, table schema structure verification, CDC log table existence, EnsureSchema orchestration, and idempotency for all operations
+- All integration test files use `//go:build integration` build tag, correctly excluded from `make test`
+- `make build` passes, `make test` passes (0 regressions), `make lint` passes (0 issues), `make integration` passes (11/11 tests)
+
 ### File List
+
+- `pkg/storage/scylladb/client.go` (NEW) — ScyllaDB client with mTLS, health check, connection management
+- `pkg/storage/scylladb/schema.go` (NEW) — Keyspace and kv_store table DDL with CDC
+- `test/integration/storage/suite_test.go` (NEW) — Testcontainers ScyllaDB lifecycle
+- `test/integration/storage/client_test.go` (NEW) — Client connection and health check tests
+- `test/integration/storage/schema_test.go` (NEW) — Schema creation, structure, and CDC tests
+- `go.mod` (MODIFIED) — Added gocql v1.7.0, testcontainers-go v0.41.0, and transitive deps
+- `go.sum` (MODIFIED) — Updated checksums
