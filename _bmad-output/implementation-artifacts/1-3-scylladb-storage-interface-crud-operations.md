@@ -1,6 +1,6 @@
 # Story 1.3: ScyllaDB storage.Interface — CRUD Operations
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -565,4 +565,26 @@ Study `k8s.io/apiserver/pkg/storage/etcd3/store.go` as the canonical reference f
 
 ### Completion Notes List
 
+- Implemented against k8s.io/apiserver v0.35.0 `storage.Interface` which differs from the story spec:
+  no `Count()` method (replaced by `Stats()`), `Delete` has `DeleteOptions` param, additional methods
+  `ReadinessCheck`, `GetCurrentResourceVersion`, `EnableResourceSizeEstimation`, `CompactRevision`.
+- Reused `storage.APIObjectVersioner` from k8s.io/apiserver instead of a custom Versioner — it handles
+  uint64 ↔ string on ObjectMeta identically. Added Timeuuid ↔ uint64 helpers as separate functions.
+- Skipped `codec.go` — standard `runtime.Encode`/`runtime.DecodeInto` used directly (per story dev notes).
+- Skipped `pager.go` — continue tokens use standard k8s `storage.EncodeContinue`/`DecodeContinue` format
+  from `k8s.io/apiserver/pkg/storage/continue.go` for compatibility with the apiserver cacher layer.
+- All CQL queries use `LOCAL_ONE` for reads/writes, `LOCAL_SERIAL` for CAS (LWT) Paxos rounds.
+- `Watch` returns `storage.NewInternalError` stub; full CDC-based Watch is Story 1.4.
+- 18 unit tests + 26 integration tests (+ 12 pre-existing from Story 1.2 = 38 total integration).
+
 ### File List
+
+New source files:
+- `pkg/storage/scylladb/versioner.go` — Timeuuid ↔ uint64 helpers, NewVersioner()
+- `pkg/storage/scylladb/keyutil.go` — Storage key parsing (KeyToComponents, KeyPrefixToComponents, ComponentsToKey)
+- `pkg/storage/scylladb/store.go` — storage.Interface implementation (Create, Get, GetList, GuaranteedUpdate, Delete, Watch stub, Stats, ReadinessCheck, etc.)
+
+New test files:
+- `pkg/storage/scylladb/versioner_test.go` — Unit tests for Timeuuid conversion, monotonicity, versioner methods
+- `pkg/storage/scylladb/keyutil_test.go` — Unit tests for key parsing roundtrip, edge cases
+- `test/integration/storage/store_test.go` — Integration tests against testcontainers ScyllaDB for all CRUD ops, all 3 resource types
