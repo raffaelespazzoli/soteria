@@ -794,15 +794,7 @@ func TestStore_DRGroupStatus_CRUD(t *testing.T) {
 	}
 }
 
-// ---- Watch stub test ----
-
-func TestStore_Watch_ReturnsError(t *testing.T) {
-	store := setupStoreTest(t)
-	_, err := store.Watch(context.Background(), "/soteria.io/drplans", storage.ListOptions{})
-	if err == nil {
-		t.Fatal("expected error from Watch stub")
-	}
-}
+// Watch is no longer a stub — see watch_test.go for Watch integration tests.
 
 // ---- Pagination resourceVersion stability (issue 2 regression) ----
 

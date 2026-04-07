@@ -30,7 +30,6 @@ import (
 	"k8s.io/apimachinery/pkg/conversion"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/apiserver/pkg/storage"
 	"k8s.io/klog/v2"
 )
@@ -216,10 +215,7 @@ func (s *Store) Delete(
 	return storage.NewResourceVersionConflictsError(preparedKey, 0)
 }
 
-// Watch implements storage.Interface. Watch via CDC is implemented in Story 1.4.
-func (s *Store) Watch(_ context.Context, _ string, _ storage.ListOptions) (watch.Interface, error) {
-	return nil, storage.NewInternalError(fmt.Errorf("watch not yet implemented"))
-}
+// Watch is implemented in watch.go.
 
 // Get implements storage.Interface.
 func (s *Store) Get(ctx context.Context, key string, opts storage.GetOptions, objPtr runtime.Object) error {
