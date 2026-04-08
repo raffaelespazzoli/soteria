@@ -39,6 +39,7 @@ validation-rules:
 
 ## 🧪 Testing & Quality Assurance
 
+- [ ] **Integration Tests Precondition:** Integration tests were 100% green BEFORE story development began (Step 0.7 gate)
 - [ ] **Unit Tests:** Unit tests added/updated for ALL core functionality introduced/changed by this story
 - [ ] **Integration Tests:** Integration tests added/updated for component interactions when story requirements demand them
 - [ ] **End-to-End Tests:** End-to-end tests created for critical user flows when story requirements specify them
@@ -46,6 +47,7 @@ validation-rules:
 - [ ] **Regression Prevention:** ALL existing tests pass (no regressions introduced)
 - [ ] **Code Quality:** Linting and static checks pass when configured in project
 - [ ] **Test Framework Compliance:** Tests use project's testing frameworks and patterns from Dev Notes
+- [ ] **Integration Tests Final Gate:** ALL integration tests pass 100% after story implementation (Step 9.5 gate — mandatory for story completion)
 
 ## 📝 Documentation & Tracking
 

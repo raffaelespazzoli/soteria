@@ -85,6 +85,28 @@ Load config from `{project-root}/_bmad/bmm/config.yaml` and resolve:
       <action>HALT: "Test suite is not green. Fix failing tests before running dev-story."</action>
     </check>
     <check if="all tests pass">
+      <action>Continue to Step 0.7</action>
+    </check>
+  </step>
+
+  <step n="0.7" goal="Verify all integration tests pass before starting">
+    <critical>Integration tests MUST be 100% successful as a mandatory precondition to begin story development</critical>
+    <action>Determine how to run integration tests for this repo (infer from project structure, e.g., `make test-integration`, `npm run test:integration`)</action>
+    <action>Run the full integration test suite</action>
+    <check if="any integration tests fail">
+      <output>🛑 **Cannot start story development — integration tests are failing.**
+
+        The following integration test failures were detected:
+        {{integration_test_failure_output}}
+
+        Please fix all failing integration tests before starting story development.
+        A 100% green integration test suite is a mandatory precondition to ensure
+        the system is in a known-good state before introducing new changes.
+      </output>
+      <action>HALT: "Integration tests are not 100% green. Fix failing integration tests before running dev-story."</action>
+    </check>
+    <check if="all integration tests pass">
+      <output>✅ **Integration tests passed** — all integration tests are 100% green</output>
       <action>Continue to Step 1</action>
     </check>
   </step>
@@ -447,6 +469,27 @@ Load config from `{project-root}/_bmad/bmm/config.yaml` and resolve:
     <action if="regression failures exist">HALT - Fix regression issues before completing</action>
     <action if="File List is incomplete">HALT - Update File List with all changed files</action>
     <action if="definition-of-done validation fails">HALT - Address DoD failures before completing</action>
+  </step>
+
+  <step n="9.5" goal="Verify all integration tests pass as final completion gate">
+    <critical>Integration tests MUST be 100% successful to consider the story done — this is a mandatory final gate</critical>
+    <action>Determine how to run integration tests for this repo (infer from project structure, e.g., `make test-integration`, `npm run test:integration`)</action>
+    <action>Run the full integration test suite</action>
+    <check if="any integration tests fail">
+      <output>🛑 **Story cannot be marked complete — integration tests are failing.**
+
+        The following integration test failures were detected:
+        {{integration_test_failure_output}}
+
+        Integration tests must be 100% successful as a mandatory condition to
+        consider the story done. Fix the failures before proceeding to completion.
+      </output>
+      <action>HALT: "Integration tests are not 100% green. Story cannot be considered done until all integration tests pass."</action>
+    </check>
+    <check if="all integration tests pass">
+      <output>✅ **Integration tests passed** — all integration tests are 100% green, story completion gate satisfied</output>
+      <action>Continue to Step 10</action>
+    </check>
   </step>
 
   <step n="10" goal="Completion communication and user support">
