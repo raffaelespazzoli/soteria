@@ -19,6 +19,7 @@ package scylladb
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -36,16 +37,25 @@ import (
 
 const maxCASRetries = 5
 
+// CriticalFieldDetector inspects old and new versions of an object to
+// determine whether the update touches a "critical" field that requires
+// cross-DC lightweight transactions (LWT with Serial consistency) instead
+// of local-only CAS (LocalSerial). Returning true causes the CAS to use
+// Paxos quorum across all datacenters, preventing conflicting state
+// transitions from concurrent writers on different DCs.
+type CriticalFieldDetector func(old, updated runtime.Object) bool
+
 // Store implements storage.Interface backed by ScyllaDB's kv_store table.
 type Store struct {
-	session        *gocql.Session
-	codec          runtime.Codec
-	versioner      storage.Versioner
-	keyspace       string
-	groupResource  schema.GroupResource
-	resourcePrefix string
-	newFunc        func() runtime.Object
-	newListFunc    func() runtime.Object
+	session               *gocql.Session
+	codec                 runtime.Codec
+	versioner             storage.Versioner
+	keyspace              string
+	groupResource         schema.GroupResource
+	resourcePrefix        string
+	newFunc               func() runtime.Object
+	newListFunc           func() runtime.Object
+	criticalFieldDetector CriticalFieldDetector
 }
 
 // StoreConfig holds the parameters for constructing a new Store.
@@ -57,6 +67,10 @@ type StoreConfig struct {
 	ResourcePrefix string
 	NewFunc        func() runtime.Object
 	NewListFunc    func() runtime.Object
+	// CriticalFieldDetector, when set, enables cross-DC LWT (Serial
+	// consistency) for updates that touch critical state-machine fields.
+	// When nil, all CAS operations use LocalSerial (single-DC).
+	CriticalFieldDetector CriticalFieldDetector
 }
 
 var _ storage.Interface = (*Store)(nil)
@@ -64,14 +78,15 @@ var _ storage.Interface = (*Store)(nil)
 // NewStore creates a new ScyllaDB-backed storage.Interface.
 func NewStore(cfg StoreConfig) *Store {
 	return &Store{
-		session:        cfg.Session,
-		codec:          cfg.Codec,
-		versioner:      NewVersioner(),
-		keyspace:       cfg.Keyspace,
-		groupResource:  cfg.GroupResource,
-		resourcePrefix: cfg.ResourcePrefix,
-		newFunc:        cfg.NewFunc,
-		newListFunc:    cfg.NewListFunc,
+		session:               cfg.Session,
+		codec:                 cfg.Codec,
+		versioner:             NewVersioner(),
+		keyspace:              cfg.Keyspace,
+		groupResource:         cfg.GroupResource,
+		resourcePrefix:        cfg.ResourcePrefix,
+		newFunc:               cfg.NewFunc,
+		newListFunc:           cfg.NewListFunc,
+		criticalFieldDetector: cfg.CriticalFieldDetector,
 	}
 }
 
@@ -655,8 +670,17 @@ func (s *Store) GuaranteedUpdate(
 			return err
 		}
 
-		// Capture labels before tryUpdate mutates the existing object in-place
+		// Snapshot the pre-mutation object for label diff and critical-field
+		// detection. tryUpdate mutates existing in-place (and usually returns
+		// the same pointer), so comparisons must use this snapshot.
 		oldLabels := extractLabels(existing)
+		var existingSnapshot runtime.Object
+		if s.criticalFieldDetector != nil && existingData != nil {
+			existingSnapshot = s.newFunc()
+			if err := decode(s.codec, existingData, existingSnapshot); err != nil {
+				return storage.NewCorruptObjError(preparedKey, err)
+			}
+		}
 
 		ret, _, err := tryUpdate(existing, storage.ResponseMeta{ResourceVersion: currentRV})
 		if err != nil {
@@ -680,6 +704,8 @@ func (s *Store) GuaranteedUpdate(
 		}
 
 		newRV := gocql.TimeUUID()
+		useCrossDCSerial := existingSnapshot != nil &&
+			s.criticalFieldDetector(existingSnapshot, ret)
 
 		if existingData == nil {
 			applied, casErr := s.casInsert(ctx, kc, newData, newRV)
@@ -693,7 +719,7 @@ func (s *Store) GuaranteedUpdate(
 			}
 			oldLabels = nil
 		} else {
-			applied, casErr := s.casUpdate(ctx, kc, newData, newRV, existingRV)
+			applied, casErr := s.casUpdateWithConsistency(ctx, kc, newData, newRV, existingRV, useCrossDCSerial)
 			if casErr != nil {
 				return storage.NewInternalError(casErr)
 			}
@@ -841,26 +867,88 @@ func (s *Store) casInsert(
 	return applied, nil
 }
 
-func (s *Store) casUpdate(
+// casUpdateWithConsistency performs a CAS update with configurable serial
+// consistency. When crossDC is true, Serial consistency is used for
+// cross-DC Paxos (LWT). If the cross-DC CAS fails for any infrastructure
+// reason (DC down, timeout, connection loss), it falls back to an
+// unconditional LOCAL_ONE write. This trades linearizability for
+// availability: the surviving DC can always make progress, but concurrent
+// writers on a partitioned remote DC may produce last-write-wins conflicts
+// that are reconciled after the partition heals.
+func (s *Store) casUpdateWithConsistency(
 	ctx context.Context, kc KeyComponents,
 	data []byte, newRV, oldRV gocql.UUID,
+	crossDC bool,
 ) (bool, error) {
-	cql := fmt.Sprintf(
+	casCQL := fmt.Sprintf(
 		`UPDATE %s.kv_store SET value = ?, resource_version = ?`+
 			` WHERE api_group = ? AND resource_type = ?`+
 			` AND namespace = ? AND name = ?`+
 			` IF resource_version = ?`,
 		s.keyspace,
 	)
+	casArgs := []any{data, newRV, kc.APIGroup, kc.ResourceType, kc.Namespace, kc.Name, oldRV}
+
+	serialCL := gocql.LocalSerial
+	if crossDC {
+		serialCL = gocql.Serial
+	}
+
 	result := make(map[string]any)
-	applied, err := s.session.Query(cql, data, newRV, kc.APIGroup, kc.ResourceType, kc.Namespace, kc.Name, oldRV).
+	applied, err := s.session.Query(casCQL, casArgs...).
 		WithContext(ctx).
-		SerialConsistency(gocql.LocalSerial).
+		SerialConsistency(serialCL).
 		MapScanCAS(result)
+
+	if err != nil && crossDC && shouldFallbackToLocal(err) {
+		klog.V(0).InfoS("Cross-DC Serial CAS unavailable, falling back to unconditional LOCAL_ONE write",
+			"apiGroup", kc.APIGroup, "resourceType", kc.ResourceType,
+			"namespace", kc.Namespace, "name", kc.Name, "error", err)
+		err = s.unconditionalUpdate(ctx, kc, data, newRV)
+		if err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+
 	if err != nil {
 		return false, err
 	}
 	return applied, nil
+}
+
+// unconditionalUpdate writes the row without a CAS condition using
+// LOCAL_ONE consistency. Used as a degraded-mode fallback when cross-DC
+// Paxos is unreachable.
+func (s *Store) unconditionalUpdate(
+	ctx context.Context, kc KeyComponents,
+	data []byte, newRV gocql.UUID,
+) error {
+	cql := fmt.Sprintf(
+		`UPDATE %s.kv_store SET value = ?, resource_version = ?`+
+			` WHERE api_group = ? AND resource_type = ?`+
+			` AND namespace = ? AND name = ?`,
+		s.keyspace,
+	)
+	return s.session.Query(cql, data, newRV, kc.APIGroup, kc.ResourceType, kc.Namespace, kc.Name).
+		WithContext(ctx).
+		Consistency(gocql.LocalOne).
+		Exec()
+}
+
+// shouldFallbackToLocal returns true if a failed Serial CAS should be
+// retried as an unconditional local write. Any infrastructure error
+// (unavailable, timeout, connection loss) triggers the fallback. The only
+// exception is explicit context cancellation, which means the caller
+// abandoned the operation.
+func shouldFallbackToLocal(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.Canceled) {
+		return false
+	}
+	return true
 }
 
 func (s *Store) casDeleteRow(

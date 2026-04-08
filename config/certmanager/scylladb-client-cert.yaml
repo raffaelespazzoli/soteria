@@ -1,0 +1,18 @@
+# Client certificate for API server → ScyllaDB mTLS authentication.
+# The API server presents this certificate when connecting to ScyllaDB.
+# Configured via --scylladb-tls-cert, --scylladb-tls-key, --scylladb-tls-ca flags.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: soteria-scylladb-client
+  namespace: soteria-system
+spec:
+  secretName: soteria-scylladb-client-tls
+  duration: 8760h # 1 year
+  renewBefore: 720h # 30 days
+  issuerRef:
+    name: soteria-ca
+    kind: Issuer
+  commonName: soteria-apiserver
+  usages:
+    - client auth

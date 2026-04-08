@@ -132,6 +132,9 @@ type ScyllaStoreFactory struct {
 	// UseCacher controls whether storage is wrapped with the apiserver cacher.
 	// Set to false for integration tests that don't need caching.
 	UseCacher bool
+	// CriticalFieldDetectors maps resource types to detectors that identify
+	// state-machine field changes requiring cross-DC LWT (Serial consistency).
+	CriticalFieldDetectors map[schema.GroupResource]scylladb.CriticalFieldDetector
 }
 
 // RESTOptionsGetter returns a generic.RESTOptionsGetter backed by ScyllaDB.
@@ -149,6 +152,9 @@ func (g *soteriaRESTOptionsGetter) GetRESTOptions(resource schema.GroupResource,
 	cfg := g.factory.StoreConfig
 	cfg.GroupResource = resource
 	cfg.ResourcePrefix = "/" + soteriav1alpha1.GroupName + "/" + resource.Resource
+	if detector, ok := g.factory.CriticalFieldDetectors[resource]; ok {
+		cfg.CriticalFieldDetector = detector
+	}
 
 	decoratorFn := g.decoratorFor(cfg)
 

@@ -1,0 +1,24 @@
+# ScyllaDB server certificate for internode and client-facing TLS.
+# Referenced by ScyllaCluster CR spec.network.tlsCertSecretName.
+# Includes both serverAuth and clientAuth usages because ScyllaDB
+# internode communication requires mutual authentication.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: scylladb-serving
+  namespace: soteria-system
+spec:
+  secretName: scylladb-serving-tls
+  duration: 8760h # 1 year
+  renewBefore: 720h # 30 days
+  issuerRef:
+    name: soteria-ca
+    kind: Issuer
+  commonName: soteria-scylladb
+  dnsNames:
+    - "soteria-scylladb-client.soteria-system.svc"
+    - "*.soteria-scylladb.soteria-system.svc.cluster.local"
+    - "*.soteria-scylladb-client.soteria-system.svc"
+  usages:
+    - server auth
+    - client auth

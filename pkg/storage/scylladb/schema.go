@@ -117,6 +117,47 @@ func EnsureLabelsTable(session *gocql.Session, keyspace string) error {
 	return session.Query(cql).Exec()
 }
 
+// ValidateKeyspaceTopology checks that the keyspace already exists and uses
+// NetworkTopologyStrategy with replication configured for localDC. This is
+// called on startup in multi-DC mode to catch misconfigured deployments
+// early instead of silently running against a SimpleStrategy keyspace.
+func ValidateKeyspaceTopology(session *gocql.Session, keyspace, localDC string) error {
+	if keyspace == "" {
+		return fmt.Errorf("keyspace name is required")
+	}
+	if localDC == "" {
+		return fmt.Errorf("local datacenter name is required")
+	}
+
+	var strategy string
+	var replication map[string]string
+	err := session.Query(
+		`SELECT replication FROM system_schema.keyspaces WHERE keyspace_name = ?`,
+		keyspace,
+	).Scan(&replication)
+	if err != nil {
+		return fmt.Errorf("querying keyspace %q: %w", keyspace, err)
+	}
+
+	strategy = replication["class"]
+	if !strings.HasSuffix(strategy, "NetworkTopologyStrategy") {
+		return fmt.Errorf(
+			"keyspace %q uses %q but multi-DC mode requires NetworkTopologyStrategy",
+			keyspace, strategy,
+		)
+	}
+
+	rf, ok := replication[localDC]
+	if !ok || rf == "" || rf == "0" {
+		return fmt.Errorf(
+			"keyspace %q has no replication configured for local datacenter %q (replication: %v)",
+			keyspace, localDC, replication,
+		)
+	}
+
+	return nil
+}
+
 // EnsureSchema orchestrates idempotent keyspace, kv_store table, and
 // kv_store_labels index table creation.
 func EnsureSchema(session *gocql.Session, cfg SchemaConfig) error {

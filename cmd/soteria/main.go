@@ -156,6 +156,7 @@ func main() {
 		scyllaClient, err = scylladb.NewClient(scylladb.ClientConfig{
 			ContactPoints: contactPoints,
 			Keyspace:      serverOpts.ScyllaDBKeyspace,
+			Datacenter:    serverOpts.ScyllaDBLocalDC,
 			CertPath:      serverOpts.ScyllaDBTLSCert,
 			KeyPath:       serverOpts.ScyllaDBTLSKey,
 			CAPath:        serverOpts.ScyllaDBTLSCA,
@@ -166,17 +167,30 @@ func main() {
 		}
 		defer scyllaClient.Close()
 
-		if err := scylladb.EnsureSchema(scyllaClient.Session(), scylladb.SchemaConfig{
-			Keyspace:          serverOpts.ScyllaDBKeyspace,
-			Strategy:          "SimpleStrategy",
-			ReplicationFactor: 1,
-		}); err != nil {
-			setupLog.Error(err, "Failed to ensure ScyllaDB schema")
-			os.Exit(1)
+		if serverOpts.ScyllaDBLocalDC != "" {
+			if err := scylladb.ValidateKeyspaceTopology(
+				scyllaClient.Session(), serverOpts.ScyllaDBKeyspace, serverOpts.ScyllaDBLocalDC,
+			); err != nil {
+				setupLog.Error(err, "Multi-DC keyspace validation failed")
+				os.Exit(1)
+			}
+			setupLog.Info("Multi-DC keyspace validated",
+				"localDC", serverOpts.ScyllaDBLocalDC)
+		} else {
+			schemaCfg := scylladb.SchemaConfig{
+				Keyspace:          serverOpts.ScyllaDBKeyspace,
+				Strategy:          "SimpleStrategy",
+				ReplicationFactor: 1,
+			}
+			if err := scylladb.EnsureSchema(scyllaClient.Session(), schemaCfg); err != nil {
+				setupLog.Error(err, "Failed to ensure ScyllaDB schema")
+				os.Exit(1)
+			}
 		}
 
 		setupLog.Info("ScyllaDB connected and schema initialized",
-			"contactPoints", contactPoints, "keyspace", serverOpts.ScyllaDBKeyspace)
+			"contactPoints", contactPoints, "keyspace", serverOpts.ScyllaDBKeyspace,
+			"localDC", serverOpts.ScyllaDBLocalDC)
 
 		codec := soteriainstall.Codecs.LegacyCodec(
 			soteriainstall.Scheme.PrioritizedVersionsForGroup("soteria.io")...,
@@ -194,8 +208,9 @@ func main() {
 				Codec:    codec,
 				Keyspace: serverOpts.ScyllaDBKeyspace,
 			},
-			Codec:     codec,
-			UseCacher: true,
+			Codec:                  codec,
+			UseCacher:              true,
+			CriticalFieldDetectors: apiserver.DefaultCriticalFieldDetectors(),
 		}
 
 		completed := serverConfig.Complete()

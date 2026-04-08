@@ -36,6 +36,7 @@ type SoteriaServerOptions struct {
 	// ScyllaDB connection options
 	ScyllaDBContactPoints string
 	ScyllaDBKeyspace      string
+	ScyllaDBLocalDC       string
 	ScyllaDBTLSCert       string
 	ScyllaDBTLSKey        string
 	ScyllaDBTLSCA         string
@@ -61,6 +62,8 @@ func (o *SoteriaServerOptions) AddFlags(fs *pflag.FlagSet) {
 		"Comma-separated ScyllaDB contact points")
 	fs.StringVar(&o.ScyllaDBKeyspace, "scylladb-keyspace", "soteria",
 		"ScyllaDB keyspace name")
+	fs.StringVar(&o.ScyllaDBLocalDC, "scylladb-local-dc", "",
+		"Local ScyllaDB datacenter name for DC-aware routing (e.g. 'dc1')")
 	fs.StringVar(&o.ScyllaDBTLSCert, "scylladb-tls-cert", "",
 		"Path to ScyllaDB TLS client certificate")
 	fs.StringVar(&o.ScyllaDBTLSKey, "scylladb-tls-key", "",

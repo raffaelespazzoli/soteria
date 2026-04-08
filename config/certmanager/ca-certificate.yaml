@@ -1,0 +1,21 @@
+# Root CA certificate issued by the self-signed ClusterIssuer.
+# The resulting key pair is stored in soteria-ca-secret and used by the
+# soteria-ca Issuer to sign all downstream certificates.
+#
+# CROSS-DC: Both OpenShift clusters must share the same CA key pair.
+# After cert-manager creates soteria-ca-secret on the first cluster,
+# copy it to the second cluster's soteria-system namespace before
+# deploying cert-manager resources there.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: soteria-ca
+  namespace: soteria-system
+spec:
+  isCA: true
+  commonName: soteria-ca
+  secretName: soteria-ca-secret
+  duration: 87600h # 10 years
+  issuerRef:
+    name: soteria-ca-issuer
+    kind: ClusterIssuer

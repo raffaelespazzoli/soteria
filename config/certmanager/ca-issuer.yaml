@@ -1,0 +1,19 @@
+# Self-signed ClusterIssuer that bootstraps the root CA certificate.
+# This is the trust anchor for all Soteria TLS certificates.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: soteria-ca-issuer
+spec:
+  selfSigned: {}
+---
+# Namespace-scoped Issuer backed by the CA certificate.
+# All subsequent certificates (ScyllaDB serving, client) are issued by this CA.
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: soteria-ca
+  namespace: soteria-system
+spec:
+  ca:
+    secretName: soteria-ca-secret

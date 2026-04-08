@@ -1,0 +1,58 @@
+# ScyllaCluster CR for a single-DC deployment (one per OpenShift cluster).
+# Multi-DC is formed by deploying a ScyllaCluster on each cluster with
+# the same clusterName and cross-referencing externalSeeds.
+#
+# Cluster 1 deploys this file with datacenter.name: dc1.
+# Cluster 2 deploys a copy with datacenter.name: dc2 and
+# externalSeeds pointing to Cluster 1's ScyllaDB nodes.
+#
+# Keyspace must use NetworkTopologyStrategy:
+#   CREATE KEYSPACE soteria WITH replication = {
+#     'class': 'NetworkTopologyStrategy', 'dc1': 2, 'dc2': 2
+#   };
+apiVersion: scylla.scylladb.com/v1
+kind: ScyllaCluster
+metadata:
+  name: soteria-scylladb
+  namespace: soteria-system
+spec:
+  version: "6.2"
+  agentVersion: "3.3.3"
+  developerMode: false
+  # Both clusters MUST share the same clusterName for multi-DC gossip.
+  clusterName: soteria
+  sysctls:
+    - "fs.aio-max-nr=2097152"
+  network:
+    # Reference the TLS serving certificate for internode and client encryption.
+    # The scylla-operator configures ScyllaDB's server_encryption_options and
+    # client_encryption_options from this secret.
+    tlsCertSecretName: scylladb-serving-tls
+  # externalSeeds must list at least one seed node from the OTHER DC.
+  # Replace with actual IPs or DNS entries of the remote DC's ScyllaDB nodes.
+  # externalSeeds:
+  #   - "scylladb-dc2-node1.remote-cluster.example.com"
+  datacenter:
+    name: dc1
+    racks:
+      - name: rack1
+        members: 2
+        storage:
+          capacity: 100Gi
+          storageClassName: gp3-csi
+        resources:
+          requests:
+            cpu: "2"
+            memory: "4Gi"
+          limits:
+            cpu: "4"
+            memory: "8Gi"
+        placement:
+          nodeAffinity:
+            requiredDuringSchedulingIgnoredDuringExecution:
+              nodeSelectorTerms:
+                - matchExpressions:
+                    - key: topology.kubernetes.io/zone
+                      operator: In
+                      values:
+                        - dc1-zone1
