@@ -18,12 +18,30 @@ limitations under the License.
 package install
 
 import (
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
 
 	v1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
 )
 
+var (
+	// Scheme contains all registered Soteria API types.
+	Scheme = runtime.NewScheme()
+	// Codecs provides serializers for the registered Soteria API types.
+	Codecs = serializer.NewCodecFactory(Scheme)
+	// ParameterCodec encodes query parameters for the Soteria API group.
+	ParameterCodec = runtime.NewParameterCodec(Scheme)
+)
+
+func init() {
+	Install(Scheme)
+}
+
 // Install registers all Soteria API versions into the given scheme.
 func Install(scheme *runtime.Scheme) {
 	_ = v1alpha1.AddToScheme(scheme)
+	_ = metav1.AddMetaToScheme(scheme)
+	metav1.AddToGroupVersion(scheme, schema.GroupVersion{Version: "v1"})
 }

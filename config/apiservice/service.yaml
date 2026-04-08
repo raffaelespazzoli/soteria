@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: soteria-apiserver
+  namespace: system
+  labels:
+    app.kubernetes.io/name: dr-orchestrator
+spec:
+  ports:
+  - port: 443
+    targetPort: 6443
+    protocol: TCP
+  selector:
+    control-plane: controller-manager
+    app.kubernetes.io/name: dr-orchestrator

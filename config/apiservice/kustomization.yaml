@@ -1,0 +1,11 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+- apiservice.yaml
+- service.yaml
+
+# The APIService spec.service.namespace must be replaced with the
+# actual namespace after kustomize applies its namespace transform.
+# Use a kustomize replacement or overlay to set $(NAMESPACE) to the
+# target namespace (e.g. dr-orchestrator-system).

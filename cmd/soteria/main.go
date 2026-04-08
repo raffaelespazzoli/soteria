@@ -20,9 +20,9 @@ import (
 	"crypto/tls"
 	"flag"
 	"os"
+	"strings"
 
-	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
-	// to ensure that exec-entrypoint and run can make use of them.
+	"github.com/spf13/pflag"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -36,6 +36,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	soteriainstall "github.com/soteria-project/soteria/pkg/apis/soteria.io/install"
+	"github.com/soteria-project/soteria/pkg/apiserver"
+	scylladb "github.com/soteria-project/soteria/pkg/storage/scylladb"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -61,6 +63,9 @@ func main() {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var tlsOpts []func(*tls.Config)
+	var enableAPIServer bool
+
+	// Controller-runtime flags (stdlib flag)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
@@ -78,20 +83,25 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+
 	opts := zap.Options{
 		Development: true,
 	}
 	opts.BindFlags(flag.CommandLine)
-	flag.Parse()
+
+	// Aggregated API server flags (pflag) — includes secure serving,
+	// delegated authn/authz, ScyllaDB connection, audit, and admission.
+	serverOpts := apiserver.NewSoteriaServerOptions()
+	serverOpts.AddFlags(pflag.CommandLine)
+	pflag.CommandLine.BoolVar(&enableAPIServer, "enable-apiserver", true,
+		"Enable the aggregated API server component")
+
+	// Bridge stdlib flags into pflag and parse everything once.
+	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
+	pflag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
-	// if the enable-http2 flag is false (the default), http/2 should be disabled
-	// due to its vulnerabilities. More specifically, disabling http/2 will
-	// prevent from being vulnerable to the HTTP/2 Stream Cancellation and
-	// Rapid Reset CVEs. For more information see:
-	// - https://github.com/advisories/GHSA-qppj-fm5r-hxr3
-	// - https://github.com/advisories/GHSA-4374-p667-p6c8
 	disableHTTP2 := func(c *tls.Config) {
 		setupLog.Info("Disabling HTTP/2")
 		c.NextProtos = []string{"http/1.1"}
@@ -101,7 +111,6 @@ func main() {
 		tlsOpts = append(tlsOpts, disableHTTP2)
 	}
 
-	// Initial webhook TLS options
 	webhookTLSOpts := tlsOpts
 	webhookServerOptions := webhook.Options{
 		TLSOpts: webhookTLSOpts,
@@ -118,10 +127,6 @@ func main() {
 
 	webhookServer := webhook.NewServer(webhookServerOptions)
 
-	// Metrics endpoint is enabled in 'config/default/kustomization.yaml'. The Metrics options configure the server.
-	// More info:
-	// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.23.3/pkg/metrics/server
-	// - https://book.kubebuilder.io/reference/metrics.html
 	metricsServerOptions := metricsserver.Options{
 		BindAddress:   metricsAddr,
 		SecureServing: secureMetrics,
@@ -129,21 +134,9 @@ func main() {
 	}
 
 	if secureMetrics {
-		// FilterProvider is used to protect the metrics endpoint with authn/authz.
-		// These configurations ensure that only authorized users and service accounts
-		// can access the metrics endpoint. The RBAC are configured in 'config/rbac/kustomization.yaml'. More info:
-		// https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.23.3/pkg/metrics/filters#WithAuthenticationAndAuthorization
 		metricsServerOptions.FilterProvider = filters.WithAuthenticationAndAuthorization
 	}
 
-	// If the certificate is not specified, controller-runtime will automatically
-	// generate self-signed certificates for the metrics server. While convenient for development and testing,
-	// this setup is not recommended for production.
-	//
-	// TODO(user): If you enable certManager, uncomment the following lines:
-	// - [METRICS-WITH-CERTS] at config/default/kustomization.yaml to generate and use certificates
-	// managed by cert-manager for the metrics server.
-	// - [PROMETHEUS-WITH-CERTS] at config/prometheus/kustomization.yaml for TLS certification.
 	if len(metricsCertPath) > 0 {
 		setupLog.Info("Initializing metrics certificate watcher using provided certificates",
 			"metrics-cert-path", metricsCertPath, "metrics-cert-name", metricsCertName, "metrics-cert-key", metricsCertKey)
@@ -153,24 +146,81 @@ func main() {
 		metricsServerOptions.KeyName = metricsCertKey
 	}
 
+	ctx := ctrl.SetupSignalHandler()
+
+	// Initialize ScyllaDB and start the aggregated API server
+	var scyllaClient *scylladb.Client
+	if enableAPIServer {
+		contactPoints := strings.Split(serverOpts.ScyllaDBContactPoints, ",")
+		var err error
+		scyllaClient, err = scylladb.NewClient(scylladb.ClientConfig{
+			ContactPoints: contactPoints,
+			Keyspace:      serverOpts.ScyllaDBKeyspace,
+			CertPath:      serverOpts.ScyllaDBTLSCert,
+			KeyPath:       serverOpts.ScyllaDBTLSKey,
+			CAPath:        serverOpts.ScyllaDBTLSCA,
+		})
+		if err != nil {
+			setupLog.Error(err, "Failed to connect to ScyllaDB")
+			os.Exit(1)
+		}
+		defer scyllaClient.Close()
+
+		if err := scylladb.EnsureSchema(scyllaClient.Session(), scylladb.SchemaConfig{
+			Keyspace:          serverOpts.ScyllaDBKeyspace,
+			Strategy:          "SimpleStrategy",
+			ReplicationFactor: 1,
+		}); err != nil {
+			setupLog.Error(err, "Failed to ensure ScyllaDB schema")
+			os.Exit(1)
+		}
+
+		setupLog.Info("ScyllaDB connected and schema initialized",
+			"contactPoints", contactPoints, "keyspace", serverOpts.ScyllaDBKeyspace)
+
+		codec := soteriainstall.Codecs.LegacyCodec(
+			soteriainstall.Scheme.PrioritizedVersionsForGroup("soteria.io")...,
+		)
+
+		serverConfig, err := serverOpts.Config()
+		if err != nil {
+			setupLog.Error(err, "Failed to build API server config")
+			os.Exit(1)
+		}
+
+		serverConfig.ScyllaStoreFactory = &apiserver.ScyllaStoreFactory{
+			StoreConfig: scylladb.StoreConfig{
+				Session:  scyllaClient.Session(),
+				Codec:    codec,
+				Keyspace: serverOpts.ScyllaDBKeyspace,
+			},
+			Codec:     codec,
+			UseCacher: true,
+		}
+
+		completed := serverConfig.Complete()
+		server, err := completed.New()
+		if err != nil {
+			setupLog.Error(err, "Failed to create API server")
+			os.Exit(1)
+		}
+
+		go func() {
+			setupLog.Info("Starting API server")
+			if err := server.GenericAPIServer.PrepareRun().RunWithContext(ctx); err != nil {
+				setupLog.Error(err, "API server failed")
+				os.Exit(1)
+			}
+		}()
+	}
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsServerOptions,
 		WebhookServer:          webhookServer,
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "0f1728d1.soteria.io",
-		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
-		// when the Manager ends. This requires the binary to immediately end when the
-		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
-		// speeds up voluntary leader transitions as the new leader don't have to wait
-		// LeaseDuration time first.
-		//
-		// In the default scaffold provided, the program ends immediately after
-		// the manager stops, so would be fine to enable this option. However,
-		// if you are doing or is intended to do any operation such as perform cleanups
-		// after the manager stops then its usage might be unsafe.
-		// LeaderElectionReleaseOnCancel: true,
+		LeaderElectionID:       "soteria-controller",
 	})
 	if err != nil {
 		setupLog.Error(err, "Failed to start manager")
@@ -189,7 +239,7 @@ func main() {
 	}
 
 	setupLog.Info("Starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(ctx); err != nil {
 		setupLog.Error(err, "Failed to run manager")
 		os.Exit(1)
 	}

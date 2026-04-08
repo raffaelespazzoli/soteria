@@ -16,5 +16,6 @@ limitations under the License.
 
 // Package v1alpha1 contains API types for the soteria.io API group.
 // +k8s:deepcopy-gen=package
+// +k8s:openapi-gen=true
 // +groupName=soteria.io
 package v1alpha1
