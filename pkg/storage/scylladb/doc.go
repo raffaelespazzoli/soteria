@@ -14,5 +14,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package scylladb implements the storage.Interface backed by ScyllaDB.
+// Package scylladb implements k8s.io/apiserver/pkg/storage.Interface backed
+// by ScyllaDB's generic key-value store table (kv_store). It provides CRUD
+// operations using gocql with LOCAL_ONE consistency for reads/writes and
+// optional cross-DC lightweight transactions (LWT) for critical state-machine
+// fields. Watch is implemented via ScyllaDB CDC (Change Data Capture) using
+// scylla-cdc-go, with an initial SELECT snapshot followed by real-time CDC
+// stream consumption. The package also manages label-indexed pagination via
+// a secondary kv_store_labels table, ResourceVersion mapping from CDC
+// Timeuuid to monotonic uint64, and an in-memory object cache for
+// reconstructing full objects on DELETE events.
 package scylladb

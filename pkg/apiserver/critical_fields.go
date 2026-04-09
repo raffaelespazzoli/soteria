@@ -26,6 +26,13 @@ import (
 
 // DefaultCriticalFieldDetectors returns per-resource CriticalFieldDetectors
 // for resources whose state-machine fields require cross-DC LWT.
+//
+// Without cross-DC serialization, concurrent writers in different datacenters
+// could both CAS-succeed on a phase transition (e.g., SteadyState → Failover)
+// because LOCAL_SERIAL only serializes within a single DC. SERIAL (full Paxos
+// quorum across all DCs) prevents this at the cost of cross-DC latency. We
+// only pay that cost for the specific fields that are state-machine transitions
+// — all other updates remain LOCAL_SERIAL for performance.
 func DefaultCriticalFieldDetectors() map[schema.GroupResource]scylladb.CriticalFieldDetector {
 	return map[schema.GroupResource]scylladb.CriticalFieldDetector{
 		{Group: soteriav1alpha1.GroupName, Resource: "drplans"}:      detectDRPlanCriticalFields,
@@ -33,8 +40,9 @@ func DefaultCriticalFieldDetectors() map[schema.GroupResource]scylladb.CriticalF
 	}
 }
 
-// detectDRPlanCriticalFields returns true when the DRPlan phase has changed,
-// indicating a state-machine transition that must be serialized across DCs.
+// detectDRPlanCriticalFields returns true when the DRPlan phase has changed.
+// Phase transitions (SteadyState ↔ Failover ↔ Relocating) must be globally
+// unique: two DCs must never simultaneously believe they are the active site.
 func detectDRPlanCriticalFields(old, updated runtime.Object) bool {
 	oldPlan, ok := old.(*soteriav1alpha1.DRPlan)
 	if !ok {
@@ -48,7 +56,9 @@ func detectDRPlanCriticalFields(old, updated runtime.Object) bool {
 }
 
 // detectDRExecutionCriticalFields returns true when the DRExecution result
-// has changed, indicating a terminal outcome that must be set exactly once.
+// has changed. Terminal outcomes (Succeeded, PartiallySucceeded, Failed) are
+// write-once: a second DC must not overwrite or race with the first DC's
+// verdict, as downstream consumers (UI, alerting) rely on result finality.
 func detectDRExecutionCriticalFields(old, updated runtime.Object) bool {
 	oldExec, ok := old.(*soteriav1alpha1.DRExecution)
 	if !ok {

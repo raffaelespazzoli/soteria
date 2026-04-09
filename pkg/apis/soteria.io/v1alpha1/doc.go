@@ -14,7 +14,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package v1alpha1 contains API types for the soteria.io API group.
+// Package v1alpha1 defines the API types for the soteria.io API group. It
+// contains the Go structs for DRPlan (disaster recovery plan with VM selectors
+// and wave configuration), DRExecution (an in-progress or completed failover
+// operation), and DRGroupStatus (per-group progress within an execution wave).
+// These types are served by the aggregated API server and stored in ScyllaDB
+// via the storage.Interface — they are not CRDs backed by etcd.
+//
 // +k8s:deepcopy-gen=package
 // +k8s:openapi-gen=true
 // +groupName=soteria.io

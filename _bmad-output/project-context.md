@@ -4,7 +4,7 @@ user_name: 'Raffa'
 date: '2026-04-06'
 sections_completed: ['technology_stack', 'language_rules', 'framework_rules', 'testing_rules', 'code_quality', 'workflow_rules', 'critical_rules']
 status: 'complete'
-rule_count: 78
+rule_count: 82
 optimized_for_llm: true
 ---
 
@@ -166,11 +166,28 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 - `make manifests` to regenerate RBAC/webhook configs after changes
 - `hack/verify-codegen.sh` in CI — ensures generated code is up to date
 
-**Documentation:**
+**Documentation (Tiered Comment Standards):**
 
-- Code comments explain *why*, not *what*
+- Code comments explain *why*, not *what* — never narrate obvious logic
 - Event messages: human-readable sentences — `"Failover started for plan erp-full-stack in disaster mode"`
 - Error messages: lowercase, no punctuation, descriptive context
+
+*Tier 1 — Package doc comments (mandatory for all `pkg/` packages):*
+- Every package under `pkg/` must have a `doc.go` with a 3-5 sentence godoc overview
+- Explains the package's purpose, its primary types, and its relationship to the architecture
+- Follows Go convention: first sentence is `// Package <name> ...`
+
+*Tier 2 — Architecture block comments (mandatory for complex/non-obvious flows):*
+- Files exceeding ~200 lines or implementing non-standard patterns must have a top-of-file block comment explaining the high-level flow
+- Complex exported functions (e.g., `watchLoop`, `runSnapshot`, orchestration methods) must have godoc explaining the algorithm, phases, and key invariants
+- Target audience: an engineer (or AI agent) encountering this code for the first time
+
+*Tier 3 — Domain 'why' comments (mandatory for business rule enforcement):*
+- Code that encodes domain decisions (e.g., which fields trigger cross-DC LWT, append-only semantics, immutability rules) must include a comment explaining the distributed systems or business rationale — not just *what* it does but *why* it matters
+- These comments bridge the gap between architecture docs and code
+
+*Leave alone — well-known Kubernetes patterns:*
+- Strategy files following `k8s.io/apiserver` registry conventions, standard storage wiring (`NewREST`, `StatusREST`), `main.go` flag parsing, and other idiomatic Kubernetes plumbing do not need additional comments beyond standard godoc on exported symbols
 
 ### Development Workflow Rules
 
@@ -269,4 +286,4 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 - Review periodically for outdated rules
 - Remove rules that become obvious over time
 
-Last Updated: 2026-04-06
+Last Updated: 2026-04-09

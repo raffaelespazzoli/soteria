@@ -14,5 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package drexecution implements the REST storage registry for DRExecution resources.
+// Package drexecution implements the REST storage registry for DRExecution
+// resources. It enforces two key invariants: spec immutability after creation
+// (DRExecution spec is set once and never changed), and append-only status
+// semantics (once status.result reaches a terminal value like Succeeded,
+// PartiallySucceeded, or Failed, no further status updates are accepted).
+// A separate StatusStrategy preserves spec on status-subresource updates.
 package drexecution

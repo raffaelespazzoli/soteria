@@ -14,5 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package drgroupstatus implements the REST storage registry for DRGroupStatus resources.
+// Package drgroupstatus implements the REST storage registry for DRGroupStatus
+// resources. DRGroupStatus tracks the progress of a single group of VMs within
+// a DR execution wave. Spec is immutable after creation (executionName,
+// groupName, waveIndex are fixed); only status may be updated to reflect
+// per-group failover progress. A separate StatusStrategy permits permissive
+// status updates while preserving spec.
 package drgroupstatus

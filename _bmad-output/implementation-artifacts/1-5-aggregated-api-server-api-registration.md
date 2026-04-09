@@ -1,6 +1,6 @@
 # Story 1.5: Aggregated API Server & API Registration
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -22,96 +22,96 @@ so that DR resources feel like native Kubernetes resources with standard CRUD, w
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Implement API server configuration (AC: #1, #4)
-  - [ ] 1.1 Create `pkg/apiserver/apiserver.go` with `SoteriaServer` struct embedding `genericapiserver.GenericAPIServer`
-  - [ ] 1.2 Implement `Config` struct holding `GenericConfig`, ScyllaDB storage backend, and codec
-  - [ ] 1.3 Implement `CompletedConfig` struct returned by `Config.Complete()`
-  - [ ] 1.4 Implement `CompletedConfig.New()` — creates the `GenericAPIServer`, installs the `soteria.io/v1alpha1` API group
-  - [ ] 1.5 Register all three resource types (DRPlan, DRExecution, DRGroupStatus) with the API group via `InstallAPIGroup`
-  - [ ] 1.6 Configure the k8s.io/apiserver cacher to wrap the ScyllaDB `storage.Interface` — one cacher per resource type
-  - [ ] 1.7 Wire OpenAPI schema generation using the registered types from `pkg/apis/soteria.io/v1alpha1/`
+- [x] Task 1: Implement API server configuration (AC: #1, #4)
+  - [x] 1.1 Create `pkg/apiserver/apiserver.go` with `SoteriaServer` struct embedding `genericapiserver.GenericAPIServer`
+  - [x] 1.2 Implement `Config` struct holding `GenericConfig`, ScyllaDB storage backend, and codec
+  - [x] 1.3 Implement `CompletedConfig` struct returned by `Config.Complete()`
+  - [x] 1.4 Implement `CompletedConfig.New()` — creates the `GenericAPIServer`, installs the `soteria.io/v1alpha1` API group
+  - [x] 1.5 Register all three resource types (DRPlan, DRExecution, DRGroupStatus) with the API group via `InstallAPIGroup`
+  - [x] 1.6 Configure the k8s.io/apiserver cacher to wrap the ScyllaDB `storage.Interface` — one cacher per resource type
+  - [x] 1.7 Wire OpenAPI schema generation using the registered types from `pkg/apis/soteria.io/v1alpha1/`
 
-- [ ] Task 2: Implement server startup options (AC: #1, #4)
-  - [ ] 2.1 Create `pkg/apiserver/options.go` with `SoteriaServerOptions` struct
-  - [ ] 2.2 Add ScyllaDB connection flags: `--scylladb-contact-points`, `--scylladb-keyspace`, `--scylladb-tls-cert`, `--scylladb-tls-key`, `--scylladb-tls-ca`
-  - [ ] 2.3 Implement `SoteriaServerOptions.Config()` — builds `Config` from flags and recommended server config
-  - [ ] 2.4 Implement `SoteriaServerOptions.AddFlags(fs *pflag.FlagSet)` to register all flags
-  - [ ] 2.5 Use `genericapiserver.NewRecommendedConfig(codecs)` as the base server configuration
-  - [ ] 2.6 Configure `Serializer` chain using the scheme from `pkg/apis/soteria.io/install/`
+- [x] Task 2: Implement server startup options (AC: #1, #4)
+  - [x] 2.1 Create `pkg/apiserver/options.go` with `SoteriaServerOptions` struct
+  - [x] 2.2 Add ScyllaDB connection flags: `--scylladb-contact-points`, `--scylladb-keyspace`, `--scylladb-tls-cert`, `--scylladb-tls-key`, `--scylladb-tls-ca`
+  - [x] 2.3 Implement `SoteriaServerOptions.Config()` — builds `Config` from flags and recommended server config
+  - [x] 2.4 Implement `SoteriaServerOptions.AddFlags(fs *pflag.FlagSet)` to register all flags
+  - [x] 2.5 Use `genericapiserver.NewRecommendedConfig(codecs)` as the base server configuration
+  - [x] 2.6 Configure `Serializer` chain using the scheme from `pkg/apis/soteria.io/install/`
 
-- [ ] Task 3: Implement DRPlan registry (AC: #2, #3)
-  - [ ] 3.1 Create `pkg/registry/drplan/strategy.go` with `drplanStrategy` implementing `rest.RESTCreateStrategy`, `rest.RESTUpdateStrategy`, `rest.RESTDeleteStrategy`
-  - [ ] 3.2 Implement `PrepareForCreate(ctx, obj)` — clear status, set default phase to `SteadyState`
-  - [ ] 3.3 Implement `PrepareForUpdate(ctx, obj, old)` — preserve status (status is updated via subresource)
-  - [ ] 3.4 Implement `Validate(ctx, obj)` — validate spec fields (vmSelector, waveLabel, maxConcurrentFailovers > 0)
-  - [ ] 3.5 Implement `ValidateUpdate(ctx, obj, old)` — validate updates, reject immutable field changes if any
-  - [ ] 3.6 Implement `WarningsOnCreate` and `WarningsOnUpdate` — return nil (no warnings)
-  - [ ] 3.7 Implement `Canonicalize(obj)` — no-op
-  - [ ] 3.8 Implement `NamespaceScoped() bool` — return true
-  - [ ] 3.9 Create `pkg/registry/drplan/storage.go` with `NewREST()` — builds `registry.Store` wired to cacher-wrapped `storage.Interface`
-  - [ ] 3.10 Configure status subresource with separate `StatusREST` backed by `StatusStrategy`
+- [x] Task 3: Implement DRPlan registry (AC: #2, #3)
+  - [x] 3.1 Create `pkg/registry/drplan/strategy.go` with `drplanStrategy` implementing `rest.RESTCreateStrategy`, `rest.RESTUpdateStrategy`, `rest.RESTDeleteStrategy`
+  - [x] 3.2 Implement `PrepareForCreate(ctx, obj)` — clear status, set default phase to `SteadyState`
+  - [x] 3.3 Implement `PrepareForUpdate(ctx, obj, old)` — preserve status (status is updated via subresource)
+  - [x] 3.4 Implement `Validate(ctx, obj)` — validate spec fields (vmSelector, waveLabel, maxConcurrentFailovers > 0)
+  - [x] 3.5 Implement `ValidateUpdate(ctx, obj, old)` — validate updates, reject immutable field changes if any
+  - [x] 3.6 Implement `WarningsOnCreate` and `WarningsOnUpdate` — return nil (no warnings)
+  - [x] 3.7 Implement `Canonicalize(obj)` — no-op
+  - [x] 3.8 Implement `NamespaceScoped() bool` — return true
+  - [x] 3.9 Create `pkg/registry/drplan/storage.go` with `NewREST()` — builds `registry.Store` wired to cacher-wrapped `storage.Interface`
+  - [x] 3.10 Configure status subresource with separate `StatusREST` backed by `StatusStrategy`
 
-- [ ] Task 4: Implement DRExecution registry (AC: #2, #3)
-  - [ ] 4.1 Create `pkg/registry/drexecution/strategy.go` with `drexecutionStrategy`
-  - [ ] 4.2 Implement `PrepareForCreate(ctx, obj)` — clear status, set startTime
-  - [ ] 4.3 Implement `PrepareForUpdate(ctx, obj, old)` — enforce append-only: reject updates to completed executions (status.result is set and non-empty)
-  - [ ] 4.4 Implement `Validate(ctx, obj)` — validate planName non-empty, mode is valid enum
-  - [ ] 4.5 Implement `ValidateUpdate(ctx, obj, old)` — enforce immutability of spec fields after creation, validate append-only status
-  - [ ] 4.6 Implement `NamespaceScoped() bool` — return true
-  - [ ] 4.7 Create `pkg/registry/drexecution/storage.go` with `NewREST()` — builds `registry.Store` wired to cacher-wrapped `storage.Interface`
-  - [ ] 4.8 Configure status subresource with separate `StatusREST`
+- [x] Task 4: Implement DRExecution registry (AC: #2, #3)
+  - [x] 4.1 Create `pkg/registry/drexecution/strategy.go` with `drexecutionStrategy`
+  - [x] 4.2 Implement `PrepareForCreate(ctx, obj)` — clear status, set startTime
+  - [x] 4.3 Implement `PrepareForUpdate(ctx, obj, old)` — enforce append-only: reject updates to completed executions (status.result is set and non-empty)
+  - [x] 4.4 Implement `Validate(ctx, obj)` — validate planName non-empty, mode is valid enum
+  - [x] 4.5 Implement `ValidateUpdate(ctx, obj, old)` — enforce immutability of spec fields after creation, validate append-only status
+  - [x] 4.6 Implement `NamespaceScoped() bool` — return true
+  - [x] 4.7 Create `pkg/registry/drexecution/storage.go` with `NewREST()` — builds `registry.Store` wired to cacher-wrapped `storage.Interface`
+  - [x] 4.8 Configure status subresource with separate `StatusREST`
 
-- [ ] Task 5: Implement DRGroupStatus registry (AC: #2, #3)
-  - [ ] 5.1 Create `pkg/registry/drgroupstatus/strategy.go` with `drgroupstatusStrategy`
-  - [ ] 5.2 Implement `PrepareForCreate(ctx, obj)` — clear status
-  - [ ] 5.3 Implement `PrepareForUpdate(ctx, obj, old)` — preserve spec (spec is immutable after creation)
-  - [ ] 5.4 Implement `Validate(ctx, obj)` — validate executionName, waveIndex >= 0, groupName non-empty
-  - [ ] 5.5 Implement `ValidateUpdate(ctx, obj, old)` — reject spec changes, validate status transitions
-  - [ ] 5.6 Implement `NamespaceScoped() bool` — return true
-  - [ ] 5.7 Create `pkg/registry/drgroupstatus/storage.go` with `NewREST()` — builds `registry.Store` wired to cacher-wrapped `storage.Interface`
-  - [ ] 5.8 Configure status subresource with separate `StatusREST`
+- [x] Task 5: Implement DRGroupStatus registry (AC: #2, #3)
+  - [x] 5.1 Create `pkg/registry/drgroupstatus/strategy.go` with `drgroupstatusStrategy`
+  - [x] 5.2 Implement `PrepareForCreate(ctx, obj)` — clear status
+  - [x] 5.3 Implement `PrepareForUpdate(ctx, obj, old)` — preserve spec (spec is immutable after creation)
+  - [x] 5.4 Implement `Validate(ctx, obj)` — validate executionName, waveIndex >= 0, groupName non-empty
+  - [x] 5.5 Implement `ValidateUpdate(ctx, obj, old)` — reject spec changes, validate status transitions
+  - [x] 5.6 Implement `NamespaceScoped() bool` — return true
+  - [x] 5.7 Create `pkg/registry/drgroupstatus/storage.go` with `NewREST()` — builds `registry.Store` wired to cacher-wrapped `storage.Interface`
+  - [x] 5.8 Configure status subresource with separate `StatusREST`
 
-- [ ] Task 6: Implement single binary entry point (AC: #4)
-  - [ ] 6.1 Update `cmd/soteria/main.go` — construct and run both the extension API server and controller-runtime manager
-  - [ ] 6.2 Start the API server via `GenericAPIServer.PrepareRun().Run(stopCh)`
-  - [ ] 6.3 Start controller-runtime manager with `ctrl.Options{LeaderElection: true, LeaderElectionID: "soteria-controller"}` in a separate goroutine
-  - [ ] 6.4 Wire signal handling — unified `stopCh` propagated to both components
-  - [ ] 6.5 Initialize ScyllaDB client (Story 1.2) and schema (Story 1.2) before starting the API server
-  - [ ] 6.6 Create the ScyllaDB `Store` (Story 1.3) and pass it to the API server config
-  - [ ] 6.7 Controller-runtime manager starts with no controllers yet (empty — controllers added in later stories)
+- [x] Task 6: Implement single binary entry point (AC: #4)
+  - [x] 6.1 Update `cmd/soteria/main.go` — construct and run both the extension API server and controller-runtime manager
+  - [x] 6.2 Start the API server via `GenericAPIServer.PrepareRun().RunWithContext(ctx)`
+  - [x] 6.3 Start controller-runtime manager with `ctrl.Options{LeaderElection: true, LeaderElectionID: "soteria-controller"}` in a separate goroutine
+  - [x] 6.4 Wire signal handling — unified `stopCh` propagated to both components
+  - [x] 6.5 Initialize ScyllaDB client (Story 1.2) and schema (Story 1.2) before starting the API server
+  - [x] 6.6 Create the ScyllaDB `Store` (Story 1.3) and pass it to the API server config
+  - [x] 6.7 Controller-runtime manager starts with no controllers yet (empty — controllers added in later stories)
 
-- [ ] Task 7: Create APIService manifests (AC: #5)
-  - [ ] 7.1 Create `config/apiservice/apiservice.yaml` — APIService resource for `v1alpha1.soteria.io`
-  - [ ] 7.2 Set `spec.service` to reference the Soteria extension API server Service
-  - [ ] 7.3 Set `spec.group: soteria.io`, `spec.version: v1alpha1`, `spec.groupPriorityMinimum: 1000`, `spec.versionPriority: 100`
-  - [ ] 7.4 Set `spec.insecureSkipTLSVerify: false` with `spec.caBundle` placeholder for cert-manager
-  - [ ] 7.5 Create `config/apiservice/kustomization.yaml` to include the APIService resource
-  - [ ] 7.6 Create `config/apiservice/service.yaml` — Kubernetes Service exposing the extension API server on port 443
+- [x] Task 7: Create APIService manifests (AC: #5)
+  - [x] 7.1 Create `config/apiservice/apiservice.yaml` — APIService resource for `v1alpha1.soteria.io`
+  - [x] 7.2 Set `spec.service` to reference the Soteria extension API server Service
+  - [x] 7.3 Set `spec.group: soteria.io`, `spec.version: v1alpha1`, `spec.groupPriorityMinimum: 1000`, `spec.versionPriority: 100`
+  - [x] 7.4 Set `spec.insecureSkipTLSVerify: false` with `spec.caBundle` placeholder for cert-manager
+  - [x] 7.5 Create `config/apiservice/kustomization.yaml` to include the APIService resource
+  - [x] 7.6 Create `config/apiservice/service.yaml` — Kubernetes Service exposing the extension API server on port 443
 
-- [ ] Task 8: Configure cacher layer (AC: #1, #3)
-  - [ ] 8.1 Import `k8s.io/apiserver/pkg/storage/cacher` and `k8s.io/apiserver/pkg/storage/storagebackend`
-  - [ ] 8.2 Create `newCachedStorage()` helper that wraps the ScyllaDB `storage.Interface` with `cacher.NewCacherFromConfig()`
-  - [ ] 8.3 Configure `cacher.Config` with the correct `storage.Interface`, `Versioner`, `NewFunc`, `NewListFunc`, `GetAttrsFunc`, `Codec`
-  - [ ] 8.4 One cacher instance per resource type (DRPlan, DRExecution, DRGroupStatus)
-  - [ ] 8.5 The cacher calls `Watch()` once at startup per resource type — validates the CDC-based Watch from Story 1.4
+- [x] Task 8: Configure cacher layer (AC: #1, #3)
+  - [x] 8.1 Import `k8s.io/apiserver/pkg/storage/cacher` and `k8s.io/apiserver/pkg/storage/storagebackend`
+  - [x] 8.2 Create `newCachedStorage()` helper that wraps the ScyllaDB `storage.Interface` with `cacher.NewCacherFromConfig()`
+  - [x] 8.3 Configure `cacher.Config` with the correct `storage.Interface`, `Versioner`, `NewFunc`, `NewListFunc`, `GetAttrsFunc`, `Codec`
+  - [x] 8.4 One cacher instance per resource type (DRPlan, DRExecution, DRGroupStatus)
+  - [x] 8.5 The cacher calls `Watch()` once at startup per resource type — validates the CDC-based Watch from Story 1.4
 
-- [ ] Task 9: Integration tests (AC: #1, #2, #3)
-  - [ ] 9.1 Create `test/integration/apiserver/suite_test.go` — setup testcontainers ScyllaDB + extension API server
-  - [ ] 9.2 Create `test/integration/apiserver/apiserver_test.go` with `//go:build integration` tag
-  - [ ] 9.3 Test API discovery — verify `soteria.io/v1alpha1` group is discoverable
-  - [ ] 9.4 Test DRPlan CRUD via client-go — Create, Get, List, Update, Delete
-  - [ ] 9.5 Test DRExecution CRUD — Create, verify spec immutability after creation, status subresource updates
-  - [ ] 9.6 Test DRGroupStatus CRUD — Create, verify spec immutability, status updates
-  - [ ] 9.7 Test DRExecution append-only — attempt update on completed execution, verify rejection
-  - [ ] 9.8 Test status subresource — update status separately from spec
-  - [ ] 9.9 Test watch events — create/update/delete and verify watch channel receives events
-  - [ ] 9.10 Test OpenAPI schema available for all resource types
+- [x] Task 9: Integration tests (AC: #1, #2, #3)
+  - [x] 9.1 Create `test/integration/apiserver/suite_test.go` — setup testcontainers ScyllaDB + extension API server
+  - [x] 9.2 Create `test/integration/apiserver/apiserver_test.go` with `//go:build integration` tag
+  - [x] 9.3 Test API discovery — verify `soteria.io/v1alpha1` group is discoverable
+  - [x] 9.4 Test DRPlan CRUD via client-go — Create, Get, List, Update, Delete
+  - [x] 9.5 Test DRExecution CRUD — Create, verify spec immutability after creation, status subresource updates
+  - [x] 9.6 Test DRGroupStatus CRUD — Create, verify spec immutability, status updates
+  - [x] 9.7 Test DRExecution append-only — attempt update on completed execution, verify rejection
+  - [x] 9.8 Test status subresource — update status separately from spec
+  - [x] 9.9 Test watch events — create/update/delete and verify watch channel receives events
+  - [x] 9.10 Test OpenAPI schema available for all resource types
 
-- [ ] Task 10: Final validation
-  - [ ] 10.1 `make build` passes
-  - [ ] 10.2 `make test` passes (unit tests only)
-  - [ ] 10.3 `make lint` passes
-  - [ ] 10.4 `make integration` passes (testcontainers)
+- [x] Task 10: Final validation
+  - [x] 10.1 `make build` passes
+  - [x] 10.2 `make test` passes (unit tests only)
+  - [x] 10.3 `make lint` passes
+  - [x] 10.4 `make integration` passes (testcontainers)
 
 ## Dev Notes
 
@@ -1075,8 +1075,67 @@ The `Decorator` field is the key — it's the function that wraps raw storage wi
 
 ### Agent Model Used
 
+claude-4.6-opus-high-thinking (retroactively documented — story file was not synced during original dev session)
+
 ### Debug Log References
+
+(Not captured during original dev session)
 
 ### Completion Notes List
 
+- Implemented `SoteriaServer` extension API server in `pkg/apiserver/apiserver.go` (~219 lines)
+  - `Config` struct with `GenericConfig` and `ScyllaStoreFactory` (creates per-resource Scylla storage instances)
+  - `CompletedConfig.New()` builds GenericAPIServer named `"soteria-apiserver"`, installs `soteria.io/v1alpha1` with all three resources + status subresources via `InstallAPIGroup`
+- Implemented `SoteriaServerOptions` in `pkg/apiserver/options.go` (~153 lines)
+  - ScyllaDB connection flags, `Etcd = nil` (no etcd), `EffectiveVersion` set to 1.35
+  - OpenAPI v2 and v3 configured with custom `soteriaGetDefinitionName` for REST-friendly GVK extensions
+- Implemented `pkg/apiserver/critical_fields.go` (~63 lines) for LWT critical field detection
+  - `DefaultCriticalFieldDetectors()` for `drplans` (phase change) and `drexecutions` (result change)
+- Implemented DRPlan registry (`pkg/registry/drplan/`) — strategy (~121 lines) + storage (~92 lines)
+  - `PrepareForCreate` sets default phase to `SteadyState` and generation; validation on `waveLabel`, `maxConcurrentFailovers`
+  - `StatusStrategy` freezes spec on status updates; `GetAttrs`/`MatchDRPlan` for field selectors
+- Implemented DRExecution registry (`pkg/registry/drexecution/`) — strategy (~145 lines) + storage (~92 lines)
+  - Spec immutable after creation; `StatusStrategy` forbids status changes after terminal results (append-only enforcement)
+  - Validation on `planName`, `mode`
+- Implemented DRGroupStatus registry (`pkg/registry/drgroupstatus/`) — strategy (~139 lines) + storage (~92 lines)
+  - Spec immutable via `reflect.DeepEqual` in `ValidateUpdate`; permissive status updates
+  - Validation on `executionName`, `groupName`, `waveIndex`
+- All three registries follow `genericregistry.Store` + `StatusREST` pattern with `NewREST()` constructors
+- Implemented single binary entry point in `cmd/soteria/main.go` (~262 lines)
+  - `--enable-apiserver` flag (default true); ScyllaDB client with optional multi-DC topology validation or `EnsureSchema`
+  - Builds `ScyllaStoreFactory` with codec, `UseCacher: true`, `DefaultCriticalFieldDetectors()`
+  - API server runs via `PrepareRun().RunWithContext(ctx)` in a goroutine; controller-runtime manager runs via `mgr.Start(ctx)`
+- Implemented `soteriaRESTOptionsGetter` with storage decorator that creates `scylladb.NewStore` and optionally wraps with `cacherstorage.NewCacherFromConfig` + `CacheDelegator`
+- Created APIService manifests in `config/apiservice/`
+  - `apiservice.yaml`: `v1alpha1.soteria.io`, cert-manager CA inject annotation, `$(NAMESPACE)` placeholder
+  - `service.yaml`: ClusterIP on port 443 → target 6443
+  - `kustomization.yaml`: includes both resources
+- Integration tests: `suite_test.go` (~235 lines) sets up testcontainers ScyllaDB + in-process API server (no cacher for tests)
+- Integration tests: `apiserver_test.go` (~570 lines) covers:
+  - API discovery for `soteria.io/v1alpha1`
+  - DRPlan full CRUD, status subresource, validation, watch
+  - DRExecution CRUD, append-only after completion, validation
+  - DRGroupStatus CRUD, spec immutability
+  - OpenAPI v3 schema presence for all three kinds
+
 ### File List
+
+- `pkg/apiserver/apiserver.go` (new, ~219 lines)
+- `pkg/apiserver/options.go` (new, ~153 lines)
+- `pkg/apiserver/critical_fields.go` (new, ~63 lines)
+- `pkg/registry/drplan/strategy.go` (new, ~121 lines)
+- `pkg/registry/drplan/storage.go` (new, ~92 lines)
+- `pkg/registry/drexecution/strategy.go` (new, ~145 lines)
+- `pkg/registry/drexecution/storage.go` (new, ~92 lines)
+- `pkg/registry/drgroupstatus/strategy.go` (new, ~139 lines)
+- `pkg/registry/drgroupstatus/storage.go` (new, ~92 lines)
+- `cmd/soteria/main.go` (modified, ~262 lines)
+- `config/apiservice/apiservice.yaml` (new)
+- `config/apiservice/service.yaml` (new)
+- `config/apiservice/kustomization.yaml` (new)
+- `test/integration/apiserver/suite_test.go` (new, ~235 lines)
+- `test/integration/apiserver/apiserver_test.go` (new, ~570 lines)
+
+## Change Log
+
+- **2026-04-09**: Story file retroactively synced during Epic 1 retrospective — status, tasks, Dev Agent Record, File List backfilled from actual implementation

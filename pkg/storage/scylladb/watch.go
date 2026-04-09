@@ -16,6 +16,31 @@ limitations under the License.
 
 package scylladb
 
+// Watch architecture:
+//
+// The Watch implementation uses a two-phase approach to deliver a consistent
+// stream of events to the k8s.io/apiserver cacher layer:
+//
+//   Phase 1 — Snapshot (optional): When resourceVersion is "0" or
+//   SendInitialEvents is true, GetList (or Get for single-object watches)
+//   fetches all current objects from ScyllaDB and delivers them as ADDED
+//   events. Each object is added to a dedupSet keyed by namespace/name with
+//   its resourceVersion, and to an objectCache for later DELETE reconstruction.
+//
+//   Phase 2 — CDC stream: A scylla-cdc-go Reader is started against the
+//   kv_store table. The CDC start time is set to 30 seconds before the
+//   snapshot began, creating an intentional overlap. During this overlap
+//   window, the dedupSet filters out CDC events for objects already delivered
+//   in the snapshot. After a 5-second grace period, the dedupSet is cleared.
+//
+// Key components:
+//   - watcher: implements watch.Interface with a buffered event channel
+//   - objectCache: last-known objects so CDC DELETE rows (PK-only) emit full objects
+//   - dedupSet: prevents duplicate delivery during snapshot-to-CDC overlap
+//   - keyFilter: restricts CDC events to the watched (apiGroup, resourceType, namespace)
+//   - watchConsumer: decodes CDC deltas and maps them to Kubernetes watch events
+//   - watchProgressManager: stateless — the cacher handles reconnection
+
 import (
 	"context"
 	"fmt"

@@ -16,6 +16,26 @@ limitations under the License.
 
 package scylladb
 
+// Store architecture:
+//
+// Store implements k8s.io/apiserver/pkg/storage.Interface using a generic
+// key-value schema in ScyllaDB. Resources are stored as opaque blobs in the
+// kv_store table with composite primary key (api_group, resource_type,
+// namespace, name). This avoids CQL schema changes when API types evolve.
+//
+// Write path: All mutations use lightweight transactions (CAS) to prevent
+// lost updates. Create uses IF NOT EXISTS; Delete and GuaranteedUpdate use
+// IF resource_version = <expected> with up to maxCASRetries on contention.
+// When a CriticalFieldDetector signals that an update touches a state-machine
+// field (e.g., DRPlan phase transition), the CAS consistency is upgraded from
+// LOCAL_SERIAL to SERIAL for cross-DC linearizability.
+//
+// Read path: Get and GetList use LOCAL_ONE consistency. GetList supports
+// label-selector filtering via a secondary kv_store_labels index table and
+// continuation-token pagination.
+//
+// Watch is implemented in watch.go via ScyllaDB CDC.
+
 import (
 	"bytes"
 	"context"
@@ -35,6 +55,10 @@ import (
 	"k8s.io/klog/v2"
 )
 
+// maxCASRetries bounds the number of CAS retry loops for Delete and
+// GuaranteedUpdate. In practice, contention is low (single writer per
+// resource via the cacher), so retries indicate either a bug or extreme
+// clock skew. Five retries is generous while preventing infinite loops.
 const maxCASRetries = 5
 
 // CriticalFieldDetector inspects old and new versions of an object to

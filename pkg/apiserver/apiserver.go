@@ -145,6 +145,13 @@ func (f *ScyllaStoreFactory) RESTOptionsGetter() generic.RESTOptionsGetter {
 	}
 }
 
+// soteriaRESTOptionsGetter implements generic.RESTOptionsGetter to bridge
+// the k8s.io/apiserver generic registry with ScyllaDB storage. The standard
+// Kubernetes path uses etcd via StorageFactory; here we replace that entirely.
+// The Decorator function returned by GetRESTOptions creates a ScyllaDB Store
+// for the requested GroupResource and optionally wraps it with the apiserver
+// cacher (NewCacherFromConfig + CacheDelegator). The cacher provides in-memory
+// watch fan-out so that many client watches share a single CDC reader.
 type soteriaRESTOptionsGetter struct {
 	factory *ScyllaStoreFactory
 }

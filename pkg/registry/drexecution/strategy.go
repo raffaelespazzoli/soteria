@@ -45,10 +45,15 @@ func (drexecutionStrategy) PrepareForCreate(_ context.Context, obj runtime.Objec
 	exec.Generation = 1
 }
 
+// PrepareForUpdate freezes both spec and status on main-resource updates.
+// Spec is immutable because a DRExecution represents a single invocation
+// with fixed parameters (planName, mode). Changing spec mid-flight would
+// invalidate in-progress group statuses. Status is managed exclusively
+// via the status subresource to prevent spec-update races from overwriting
+// controller-driven progress.
 func (drexecutionStrategy) PrepareForUpdate(_ context.Context, obj, old runtime.Object) {
 	newExec := obj.(*soteriav1alpha1.DRExecution)
 	oldExec := old.(*soteriav1alpha1.DRExecution)
-	// Status is managed via status subresource only
 	newExec.Status = oldExec.Status
 }
 
@@ -128,6 +133,10 @@ func (drexecutionStatusStrategy) PrepareForUpdate(_ context.Context, obj, old ru
 	newExec.Spec = oldExec.Spec
 }
 
+// ValidateUpdate enforces append-only semantics: once an execution reaches
+// a terminal result, the entire resource is frozen. This guarantees that
+// audit trails, DRGroupStatus rollups, and alerting integrations can treat
+// the result as final — no retroactive edits are possible.
 func (drexecutionStatusStrategy) ValidateUpdate(_ context.Context, obj, old runtime.Object) field.ErrorList {
 	oldExec := old.(*soteriav1alpha1.DRExecution)
 	allErrs := field.ErrorList{}
