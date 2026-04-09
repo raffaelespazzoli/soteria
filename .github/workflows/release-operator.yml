@@ -1,12 +1,18 @@
-# Placeholder: Release workflow for the Soteria operator
-name: Release Operator
+name: release-operator
 on:
   push:
-    tags: ["v*"]
+    tags:
+      - "v*"
+
 jobs:
-  placeholder:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Placeholder
-        run: echo "TODO - implement release workflow"
+  release:
+    uses: redhat-cop/github-workflows-operators/.github/workflows/release-operator.yml@v1
+    with:
+      GO_VERSION: "1.25"
+      BUILD_PLATFORMS: "linux/amd64,linux/arm64,linux/ppc64le"
+      RUN_UNIT_TESTS: true
+      OPERATOR_SDK_VERSION: "v1.42.2"
+    secrets:
+      REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}
+      REGISTRY_PASSWORD: ${{ secrets.REGISTRY_PASSWORD }}
+      COMMUNITY_OPERATOR_PAT: ${{ secrets.COMMUNITY_OPERATOR_PAT }}

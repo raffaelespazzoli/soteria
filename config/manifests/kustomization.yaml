@@ -1,0 +1,8 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Only ../default — it already includes ../rbac and ../manager.
+# Do NOT add ../apiservice (OLM manages APIService lifecycle via CSV apiservicedefinitions.owned).
+# Do NOT add ../certmanager (prerequisite CRDs; declared in CSV customresourcedefinitions.required).
+resources:
+  - ../default

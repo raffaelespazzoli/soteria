@@ -1,0 +1,194 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: ClusterServiceVersion
+metadata:
+  name: soteria.v0.0.1
+  namespace: placeholder
+  annotations:
+    alm-examples: |
+      [
+        {
+          "apiVersion": "soteria.io/v1alpha1",
+          "kind": "DRPlan",
+          "metadata": {"name": "example-plan"},
+          "spec": {
+            "vmSelector": {"matchLabels": {"app.kubernetes.io/part-of": "example"}},
+            "waveLabel": "soteria.io/wave",
+            "maxConcurrentFailovers": 4
+          }
+        }
+      ]
+    capabilities: "Basic Install"
+    categories: "Integration & Delivery"
+    containerImage: quay.io/soteria-project/soteria:latest
+    repository: https://github.com/soteria-project/soteria
+    support: Soteria Project
+spec:
+  displayName: "Soteria DR Orchestrator"
+  description: |
+    Soteria is a storage-agnostic disaster recovery orchestrator for OpenShift Virtualization.
+    It provides unified DR across heterogeneous storage backends — ODF, Dell, Pure Storage,
+    NetApp — through a single, consistent workflow engine.
+  maturity: alpha
+  version: 0.0.1
+  minKubeVersion: "1.28.0"
+  keywords:
+    - disaster-recovery
+    - openshift-virtualization
+    - dr
+    - failover
+    - storage-agnostic
+  provider:
+    name: Soteria Project
+    url: https://github.com/soteria-project/soteria
+  links:
+    - name: Repository
+      url: https://github.com/soteria-project/soteria
+    - name: Documentation
+      url: https://github.com/soteria-project/soteria/docs
+  maintainers:
+    - name: Soteria Maintainers
+      email: soteria-maintainers@googlegroups.com
+  icon:
+    - base64data: ""
+      mediatype: image/png
+
+  installModes:
+    - type: OwnNamespace
+      supported: true
+    - type: SingleNamespace
+      supported: true
+    - type: MultiNamespace
+      supported: false
+    - type: AllNamespaces
+      supported: true
+
+  # Soteria serves an aggregated API — OLM creates and manages the APIService
+  # resource from these definitions (including CA bundle injection).
+  apiservicedefinitions:
+    owned:
+      - group: soteria.io
+        version: v1alpha1
+        kind: DRPlan
+        name: drplans
+        deploymentName: dr-orchestrator-controller-manager
+        containerPort: 6443
+        displayName: DR Plan
+        description: Defines a disaster recovery plan for a set of VMs
+      - group: soteria.io
+        version: v1alpha1
+        kind: DRExecution
+        name: drexecutions
+        deploymentName: dr-orchestrator-controller-manager
+        containerPort: 6443
+        displayName: DR Execution
+        description: Records an immutable execution of a DRPlan
+      - group: soteria.io
+        version: v1alpha1
+        kind: DRGroupStatus
+        name: drgroupstatuses
+        deploymentName: dr-orchestrator-controller-manager
+        containerPort: 6443
+        displayName: DR Group Status
+        description: Tracks real-time state of a DRGroup during execution
+
+  # ScyllaDB and cert-manager are CRDs, not APIServices.
+  customresourcedefinitions:
+    required:
+      - name: scyllaclusters.scylla.scylladb.com
+        version: v1
+        kind: ScyllaCluster
+        displayName: ScyllaDB Cluster
+        description: ScyllaDB cluster managed by the scylla-operator
+      - name: certificates.cert-manager.io
+        version: v1
+        kind: Certificate
+        displayName: Certificate
+        description: cert-manager Certificate for TLS management
+
+  install:
+    strategy: deployment
+    spec:
+      deployments:
+        - name: dr-orchestrator-controller-manager
+          spec:
+            replicas: 1
+            selector:
+              matchLabels:
+                control-plane: controller-manager
+                app.kubernetes.io/name: dr-orchestrator
+            template:
+              metadata:
+                annotations:
+                  kubectl.kubernetes.io/default-container: manager
+                labels:
+                  control-plane: controller-manager
+                  app.kubernetes.io/name: dr-orchestrator
+              spec:
+                securityContext:
+                  runAsNonRoot: true
+                  seccompProfile:
+                    type: RuntimeDefault
+                serviceAccountName: dr-orchestrator-controller-manager
+                terminationGracePeriodSeconds: 10
+                containers:
+                  - name: manager
+                    image: quay.io/soteria-project/soteria:latest
+                    command:
+                      - /manager
+                    args:
+                      - --metrics-bind-address=:8443
+                      - --leader-elect
+                      - --health-probe-bind-address=:8081
+                    ports:
+                      - containerPort: 6443
+                        name: apiserver
+                        protocol: TCP
+                    securityContext:
+                      readOnlyRootFilesystem: true
+                      allowPrivilegeEscalation: false
+                      capabilities:
+                        drop:
+                          - ALL
+                    livenessProbe:
+                      httpGet:
+                        path: /healthz
+                        port: 8081
+                      initialDelaySeconds: 15
+                      periodSeconds: 20
+                    readinessProbe:
+                      httpGet:
+                        path: /readyz
+                        port: 8081
+                      initialDelaySeconds: 5
+                      periodSeconds: 10
+                    resources:
+                      limits:
+                        cpu: 500m
+                        memory: 128Mi
+                      requests:
+                        cpu: 10m
+                        memory: 64Mi
+      permissions:
+        - serviceAccountName: dr-orchestrator-controller-manager
+          rules:
+            - apiGroups: [""]
+              resources: [configmaps]
+              verbs: [get, list, watch, create, update, patch, delete]
+            - apiGroups: [coordination.k8s.io]
+              resources: [leases]
+              verbs: [get, list, watch, create, update, patch, delete]
+            - apiGroups: [""]
+              resources: [events]
+              verbs: [create, patch]
+      clusterPermissions:
+        - serviceAccountName: dr-orchestrator-controller-manager
+          rules:
+            - apiGroups: [""]
+              resources: [pods]
+              verbs: [get, list, watch]
+            - apiGroups: [authentication.k8s.io]
+              resources: [tokenreviews]
+              verbs: [create]
+            - apiGroups: [authorization.k8s.io]
+              resources: [subjectaccessreviews]
+              verbs: [create]

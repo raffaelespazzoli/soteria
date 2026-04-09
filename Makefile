@@ -1,5 +1,17 @@
 # Image URL to use all building/pushing image targets
-IMG ?= controller:latest
+IMG ?= quay.io/soteria-project/soteria:latest
+
+# Operator metadata
+VERSION ?= 0.0.1
+OPERATOR_NAME ?= soteria
+OPERATOR_SDK_VERSION ?= v1.42.2
+HELM_RELEASE_VERSION ?= $(VERSION)
+
+# OLM Bundle
+BUNDLE_IMG ?= quay.io/soteria-project/soteria-bundle:v$(VERSION)
+DEFAULT_CHANNEL ?= alpha
+BUNDLE_CHANNELS ?= --channels=$(DEFAULT_CHANNEL)
+BUNDLE_DEFAULT_CHANNEL ?= --default-channel=$(DEFAULT_CHANNEL)
 
 # Get the currently used golang install path (in GOPATH/bin, unless GOBIN is set)
 ifeq (,$(shell go env GOBIN))
@@ -106,9 +118,17 @@ lint-config: golangci-lint ## Verify golangci-lint linter configuration
 integration: ## Run integration tests against a running ScyllaDB instance.
 	go test -tags=integration ./test/integration/... -v -count=1
 
+.PHONY: helmchart
+helmchart: manifests kustomize ## Render Helm chart from kustomize manifests
+	mkdir -p charts/$(OPERATOR_NAME)/templates
+	cd config/manager && "$(KUSTOMIZE)" edit set image controller=$(IMG)
+	"$(KUSTOMIZE)" build config/default > charts/$(OPERATOR_NAME)/templates/manifests.yaml
+	cp config/helmchart/Chart.yaml.tpl charts/$(OPERATOR_NAME)/Chart.yaml
+	sed -i 's/REPLACE_VERSION/$(HELM_RELEASE_VERSION)/g' charts/$(OPERATOR_NAME)/Chart.yaml
+
 .PHONY: helmchart-test
-helmchart-test: ## Lint and test Helm charts.
-	@echo "Helm chart tests not yet implemented"
+helmchart-test: helmchart ## Lint and test Helm charts
+	helm lint charts/$(OPERATOR_NAME)
 
 .PHONY: dev-cluster
 dev-cluster: ## Provision a local Kind cluster for development.
@@ -162,6 +182,26 @@ build-installer: manifests generate kustomize ## Generate a consolidated YAML wi
 	cd config/manager && "$(KUSTOMIZE)" edit set image controller=${IMG}
 	"$(KUSTOMIZE)" build config/default > dist/install.yaml
 
+##@ OLM Bundle
+
+.PHONY: bundle
+bundle: manifests kustomize operator-sdk ## Generate OLM bundle manifests
+	cd config/manager && "$(KUSTOMIZE)" edit set image controller=$(IMG)
+	"$(KUSTOMIZE)" build config/manifests | "$(OPERATOR_SDK)" generate bundle \
+		--version $(VERSION) \
+		$(BUNDLE_CHANNELS) \
+		$(BUNDLE_DEFAULT_CHANNEL) \
+		--overwrite
+	"$(OPERATOR_SDK)" bundle validate ./bundle --select-optional name=operatorhub
+
+.PHONY: bundle-build
+bundle-build: ## Build the OLM bundle image
+	$(CONTAINER_TOOL) build -f bundle.Dockerfile -t $(BUNDLE_IMG) .
+
+.PHONY: bundle-push
+bundle-push: ## Push the OLM bundle image
+	$(CONTAINER_TOOL) push $(BUNDLE_IMG)
+
 ##@ Deployment
 
 ifndef ignore-not-found
@@ -201,6 +241,7 @@ KUSTOMIZE ?= $(LOCALBIN)/kustomize
 CONTROLLER_GEN ?= $(LOCALBIN)/controller-gen
 ENVTEST ?= $(LOCALBIN)/setup-envtest
 GOLANGCI_LINT = $(LOCALBIN)/golangci-lint
+OPERATOR_SDK ?= $(LOCALBIN)/operator-sdk
 
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v5.8.1
@@ -249,6 +290,16 @@ $(GOLANGCI_LINT): $(LOCALBIN)
 		$(GOLANGCI_LINT) custom --destination $(LOCALBIN) --name golangci-lint-custom && \
 		mv -f $(LOCALBIN)/golangci-lint-custom $(GOLANGCI_LINT); \
 	} || true
+
+.PHONY: operator-sdk
+operator-sdk: $(OPERATOR_SDK) ## Download operator-sdk locally if necessary.
+$(OPERATOR_SDK): $(LOCALBIN)
+	@if [ ! -f "$(OPERATOR_SDK)" ]; then \
+		echo "Downloading operator-sdk $(OPERATOR_SDK_VERSION)..." ; \
+		OS=$$(go env GOOS) && ARCH=$$(go env GOARCH) && \
+		curl -sSLo "$(OPERATOR_SDK)" "https://github.com/operator-framework/operator-sdk/releases/download/$(OPERATOR_SDK_VERSION)/operator-sdk_$${OS}_$${ARCH}" && \
+		chmod +x "$(OPERATOR_SDK)" ; \
+	fi
 
 # go-install-tool will 'go install' any package with custom target and name of binary, if it doesn't exist
 # $1 - target path with name of binary

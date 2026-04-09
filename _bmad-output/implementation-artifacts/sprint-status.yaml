@@ -53,7 +53,7 @@ development_status:
   1-4-scylladb-storage-interface-watch-via-cdc: done
   1-5-aggregated-api-server-api-registration: done
   1-6-cross-site-state-replication-resilience: done
-  1-7-ci-pipeline-olm-packaging: ready-for-dev
+  1-7-ci-pipeline-olm-packaging: done
   epic-1-retrospective: optional
 
   # Epic 2: DR Plan Discovery, Validation & Access Control

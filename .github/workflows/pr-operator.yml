@@ -1,12 +1,32 @@
-# Placeholder: PR checks for the Soteria operator
-name: PR Operator Checks
+name: pr-operator
 on:
   pull_request:
-    branches: [main]
+    branches:
+      - main
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+
 jobs:
-  placeholder:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Placeholder
-        run: echo "TODO - implement PR checks"
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Run linter
+        run: make lint
+      - name: Verify codegen
+        run: hack/verify-codegen.sh
+
+  pr:
+    uses: redhat-cop/github-workflows-operators/.github/workflows/pr-operator.yml@v1
+    with:
+      GO_VERSION: "1.25"
+      BUILD_PLATFORMS: "linux/amd64,linux/arm64,linux/ppc64le"
+      RUN_UNIT_TESTS: true
+      RUN_INTEGRATION_TESTS: true
+      RUN_HELMCHART_TEST: true
+      OPERATOR_SDK_VERSION: "v1.42.2"
+    secrets: inherit
