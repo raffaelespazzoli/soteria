@@ -18,6 +18,7 @@ package apiserver
 
 import (
 	"fmt"
+	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -193,17 +194,18 @@ func (g *soteriaRESTOptionsGetter) decoratorFor(cfg scylladb.StoreConfig) generi
 		}
 
 		cacherConfig := cacherstorage.Config{
-			Storage:        scyllaStore,
-			Versioner:      scyllaStore.Versioner(),
-			GroupResource:  cfg.GroupResource,
-			ResourcePrefix: resourcePrefix,
-			KeyFunc:        keyFunc,
-			GetAttrsFunc:   getAttrsFunc,
-			IndexerFuncs:   trigger,
-			Indexers:       indexers,
-			NewFunc:        newFunc,
-			NewListFunc:    newListFunc,
-			Codec:          g.factory.Codec,
+			Storage:             scyllaStore,
+			Versioner:           scyllaStore.Versioner(),
+			GroupResource:       cfg.GroupResource,
+			ResourcePrefix:      resourcePrefix,
+			KeyFunc:             keyFunc,
+			GetAttrsFunc:        getAttrsFunc,
+			IndexerFuncs:        trigger,
+			Indexers:            indexers,
+			NewFunc:             newFunc,
+			NewListFunc:         newListFunc,
+			Codec:               g.factory.Codec,
+			EventsHistoryWindow: 2 * time.Minute,
 		}
 		cacher, err := cacherstorage.NewCacherFromConfig(cacherConfig)
 		if err != nil {
