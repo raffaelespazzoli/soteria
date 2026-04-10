@@ -35,6 +35,7 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
+	"k8s.io/client-go/kubernetes"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	soteriainstall "github.com/soteria-project/soteria/pkg/apis/soteria.io/install"
@@ -234,7 +235,8 @@ func main() {
 		}()
 	}
 
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	restConfig := ctrl.GetConfigOrDie()
+	mgr, err := ctrl.NewManager(restConfig, ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsServerOptions,
 		WebhookServer:          webhookServer,
@@ -253,11 +255,20 @@ func main() {
 	// to discover the soteria.io/v1alpha1 group.
 	if enableAPIServer {
 		vmDiscoverer := engine.NewTypedVMDiscoverer(mgr.GetClient())
+
+		clientset, err := kubernetes.NewForConfig(restConfig)
+		if err != nil {
+			setupLog.Error(err, "Failed to create Kubernetes clientset")
+			os.Exit(1)
+		}
+		nsLookup := &engine.DefaultNamespaceLookup{Client: clientset.CoreV1()}
+
 		if err := (&drplan.DRPlanReconciler{
-			Client:       mgr.GetClient(),
-			Scheme:       mgr.GetScheme(),
-			VMDiscoverer: vmDiscoverer,
-			Recorder:     mgr.GetEventRecorderFor("drplan-controller"),
+			Client:          mgr.GetClient(),
+			Scheme:          mgr.GetScheme(),
+			VMDiscoverer:    vmDiscoverer,
+			NamespaceLookup: nsLookup,
+			Recorder:        mgr.GetEventRecorderFor("drplan-controller"),
 		}).SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "Failed to create DRPlan controller")
 			os.Exit(1)

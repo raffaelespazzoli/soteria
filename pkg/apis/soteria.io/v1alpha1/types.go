@@ -30,6 +30,23 @@ const (
 	PhaseFailingBack     = "FailingBack"
 )
 
+// ConsistencyLevel determines how VM disks are grouped into VolumeGroups for
+// atomic storage operations.
+type ConsistencyLevel string
+
+const (
+	// ConsistencyLevelNamespace groups all VM disks in a namespace into a
+	// single VolumeGroup for crash-consistent snapshots.
+	ConsistencyLevelNamespace ConsistencyLevel = "namespace"
+	// ConsistencyLevelVM treats each VM's disks as an independent VolumeGroup.
+	ConsistencyLevelVM ConsistencyLevel = "vm"
+)
+
+// ConsistencyAnnotation is the namespace annotation key that controls
+// consistency-level grouping. When set to "namespace", all VMs in that
+// namespace share a single VolumeGroup.
+const ConsistencyAnnotation = "soteria.io/consistency-level"
+
 // DRPlan defines a disaster recovery plan for a set of VMs selected by labels.
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type DRPlan struct {
@@ -70,6 +87,23 @@ type DiscoveredVM struct {
 	Namespace string `json:"namespace"`
 }
 
+// VolumeGroupInfo describes a group of VM disks that must be snapshotted
+// atomically. Namespace-level groups ensure crash-consistent snapshots across
+// all VMs sharing a namespace; VM-level groups (the default) scope consistency
+// to a single VM's disks.
+type VolumeGroupInfo struct {
+	// Name is the group identifier (e.g. "ns-erp-database" or "vm-default-web01").
+	// +kubebuilder:validation:Required
+	Name string `json:"name"`
+	// Namespace is the Kubernetes namespace for VMs in this group.
+	Namespace string `json:"namespace"`
+	// ConsistencyLevel indicates whether this is a namespace- or VM-level group.
+	ConsistencyLevel ConsistencyLevel `json:"consistencyLevel"`
+	// VMNames lists the VMs belonging to this volume group.
+	// +kubebuilder:validation:MinItems=1
+	VMNames []string `json:"vmNames"`
+}
+
 // WaveInfo groups discovered VMs into a single execution wave.
 // Invariant: a WaveInfo is only created when at least one VM belongs to the wave.
 type WaveInfo struct {
@@ -79,6 +113,9 @@ type WaveInfo struct {
 	// +listType=atomic
 	// +kubebuilder:validation:MinItems=1
 	VMs []DiscoveredVM `json:"vms"`
+	// Groups contains the volume groups formed from VMs in this wave.
+	// Populated after consistency resolution succeeds.
+	Groups []VolumeGroupInfo `json:"groups,omitempty"`
 }
 
 // DRPlanList contains a list of DRPlans.

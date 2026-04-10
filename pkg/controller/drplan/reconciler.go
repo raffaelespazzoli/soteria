@@ -16,12 +16,17 @@ limitations under the License.
 
 // reconciler.go implements the DRPlan reconciliation loop.
 //
-// Architecture: On every reconcile the controller fetches the DRPlan, calls the
-// VMDiscoverer to list VMs matching the plan's label selector, partitions them
-// into waves via engine.GroupByWave, and writes the result to .status.waves.
-// A secondary watch on kubevirt VirtualMachines (filtered by label-change
-// predicates) triggers reconciliation when VMs are created, deleted, or
-// relabeled, making VM-to-plan membership event-driven rather than polled.
+// Architecture: On every reconcile the controller fetches the DRPlan, discovers
+// VMs matching the plan's label selector, partitions them into waves via
+// engine.GroupByWave, then resolves volume group consistency from namespace
+// annotations (engine.ResolveVolumeGroups) and chunks the result into DRGroups
+// respecting maxConcurrentFailovers (engine.ChunkWaves). If namespace-level VMs
+// span multiple waves, the plan is marked Ready=False with reason WaveConflict.
+// If a namespace group exceeds the throttle, Ready=False with reason
+// NamespaceGroupExceedsThrottle. Secondary watches on kubevirt VirtualMachines
+// (label-change predicate) and core Namespaces (consistency-annotation predicate)
+// trigger reconciliation when VM membership or namespace consistency configuration
+// changes.
 
 package drplan
 
@@ -29,8 +34,10 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"strings"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -53,10 +60,12 @@ import (
 )
 
 const (
-	conditionTypeReady = "Ready"
-	reasonDiscovered   = "VMsDiscovered"
-	reasonNoVMs        = "NoVMsDiscovered"
-	reasonError        = "DiscoveryError"
+	conditionTypeReady         = "Ready"
+	reasonDiscovered           = "VMsDiscovered"
+	reasonNoVMs                = "NoVMsDiscovered"
+	reasonError                = "DiscoveryError"
+	reasonWaveConflict         = "WaveConflict"
+	reasonGroupExceedsThrottle = "NamespaceGroupExceedsThrottle"
 
 	requeueInterval = 10 * time.Minute
 )
@@ -64,15 +73,18 @@ const (
 // +kubebuilder:rbac:groups=soteria.io,resources=drplans,verbs=get;list;watch
 // +kubebuilder:rbac:groups=soteria.io,resources=drplans/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=kubevirt.io,resources=virtualmachines,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 
-// DRPlanReconciler reconciles DRPlan objects by discovering VMs and grouping
-// them into execution waves.
+// DRPlanReconciler reconciles DRPlan objects by discovering VMs, grouping them
+// into execution waves, resolving volume group consistency, and chunking into
+// DRGroups.
 type DRPlanReconciler struct {
 	client.Client
-	Scheme       *runtime.Scheme
-	VMDiscoverer engine.VMDiscoverer
-	Recorder     record.EventRecorder
+	Scheme          *runtime.Scheme
+	VMDiscoverer    engine.VMDiscoverer
+	NamespaceLookup engine.NamespaceLookup
+	Recorder        record.EventRecorder
 }
 
 func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -93,13 +105,7 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	if err != nil {
 		logger.Error(err, "Failed to discover VMs")
 		r.event(&plan, "Warning", "DiscoveryFailed", err.Error())
-		if statusErr := r.setCondition(ctx, &plan, metav1.Condition{
-			Type:               conditionTypeReady,
-			Status:             metav1.ConditionFalse,
-			Reason:             reasonError,
-			Message:            err.Error(),
-			ObservedGeneration: plan.Generation,
-		}); statusErr != nil {
+		if statusErr := r.setDiscoveryErrorCondition(ctx, &plan, err); statusErr != nil {
 			logger.Error(statusErr, "Failed to update status after discovery error")
 		}
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
@@ -122,52 +128,102 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 	}
 
-	condition := metav1.Condition{
+	if result.TotalVMs == 0 {
+		return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, metav1.Condition{
+			Type:               conditionTypeReady,
+			Status:             metav1.ConditionFalse,
+			Reason:             reasonNoVMs,
+			Message:            "No VMs match the plan's vmSelector",
+			ObservedGeneration: plan.Generation,
+		})
+	}
+
+	// Resolve volume group consistency from namespace annotations.
+	consistency, err := engine.ResolveVolumeGroups(ctx, vms, plan.Spec.WaveLabel, r.NamespaceLookup)
+	if err != nil {
+		logger.Error(err, "Failed to resolve volume groups")
+		return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, metav1.Condition{
+			Type:               conditionTypeReady,
+			Status:             metav1.ConditionFalse,
+			Reason:             reasonError,
+			Message:            fmt.Sprintf("Volume group resolution failed: %v", err),
+			ObservedGeneration: plan.Generation,
+		})
+	}
+
+	if len(consistency.WaveConflicts) > 0 {
+		msg := formatWaveConflicts(consistency.WaveConflicts)
+		logger.Info("Detected wave conflict", "conflicts", len(consistency.WaveConflicts))
+		r.event(&plan, "Warning", "WaveConflictDetected", msg)
+		return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, metav1.Condition{
+			Type:               conditionTypeReady,
+			Status:             metav1.ConditionFalse,
+			Reason:             reasonWaveConflict,
+			Message:            msg,
+			ObservedGeneration: plan.Generation,
+		})
+	}
+
+	// Populate volume groups on each wave.
+	groupsByWave := buildGroupsByWave(consistency.VolumeGroups, vms, plan.Spec.WaveLabel)
+	for i := range waves {
+		waves[i].Groups = groupsByWave[waves[i].WaveKey]
+	}
+
+	nsLevelCount, vmLevelCount := countGroupLevels(consistency.VolumeGroups)
+	logger.Info("Resolved volume groups", "namespaceLevel", nsLevelCount, "vmLevel", vmLevelCount)
+
+	// Chunk waves into DRGroups respecting maxConcurrentFailovers.
+	chunkInput := engine.ChunkInput{
+		WaveGroups: make([]engine.WaveGroupWithVolumes, len(waves)),
+	}
+	for i, w := range waves {
+		chunkInput.WaveGroups[i] = engine.WaveGroupWithVolumes{
+			WaveKey:      w.WaveKey,
+			VolumeGroups: w.Groups,
+		}
+	}
+
+	chunkResult := engine.ChunkWaves(chunkInput, plan.Spec.MaxConcurrentFailovers)
+	if len(chunkResult.Errors) > 0 {
+		msg := formatChunkErrors(chunkResult.Errors, plan.Spec.MaxConcurrentFailovers)
+		logger.Info("Chunking failed", "errors", len(chunkResult.Errors))
+		r.event(&plan, "Warning", "ChunkingFailed", msg)
+		return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, metav1.Condition{
+			Type:               conditionTypeReady,
+			Status:             metav1.ConditionFalse,
+			Reason:             reasonGroupExceedsThrottle,
+			Message:            msg,
+			ObservedGeneration: plan.Generation,
+		})
+	}
+
+	r.event(&plan, "Normal", "ConsistencyResolved",
+		fmt.Sprintf("Resolved %d volume groups (%d namespace-level, %d VM-level)",
+			len(consistency.VolumeGroups), nsLevelCount, vmLevelCount))
+
+	return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, metav1.Condition{
+		Type:               conditionTypeReady,
+		Status:             metav1.ConditionTrue,
+		Reason:             reasonDiscovered,
+		Message:            "VMs discovered and grouped into waves",
 		ObservedGeneration: plan.Generation,
-	}
-	if result.TotalVMs > 0 {
-		condition.Type = conditionTypeReady
-		condition.Status = metav1.ConditionTrue
-		condition.Reason = reasonDiscovered
-		condition.Message = "VMs discovered and grouped into waves"
-	} else {
-		condition.Type = conditionTypeReady
-		condition.Status = metav1.ConditionFalse
-		condition.Reason = reasonNoVMs
-		condition.Message = "No VMs match the plan's vmSelector"
-	}
-
-	if err := r.Get(ctx, req.NamespacedName, &plan); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	oldWaves := plan.Status.Waves
-	plan.Status.Waves = waves
-	plan.Status.DiscoveredVMCount = result.TotalVMs
-	plan.Status.ObservedGeneration = plan.Generation
-	meta.SetStatusCondition(&plan.Status.Conditions, condition)
-
-	if err := r.Status().Update(ctx, &plan); err != nil {
-		logger.Error(err, "Failed to update DRPlan status")
-		return ctrl.Result{}, err
-	}
-
-	if !reflect.DeepEqual(oldWaves, waves) {
-		logger.Info("Discovery completed", "totalVMs", result.TotalVMs, "waves", len(result.Waves))
-		r.event(&plan, "Normal", "DiscoveryCompleted",
-			fmt.Sprintf("Discovered %d VMs across %d waves", result.TotalVMs, len(result.Waves)))
-	}
-
-	return ctrl.Result{RequeueAfter: requeueInterval}, nil
+	})
 }
 
-func (r *DRPlanReconciler) setCondition(
-	ctx context.Context, plan *soteriav1alpha1.DRPlan, condition metav1.Condition,
+func (r *DRPlanReconciler) setDiscoveryErrorCondition(
+	ctx context.Context, plan *soteriav1alpha1.DRPlan, discoveryErr error,
 ) error {
 	if err := r.Get(ctx, types.NamespacedName{Name: plan.Name, Namespace: plan.Namespace}, plan); err != nil {
 		return err
 	}
-	meta.SetStatusCondition(&plan.Status.Conditions, condition)
+	meta.SetStatusCondition(&plan.Status.Conditions, metav1.Condition{
+		Type:               conditionTypeReady,
+		Status:             metav1.ConditionFalse,
+		Reason:             reasonError,
+		Message:            discoveryErr.Error(),
+		ObservedGeneration: plan.Generation,
+	})
 	return r.Status().Update(ctx, plan)
 }
 
@@ -186,6 +242,11 @@ func (r *DRPlanReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			&kubevirtv1.VirtualMachine{},
 			handler.EnqueueRequestsFromMapFunc(r.mapVMToDRPlans),
 			builder.WithPredicates(vmRelevantChangePredicate()),
+		).
+		Watches(
+			&corev1.Namespace{},
+			handler.EnqueueRequestsFromMapFunc(r.mapNamespaceToDRPlans),
+			builder.WithPredicates(nsConsistencyAnnotationChangePredicate()),
 		).
 		Complete(r)
 }
@@ -227,6 +288,172 @@ func (r *DRPlanReconciler) mapVMToDRPlans(ctx context.Context, obj client.Object
 		"vm", obj.GetName(), "namespace", obj.GetNamespace(), "matchedPlans", len(requests))
 
 	return requests
+}
+
+// mapNamespaceToDRPlans returns reconcile requests for every DRPlan that has
+// already discovered VMs in the changed namespace. This ensures that a
+// consistency-annotation change (e.g. adding soteria.io/consistency-level)
+// re-evaluates volume groups promptly instead of waiting for the periodic
+// requeue.
+func (r *DRPlanReconciler) mapNamespaceToDRPlans(
+	ctx context.Context, obj client.Object,
+) []reconcile.Request {
+	logger := log.FromContext(ctx)
+	nsName := obj.GetName()
+
+	var planList soteriav1alpha1.DRPlanList
+	if err := r.List(ctx, &planList); err != nil {
+		logger.Error(err, "Failed to list DRPlans for namespace mapping")
+		return nil
+	}
+
+	var requests []reconcile.Request
+	for i := range planList.Items {
+		plan := &planList.Items[i]
+		if planReferencesNamespace(plan, nsName) {
+			requests = append(requests, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      plan.Name,
+					Namespace: plan.Namespace,
+				},
+			})
+		}
+	}
+
+	logger.V(2).Info("Namespace annotation change mapped to DRPlans",
+		"namespace", nsName, "matchedPlans", len(requests))
+
+	return requests
+}
+
+// planReferencesNamespace returns true if any VM in the plan's discovered
+// waves belongs to the given namespace.
+func planReferencesNamespace(
+	plan *soteriav1alpha1.DRPlan, namespace string,
+) bool {
+	for _, wave := range plan.Status.Waves {
+		for _, vm := range wave.VMs {
+			if vm.Namespace == namespace {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// nsConsistencyAnnotationChangePredicate fires only when the
+// soteria.io/consistency-level annotation is added, changed, or removed.
+// Other namespace mutations (labels, other annotations, status) are ignored.
+func nsConsistencyAnnotationChangePredicate() predicate.Predicate {
+	return predicate.Funcs{
+		CreateFunc: func(_ event.CreateEvent) bool {
+			return false
+		},
+		DeleteFunc: func(_ event.DeleteEvent) bool {
+			return false
+		},
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldVal := e.ObjectOld.GetAnnotations()[soteriav1alpha1.ConsistencyAnnotation]
+			newVal := e.ObjectNew.GetAnnotations()[soteriav1alpha1.ConsistencyAnnotation]
+			return oldVal != newVal
+		},
+		GenericFunc: func(_ event.GenericEvent) bool {
+			return false
+		},
+	}
+}
+
+func (r *DRPlanReconciler) updateStatus(
+	ctx context.Context,
+	req ctrl.Request,
+	plan *soteriav1alpha1.DRPlan,
+	waves []soteriav1alpha1.WaveInfo,
+	totalVMs int,
+	condition metav1.Condition,
+) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+
+	if err := r.Get(ctx, req.NamespacedName, plan); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	oldWaves := plan.Status.Waves
+	plan.Status.Waves = waves
+	plan.Status.DiscoveredVMCount = totalVMs
+	plan.Status.ObservedGeneration = plan.Generation
+	meta.SetStatusCondition(&plan.Status.Conditions, condition)
+
+	if err := r.Status().Update(ctx, plan); err != nil {
+		logger.Error(err, "Failed to update DRPlan status")
+		return ctrl.Result{}, err
+	}
+
+	if !reflect.DeepEqual(oldWaves, waves) {
+		logger.Info("Discovery completed", "totalVMs", totalVMs, "waves", len(waves))
+		r.event(plan, "Normal", "DiscoveryCompleted",
+			fmt.Sprintf("Discovered %d VMs across %d waves", totalVMs, len(waves)))
+	}
+
+	return ctrl.Result{RequeueAfter: requeueInterval}, nil
+}
+
+func formatWaveConflicts(conflicts []engine.WaveConflict) string {
+	var msg strings.Builder
+	msg.WriteString("Namespace-level VMs span multiple waves:")
+	for _, c := range conflicts {
+		msg.WriteString(fmt.Sprintf(" namespace %q VMs %v in waves %v;", c.Namespace, c.VMNames, c.WaveKeys))
+	}
+	return msg.String()
+}
+
+func formatChunkErrors(
+	chunkErrors []engine.ChunkError, maxConcurrent int,
+) string {
+	var msg strings.Builder
+	for i, e := range chunkErrors {
+		if i > 0 {
+			msg.WriteString("; ")
+		}
+		fmt.Fprintf(&msg,
+			"maxConcurrentFailovers (%d) is less than"+
+				" namespace+wave group size (%d)"+
+				" for namespace %s wave %s",
+			maxConcurrent, e.GroupSize, e.Namespace, e.WaveKey)
+	}
+	return msg.String()
+}
+
+// buildGroupsByWave assigns VolumeGroups to the wave they belong to.
+func buildGroupsByWave(
+	groups []soteriav1alpha1.VolumeGroupInfo,
+	vms []engine.VMReference,
+	waveLabel string,
+) map[string][]soteriav1alpha1.VolumeGroupInfo {
+	vmWave := make(map[string]string, len(vms))
+	for _, vm := range vms {
+		key := vm.Namespace + "/" + vm.Name
+		vmWave[key] = vm.Labels[waveLabel]
+	}
+
+	result := make(map[string][]soteriav1alpha1.VolumeGroupInfo)
+	for _, g := range groups {
+		if len(g.VMNames) > 0 {
+			waveKey := vmWave[g.Namespace+"/"+g.VMNames[0]]
+			result[waveKey] = append(result[waveKey], g)
+		}
+	}
+	return result
+}
+
+func countGroupLevels(groups []soteriav1alpha1.VolumeGroupInfo) (nsLevel, vmLevel int) {
+	for _, g := range groups {
+		if g.ConsistencyLevel == soteriav1alpha1.ConsistencyLevelNamespace {
+			nsLevel++
+		} else {
+			vmLevel++
+		}
+	}
+	return
 }
 
 // vmRelevantChangePredicate filters VM events to only those that affect DRPlan

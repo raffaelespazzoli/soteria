@@ -1,6 +1,6 @@
 # Story 2.2: Namespace-Level Volume Consistency
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -230,8 +230,8 @@ The reconciler needs to read namespace annotations. This requires:
 | Field | Value |
 |-------|-------|
 | Story file created | 2026-04-09 |
-| Implementation started | — |
-| Implementation completed | — |
-| Code review requested | — |
-| Code review completed | — |
-| Status | ready-for-dev |
+| Implementation started | 2026-04-10 |
+| Implementation completed | 2026-04-10 |
+| Code review requested | 2026-04-10 |
+| Code review completed | 2026-04-10 |
+| Status | done |

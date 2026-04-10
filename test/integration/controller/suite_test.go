@@ -35,6 +35,7 @@ import (
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -91,11 +92,19 @@ func TestMain(m *testing.M) {
 	}
 
 	vmDiscoverer := engine.NewTypedVMDiscoverer(mgr.GetClient())
+
+	clientset, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		panic(fmt.Sprintf("creating kubernetes clientset: %v", err))
+	}
+	nsLookup := &engine.DefaultNamespaceLookup{Client: clientset.CoreV1()}
+
 	if err := (&drplan.DRPlanReconciler{
-		Client:       mgr.GetClient(),
-		Scheme:       mgr.GetScheme(),
-		VMDiscoverer: vmDiscoverer,
-		Recorder:     mgr.GetEventRecorderFor("drplan-controller"),
+		Client:          mgr.GetClient(),
+		Scheme:          mgr.GetScheme(),
+		VMDiscoverer:    vmDiscoverer,
+		NamespaceLookup: nsLookup,
+		Recorder:        mgr.GetEventRecorderFor("drplan-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		panic(fmt.Sprintf("setting up DRPlan controller: %v", err))
 	}
@@ -220,6 +229,44 @@ func waitForCondition(ctx context.Context, name, namespace, condType string, sta
 		time.Sleep(200 * time.Millisecond)
 	}
 	return nil, fmt.Errorf("timed out waiting for condition %s=%s on %s/%s", condType, status, namespace, name)
+}
+
+// waitForConditionReason polls until the DRPlan has the given condition reason.
+func waitForConditionReason(ctx context.Context, name, namespace, condType, reason string, timeout time.Duration) (*soteriav1alpha1.DRPlan, error) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		var plan soteriav1alpha1.DRPlan
+		if err := testClient.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, &plan); err != nil {
+			time.Sleep(200 * time.Millisecond)
+			continue
+		}
+		for _, c := range plan.Status.Conditions {
+			if c.Type == condType && c.Reason == reason {
+				return &plan, nil
+			}
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	return nil, fmt.Errorf("timed out waiting for condition %s reason=%s on %s/%s", condType, reason, namespace, name)
+}
+
+// waitForWaveGroups polls until the DRPlan has groups populated in at least one wave.
+func waitForWaveGroups(ctx context.Context, name, namespace string, timeout time.Duration) (*soteriav1alpha1.DRPlan, error) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		var plan soteriav1alpha1.DRPlan
+		if err := testClient.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, &plan); err != nil {
+			time.Sleep(200 * time.Millisecond)
+			continue
+		}
+		for _, w := range plan.Status.Waves {
+			if len(w.Groups) > 0 {
+				return &plan, nil
+			}
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	return nil, fmt.Errorf("timed out waiting for wave groups on %s/%s", namespace, name)
 }
 
 // waitForVMCount polls until the DRPlan's DiscoveredVMCount matches.

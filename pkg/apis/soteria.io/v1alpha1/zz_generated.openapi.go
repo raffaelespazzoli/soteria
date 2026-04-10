@@ -46,6 +46,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DRPlanStatus":           schema_pkg_apis_soteriaio_v1alpha1_DRPlanStatus(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DiscoveredVM":           schema_pkg_apis_soteriaio_v1alpha1_DiscoveredVM(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.StepStatus":             schema_pkg_apis_soteriaio_v1alpha1_StepStatus(ref),
+		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.VolumeGroupInfo":        schema_pkg_apis_soteriaio_v1alpha1_VolumeGroupInfo(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.WaveInfo":               schema_pkg_apis_soteriaio_v1alpha1_WaveInfo(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.WaveStatus":             schema_pkg_apis_soteriaio_v1alpha1_WaveStatus(ref),
 		resource.Quantity{}.OpenAPIModelName():                                                   schema_apimachinery_pkg_api_resource_Quantity(ref),
@@ -831,6 +832,59 @@ func schema_pkg_apis_soteriaio_v1alpha1_StepStatus(ref common.ReferenceCallback)
 	}
 }
 
+func schema_pkg_apis_soteriaio_v1alpha1_VolumeGroupInfo(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "VolumeGroupInfo describes a group of VM disks that must be snapshotted atomically. Namespace-level groups ensure crash-consistent snapshots across all VMs sharing a namespace; VM-level groups (the default) scope consistency to a single VM's disks.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"name": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Name is the group identifier (e.g. \"ns-erp-database\" or \"vm-default-web01\").",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"namespace": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Namespace is the Kubernetes namespace for VMs in this group.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"consistencyLevel": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ConsistencyLevel indicates whether this is a namespace- or VM-level group.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"vmNames": {
+						SchemaProps: spec.SchemaProps{
+							Description: "VMNames lists the VMs belonging to this volume group.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: "",
+										Type:    []string{"string"},
+										Format:  "",
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"name", "namespace", "consistencyLevel", "vmNames"},
+			},
+		},
+	}
+}
+
 func schema_pkg_apis_soteriaio_v1alpha1_WaveInfo(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
@@ -865,12 +919,26 @@ func schema_pkg_apis_soteriaio_v1alpha1_WaveInfo(ref common.ReferenceCallback) c
 							},
 						},
 					},
+					"groups": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Groups contains the volume groups formed from VMs in this wave. Populated after consistency resolution succeeds.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: map[string]interface{}{},
+										Ref:     ref("github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.VolumeGroupInfo"),
+									},
+								},
+							},
+						},
+					},
 				},
 				Required: []string{"waveKey", "vms"},
 			},
 		},
 		Dependencies: []string{
-			"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DiscoveredVM"},
+			"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DiscoveredVM", "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.VolumeGroupInfo"},
 	}
 }
 

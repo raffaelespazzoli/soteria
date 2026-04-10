@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"testing"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -44,6 +45,20 @@ type mockVMDiscoverer struct {
 
 func (m *mockVMDiscoverer) DiscoverVMs(_ context.Context, _ metav1.LabelSelector) ([]engine.VMReference, error) {
 	return m.vms, m.err
+}
+
+// mockNamespaceLookup implements engine.NamespaceLookup for unit tests.
+type mockNamespaceLookup struct {
+	levels map[string]soteriav1alpha1.ConsistencyLevel
+}
+
+func (m *mockNamespaceLookup) GetConsistencyLevel(
+	_ context.Context, namespace string,
+) (soteriav1alpha1.ConsistencyLevel, error) {
+	if level, ok := m.levels[namespace]; ok {
+		return level, nil
+	}
+	return soteriav1alpha1.ConsistencyLevelVM, nil
 }
 
 var planKey = types.NamespacedName{Name: "plan-1", Namespace: "default"}
@@ -75,7 +90,20 @@ func newTestPlan(name string) *soteriav1alpha1.DRPlan {
 	}
 }
 
-func newReconciler(objs []client.Object, discoverer engine.VMDiscoverer) (*DRPlanReconciler, client.Client) {
+func newReconciler(
+	objs []client.Object, discoverer engine.VMDiscoverer,
+) (*DRPlanReconciler, client.Client) {
+	emptyLevels := map[string]soteriav1alpha1.ConsistencyLevel{}
+	return newReconcilerWithNSLookup(
+		objs, discoverer, &mockNamespaceLookup{levels: emptyLevels},
+	)
+}
+
+func newReconcilerWithNSLookup(
+	objs []client.Object,
+	discoverer engine.VMDiscoverer,
+	nsLookup engine.NamespaceLookup,
+) (*DRPlanReconciler, client.Client) {
 	scheme := newTestScheme()
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
@@ -84,10 +112,11 @@ func newReconciler(objs []client.Object, discoverer engine.VMDiscoverer) (*DRPla
 		Build()
 
 	return &DRPlanReconciler{
-		Client:       fakeClient,
-		Scheme:       scheme,
-		VMDiscoverer: discoverer,
-		Recorder:     record.NewFakeRecorder(10),
+		Client:          fakeClient,
+		Scheme:          scheme,
+		VMDiscoverer:    discoverer,
+		NamespaceLookup: nsLookup,
+		Recorder:        record.NewFakeRecorder(10),
 	}, fakeClient
 }
 
@@ -409,6 +438,380 @@ func TestVMRelevantChangePredicate_Generic(t *testing.T) {
 	p := vmRelevantChangePredicate()
 	if !p.Generic(event.GenericEvent{}) {
 		t.Error("Generic should return true")
+	}
+}
+
+func TestReconcile_VMLevel_IndividualVolumeGroups(t *testing.T) {
+	plan := newTestPlan("plan-1")
+	vms := []engine.VMReference{
+		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+		{Name: "vm-2", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+	}
+
+	nsLookup := &mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{}}
+	r, c := newReconcilerWithNSLookup([]client.Object{plan}, &mockVMDiscoverer{vms: vms}, nsLookup)
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "plan-1", Namespace: "default"},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	var updated soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &updated); err != nil {
+		t.Fatalf("Failed to get plan: %v", err)
+	}
+
+	readyCond := findCondition(updated.Status.Conditions, conditionTypeReady)
+	if readyCond == nil || readyCond.Status != metav1.ConditionTrue {
+		t.Fatal("Expected Ready=True")
+	}
+
+	if len(updated.Status.Waves) != 1 {
+		t.Fatalf("len(Waves) = %d, want 1", len(updated.Status.Waves))
+	}
+	if len(updated.Status.Waves[0].Groups) != 2 {
+		t.Errorf("Wave[0] groups = %d, want 2 (individual VM groups)", len(updated.Status.Waves[0].Groups))
+	}
+	for _, g := range updated.Status.Waves[0].Groups {
+		if g.ConsistencyLevel != soteriav1alpha1.ConsistencyLevelVM {
+			t.Errorf("Group %q level = %q, want vm", g.Name, g.ConsistencyLevel)
+		}
+	}
+}
+
+func TestReconcile_NamespaceLevel_SingleVolumeGroup(t *testing.T) {
+	plan := newTestPlan("plan-1")
+	vms := []engine.VMReference{
+		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+		{Name: "vm-2", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+		{Name: "vm-3", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+	}
+
+	nsLookup := &mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{
+		"default": soteriav1alpha1.ConsistencyLevelNamespace,
+	}}
+	r, c := newReconcilerWithNSLookup([]client.Object{plan}, &mockVMDiscoverer{vms: vms}, nsLookup)
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "plan-1", Namespace: "default"},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	var updated soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &updated); err != nil {
+		t.Fatalf("Failed to get plan: %v", err)
+	}
+
+	readyCond := findCondition(updated.Status.Conditions, conditionTypeReady)
+	if readyCond == nil || readyCond.Status != metav1.ConditionTrue {
+		t.Fatal("Expected Ready=True")
+	}
+
+	if len(updated.Status.Waves[0].Groups) != 1 {
+		t.Fatalf("Wave[0] groups = %d, want 1", len(updated.Status.Waves[0].Groups))
+	}
+	if updated.Status.Waves[0].Groups[0].ConsistencyLevel != soteriav1alpha1.ConsistencyLevelNamespace {
+		t.Errorf("Group level = %q, want namespace", updated.Status.Waves[0].Groups[0].ConsistencyLevel)
+	}
+	if len(updated.Status.Waves[0].Groups[0].VMNames) != 3 {
+		t.Errorf("Group VMNames count = %d, want 3", len(updated.Status.Waves[0].Groups[0].VMNames))
+	}
+}
+
+func TestReconcile_WaveConflict_ReadyFalse(t *testing.T) {
+	plan := newTestPlan("plan-1")
+	vms := []engine.VMReference{
+		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+		{Name: "vm-2", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "2"}},
+	}
+
+	nsLookup := &mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{
+		"default": soteriav1alpha1.ConsistencyLevelNamespace,
+	}}
+	r, c := newReconcilerWithNSLookup([]client.Object{plan}, &mockVMDiscoverer{vms: vms}, nsLookup)
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "plan-1", Namespace: "default"},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	var updated soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &updated); err != nil {
+		t.Fatalf("Failed to get plan: %v", err)
+	}
+
+	readyCond := findCondition(updated.Status.Conditions, conditionTypeReady)
+	if readyCond == nil {
+		t.Fatal("Ready condition not found")
+	}
+	if readyCond.Status != metav1.ConditionFalse {
+		t.Errorf("Ready.Status = %v, want False", readyCond.Status)
+	}
+	if readyCond.Reason != reasonWaveConflict {
+		t.Errorf("Ready.Reason = %q, want %q", readyCond.Reason, reasonWaveConflict)
+	}
+
+	for _, w := range updated.Status.Waves {
+		if len(w.Groups) != 0 {
+			t.Errorf("Wave %q should have no groups on conflict, got %d", w.WaveKey, len(w.Groups))
+		}
+	}
+}
+
+func TestReconcile_NamespaceGroupExceedsThrottle_ReadyFalse(t *testing.T) {
+	plan := newTestPlan("plan-1")
+	plan.Spec.MaxConcurrentFailovers = 2
+	vms := []engine.VMReference{
+		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+		{Name: "vm-2", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+		{Name: "vm-3", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+	}
+
+	nsLookup := &mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{
+		"default": soteriav1alpha1.ConsistencyLevelNamespace,
+	}}
+	r, c := newReconcilerWithNSLookup([]client.Object{plan}, &mockVMDiscoverer{vms: vms}, nsLookup)
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "plan-1", Namespace: "default"},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	var updated soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &updated); err != nil {
+		t.Fatalf("Failed to get plan: %v", err)
+	}
+
+	readyCond := findCondition(updated.Status.Conditions, conditionTypeReady)
+	if readyCond == nil {
+		t.Fatal("Ready condition not found")
+	}
+	if readyCond.Status != metav1.ConditionFalse {
+		t.Errorf("Ready.Status = %v, want False", readyCond.Status)
+	}
+	if readyCond.Reason != reasonGroupExceedsThrottle {
+		t.Errorf("Ready.Reason = %q, want %q", readyCond.Reason, reasonGroupExceedsThrottle)
+	}
+}
+
+func TestReconcile_WaveConflictResolved_ReadyTrue(t *testing.T) {
+	plan := newTestPlan("plan-1")
+	vms := []engine.VMReference{
+		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+		{Name: "vm-2", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "2"}},
+	}
+
+	nsLookup := &mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{
+		"default": soteriav1alpha1.ConsistencyLevelNamespace,
+	}}
+	mock := &mockVMDiscoverer{vms: vms}
+	r, c := newReconcilerWithNSLookup([]client.Object{plan}, mock, nsLookup)
+
+	_, _ = r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "plan-1", Namespace: "default"},
+	})
+
+	mock.vms[1].Labels["soteria.io/wave"] = "1"
+	_, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "plan-1", Namespace: "default"},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	var updated soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &updated); err != nil {
+		t.Fatalf("Failed to get plan: %v", err)
+	}
+
+	readyCond := findCondition(updated.Status.Conditions, conditionTypeReady)
+	if readyCond == nil || readyCond.Status != metav1.ConditionTrue {
+		t.Errorf("Expected Ready=True after conflict resolved, got %v", readyCond)
+	}
+}
+
+func TestReconcile_MixedConsistency_CorrectGrouping(t *testing.T) {
+	plan := newTestPlan("plan-1")
+	vms := []engine.VMReference{
+		{Name: "vm-ns-1", Namespace: "ns-level", Labels: map[string]string{"soteria.io/wave": "1"}},
+		{Name: "vm-ns-2", Namespace: "ns-level", Labels: map[string]string{"soteria.io/wave": "1"}},
+		{Name: "vm-ind-1", Namespace: "vm-level", Labels: map[string]string{"soteria.io/wave": "1"}},
+		{Name: "vm-ind-2", Namespace: "vm-level", Labels: map[string]string{"soteria.io/wave": "1"}},
+	}
+
+	nsLookup := &mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{
+		"ns-level": soteriav1alpha1.ConsistencyLevelNamespace,
+	}}
+	r, c := newReconcilerWithNSLookup([]client.Object{plan}, &mockVMDiscoverer{vms: vms}, nsLookup)
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "plan-1", Namespace: "default"},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	var updated soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &updated); err != nil {
+		t.Fatalf("Failed to get plan: %v", err)
+	}
+
+	readyCond := findCondition(updated.Status.Conditions, conditionTypeReady)
+	if readyCond == nil || readyCond.Status != metav1.ConditionTrue {
+		t.Fatal("Expected Ready=True")
+	}
+
+	if len(updated.Status.Waves) != 1 {
+		t.Fatalf("len(Waves) = %d, want 1", len(updated.Status.Waves))
+	}
+	wave := updated.Status.Waves[0]
+	if len(wave.Groups) != 3 {
+		t.Fatalf("Wave groups = %d, want 3 (1 ns-level + 2 vm-level)", len(wave.Groups))
+	}
+
+	nsCount := 0
+	vmCount := 0
+	for _, g := range wave.Groups {
+		if g.ConsistencyLevel == soteriav1alpha1.ConsistencyLevelNamespace {
+			nsCount++
+		} else {
+			vmCount++
+		}
+	}
+	if nsCount != 1 || vmCount != 2 {
+		t.Errorf("Group breakdown: ns=%d, vm=%d, want ns=1, vm=2", nsCount, vmCount)
+	}
+}
+
+func TestNsConsistencyAnnotationChangePredicate_Create(t *testing.T) {
+	p := nsConsistencyAnnotationChangePredicate()
+	if p.Create(event.CreateEvent{}) {
+		t.Error("Create should return false")
+	}
+}
+
+func TestNsConsistencyAnnotationChangePredicate_Delete(t *testing.T) {
+	p := nsConsistencyAnnotationChangePredicate()
+	if p.Delete(event.DeleteEvent{}) {
+		t.Error("Delete should return false")
+	}
+}
+
+func TestNsConsistencyAnnotationChangePredicate_AnnotationAdded(t *testing.T) {
+	p := nsConsistencyAnnotationChangePredicate()
+	old := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-ns"},
+	}
+	updated := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "test-ns",
+			Annotations: map[string]string{
+				soteriav1alpha1.ConsistencyAnnotation: "namespace",
+			},
+		},
+	}
+	if !p.Update(event.UpdateEvent{ObjectOld: old, ObjectNew: updated}) {
+		t.Error("Update adding consistency annotation should return true")
+	}
+}
+
+func TestNsConsistencyAnnotationChangePredicate_UnrelatedAnnotation(t *testing.T) {
+	p := nsConsistencyAnnotationChangePredicate()
+	old := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-ns"},
+	}
+	updated := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        "test-ns",
+			Annotations: map[string]string{"unrelated": "value"},
+		},
+	}
+	if p.Update(event.UpdateEvent{ObjectOld: old, ObjectNew: updated}) {
+		t.Error("Update with unrelated annotation should return false")
+	}
+}
+
+func TestNsConsistencyAnnotationChangePredicate_NoChange(t *testing.T) {
+	p := nsConsistencyAnnotationChangePredicate()
+	annotations := map[string]string{
+		soteriav1alpha1.ConsistencyAnnotation: "namespace",
+	}
+	old := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-ns", Annotations: annotations},
+	}
+	updated := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-ns", Annotations: annotations},
+	}
+	if p.Update(event.UpdateEvent{ObjectOld: old, ObjectNew: updated}) {
+		t.Error("Update with same annotation value should return false")
+	}
+}
+
+func TestNsConsistencyAnnotationChangePredicate_Generic(t *testing.T) {
+	p := nsConsistencyAnnotationChangePredicate()
+	if p.Generic(event.GenericEvent{}) {
+		t.Error("Generic should return false")
+	}
+}
+
+func TestMapNamespaceToDRPlans_MatchesOne(t *testing.T) {
+	plan := newTestPlan("plan-1")
+	vms := []engine.VMReference{
+		{Name: "vm-1", Namespace: "target-ns",
+			Labels: map[string]string{"soteria.io/wave": "1"}},
+	}
+	r, _ := newReconciler(
+		[]client.Object{plan}, &mockVMDiscoverer{vms: vms},
+	)
+
+	_, _ = r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name: "plan-1", Namespace: "default",
+		},
+	})
+
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{Name: "target-ns"},
+	}
+	requests := r.mapNamespaceToDRPlans(context.Background(), ns)
+	if len(requests) != 1 {
+		t.Fatalf("expected 1 request, got %d", len(requests))
+	}
+	if requests[0].Name != "plan-1" {
+		t.Errorf("request = %v, want plan-1", requests[0].NamespacedName)
+	}
+}
+
+func TestMapNamespaceToDRPlans_MatchesNone(t *testing.T) {
+	plan := newTestPlan("plan-1")
+	vms := []engine.VMReference{
+		{Name: "vm-1", Namespace: "other-ns",
+			Labels: map[string]string{"soteria.io/wave": "1"}},
+	}
+	r, _ := newReconciler(
+		[]client.Object{plan}, &mockVMDiscoverer{vms: vms},
+	)
+
+	_, _ = r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name: "plan-1", Namespace: "default",
+		},
+	})
+
+	ns := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{Name: "unrelated-ns"},
+	}
+	requests := r.mapNamespaceToDRPlans(context.Background(), ns)
+	if len(requests) != 0 {
+		t.Errorf("expected 0 requests, got %d", len(requests))
 	}
 }
 

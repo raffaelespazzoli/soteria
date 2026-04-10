@@ -36,6 +36,7 @@
 
 generated: 2026-04-06
 last_updated: 2026-04-10
+# 2.2 done: Namespace-Level Volume Consistency — implemented, reviewed, all tests green
 # 2.1 done: DRPlan Controller & VM Auto-Discovery — implemented, reviewed, fixes applied
 # 2.5 created: RBAC & Secure Credential Handling story file
 # 2.4 created: Pre-flight Plan Composition Check story file
@@ -66,7 +67,7 @@ development_status:
   # Epic 2: DR Plan Discovery, Validation & Access Control
   epic-2: in-progress
   2-1-drplan-controller-vm-auto-discovery: done
-  2-2-namespace-level-volume-consistency: ready-for-dev
+  2-2-namespace-level-volume-consistency: done
   2-3-admission-webhooks-drplan-validation: ready-for-dev
   2-3-1-vm-label-validation-webhook: ready-for-dev
   2-4-pre-flight-plan-composition-check: ready-for-dev
