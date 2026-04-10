@@ -5,3 +5,4 @@ resources:
   - ca-certificate.yaml
   - scylladb-serving-cert.yaml
   - scylladb-client-cert.yaml
+  - webhook-serving-cert.yaml

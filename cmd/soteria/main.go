@@ -38,6 +38,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
+	soteriaadmission "github.com/soteria-project/soteria/pkg/admission"
 	soteriainstall "github.com/soteria-project/soteria/pkg/apis/soteria.io/install"
 	"github.com/soteria-project/soteria/pkg/apiserver"
 	"github.com/soteria-project/soteria/pkg/controller/drplan"
@@ -249,20 +250,25 @@ func main() {
 		os.Exit(1)
 	}
 
+	vmDiscoverer := engine.NewTypedVMDiscoverer(mgr.GetClient())
+
+	clientset, err := kubernetes.NewForConfig(restConfig)
+	if err != nil {
+		setupLog.Error(err, "Failed to create Kubernetes clientset")
+		os.Exit(1)
+	}
+	nsLookup := &engine.DefaultNamespaceLookup{Client: clientset.CoreV1()}
+
+	if err := soteriaadmission.SetupDRPlanWebhook(mgr, vmDiscoverer, nsLookup); err != nil {
+		setupLog.Error(err, "Failed to set up DRPlan webhook")
+		os.Exit(1)
+	}
+
 	// Controllers that watch soteria.io resources require the aggregated API
 	// server to be reachable (in-process or external). When --enable-apiserver
 	// is false and no external server is registered, the informer would fail
 	// to discover the soteria.io/v1alpha1 group.
 	if enableAPIServer {
-		vmDiscoverer := engine.NewTypedVMDiscoverer(mgr.GetClient())
-
-		clientset, err := kubernetes.NewForConfig(restConfig)
-		if err != nil {
-			setupLog.Error(err, "Failed to create Kubernetes clientset")
-			os.Exit(1)
-		}
-		nsLookup := &engine.DefaultNamespaceLookup{Client: clientset.CoreV1()}
-
 		if err := (&drplan.DRPlanReconciler{
 			Client:          mgr.GetClient(),
 			Scheme:          mgr.GetScheme(),

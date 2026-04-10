@@ -1,0 +1,17 @@
+# TLS certificate for the admission webhook server.
+# cert-manager's CA injector patches the ValidatingWebhookConfiguration
+# with the CA bundle so the kube-apiserver trusts the webhook.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: serving-cert
+  namespace: soteria-system
+spec:
+  secretName: webhook-server-cert
+  duration: 8760h # 1 year
+  issuerRef:
+    name: soteria-ca
+    kind: Issuer
+  dnsNames:
+    - WEBHOOK_SERVICE_NAME.WEBHOOK_SERVICE_NAMESPACE.svc
+    - WEBHOOK_SERVICE_NAME.WEBHOOK_SERVICE_NAMESPACE.svc.cluster.local

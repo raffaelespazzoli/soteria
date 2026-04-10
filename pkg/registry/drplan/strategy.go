@@ -54,24 +54,13 @@ func (drplanStrategy) PrepareForUpdate(_ context.Context, obj, old runtime.Objec
 
 func (drplanStrategy) Validate(_ context.Context, obj runtime.Object) field.ErrorList {
 	plan := obj.(*soteriav1alpha1.DRPlan)
-	allErrs := field.ErrorList{}
-
-	fldPath := field.NewPath("spec")
-	if plan.Spec.WaveLabel == "" {
-		allErrs = append(allErrs, field.Required(fldPath.Child("waveLabel"), ""))
-	}
-	if plan.Spec.MaxConcurrentFailovers <= 0 {
-		allErrs = append(allErrs, field.Invalid(
-			fldPath.Child("maxConcurrentFailovers"),
-			plan.Spec.MaxConcurrentFailovers,
-			"must be greater than 0",
-		))
-	}
-	return allErrs
+	return soteriav1alpha1.ValidateDRPlan(plan)
 }
 
-func (s drplanStrategy) ValidateUpdate(ctx context.Context, obj, _ runtime.Object) field.ErrorList {
-	return s.Validate(ctx, obj)
+func (drplanStrategy) ValidateUpdate(_ context.Context, obj, old runtime.Object) field.ErrorList {
+	newPlan := obj.(*soteriav1alpha1.DRPlan)
+	oldPlan := old.(*soteriav1alpha1.DRPlan)
+	return soteriav1alpha1.ValidateDRPlanUpdate(newPlan, oldPlan)
 }
 
 func (drplanStrategy) WarningsOnCreate(_ context.Context, _ runtime.Object) []string    { return nil }
