@@ -34,6 +34,9 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 | **operator-sdk CLI** | OLM bundle generation only | Standalone tool, not scaffolding — `generate bundle` + `bundle validate` |
 | **GitHub Actions** | CI/CD | Reuse redhat-cop/github-workflows-operators |
 
+**External Runtime Dependencies:**
+- `kubevirt.io/api` — typed `kubevirtv1.VirtualMachine` access. This is a DR orchestrator for VMs — the kubevirt dependency is fundamental. Register in scheme: `kubevirtv1.AddToScheme(scheme)`. Used for VM discovery (controller-runtime cached client), VM watches (secondary watch in DRPlan controller), volume extraction (typed struct traversal), and admission webhooks (typed decoding).
+
 **Architectural References (not runtime dependencies):**
 - `kubernetes/sample-apiserver` — patterns for storage.Interface, API registration, codegen
 - `apiserver-builder-alpha` — design inspiration for storage strategy wiring and API registration patterns
