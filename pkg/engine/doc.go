@@ -14,5 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package engine implements the DR workflow execution engine.
+// Package engine implements the DR workflow execution engine. It provides VM
+// discovery and wave-grouping logic used by the DRPlan controller to organize
+// VMs into ordered execution waves. The discovery layer abstracts Kubernetes
+// API access behind the VMDiscoverer interface, enabling deterministic unit
+// tests via mock injection while the production path uses controller-runtime's
+// cached client to list kubevirt VirtualMachine resources.
 package engine

@@ -74,9 +74,9 @@ func (o *SoteriaServerOptions) AddFlags(fs *pflag.FlagSet) {
 		"Path to ScyllaDB TLS CA certificate")
 }
 
-func gvk(group, version, kind string) []interface{} {
-	return []interface{}{
-		map[string]interface{}{
+func gvk(group, version, kind string) []any {
+	return []any{
+		map[string]any{
 			"group":   group,
 			"version": version,
 			"kind":    kind,
@@ -87,7 +87,7 @@ func gvk(group, version, kind string) []interface{} {
 // soteriaGVKExtensions maps raw Go definition names of root API types to their
 // x-kubernetes-group-version-kind extensions. Sub-types (Spec, Status, etc.)
 // don't need GVK extensions — only runtime.Object root types do.
-var soteriaGVKExtensions = map[string][]interface{}{
+var soteriaGVKExtensions = map[string][]any{
 	"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DRPlan":            gvk("soteria.io", "v1alpha1", "DRPlan"),
 	"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DRPlanList":        gvk("soteria.io", "v1alpha1", "DRPlanList"),
 	"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DRExecution":       gvk("soteria.io", "v1alpha1", "DRExecution"),

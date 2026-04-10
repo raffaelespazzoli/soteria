@@ -35,8 +35,12 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
+	kubevirtv1 "kubevirt.io/api/core/v1"
+
 	soteriainstall "github.com/soteria-project/soteria/pkg/apis/soteria.io/install"
 	"github.com/soteria-project/soteria/pkg/apiserver"
+	"github.com/soteria-project/soteria/pkg/controller/drplan"
+	"github.com/soteria-project/soteria/pkg/engine"
 	scylladb "github.com/soteria-project/soteria/pkg/storage/scylladb"
 	// +kubebuilder:scaffold:imports
 )
@@ -48,6 +52,7 @@ var (
 
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
+	utilruntime.Must(kubevirtv1.AddToScheme(scheme))
 	soteriainstall.Install(scheme)
 
 	// +kubebuilder:scaffold:scheme
@@ -240,6 +245,23 @@ func main() {
 	if err != nil {
 		setupLog.Error(err, "Failed to start manager")
 		os.Exit(1)
+	}
+
+	// Controllers that watch soteria.io resources require the aggregated API
+	// server to be reachable (in-process or external). When --enable-apiserver
+	// is false and no external server is registered, the informer would fail
+	// to discover the soteria.io/v1alpha1 group.
+	if enableAPIServer {
+		vmDiscoverer := engine.NewTypedVMDiscoverer(mgr.GetClient())
+		if err := (&drplan.DRPlanReconciler{
+			Client:       mgr.GetClient(),
+			Scheme:       mgr.GetScheme(),
+			VMDiscoverer: vmDiscoverer,
+			Recorder:     mgr.GetEventRecorderFor("drplan-controller"),
+		}).SetupWithManager(mgr); err != nil {
+			setupLog.Error(err, "Failed to create DRPlan controller")
+			os.Exit(1)
+		}
 	}
 
 	// +kubebuilder:scaffold:builder

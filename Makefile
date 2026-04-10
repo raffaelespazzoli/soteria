@@ -115,7 +115,8 @@ lint-config: golangci-lint ## Verify golangci-lint linter configuration
 	"$(GOLANGCI_LINT)" config verify
 
 .PHONY: integration
-integration: ## Run integration tests against a running ScyllaDB instance.
+integration: setup-envtest ## Run integration tests (envtest for controller, ScyllaDB for API server).
+	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
 	go test -tags=integration ./test/integration/... -v -count=1
 
 .PHONY: helmchart

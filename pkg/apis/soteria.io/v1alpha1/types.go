@@ -56,6 +56,29 @@ type DRPlanStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 	// ObservedGeneration is the most recent generation observed.
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
+	// Waves contains the discovered VMs grouped by wave label value.
+	Waves []WaveInfo `json:"waves,omitempty"`
+	// DiscoveredVMCount is the total number of VMs matching the plan's vmSelector.
+	DiscoveredVMCount int `json:"discoveredVMCount,omitempty"`
+}
+
+// DiscoveredVM identifies a VM discovered by a DRPlan's label selector.
+type DiscoveredVM struct {
+	// Name is the VM resource name.
+	Name string `json:"name"`
+	// Namespace is the VM's namespace.
+	Namespace string `json:"namespace"`
+}
+
+// WaveInfo groups discovered VMs into a single execution wave.
+// Invariant: a WaveInfo is only created when at least one VM belongs to the wave.
+type WaveInfo struct {
+	// WaveKey is the value of the wave label that groups these VMs.
+	WaveKey string `json:"waveKey"`
+	// VMs lists the discovered VMs in this wave.
+	// +listType=atomic
+	// +kubebuilder:validation:MinItems=1
+	VMs []DiscoveredVM `json:"vms"`
 }
 
 // DRPlanList contains a list of DRPlans.

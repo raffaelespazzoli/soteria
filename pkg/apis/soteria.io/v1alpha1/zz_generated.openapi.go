@@ -44,7 +44,9 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DRPlanList":             schema_pkg_apis_soteriaio_v1alpha1_DRPlanList(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DRPlanSpec":             schema_pkg_apis_soteriaio_v1alpha1_DRPlanSpec(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DRPlanStatus":           schema_pkg_apis_soteriaio_v1alpha1_DRPlanStatus(ref),
+		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DiscoveredVM":           schema_pkg_apis_soteriaio_v1alpha1_DiscoveredVM(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.StepStatus":             schema_pkg_apis_soteriaio_v1alpha1_StepStatus(ref),
+		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.WaveInfo":               schema_pkg_apis_soteriaio_v1alpha1_WaveInfo(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.WaveStatus":             schema_pkg_apis_soteriaio_v1alpha1_WaveStatus(ref),
 		resource.Quantity{}.OpenAPIModelName():                                                   schema_apimachinery_pkg_api_resource_Quantity(ref),
 		v1.APIGroup{}.OpenAPIModelName():                                                         schema_pkg_apis_meta_v1_APIGroup(ref),
@@ -727,11 +729,62 @@ func schema_pkg_apis_soteriaio_v1alpha1_DRPlanStatus(ref common.ReferenceCallbac
 							Format:      "int64",
 						},
 					},
+					"waves": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Waves contains the discovered VMs grouped by wave label value.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: map[string]interface{}{},
+										Ref:     ref("github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.WaveInfo"),
+									},
+								},
+							},
+						},
+					},
+					"discoveredVMCount": {
+						SchemaProps: spec.SchemaProps{
+							Description: "DiscoveredVMCount is the total number of VMs matching the plan's vmSelector.",
+							Type:        []string{"integer"},
+							Format:      "int32",
+						},
+					},
 				},
 			},
 		},
 		Dependencies: []string{
-			v1.Condition{}.OpenAPIModelName()},
+			"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.WaveInfo", v1.Condition{}.OpenAPIModelName()},
+	}
+}
+
+func schema_pkg_apis_soteriaio_v1alpha1_DiscoveredVM(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "DiscoveredVM identifies a VM discovered by a DRPlan's label selector.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"name": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Name is the VM resource name.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"namespace": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Namespace is the VM's namespace.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"name", "namespace"},
+			},
+		},
 	}
 }
 
@@ -775,6 +828,49 @@ func schema_pkg_apis_soteriaio_v1alpha1_StepStatus(ref common.ReferenceCallback)
 		},
 		Dependencies: []string{
 			v1.Time{}.OpenAPIModelName()},
+	}
+}
+
+func schema_pkg_apis_soteriaio_v1alpha1_WaveInfo(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "WaveInfo groups discovered VMs into a single execution wave. Invariant: a WaveInfo is only created when at least one VM belongs to the wave.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"waveKey": {
+						SchemaProps: spec.SchemaProps{
+							Description: "WaveKey is the value of the wave label that groups these VMs.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"vms": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "atomic",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "VMs lists the discovered VMs in this wave.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: map[string]interface{}{},
+										Ref:     ref("github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DiscoveredVM"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"waveKey", "vms"},
+			},
+		},
+		Dependencies: []string{
+			"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DiscoveredVM"},
 	}
 }
 

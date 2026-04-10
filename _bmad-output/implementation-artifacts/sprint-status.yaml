@@ -1,5 +1,5 @@
 # generated: 2026-04-06
-# last_updated: 2026-04-09
+# last_updated: 2026-04-10
 # project: dr-orchestrator
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,8 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-06
-last_updated: 2026-04-09
+last_updated: 2026-04-10
+# 2.1 done: DRPlan Controller & VM Auto-Discovery — implemented, reviewed, fixes applied
 # 2.5 created: RBAC & Secure Credential Handling story file
 # 2.4 created: Pre-flight Plan Composition Check story file
 # 2.3.1 created: VM Label Validation Webhook story file (from Story 2.3 gap analysis)
@@ -64,7 +65,7 @@ development_status:
 
   # Epic 2: DR Plan Discovery, Validation & Access Control
   epic-2: in-progress
-  2-1-drplan-controller-vm-auto-discovery: ready-for-dev
+  2-1-drplan-controller-vm-auto-discovery: done
   2-2-namespace-level-volume-consistency: ready-for-dev
   2-3-admission-webhooks-drplan-validation: ready-for-dev
   2-3-1-vm-label-validation-webhook: ready-for-dev

@@ -14,5 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package drplan implements the DRPlan controller for VM auto-discovery.
+// Package drplan implements the DRPlan controller for VM auto-discovery and
+// wave grouping. It watches DRPlan resources and kubevirt VirtualMachines,
+// re-discovering VMs whenever a plan or VM changes. Discovered VMs are grouped
+// into execution waves based on a configurable wave label and written to the
+// DRPlan's status subresource. The controller uses event-driven reconciliation
+// with a safety-net RequeueAfter fallback to ensure eventual consistency.
 package drplan
