@@ -239,6 +239,7 @@ type watchConsumer struct {
 	dedup     *dedupSet
 	cache     *objectCache
 	predicate storage.SelectionPredicate
+	newFunc   func() runtime.Object
 }
 
 func (c *watchConsumer) Consume(ctx context.Context, change scyllacdc.Change) error {
@@ -289,13 +290,26 @@ func (c *watchConsumer) consumeUpsert(
 	if !ok || rawValue == nil {
 		return nil
 	}
-	valueBytes, ok := rawValue.([]byte)
-	if !ok || len(valueBytes) == 0 {
+	var valueBytes []byte
+	switch v := rawValue.(type) {
+	case []byte:
+		valueBytes = v
+	case *[]byte:
+		if v != nil {
+			valueBytes = *v
+		}
+	default:
+		klog.V(1).InfoS("Unexpected CDC value column type",
+			"type", fmt.Sprintf("%T", rawValue),
+			"namespace", namespace, "name", name)
+		return nil
+	}
+	if len(valueBytes) == 0 {
 		return nil
 	}
 
-	obj, _, err := c.codec.Decode(valueBytes, nil, nil)
-	if err != nil {
+	obj := c.newFunc()
+	if err := runtime.DecodeInto(c.codec, valueBytes, obj); err != nil {
 		klog.V(1).ErrorS(err, "Failed to decode CDC event value",
 			"namespace", namespace, "name", name)
 		return nil
@@ -372,6 +386,7 @@ type watchConsumerFactory struct {
 	dedup     *dedupSet
 	cache     *objectCache
 	predicate storage.SelectionPredicate
+	newFunc   func() runtime.Object
 }
 
 func (f *watchConsumerFactory) CreateChangeConsumer(
@@ -386,6 +401,7 @@ func (f *watchConsumerFactory) CreateChangeConsumer(
 		dedup:     f.dedup,
 		cache:     f.cache,
 		predicate: f.predicate,
+		newFunc:   f.newFunc,
 	}, nil
 }
 
@@ -669,6 +685,7 @@ func (s *Store) runCDCReader(
 		filter:    filter,
 		dedup:     dedup,
 		cache:     cache,
+		newFunc:   s.newFunc,
 		predicate: predicate,
 	}
 

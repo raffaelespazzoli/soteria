@@ -42,7 +42,7 @@ func TestMain(m *testing.M) {
 
 	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
-			Image:        "scylladb/scylla:latest",
+			Image:        "scylladb/scylla:2025.4",
 			ExposedPorts: []string{"9042/tcp"},
 			WaitingFor:   wait.ForLog("Starting listening for CQL clients").WithStartupTimeout(90 * time.Second),
 			Cmd:          []string{"--smp", "1", "--memory", "256M", "--overprovisioned", "1"},

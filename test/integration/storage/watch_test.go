@@ -170,18 +170,19 @@ func TestWatch_ResourceVersion0_DeliversSnapshot(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	key1 := "/soteria.io/drplans/default/watch-snap-1"
-	key2 := "/soteria.io/drplans/default/watch-snap-2"
+	ns := "ns-snap"
+	key1 := "/soteria.io/drplans/" + ns + "/watch-snap-1"
+	key2 := "/soteria.io/drplans/" + ns + "/watch-snap-2"
 	t.Cleanup(func() { watchCleanupKey(t, key1); watchCleanupKey(t, key2) })
 
-	if err := store.Create(ctx, key1, newWatchDRPlan("default", "watch-snap-1"), &v1alpha1.DRPlan{}, 0); err != nil {
+	if err := store.Create(ctx, key1, newWatchDRPlan(ns, "watch-snap-1"), &v1alpha1.DRPlan{}, 0); err != nil {
 		t.Fatalf("Create 1 failed: %v", err)
 	}
-	if err := store.Create(ctx, key2, newWatchDRPlan("default", "watch-snap-2"), &v1alpha1.DRPlan{}, 0); err != nil {
+	if err := store.Create(ctx, key2, newWatchDRPlan(ns, "watch-snap-2"), &v1alpha1.DRPlan{}, 0); err != nil {
 		t.Fatalf("Create 2 failed: %v", err)
 	}
 
-	w, err := store.Watch(ctx, "/soteria.io/drplans", storage.ListOptions{
+	w, err := store.Watch(ctx, "/soteria.io/drplans/"+ns, storage.ListOptions{
 		ResourceVersion: "0",
 		Recursive:       true,
 	})
@@ -209,7 +210,8 @@ func TestWatch_Create_DeliversAddedEvent(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	w, err := store.Watch(ctx, "/soteria.io/drplans", storage.ListOptions{
+	ns := "ns-create"
+	w, err := store.Watch(ctx, "/soteria.io/drplans/"+ns, storage.ListOptions{
 		ResourceVersion: "0",
 		Recursive:       true,
 	})
@@ -221,10 +223,10 @@ func TestWatch_Create_DeliversAddedEvent(t *testing.T) {
 	// Give the CDC reader a moment to start before creating.
 	time.Sleep(2 * time.Second)
 
-	key := "/soteria.io/drplans/default/watch-create"
+	key := "/soteria.io/drplans/" + ns + "/watch-create"
 	t.Cleanup(func() { watchCleanupKey(t, key) })
 
-	if err := store.Create(ctx, key, newWatchDRPlan("default", "watch-create"), &v1alpha1.DRPlan{}, 0); err != nil {
+	if err := store.Create(ctx, key, newWatchDRPlan(ns, "watch-create"), &v1alpha1.DRPlan{}, 0); err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
 
@@ -242,14 +244,15 @@ func TestWatch_Update_DeliversModifiedEvent(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	key := "/soteria.io/drplans/default/watch-update"
+	ns := "ns-update"
+	key := "/soteria.io/drplans/" + ns + "/watch-update"
 	t.Cleanup(func() { watchCleanupKey(t, key) })
 
-	if err := store.Create(ctx, key, newWatchDRPlan("default", "watch-update"), &v1alpha1.DRPlan{}, 0); err != nil {
+	if err := store.Create(ctx, key, newWatchDRPlan(ns, "watch-update"), &v1alpha1.DRPlan{}, 0); err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
 
-	w, err := store.Watch(ctx, "/soteria.io/drplans", storage.ListOptions{
+	w, err := store.Watch(ctx, "/soteria.io/drplans/"+ns, storage.ListOptions{
 		ResourceVersion: "0",
 		Recursive:       true,
 	})
@@ -289,14 +292,15 @@ func TestWatch_Delete_DeliversDeletedEvent(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	key := "/soteria.io/drplans/default/watch-delete"
+	ns := "ns-delete"
+	key := "/soteria.io/drplans/" + ns + "/watch-delete"
 	t.Cleanup(func() { watchCleanupKey(t, key) })
 
-	if err := store.Create(ctx, key, newWatchDRPlan("default", "watch-delete"), &v1alpha1.DRPlan{}, 0); err != nil {
+	if err := store.Create(ctx, key, newWatchDRPlan(ns, "watch-delete"), &v1alpha1.DRPlan{}, 0); err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
 
-	w, err := store.Watch(ctx, "/soteria.io/drplans", storage.ListOptions{
+	w, err := store.Watch(ctx, "/soteria.io/drplans/"+ns, storage.ListOptions{
 		ResourceVersion: "0",
 		Recursive:       true,
 	})
@@ -357,13 +361,14 @@ func TestWatch_KeyPrefixFiltering(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	ns := "ns-filter"
 	planStore := setupWatchTest(t)
 	execStore := setupWatchTestForResource(t, "drexecutions",
 		func() runtime.Object { return &v1alpha1.DRExecution{} },
 		func() runtime.Object { return &v1alpha1.DRExecutionList{} },
 	)
 
-	w, err := planStore.Watch(ctx, "/soteria.io/drplans", storage.ListOptions{
+	w, err := planStore.Watch(ctx, "/soteria.io/drplans/"+ns, storage.ListOptions{
 		ResourceVersion: "0",
 		Recursive:       true,
 	})
@@ -376,13 +381,13 @@ func TestWatch_KeyPrefixFiltering(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	// Create an execution (different resource type).
-	execKey := "/soteria.io/drexecutions/default/watch-exec"
+	execKey := "/soteria.io/drexecutions/" + ns + "/watch-exec"
 	t.Cleanup(func() { watchCleanupKey(t, execKey) })
 
 	exec := &v1alpha1.DRExecution{
 		TypeMeta: metav1.TypeMeta{APIVersion: "soteria.io/v1alpha1", Kind: "DRExecution"},
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: "default",
+			Namespace: ns,
 			Name:      "watch-exec",
 			UID:       types.UID(gocql.TimeUUID().String()),
 		},
@@ -396,9 +401,9 @@ func TestWatch_KeyPrefixFiltering(t *testing.T) {
 	}
 
 	// Create a plan (matching resource type) — this should generate an event.
-	planKey := "/soteria.io/drplans/default/watch-filter-plan"
+	planKey := "/soteria.io/drplans/" + ns + "/watch-filter-plan"
 	t.Cleanup(func() { watchCleanupKey(t, planKey) })
-	if err := planStore.Create(ctx, planKey, newWatchDRPlan("default", "watch-filter-plan"), &v1alpha1.DRPlan{}, 0); err != nil {
+	if err := planStore.Create(ctx, planKey, newWatchDRPlan(ns, "watch-filter-plan"), &v1alpha1.DRPlan{}, 0); err != nil {
 		t.Fatalf("Create DRPlan failed: %v", err)
 	}
 
@@ -419,7 +424,8 @@ func TestWatch_DRExecution_CRUD(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	w, err := store.Watch(ctx, "/soteria.io/drexecutions", storage.ListOptions{
+	ns := "ns-exec"
+	w, err := store.Watch(ctx, "/soteria.io/drexecutions/"+ns, storage.ListOptions{
 		ResourceVersion: "0",
 		Recursive:       true,
 	})
@@ -430,13 +436,13 @@ func TestWatch_DRExecution_CRUD(t *testing.T) {
 
 	time.Sleep(2 * time.Second)
 
-	key := "/soteria.io/drexecutions/default/watch-exec-crud"
+	key := "/soteria.io/drexecutions/" + ns + "/watch-exec-crud"
 	t.Cleanup(func() { watchCleanupKey(t, key) })
 
 	exec := &v1alpha1.DRExecution{
 		TypeMeta: metav1.TypeMeta{APIVersion: "soteria.io/v1alpha1", Kind: "DRExecution"},
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: "default",
+			Namespace: ns,
 			Name:      "watch-exec-crud",
 			UID:       types.UID(gocql.TimeUUID().String()),
 		},
@@ -465,7 +471,8 @@ func TestWatch_DRGroupStatus_CRUD(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	w, err := store.Watch(ctx, "/soteria.io/drgroupstatuses", storage.ListOptions{
+	ns := "ns-gs"
+	w, err := store.Watch(ctx, "/soteria.io/drgroupstatuses/"+ns, storage.ListOptions{
 		ResourceVersion: "0",
 		Recursive:       true,
 	})
@@ -476,13 +483,13 @@ func TestWatch_DRGroupStatus_CRUD(t *testing.T) {
 
 	time.Sleep(2 * time.Second)
 
-	key := "/soteria.io/drgroupstatuses/default/watch-gs-crud"
+	key := "/soteria.io/drgroupstatuses/" + ns + "/watch-gs-crud"
 	t.Cleanup(func() { watchCleanupKey(t, key) })
 
 	gs := &v1alpha1.DRGroupStatus{
 		TypeMeta: metav1.TypeMeta{APIVersion: "soteria.io/v1alpha1", Kind: "DRGroupStatus"},
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: "default",
+			Namespace: ns,
 			Name:      "watch-gs-crud",
 			UID:       types.UID(gocql.TimeUUID().String()),
 		},
