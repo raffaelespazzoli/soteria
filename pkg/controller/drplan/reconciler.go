@@ -57,6 +57,8 @@ import (
 
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
 	"github.com/soteria-project/soteria/pkg/engine"
+
+	"github.com/soteria-project/soteria/internal/preflight"
 )
 
 const (
@@ -74,6 +76,8 @@ const (
 // +kubebuilder:rbac:groups=soteria.io,resources=drplans/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=kubevirt.io,resources=virtualmachines,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch
+// +kubebuilder:rbac:groups=storage.k8s.io,resources=storageclasses,verbs=get;list;watch
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 
 // DRPlanReconciler reconciles DRPlan objects by discovering VMs, grouping them
@@ -84,6 +88,7 @@ type DRPlanReconciler struct {
 	Scheme          *runtime.Scheme
 	VMDiscoverer    engine.VMDiscoverer
 	NamespaceLookup engine.NamespaceLookup
+	StorageResolver preflight.StorageBackendResolver
 	Recorder        record.EventRecorder
 }
 
@@ -105,7 +110,17 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	if err != nil {
 		logger.Error(err, "Failed to discover VMs")
 		r.event(&plan, "Warning", "DiscoveryFailed", err.Error())
-		if statusErr := r.setDiscoveryErrorCondition(ctx, &plan, err); statusErr != nil {
+		report := r.composePreflightReport(ctx, &plan, nil, nil, nil, nil)
+		report.Warnings = append(report.Warnings,
+			fmt.Sprintf("VM discovery failed: %v", err))
+		_, statusErr := r.updateStatus(ctx, req, &plan, nil, 0, report, metav1.Condition{
+			Type:               conditionTypeReady,
+			Status:             metav1.ConditionFalse,
+			Reason:             reasonError,
+			Message:            err.Error(),
+			ObservedGeneration: plan.Generation,
+		})
+		if statusErr != nil {
 			logger.Error(statusErr, "Failed to update status after discovery error")
 		}
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
@@ -129,7 +144,8 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	if result.TotalVMs == 0 {
-		return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, metav1.Condition{
+		report := r.composePreflightReport(ctx, &plan, &result, nil, nil, vms)
+		return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, report, metav1.Condition{
 			Type:               conditionTypeReady,
 			Status:             metav1.ConditionFalse,
 			Reason:             reasonNoVMs,
@@ -142,7 +158,10 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	consistency, err := engine.ResolveVolumeGroups(ctx, vms, plan.Spec.WaveLabel, r.NamespaceLookup)
 	if err != nil {
 		logger.Error(err, "Failed to resolve volume groups")
-		return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, metav1.Condition{
+		report := r.composePreflightReport(ctx, &plan, &result, nil, nil, vms)
+		report.Warnings = append(report.Warnings,
+			fmt.Sprintf("Volume group resolution failed: %v", err))
+		return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, report, metav1.Condition{
 			Type:               conditionTypeReady,
 			Status:             metav1.ConditionFalse,
 			Reason:             reasonError,
@@ -155,7 +174,8 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		msg := formatWaveConflicts(consistency.WaveConflicts)
 		logger.Info("Detected wave conflict", "conflicts", len(consistency.WaveConflicts))
 		r.event(&plan, "Warning", "WaveConflictDetected", msg)
-		return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, metav1.Condition{
+		report := r.composePreflightReport(ctx, &plan, &result, consistency, nil, vms)
+		return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, report, metav1.Condition{
 			Type:               conditionTypeReady,
 			Status:             metav1.ConditionFalse,
 			Reason:             reasonWaveConflict,
@@ -189,7 +209,9 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		msg := formatChunkErrors(chunkResult.Errors, plan.Spec.MaxConcurrentFailovers)
 		logger.Info("Chunking failed", "errors", len(chunkResult.Errors))
 		r.event(&plan, "Warning", "ChunkingFailed", msg)
-		return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, metav1.Condition{
+		report := r.composePreflightReport(
+			ctx, &plan, &result, consistency, &chunkResult, vms)
+		return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, report, metav1.Condition{
 			Type:               conditionTypeReady,
 			Status:             metav1.ConditionFalse,
 			Reason:             reasonGroupExceedsThrottle,
@@ -202,29 +224,18 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		fmt.Sprintf("Resolved %d volume groups (%d namespace-level, %d VM-level)",
 			len(consistency.VolumeGroups), nsLevelCount, vmLevelCount))
 
-	return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, metav1.Condition{
+	// Resolve storage backends and compose the preflight report.
+	report := r.composePreflightReport(ctx, &plan, &result, consistency, &chunkResult, vms)
+	logger.Info("Preflight report generated",
+		"totalVMs", report.TotalVMs, "warnings", len(report.Warnings))
+
+	return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, report, metav1.Condition{
 		Type:               conditionTypeReady,
 		Status:             metav1.ConditionTrue,
 		Reason:             reasonDiscovered,
 		Message:            "VMs discovered and grouped into waves",
 		ObservedGeneration: plan.Generation,
 	})
-}
-
-func (r *DRPlanReconciler) setDiscoveryErrorCondition(
-	ctx context.Context, plan *soteriav1alpha1.DRPlan, discoveryErr error,
-) error {
-	if err := r.Get(ctx, types.NamespacedName{Name: plan.Name, Namespace: plan.Namespace}, plan); err != nil {
-		return err
-	}
-	meta.SetStatusCondition(&plan.Status.Conditions, metav1.Condition{
-		Type:               conditionTypeReady,
-		Status:             metav1.ConditionFalse,
-		Reason:             reasonError,
-		Message:            discoveryErr.Error(),
-		ObservedGeneration: plan.Generation,
-	})
-	return r.Status().Update(ctx, plan)
 }
 
 func (r *DRPlanReconciler) event(
@@ -363,40 +374,6 @@ func nsConsistencyAnnotationChangePredicate() predicate.Predicate {
 	}
 }
 
-func (r *DRPlanReconciler) updateStatus(
-	ctx context.Context,
-	req ctrl.Request,
-	plan *soteriav1alpha1.DRPlan,
-	waves []soteriav1alpha1.WaveInfo,
-	totalVMs int,
-	condition metav1.Condition,
-) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
-
-	if err := r.Get(ctx, req.NamespacedName, plan); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	oldWaves := plan.Status.Waves
-	plan.Status.Waves = waves
-	plan.Status.DiscoveredVMCount = totalVMs
-	plan.Status.ObservedGeneration = plan.Generation
-	meta.SetStatusCondition(&plan.Status.Conditions, condition)
-
-	if err := r.Status().Update(ctx, plan); err != nil {
-		logger.Error(err, "Failed to update DRPlan status")
-		return ctrl.Result{}, err
-	}
-
-	if !reflect.DeepEqual(oldWaves, waves) {
-		logger.Info("Discovery completed", "totalVMs", totalVMs, "waves", len(waves))
-		r.event(plan, "Normal", "DiscoveryCompleted",
-			fmt.Sprintf("Discovered %d VMs across %d waves", totalVMs, len(waves)))
-	}
-
-	return ctrl.Result{RequeueAfter: requeueInterval}, nil
-}
-
 func formatWaveConflicts(conflicts []engine.WaveConflict) string {
 	var msg strings.Builder
 	msg.WriteString("Namespace-level VMs span multiple waves:")
@@ -454,6 +431,80 @@ func countGroupLevels(groups []soteriav1alpha1.VolumeGroupInfo) (nsLevel, vmLeve
 		}
 	}
 	return
+}
+
+func (r *DRPlanReconciler) composePreflightReport(
+	ctx context.Context,
+	plan *soteriav1alpha1.DRPlan,
+	discovery *engine.DiscoveryResult,
+	consistency *engine.ConsistencyResult,
+	chunks *engine.ChunkResult,
+	vms []engine.VMReference,
+) *soteriav1alpha1.PreflightReport {
+	logger := log.FromContext(ctx)
+
+	storageBackends := make(map[string]string)
+	var storageWarnings []string
+
+	if r.StorageResolver != nil && len(vms) > 0 {
+		var err error
+		storageBackends, storageWarnings, err = r.StorageResolver.ResolveBackends(ctx, vms)
+		if err != nil {
+			logger.Error(err, "Storage backend resolution failed")
+			storageWarnings = append(storageWarnings,
+				fmt.Sprintf("Storage backend resolution failed: %v", err))
+		}
+	}
+
+	input := preflight.CompositionInput{
+		Plan:              plan,
+		DiscoveryResult:   discovery,
+		ConsistencyResult: consistency,
+		ChunkResult:       chunks,
+		StorageBackends:   storageBackends,
+	}
+
+	now := metav1.Now()
+	report := preflight.ComposeReport(input, now)
+	report.Warnings = append(storageWarnings, report.Warnings...)
+
+	return report
+}
+
+func (r *DRPlanReconciler) updateStatus(
+	ctx context.Context,
+	req ctrl.Request,
+	plan *soteriav1alpha1.DRPlan,
+	waves []soteriav1alpha1.WaveInfo,
+	totalVMs int,
+	preflightReport *soteriav1alpha1.PreflightReport,
+	condition metav1.Condition,
+) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+
+	if err := r.Get(ctx, req.NamespacedName, plan); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	oldWaves := plan.Status.Waves
+	plan.Status.Waves = waves
+	plan.Status.DiscoveredVMCount = totalVMs
+	plan.Status.ObservedGeneration = plan.Generation
+	plan.Status.Preflight = preflightReport
+	meta.SetStatusCondition(&plan.Status.Conditions, condition)
+
+	if err := r.Status().Update(ctx, plan); err != nil {
+		logger.Error(err, "Failed to update DRPlan status")
+		return ctrl.Result{}, err
+	}
+
+	if !reflect.DeepEqual(oldWaves, waves) {
+		logger.Info("Discovery completed", "totalVMs", totalVMs, "waves", len(waves))
+		r.event(plan, "Normal", "DiscoveryCompleted",
+			fmt.Sprintf("Discovered %d VMs across %d waves", totalVMs, len(waves)))
+	}
+
+	return ctrl.Result{RequeueAfter: requeueInterval}, nil
 }
 
 // vmRelevantChangePredicate filters VM events to only those that affect DRPlan

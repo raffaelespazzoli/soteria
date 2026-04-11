@@ -45,6 +45,10 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DRPlanSpec":             schema_pkg_apis_soteriaio_v1alpha1_DRPlanSpec(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DRPlanStatus":           schema_pkg_apis_soteriaio_v1alpha1_DRPlanStatus(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DiscoveredVM":           schema_pkg_apis_soteriaio_v1alpha1_DiscoveredVM(ref),
+		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightChunk":         schema_pkg_apis_soteriaio_v1alpha1_PreflightChunk(ref),
+		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightReport":        schema_pkg_apis_soteriaio_v1alpha1_PreflightReport(ref),
+		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightVM":            schema_pkg_apis_soteriaio_v1alpha1_PreflightVM(ref),
+		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightWave":          schema_pkg_apis_soteriaio_v1alpha1_PreflightWave(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.StepStatus":             schema_pkg_apis_soteriaio_v1alpha1_StepStatus(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.VolumeGroupInfo":        schema_pkg_apis_soteriaio_v1alpha1_VolumeGroupInfo(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.WaveInfo":               schema_pkg_apis_soteriaio_v1alpha1_WaveInfo(ref),
@@ -751,11 +755,17 @@ func schema_pkg_apis_soteriaio_v1alpha1_DRPlanStatus(ref common.ReferenceCallbac
 							Format:      "int32",
 						},
 					},
+					"preflight": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Preflight contains the pre-flight plan composition report, populated on every reconcile to give platform engineers visibility into plan structure before execution.",
+							Ref:         ref("github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightReport"),
+						},
+					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.WaveInfo", v1.Condition{}.OpenAPIModelName()},
+			"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightReport", "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.WaveInfo", v1.Condition{}.OpenAPIModelName()},
 	}
 }
 
@@ -786,6 +796,269 @@ func schema_pkg_apis_soteriaio_v1alpha1_DiscoveredVM(ref common.ReferenceCallbac
 				Required: []string{"name", "namespace"},
 			},
 		},
+	}
+}
+
+func schema_pkg_apis_soteriaio_v1alpha1_PreflightChunk(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "PreflightChunk describes a DRGroup chunk in the pre-flight chunking preview.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"name": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Name is the DRGroup chunk name (e.g., \"wave-1-group-0\").",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"vmCount": {
+						SchemaProps: spec.SchemaProps{
+							Description: "VMCount is the number of VMs in this chunk.",
+							Default:     0,
+							Type:        []string{"integer"},
+							Format:      "int32",
+						},
+					},
+					"vmNames": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "atomic",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "VMNames lists the VM names in this chunk.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: "",
+										Type:    []string{"string"},
+										Format:  "",
+									},
+								},
+							},
+						},
+					},
+					"volumeGroups": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "atomic",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "VolumeGroups lists the volume group names in this chunk.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: "",
+										Type:    []string{"string"},
+										Format:  "",
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"name", "vmCount"},
+			},
+		},
+	}
+}
+
+func schema_pkg_apis_soteriaio_v1alpha1_PreflightReport(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "PreflightReport is the pre-flight composition summary for a DRPlan. It assembles discovery, consistency, chunking, and storage backend data into a single user-facing structure that shows exactly how the plan would execute.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"waves": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "atomic",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "Waves contains per-wave composition summaries.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: map[string]interface{}{},
+										Ref:     ref("github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightWave"),
+									},
+								},
+							},
+						},
+					},
+					"totalVMs": {
+						SchemaProps: spec.SchemaProps{
+							Description: "TotalVMs is the total number of VMs in the plan.",
+							Default:     0,
+							Type:        []string{"integer"},
+							Format:      "int32",
+						},
+					},
+					"warnings": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "atomic",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "Warnings contains non-blocking validation issues (e.g., unknown storage backend).",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: "",
+										Type:    []string{"string"},
+										Format:  "",
+									},
+								},
+							},
+						},
+					},
+					"generatedAt": {
+						SchemaProps: spec.SchemaProps{
+							Description: "GeneratedAt is when this report was last computed.",
+							Ref:         ref(v1.Time{}.OpenAPIModelName()),
+						},
+					},
+				},
+				Required: []string{"totalVMs"},
+			},
+		},
+		Dependencies: []string{
+			"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightWave", v1.Time{}.OpenAPIModelName()},
+	}
+}
+
+func schema_pkg_apis_soteriaio_v1alpha1_PreflightVM(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "PreflightVM describes a single VM's composition attributes in the pre-flight report.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"name": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Name is the VM resource name.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"namespace": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Namespace is the VM's namespace.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"storageBackend": {
+						SchemaProps: spec.SchemaProps{
+							Description: "StorageBackend is the driver name resolved from PVC storage class (or \"unknown\").",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"consistencyLevel": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ConsistencyLevel is \"namespace\" or \"vm\".",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"volumeGroupName": {
+						SchemaProps: spec.SchemaProps{
+							Description: "VolumeGroupName is the volume group this VM belongs to.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"name", "namespace", "storageBackend", "consistencyLevel", "volumeGroupName"},
+			},
+		},
+	}
+}
+
+func schema_pkg_apis_soteriaio_v1alpha1_PreflightWave(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "PreflightWave summarises a single execution wave in the pre-flight report.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"waveKey": {
+						SchemaProps: spec.SchemaProps{
+							Description: "WaveKey is the wave label value.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"vmCount": {
+						SchemaProps: spec.SchemaProps{
+							Description: "VMCount is the total VMs in this wave.",
+							Default:     0,
+							Type:        []string{"integer"},
+							Format:      "int32",
+						},
+					},
+					"vms": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "atomic",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "VMs contains per-VM composition details.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: map[string]interface{}{},
+										Ref:     ref("github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightVM"),
+									},
+								},
+							},
+						},
+					},
+					"chunks": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "atomic",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "Chunks contains the DRGroup chunking preview for this wave.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: map[string]interface{}{},
+										Ref:     ref("github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightChunk"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"waveKey", "vmCount"},
+			},
+		},
+		Dependencies: []string{
+			"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightChunk", "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightVM"},
 	}
 }
 

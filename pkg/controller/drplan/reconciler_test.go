@@ -19,6 +19,7 @@ package drplan
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -33,6 +34,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	"github.com/soteria-project/soteria/internal/preflight"
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
 	"github.com/soteria-project/soteria/pkg/engine"
 )
@@ -204,6 +206,16 @@ func TestReconcile_NoVMs_ReadyFalse(t *testing.T) {
 	if readyCond.Reason != reasonNoVMs {
 		t.Errorf("Ready.Reason = %q, want %q", readyCond.Reason, reasonNoVMs)
 	}
+
+	if updated.Status.Preflight == nil {
+		t.Fatal("Preflight report should be populated even with zero VMs")
+	}
+	if updated.Status.Preflight.TotalVMs != 0 {
+		t.Errorf("Preflight.TotalVMs = %d, want 0", updated.Status.Preflight.TotalVMs)
+	}
+	if updated.Status.Preflight.GeneratedAt == nil {
+		t.Error("Preflight.GeneratedAt should not be nil")
+	}
 }
 
 func TestReconcile_VMAdded_StatusUpdated(t *testing.T) {
@@ -324,6 +336,27 @@ func TestReconcile_DiscoveryError_ReadyFalseWithBackoff(t *testing.T) {
 	}
 	if readyCond.Reason != reasonError {
 		t.Errorf("Ready.Reason = %q, want %q", readyCond.Reason, reasonError)
+	}
+
+	if updated.Status.Preflight == nil {
+		t.Fatal("Preflight report should be populated even on discovery error")
+	}
+	if updated.Status.Preflight.TotalVMs != 0 {
+		t.Errorf("Preflight.TotalVMs = %d, want 0", updated.Status.Preflight.TotalVMs)
+	}
+	if updated.Status.Preflight.GeneratedAt == nil {
+		t.Error("Preflight.GeneratedAt should not be nil")
+	}
+	hasDiscoveryWarning := false
+	for _, w := range updated.Status.Preflight.Warnings {
+		if len(w) > 0 && contains(w, "VM discovery failed") {
+			hasDiscoveryWarning = true
+			break
+		}
+	}
+	if !hasDiscoveryWarning {
+		t.Errorf("Expected warning about VM discovery failure, got: %v",
+			updated.Status.Preflight.Warnings)
 	}
 }
 
@@ -562,6 +595,24 @@ func TestReconcile_WaveConflict_ReadyFalse(t *testing.T) {
 			t.Errorf("Wave %q should have no groups on conflict, got %d", w.WaveKey, len(w.Groups))
 		}
 	}
+
+	if updated.Status.Preflight == nil {
+		t.Fatal("Preflight report should be populated even on wave conflict")
+	}
+	if updated.Status.Preflight.TotalVMs != 2 {
+		t.Errorf("Preflight.TotalVMs = %d, want 2", updated.Status.Preflight.TotalVMs)
+	}
+	hasConflictWarning := false
+	for _, w := range updated.Status.Preflight.Warnings {
+		if contains(w, "Wave conflict") {
+			hasConflictWarning = true
+			break
+		}
+	}
+	if !hasConflictWarning {
+		t.Errorf("Expected wave conflict warning, got: %v",
+			updated.Status.Preflight.Warnings)
+	}
 }
 
 func TestReconcile_NamespaceGroupExceedsThrottle_ReadyFalse(t *testing.T) {
@@ -599,6 +650,24 @@ func TestReconcile_NamespaceGroupExceedsThrottle_ReadyFalse(t *testing.T) {
 	}
 	if readyCond.Reason != reasonGroupExceedsThrottle {
 		t.Errorf("Ready.Reason = %q, want %q", readyCond.Reason, reasonGroupExceedsThrottle)
+	}
+
+	if updated.Status.Preflight == nil {
+		t.Fatal("Preflight report should be populated even on throttle error")
+	}
+	if updated.Status.Preflight.TotalVMs != 3 {
+		t.Errorf("Preflight.TotalVMs = %d, want 3", updated.Status.Preflight.TotalVMs)
+	}
+	hasThrottleWarning := false
+	for _, w := range updated.Status.Preflight.Warnings {
+		if contains(w, "exceeds maxConcurrentFailovers") {
+			hasThrottleWarning = true
+			break
+		}
+	}
+	if !hasThrottleWarning {
+		t.Errorf("Expected throttle warning, got: %v",
+			updated.Status.Preflight.Warnings)
 	}
 }
 
@@ -823,6 +892,244 @@ func findCondition(conditions []metav1.Condition, condType string) *metav1.Condi
 		}
 	}
 	return nil
+}
+
+func contains(s, substr string) bool {
+	return strings.Contains(s, substr)
+}
+
+// mockStorageBackendResolver implements preflight.StorageBackendResolver for unit tests.
+type mockStorageBackendResolver struct {
+	backends map[string]string
+	warnings []string
+	err      error
+}
+
+func (m *mockStorageBackendResolver) ResolveBackends(
+	_ context.Context, vms []engine.VMReference,
+) (map[string]string, []string, error) {
+	if m.err != nil {
+		return nil, nil, m.err
+	}
+	if m.backends != nil {
+		return m.backends, m.warnings, nil
+	}
+	result := make(map[string]string, len(vms))
+	for _, vm := range vms {
+		result[vm.Namespace+"/"+vm.Name] = "odf"
+	}
+	return result, m.warnings, nil
+}
+
+// Compile-time check.
+var _ preflight.StorageBackendResolver = (*mockStorageBackendResolver)(nil)
+
+func newReconcilerWithStorage(
+	objs []client.Object,
+	discoverer engine.VMDiscoverer,
+	nsLookup engine.NamespaceLookup,
+	storage preflight.StorageBackendResolver,
+) (*DRPlanReconciler, client.Client) {
+	scheme := newTestScheme()
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(objs...).
+		WithStatusSubresource(&soteriav1alpha1.DRPlan{}).
+		Build()
+
+	return &DRPlanReconciler{
+		Client:          fakeClient,
+		Scheme:          scheme,
+		VMDiscoverer:    discoverer,
+		NamespaceLookup: nsLookup,
+		StorageResolver: storage,
+		Recorder:        record.NewFakeRecorder(10),
+	}, fakeClient
+}
+
+func TestReconcile_Preflight_PopulatedOnSuccess(t *testing.T) {
+	plan := newTestPlan("plan-1")
+	vms := []engine.VMReference{
+		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+		{Name: "vm-2", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+		{Name: "vm-3", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "2"}},
+	}
+
+	nsLookup := &mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{}}
+	storage := &mockStorageBackendResolver{
+		backends: map[string]string{
+			"default/vm-1": "odf",
+			"default/vm-2": "odf",
+			"default/vm-3": "dell-powerstore",
+		},
+	}
+
+	r, c := newReconcilerWithStorage([]client.Object{plan}, &mockVMDiscoverer{vms: vms}, nsLookup, storage)
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "plan-1", Namespace: "default"},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	var updated soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &updated); err != nil {
+		t.Fatalf("Failed to get plan: %v", err)
+	}
+
+	if updated.Status.Preflight == nil {
+		t.Fatal("Preflight report not populated")
+	}
+	if updated.Status.Preflight.TotalVMs != 3 {
+		t.Errorf("Preflight.TotalVMs = %d, want 3", updated.Status.Preflight.TotalVMs)
+	}
+	if len(updated.Status.Preflight.Waves) != 2 {
+		t.Errorf("Preflight.Waves = %d, want 2", len(updated.Status.Preflight.Waves))
+	}
+	if updated.Status.Preflight.GeneratedAt == nil {
+		t.Error("Preflight.GeneratedAt should not be nil")
+	}
+
+	// Verify VM storage backends are correct
+	wave1 := updated.Status.Preflight.Waves[0]
+	for _, vm := range wave1.VMs {
+		if vm.StorageBackend != "odf" {
+			t.Errorf("Wave1 VM %s storage = %q, want odf", vm.Name, vm.StorageBackend)
+		}
+	}
+	wave2 := updated.Status.Preflight.Waves[1]
+	if len(wave2.VMs) != 1 || wave2.VMs[0].StorageBackend != "dell-powerstore" {
+		t.Errorf("Wave2 VM storage = %q, want dell-powerstore", wave2.VMs[0].StorageBackend)
+	}
+}
+
+func TestReconcile_Preflight_StorageResolutionFailure_StillPopulated(t *testing.T) {
+	plan := newTestPlan("plan-1")
+	vms := []engine.VMReference{
+		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+	}
+
+	nsLookup := &mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{}}
+	storage := &mockStorageBackendResolver{
+		err: fmt.Errorf("connection refused"),
+	}
+
+	r, c := newReconcilerWithStorage([]client.Object{plan}, &mockVMDiscoverer{vms: vms}, nsLookup, storage)
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "plan-1", Namespace: "default"},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	var updated soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &updated); err != nil {
+		t.Fatalf("Failed to get plan: %v", err)
+	}
+
+	if updated.Status.Preflight == nil {
+		t.Fatal("Preflight report should be populated even with storage errors")
+	}
+
+	hasStorageWarning := false
+	for _, w := range updated.Status.Preflight.Warnings {
+		if len(w) > 0 {
+			hasStorageWarning = true
+			break
+		}
+	}
+	if !hasStorageWarning {
+		t.Error("Expected warning about storage resolution failure")
+	}
+
+	readyCond := findCondition(updated.Status.Conditions, conditionTypeReady)
+	if readyCond == nil || readyCond.Status != metav1.ConditionTrue {
+		t.Error("Ready should be True even when storage resolution fails")
+	}
+}
+
+func TestReconcile_Preflight_UnknownStorageBackends_WarningsAdded(t *testing.T) {
+	plan := newTestPlan("plan-1")
+	vms := []engine.VMReference{
+		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+	}
+
+	nsLookup := &mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{}}
+	storage := &mockStorageBackendResolver{
+		backends: map[string]string{"default/vm-1": "unknown"},
+		warnings: []string{"VM default/vm-1: could not determine storage backend from PVC storage class"},
+	}
+
+	r, c := newReconcilerWithStorage([]client.Object{plan}, &mockVMDiscoverer{vms: vms}, nsLookup, storage)
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "plan-1", Namespace: "default"},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	var updated soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &updated); err != nil {
+		t.Fatalf("Failed to get plan: %v", err)
+	}
+
+	if updated.Status.Preflight == nil {
+		t.Fatal("Preflight report not populated")
+	}
+	if len(updated.Status.Preflight.Warnings) == 0 {
+		t.Error("Expected warnings for unknown storage backend")
+	}
+}
+
+func TestReconcile_Preflight_UpdatesEveryReconcileCycle(t *testing.T) {
+	plan := newTestPlan("plan-1")
+	initialVMs := []engine.VMReference{
+		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+	}
+
+	mock := &mockVMDiscoverer{vms: initialVMs}
+	nsLookup := &mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{}}
+	storage := &mockStorageBackendResolver{}
+
+	r, c := newReconcilerWithStorage([]client.Object{plan}, mock, nsLookup, storage)
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "plan-1", Namespace: "default"},
+	})
+	if err != nil {
+		t.Fatalf("First Reconcile() error: %v", err)
+	}
+
+	var first soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &first); err != nil {
+		t.Fatalf("Failed to get plan: %v", err)
+	}
+	if first.Status.Preflight == nil || first.Status.Preflight.TotalVMs != 1 {
+		t.Fatal("First preflight should have 1 VM")
+	}
+
+	mock.vms = append(mock.vms, engine.VMReference{
+		Name: "vm-2", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"},
+	})
+
+	_, err = r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "plan-1", Namespace: "default"},
+	})
+	if err != nil {
+		t.Fatalf("Second Reconcile() error: %v", err)
+	}
+
+	var second soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &second); err != nil {
+		t.Fatalf("Failed to get plan: %v", err)
+	}
+	if second.Status.Preflight == nil || second.Status.Preflight.TotalVMs != 2 {
+		t.Errorf("Second preflight TotalVMs = %d, want 2",
+			second.Status.Preflight.TotalVMs)
+	}
 }
 
 // Ensure reconcile.Reconciler is implemented.

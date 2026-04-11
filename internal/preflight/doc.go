@@ -14,5 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package preflight implements pre-flight checks for DR plan composition.
+// Package preflight assembles pre-flight composition reports for DRPlans.
+// It consumes outputs from the discovery, consistency, chunking, and storage
+// backend resolution pipeline stages and formats them into a user-facing
+// PreflightReport struct. The DRPlan reconciler calls into this package on
+// every reconcile cycle to populate .status.preflight, giving platform
+// engineers full visibility into plan structure before execution.
 package preflight

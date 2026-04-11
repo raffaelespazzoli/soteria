@@ -44,6 +44,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
+	"github.com/soteria-project/soteria/internal/preflight"
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
 	"github.com/soteria-project/soteria/pkg/controller/drplan"
 	"github.com/soteria-project/soteria/pkg/engine"
@@ -99,11 +100,22 @@ func TestMain(m *testing.M) {
 	}
 	nsLookup := &engine.DefaultNamespaceLookup{Client: clientset.CoreV1()}
 
+	storageDriverMap := preflight.StorageClassDriverMap{
+		"noop-storage": "noop",
+		"test-odf":     "odf",
+	}
+	storageResolver := &preflight.TypedStorageBackendResolver{
+		Client:     mgr.GetClient(),
+		CoreClient: clientset.CoreV1(),
+		DriverMap:  storageDriverMap,
+	}
+
 	if err := (&drplan.DRPlanReconciler{
 		Client:          mgr.GetClient(),
 		Scheme:          mgr.GetScheme(),
 		VMDiscoverer:    vmDiscoverer,
 		NamespaceLookup: nsLookup,
+		StorageResolver: storageResolver,
 		Recorder:        mgr.GetEventRecorderFor("drplan-controller"),
 	}).SetupWithManager(mgr); err != nil {
 		panic(fmt.Sprintf("setting up DRPlan controller: %v", err))
@@ -284,4 +296,21 @@ func waitForVMCount(ctx context.Context, name, namespace string, count int, time
 		time.Sleep(200 * time.Millisecond)
 	}
 	return nil, fmt.Errorf("timed out waiting for DiscoveredVMCount=%d on %s/%s", count, namespace, name)
+}
+
+// waitForPreflight polls until the DRPlan has a populated preflight report.
+func waitForPreflight(ctx context.Context, name, namespace string, timeout time.Duration) (*soteriav1alpha1.DRPlan, error) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		var plan soteriav1alpha1.DRPlan
+		if err := testClient.Get(ctx, client.ObjectKey{Name: name, Namespace: namespace}, &plan); err != nil {
+			time.Sleep(200 * time.Millisecond)
+			continue
+		}
+		if plan.Status.Preflight != nil && plan.Status.Preflight.TotalVMs > 0 {
+			return &plan, nil
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	return nil, fmt.Errorf("timed out waiting for preflight report on %s/%s", namespace, name)
 }

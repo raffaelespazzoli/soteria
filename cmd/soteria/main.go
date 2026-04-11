@@ -38,6 +38,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
+	"github.com/soteria-project/soteria/internal/preflight"
 	soteriaadmission "github.com/soteria-project/soteria/pkg/admission"
 	soteriainstall "github.com/soteria-project/soteria/pkg/apis/soteria.io/install"
 	"github.com/soteria-project/soteria/pkg/apiserver"
@@ -274,6 +275,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	// TODO(Epic 3): Populate StorageClassDriverMap dynamically from the driver
+	// registry once StorageProvider interface + driver registration is implemented.
+	storageDriverMap := preflight.StorageClassDriverMap{
+		"noop-storage": "noop",
+	}
+
+	storageResolver := &preflight.TypedStorageBackendResolver{
+		Client:     mgr.GetClient(),
+		CoreClient: clientset.CoreV1(),
+		DriverMap:  storageDriverMap,
+	}
+
 	// Controllers that watch soteria.io resources require the aggregated API
 	// server to be reachable (in-process or external). When --enable-apiserver
 	// is false and no external server is registered, the informer would fail
@@ -284,6 +297,7 @@ func main() {
 			Scheme:          mgr.GetScheme(),
 			VMDiscoverer:    vmDiscoverer,
 			NamespaceLookup: nsLookup,
+			StorageResolver: storageResolver,
 			Recorder:        mgr.GetEventRecorderFor("drplan-controller"),
 		}).SetupWithManager(mgr); err != nil {
 			setupLog.Error(err, "Failed to create DRPlan controller")

@@ -77,6 +77,68 @@ type DRPlanStatus struct {
 	Waves []WaveInfo `json:"waves,omitempty"`
 	// DiscoveredVMCount is the total number of VMs matching the plan's vmSelector.
 	DiscoveredVMCount int `json:"discoveredVMCount,omitempty"`
+	// Preflight contains the pre-flight plan composition report, populated on
+	// every reconcile to give platform engineers visibility into plan structure
+	// before execution.
+	Preflight *PreflightReport `json:"preflight,omitempty"`
+}
+
+// PreflightReport is the pre-flight composition summary for a DRPlan. It
+// assembles discovery, consistency, chunking, and storage backend data into
+// a single user-facing structure that shows exactly how the plan would execute.
+type PreflightReport struct {
+	// Waves contains per-wave composition summaries.
+	// +listType=atomic
+	Waves []PreflightWave `json:"waves,omitempty"`
+	// TotalVMs is the total number of VMs in the plan.
+	TotalVMs int `json:"totalVMs"`
+	// Warnings contains non-blocking validation issues (e.g., unknown storage backend).
+	// +listType=atomic
+	Warnings []string `json:"warnings,omitempty"`
+	// GeneratedAt is when this report was last computed.
+	GeneratedAt *metav1.Time `json:"generatedAt,omitempty"`
+}
+
+// PreflightWave summarises a single execution wave in the pre-flight report.
+type PreflightWave struct {
+	// WaveKey is the wave label value.
+	WaveKey string `json:"waveKey"`
+	// VMCount is the total VMs in this wave.
+	VMCount int `json:"vmCount"`
+	// VMs contains per-VM composition details.
+	// +listType=atomic
+	VMs []PreflightVM `json:"vms,omitempty"`
+	// Chunks contains the DRGroup chunking preview for this wave.
+	// +listType=atomic
+	Chunks []PreflightChunk `json:"chunks,omitempty"`
+}
+
+// PreflightVM describes a single VM's composition attributes in the pre-flight report.
+type PreflightVM struct {
+	// Name is the VM resource name.
+	Name string `json:"name"`
+	// Namespace is the VM's namespace.
+	Namespace string `json:"namespace"`
+	// StorageBackend is the driver name resolved from PVC storage class (or "unknown").
+	StorageBackend string `json:"storageBackend"`
+	// ConsistencyLevel is "namespace" or "vm".
+	ConsistencyLevel string `json:"consistencyLevel"`
+	// VolumeGroupName is the volume group this VM belongs to.
+	VolumeGroupName string `json:"volumeGroupName"`
+}
+
+// PreflightChunk describes a DRGroup chunk in the pre-flight chunking preview.
+type PreflightChunk struct {
+	// Name is the DRGroup chunk name (e.g., "wave-1-group-0").
+	Name string `json:"name"`
+	// VMCount is the number of VMs in this chunk.
+	VMCount int `json:"vmCount"`
+	// VMNames lists the VM names in this chunk.
+	// +listType=atomic
+	VMNames []string `json:"vmNames,omitempty"`
+	// VolumeGroups lists the volume group names in this chunk.
+	// +listType=atomic
+	VolumeGroups []string `json:"volumeGroups,omitempty"`
 }
 
 // DiscoveredVM identifies a VM discovered by a DRPlan's label selector.
