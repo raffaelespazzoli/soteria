@@ -49,6 +49,9 @@ linters:
           - dupl
           - lll
         path: pkg/apis/*
+      - linters:
+          - lll
+        source: "^//\\s*\\+kubebuilder:"
     paths:
       - third_party$
       - builtin$

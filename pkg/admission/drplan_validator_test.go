@@ -118,10 +118,17 @@ func TestDRPlanValidator_VMExclusivity(t *testing.T) {
 			name: "non-overlapping selector — allowed",
 			plan: &soteriav1alpha1.DRPlan{
 				ObjectMeta: metav1.ObjectMeta{Name: "plan-b", Namespace: "default"},
-				Spec:       soteriav1alpha1.DRPlanSpec{VMSelector: crmSelector, WaveLabel: "wave", MaxConcurrentFailovers: 4},
+				Spec: soteriav1alpha1.DRPlanSpec{
+					VMSelector: crmSelector, WaveLabel: "wave", MaxConcurrentFailovers: 4,
+				},
 			},
 			existingPlans: []*soteriav1alpha1.DRPlan{
-				{ObjectMeta: metav1.ObjectMeta{Name: "plan-a", Namespace: "default"}, Spec: soteriav1alpha1.DRPlanSpec{VMSelector: erpSelector, WaveLabel: "wave", MaxConcurrentFailovers: 4}},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "plan-a", Namespace: "default"},
+					Spec: soteriav1alpha1.DRPlanSpec{
+						VMSelector: erpSelector, WaveLabel: "wave", MaxConcurrentFailovers: 4,
+					},
+				},
 			},
 			op:          admissionv1.Create,
 			wantAllowed: true,
@@ -130,10 +137,17 @@ func TestDRPlanValidator_VMExclusivity(t *testing.T) {
 			name: "overlapping selector — denied",
 			plan: &soteriav1alpha1.DRPlan{
 				ObjectMeta: metav1.ObjectMeta{Name: "plan-b", Namespace: "default"},
-				Spec:       soteriav1alpha1.DRPlanSpec{VMSelector: erpSelector, WaveLabel: "wave", MaxConcurrentFailovers: 4},
+				Spec: soteriav1alpha1.DRPlanSpec{
+					VMSelector: erpSelector, WaveLabel: "wave", MaxConcurrentFailovers: 4,
+				},
 			},
 			existingPlans: []*soteriav1alpha1.DRPlan{
-				{ObjectMeta: metav1.ObjectMeta{Name: "plan-a", Namespace: "default"}, Spec: soteriav1alpha1.DRPlanSpec{VMSelector: erpSelector, WaveLabel: "wave", MaxConcurrentFailovers: 4}},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "plan-a", Namespace: "default"},
+					Spec: soteriav1alpha1.DRPlanSpec{
+						VMSelector: erpSelector, WaveLabel: "wave", MaxConcurrentFailovers: 4,
+					},
+				},
 			},
 			op:          admissionv1.Create,
 			wantAllowed: false,
@@ -143,10 +157,17 @@ func TestDRPlanValidator_VMExclusivity(t *testing.T) {
 			name: "update same plan (self) — allowed",
 			plan: &soteriav1alpha1.DRPlan{
 				ObjectMeta: metav1.ObjectMeta{Name: "plan-a", Namespace: "default"},
-				Spec:       soteriav1alpha1.DRPlanSpec{VMSelector: erpSelector, WaveLabel: "wave", MaxConcurrentFailovers: 4},
+				Spec: soteriav1alpha1.DRPlanSpec{
+					VMSelector: erpSelector, WaveLabel: "wave", MaxConcurrentFailovers: 4,
+				},
 			},
 			existingPlans: []*soteriav1alpha1.DRPlan{
-				{ObjectMeta: metav1.ObjectMeta{Name: "plan-a", Namespace: "default"}, Spec: soteriav1alpha1.DRPlanSpec{VMSelector: erpSelector, WaveLabel: "wave", MaxConcurrentFailovers: 4}},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "plan-a", Namespace: "default"},
+					Spec: soteriav1alpha1.DRPlanSpec{
+						VMSelector: erpSelector, WaveLabel: "wave", MaxConcurrentFailovers: 4,
+					},
+				},
 			},
 			op:          admissionv1.Update,
 			wantAllowed: true,
@@ -155,10 +176,17 @@ func TestDRPlanValidator_VMExclusivity(t *testing.T) {
 			name: "cluster-wide exclusivity — different namespace overlaps denied",
 			plan: &soteriav1alpha1.DRPlan{
 				ObjectMeta: metav1.ObjectMeta{Name: "plan-b", Namespace: "other-ns"},
-				Spec:       soteriav1alpha1.DRPlanSpec{VMSelector: erpSelector, WaveLabel: "wave", MaxConcurrentFailovers: 4},
+				Spec: soteriav1alpha1.DRPlanSpec{
+					VMSelector: erpSelector, WaveLabel: "wave", MaxConcurrentFailovers: 4,
+				},
 			},
 			existingPlans: []*soteriav1alpha1.DRPlan{
-				{ObjectMeta: metav1.ObjectMeta{Name: "plan-a", Namespace: "default"}, Spec: soteriav1alpha1.DRPlanSpec{VMSelector: erpSelector, WaveLabel: "wave", MaxConcurrentFailovers: 4}},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "plan-a", Namespace: "default"},
+					Spec: soteriav1alpha1.DRPlanSpec{
+						VMSelector: erpSelector, WaveLabel: "wave", MaxConcurrentFailovers: 4,
+					},
+				},
 			},
 			op:          admissionv1.Create,
 			wantAllowed: false,
@@ -181,10 +209,9 @@ func TestDRPlanValidator_VMExclusivity(t *testing.T) {
 			}}
 
 			v := &DRPlanValidator{
-				Client:       fakeClient,
-				VMDiscoverer: discoverer,
-				NSLookup:     &mockNSLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{}},
-				decoder:      admission.NewDecoder(scheme),
+				ExclusivityChecker: &ExclusivityChecker{Client: fakeClient, VMDiscoverer: discoverer},
+				NSLookup:           &mockNSLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{}},
+				decoder:            admission.NewDecoder(scheme),
 			}
 
 			resp := v.Handle(context.Background(), makeRequest(tt.plan, tt.op))
@@ -271,10 +298,9 @@ func TestDRPlanValidator_NamespaceConsistency(t *testing.T) {
 			}}
 
 			v := &DRPlanValidator{
-				Client:       fakeClient,
-				VMDiscoverer: discoverer,
-				NSLookup:     &mockNSLookup{levels: tt.nsLevels},
-				decoder:      admission.NewDecoder(scheme),
+				ExclusivityChecker: &ExclusivityChecker{Client: fakeClient, VMDiscoverer: discoverer},
+				NSLookup:           &mockNSLookup{levels: tt.nsLevels},
+				decoder:            admission.NewDecoder(scheme),
 			}
 
 			plan := &soteriav1alpha1.DRPlan{
@@ -301,12 +327,12 @@ func TestDRPlanValidator_MaxConcurrentCapacity(t *testing.T) {
 	sel := metav1.LabelSelector{MatchLabels: map[string]string{"app": "erp"}}
 
 	tests := []struct {
-		name               string
-		vms                []engine.VMReference
-		nsLevels           map[string]soteriav1alpha1.ConsistencyLevel
-		maxConcurrent      int
-		wantAllowed        bool
-		wantMessage        string
+		name          string
+		vms           []engine.VMReference
+		nsLevels      map[string]soteriav1alpha1.ConsistencyLevel
+		maxConcurrent int
+		wantAllowed   bool
+		wantMessage   string
 	}{
 		{
 			name: "group size under limit — allowed",
@@ -386,15 +412,17 @@ func TestDRPlanValidator_MaxConcurrentCapacity(t *testing.T) {
 			}}
 
 			v := &DRPlanValidator{
-				Client:       fakeClient,
-				VMDiscoverer: discoverer,
-				NSLookup:     &mockNSLookup{levels: tt.nsLevels},
-				decoder:      admission.NewDecoder(scheme),
+				ExclusivityChecker: &ExclusivityChecker{Client: fakeClient, VMDiscoverer: discoverer},
+				NSLookup:           &mockNSLookup{levels: tt.nsLevels},
+				decoder:            admission.NewDecoder(scheme),
 			}
 
 			plan := &soteriav1alpha1.DRPlan{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-plan", Namespace: "default"},
-				Spec:       soteriav1alpha1.DRPlanSpec{VMSelector: sel, WaveLabel: "wave", MaxConcurrentFailovers: tt.maxConcurrent},
+				Spec: soteriav1alpha1.DRPlanSpec{
+					VMSelector: sel, WaveLabel: "wave",
+					MaxConcurrentFailovers: tt.maxConcurrent,
+				},
 			}
 
 			resp := v.Handle(context.Background(), makeRequest(plan, admissionv1.Create))
@@ -427,10 +455,9 @@ func TestDRPlanValidator_AllowedAndEdgeCases(t *testing.T) {
 		}}
 
 		v := &DRPlanValidator{
-			Client:       fakeClient,
-			VMDiscoverer: discoverer,
-			NSLookup:     &mockNSLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{}},
-			decoder:      admission.NewDecoder(scheme),
+			ExclusivityChecker: &ExclusivityChecker{Client: fakeClient, VMDiscoverer: discoverer},
+			NSLookup:           &mockNSLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{}},
+			decoder:            admission.NewDecoder(scheme),
 		}
 
 		plan := &soteriav1alpha1.DRPlan{
@@ -449,10 +476,9 @@ func TestDRPlanValidator_AllowedAndEdgeCases(t *testing.T) {
 		fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
 
 		v := &DRPlanValidator{
-			Client:       fakeClient,
-			VMDiscoverer: &mockVMDiscoverer{},
-			NSLookup:     &mockNSLookup{},
-			decoder:      admission.NewDecoder(scheme),
+			ExclusivityChecker: &ExclusivityChecker{Client: fakeClient, VMDiscoverer: &mockVMDiscoverer{}},
+			NSLookup:           &mockNSLookup{},
+			decoder:            admission.NewDecoder(scheme),
 		}
 
 		plan := &soteriav1alpha1.DRPlan{
@@ -475,10 +501,9 @@ func TestDRPlanValidator_AllowedAndEdgeCases(t *testing.T) {
 		}}
 
 		v := &DRPlanValidator{
-			Client:       fakeClient,
-			VMDiscoverer: discoverer,
-			NSLookup:     &mockNSLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{}},
-			decoder:      admission.NewDecoder(scheme),
+			ExclusivityChecker: &ExclusivityChecker{Client: fakeClient, VMDiscoverer: discoverer},
+			NSLookup:           &mockNSLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{}},
+			decoder:            admission.NewDecoder(scheme),
 		}
 
 		plan := &soteriav1alpha1.DRPlan{
@@ -503,11 +528,13 @@ func TestDRPlanValidator_ErrorPaths(t *testing.T) {
 		scheme := buildScheme()
 		fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
 
+		errDiscoverer := &mockVMDiscoverer{err: fmt.Errorf("connection refused")}
 		v := &DRPlanValidator{
-			Client:       fakeClient,
-			VMDiscoverer: &mockVMDiscoverer{err: fmt.Errorf("connection refused")},
-			NSLookup:     &mockNSLookup{},
-			decoder:      admission.NewDecoder(scheme),
+			ExclusivityChecker: &ExclusivityChecker{
+				Client: fakeClient, VMDiscoverer: errDiscoverer,
+			},
+			NSLookup: &mockNSLookup{},
+			decoder:  admission.NewDecoder(scheme),
 		}
 
 		plan := &soteriav1alpha1.DRPlan{
@@ -524,7 +551,7 @@ func TestDRPlanValidator_ErrorPaths(t *testing.T) {
 		}
 	})
 
-	t.Run("exclusivity VM discovery error for existing plan returns 500", func(t *testing.T) {
+	t.Run("exclusivity check detects overlap with existing plan", func(t *testing.T) {
 		scheme := buildScheme()
 		existingPlan := &soteriav1alpha1.DRPlan{
 			ObjectMeta: metav1.ObjectMeta{Name: "plan-existing", Namespace: "default"},
@@ -532,18 +559,14 @@ func TestDRPlanValidator_ErrorPaths(t *testing.T) {
 		}
 		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existingPlan).Build()
 
-		callCount := 0
-		discoverer := &errorOnSecondCallDiscoverer{
-			first: erpVMs,
-			err:   fmt.Errorf("timeout"),
-			count: &callCount,
-		}
+		discoverer := &mockVMDiscoverer{vms: map[string][]engine.VMReference{
+			selectorKey(sel): erpVMs,
+		}}
 
 		v := &DRPlanValidator{
-			Client:       fakeClient,
-			VMDiscoverer: discoverer,
-			NSLookup:     &mockNSLookup{},
-			decoder:      admission.NewDecoder(scheme),
+			ExclusivityChecker: &ExclusivityChecker{Client: fakeClient, VMDiscoverer: discoverer},
+			NSLookup:           &mockNSLookup{},
+			decoder:            admission.NewDecoder(scheme),
 		}
 
 		plan := &soteriav1alpha1.DRPlan{
@@ -553,10 +576,14 @@ func TestDRPlanValidator_ErrorPaths(t *testing.T) {
 
 		resp := v.Handle(context.Background(), makeRequest(plan, admissionv1.Create))
 		if resp.Allowed {
-			t.Fatal("expected denied when exclusivity check hits a VM discovery error")
+			t.Fatal("expected denied when existing plan selects the same VMs")
 		}
-		if resp.Result == nil || resp.Result.Code != http.StatusInternalServerError {
-			t.Errorf("expected 500, got %v", resp.Result)
+		if resp.Result == nil || !strings.Contains(resp.Result.Message, "already belongs to DRPlan") {
+			msg := ""
+			if resp.Result != nil {
+				msg = resp.Result.Message
+			}
+			t.Errorf("expected exclusivity error, got: %s", msg)
 		}
 	})
 
@@ -569,10 +596,9 @@ func TestDRPlanValidator_ErrorPaths(t *testing.T) {
 		}}
 
 		v := &DRPlanValidator{
-			Client:       fakeClient,
-			VMDiscoverer: discoverer,
-			NSLookup:     &mockNSLookup{err: fmt.Errorf("namespace not found")},
-			decoder:      admission.NewDecoder(scheme),
+			ExclusivityChecker: &ExclusivityChecker{Client: fakeClient, VMDiscoverer: discoverer},
+			NSLookup:           &mockNSLookup{err: fmt.Errorf("namespace not found")},
+			decoder:            admission.NewDecoder(scheme),
 		}
 
 		plan := &soteriav1alpha1.DRPlan{
@@ -588,21 +614,4 @@ func TestDRPlanValidator_ErrorPaths(t *testing.T) {
 			t.Errorf("expected 500, got %v", resp.Result)
 		}
 	})
-}
-
-// errorOnSecondCallDiscoverer returns VMs on the first call (for the candidate
-// plan) and an error on subsequent calls (simulating failure when discovering
-// VMs for an existing plan during the exclusivity check).
-type errorOnSecondCallDiscoverer struct {
-	first []engine.VMReference
-	err   error
-	count *int
-}
-
-func (d *errorOnSecondCallDiscoverer) DiscoverVMs(_ context.Context, _ metav1.LabelSelector) ([]engine.VMReference, error) {
-	*d.count++
-	if *d.count > 1 {
-		return nil, d.err
-	}
-	return d.first, nil
 }

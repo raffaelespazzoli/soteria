@@ -1,6 +1,6 @@
 # Story 2.3.1: VM Label Validation Webhook
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -303,8 +303,8 @@ Integration tests extend the test suite from Story 2.3:
 | Field | Value |
 |-------|-------|
 | Story file created | 2026-04-09 |
-| Implementation started | — |
-| Implementation completed | — |
-| Code review requested | — |
-| Code review completed | — |
-| Status | ready-for-dev |
+| Implementation started | 2026-04-10 |
+| Implementation completed | 2026-04-10 |
+| Code review requested | 2026-04-10 |
+| Code review completed | 2026-04-11 |
+| Status | done |

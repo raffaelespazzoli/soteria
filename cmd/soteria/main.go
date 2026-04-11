@@ -259,8 +259,18 @@ func main() {
 	}
 	nsLookup := &engine.DefaultNamespaceLookup{Client: clientset.CoreV1()}
 
-	if err := soteriaadmission.SetupDRPlanWebhook(mgr, vmDiscoverer, nsLookup); err != nil {
+	exclusivityChecker := &soteriaadmission.ExclusivityChecker{
+		Client:       mgr.GetClient(),
+		VMDiscoverer: vmDiscoverer,
+	}
+
+	if err := soteriaadmission.SetupDRPlanWebhook(mgr, exclusivityChecker, nsLookup); err != nil {
 		setupLog.Error(err, "Failed to set up DRPlan webhook")
+		os.Exit(1)
+	}
+
+	if err := soteriaadmission.SetupVMWebhook(mgr, exclusivityChecker, nsLookup, vmDiscoverer); err != nil {
+		setupLog.Error(err, "Failed to set up VM webhook")
 		os.Exit(1)
 	}
 

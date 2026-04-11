@@ -44,7 +44,6 @@ import (
 
 	admissionv1 "k8s.io/api/admission/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
@@ -56,12 +55,13 @@ import (
 // +kubebuilder:rbac:groups=kubevirt.io,resources=virtualmachines,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 
+// +kubebuilder:webhook:path=/validate-soteria-io-v1alpha1-drplan,mutating=false,failurePolicy=fail,sideEffects=None,groups=soteria.io,resources=drplans,verbs=create;update,versions=v1alpha1,name=vdrplan.kb.io,admissionReviewVersions=v1,matchPolicy=Equivalent
+
 // DRPlanValidator validates DRPlan CREATE and UPDATE operations.
 type DRPlanValidator struct {
-	Client       client.Reader
-	VMDiscoverer engine.VMDiscoverer
-	NSLookup     engine.NamespaceLookup
-	decoder      admission.Decoder
+	ExclusivityChecker *ExclusivityChecker
+	NSLookup           engine.NamespaceLookup
+	decoder            admission.Decoder
 }
 
 // Handle processes an admission request for a DRPlan resource.
@@ -99,7 +99,7 @@ func (v *DRPlanValidator) Handle(ctx context.Context, req admission.Request) adm
 		return admission.Denied(strings.Join(allDenials, "; "))
 	}
 
-	discoveredVMs, err := v.VMDiscoverer.DiscoverVMs(ctx, plan.Spec.VMSelector)
+	discoveredVMs, err := v.ExclusivityChecker.VMDiscoverer.DiscoverVMs(ctx, plan.Spec.VMSelector)
 	if err != nil {
 		return admission.Errored(http.StatusInternalServerError,
 			fmt.Errorf("discovering VMs: %w", err))
@@ -113,8 +113,7 @@ func (v *DRPlanValidator) Handle(ctx context.Context, req admission.Request) adm
 	// VM exclusivity: a VM can only belong to one DRPlan because two plans
 	// trying to promote/demote the same VM's storage would cause data
 	// corruption or conflicting operations.
-	checker := &ExclusivityChecker{Client: v.Client, VMDiscoverer: v.VMDiscoverer}
-	exclusivityConflicts, err := checker.CheckDRPlanExclusivity(ctx, plan, discoveredVMs)
+	exclusivityConflicts, err := v.ExclusivityChecker.CheckDRPlanExclusivity(ctx, plan, discoveredVMs)
 	if err != nil {
 		return admission.Errored(http.StatusInternalServerError,
 			fmt.Errorf("checking VM exclusivity: %w", err))

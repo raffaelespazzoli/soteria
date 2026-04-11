@@ -1,22 +1,48 @@
+---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
-  name: soteria-validating-webhook-configuration
-  annotations:
-    cert-manager.io/inject-ca-from: CERTIFICATE_NAMESPACE/CERTIFICATE_NAME
+  name: validating-webhook-configuration
 webhooks:
-  - name: vdrplan.kb.io
-    admissionReviewVersions: ["v1"]
-    clientConfig:
-      service:
-        name: webhook-service
-        namespace: system
-        path: /validate-soteria-io-v1alpha1-drplan
-    failurePolicy: Fail
-    matchPolicy: Equivalent
-    rules:
-      - apiGroups: ["soteria.io"]
-        apiVersions: ["v1alpha1"]
-        operations: ["CREATE", "UPDATE"]
-        resources: ["drplans"]
-    sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-soteria-io-v1alpha1-drplan
+  failurePolicy: Fail
+  matchPolicy: Equivalent
+  name: vdrplan.kb.io
+  rules:
+  - apiGroups:
+    - soteria.io
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - drplans
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  clientConfig:
+    service:
+      name: webhook-service
+      namespace: system
+      path: /validate-kubevirt-io-v1-virtualmachine
+  failurePolicy: Fail
+  matchPolicy: Equivalent
+  name: vvm.kb.io
+  rules:
+  - apiGroups:
+    - kubevirt.io
+    apiVersions:
+    - v1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - virtualmachines
+  sideEffects: None

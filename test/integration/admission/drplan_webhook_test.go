@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -68,12 +69,31 @@ func cleanupDRPlan(t *testing.T, ctx context.Context, name, namespace string) {
 	_ = testClient.Delete(ctx, plan)
 }
 
+// waitForObject polls the cache until the object is found or the timeout is reached.
+// This handles the delay between API server acceptance and cache sync.
+func waitForObject(ctx context.Context, key client.ObjectKey, obj client.Object) error {
+	timeout := time.After(5 * time.Second)
+	tick := time.NewTicker(50 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		select {
+		case <-timeout:
+			return testClient.Get(ctx, key, obj)
+		case <-tick.C:
+			if err := testClient.Get(ctx, key, obj); err == nil {
+				return nil
+			}
+		}
+	}
+}
+
 func TestDRPlanWebhook_VMExclusivity_Rejected(t *testing.T) {
 	ctx := context.Background()
 	ns := fmt.Sprintf("excl-reject-%d", uniqueCounter())
 	createTestNamespace(t, ctx, ns, nil)
 
-	labels := map[string]string{"app": "erp", "soteria.io/wave": "1"}
+	sel := map[string]string{"app": ns}
+	labels := map[string]string{"app": ns, "soteria.io/wave": "1"}
 	createTestVM(t, ctx, "erp-vm-1", ns, labels)
 	createTestVM(t, ctx, "erp-vm-2", ns, labels)
 	createTestVM(t, ctx, "erp-vm-3", ns, labels)
@@ -81,7 +101,7 @@ func TestDRPlanWebhook_VMExclusivity_Rejected(t *testing.T) {
 	planA := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "plan-a", Namespace: ns},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			VMSelector:             metav1.LabelSelector{MatchLabels: map[string]string{"app": "erp"}},
+			VMSelector:             metav1.LabelSelector{MatchLabels: sel},
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 10,
 		},
@@ -94,7 +114,7 @@ func TestDRPlanWebhook_VMExclusivity_Rejected(t *testing.T) {
 	planB := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "plan-b", Namespace: ns},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			VMSelector:             metav1.LabelSelector{MatchLabels: map[string]string{"app": "erp"}},
+			VMSelector:             metav1.LabelSelector{MatchLabels: sel},
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 10,
 		},
@@ -114,13 +134,15 @@ func TestDRPlanWebhook_VMExclusivity_NonOverlapping_Allowed(t *testing.T) {
 	ns := fmt.Sprintf("excl-allow-%d", uniqueCounter())
 	createTestNamespace(t, ctx, ns, nil)
 
-	createTestVM(t, ctx, "erp-vm-1", ns, map[string]string{"app": "erp", "soteria.io/wave": "1"})
-	createTestVM(t, ctx, "crm-vm-1", ns, map[string]string{"app": "crm", "soteria.io/wave": "1"})
+	selERP := ns + "-erp"
+	selCRM := ns + "-crm"
+	createTestVM(t, ctx, "erp-vm-1", ns, map[string]string{"app": selERP, "soteria.io/wave": "1"})
+	createTestVM(t, ctx, "crm-vm-1", ns, map[string]string{"app": selCRM, "soteria.io/wave": "1"})
 
 	planA := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "plan-erp", Namespace: ns},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			VMSelector:             metav1.LabelSelector{MatchLabels: map[string]string{"app": "erp"}},
+			VMSelector:             metav1.LabelSelector{MatchLabels: map[string]string{"app": selERP}},
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 10,
 		},
@@ -133,7 +155,7 @@ func TestDRPlanWebhook_VMExclusivity_NonOverlapping_Allowed(t *testing.T) {
 	planB := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "plan-crm", Namespace: ns},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			VMSelector:             metav1.LabelSelector{MatchLabels: map[string]string{"app": "crm"}},
+			VMSelector:             metav1.LabelSelector{MatchLabels: map[string]string{"app": selCRM}},
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 10,
 		},
@@ -178,13 +200,14 @@ func TestDRPlanWebhook_WaveConflict_Rejected(t *testing.T) {
 		soteriav1alpha1.ConsistencyAnnotation: "namespace",
 	})
 
-	createTestVM(t, ctx, "db-1", ns, map[string]string{"app": "erp", "soteria.io/wave": "1"})
-	createTestVM(t, ctx, "db-2", ns, map[string]string{"app": "erp", "soteria.io/wave": "2"})
+	sel := map[string]string{"app": ns}
+	createTestVM(t, ctx, "db-1", ns, map[string]string{"app": ns, "soteria.io/wave": "1"})
+	createTestVM(t, ctx, "db-2", ns, map[string]string{"app": ns, "soteria.io/wave": "2"})
 
 	plan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "wave-conflict", Namespace: ns},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			VMSelector:             metav1.LabelSelector{MatchLabels: map[string]string{"app": "erp"}},
+			VMSelector:             metav1.LabelSelector{MatchLabels: sel},
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 10,
 		},
@@ -206,13 +229,14 @@ func TestDRPlanWebhook_WaveConflict_SameWave_Allowed(t *testing.T) {
 		soteriav1alpha1.ConsistencyAnnotation: "namespace",
 	})
 
-	createTestVM(t, ctx, "db-1", ns, map[string]string{"app": "erp", "soteria.io/wave": "1"})
-	createTestVM(t, ctx, "db-2", ns, map[string]string{"app": "erp", "soteria.io/wave": "1"})
+	sel := map[string]string{"app": ns}
+	createTestVM(t, ctx, "db-1", ns, map[string]string{"app": ns, "soteria.io/wave": "1"})
+	createTestVM(t, ctx, "db-2", ns, map[string]string{"app": ns, "soteria.io/wave": "1"})
 
 	plan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "wave-ok", Namespace: ns},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			VMSelector:             metav1.LabelSelector{MatchLabels: map[string]string{"app": "erp"}},
+			VMSelector:             metav1.LabelSelector{MatchLabels: sel},
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 10,
 		},
@@ -230,15 +254,16 @@ func TestDRPlanWebhook_MaxConcurrentExceeded_Rejected(t *testing.T) {
 		soteriav1alpha1.ConsistencyAnnotation: "namespace",
 	})
 
+	sel := map[string]string{"app": ns}
 	for i := 1; i <= 6; i++ {
 		createTestVM(t, ctx, fmt.Sprintf("vm-%d", i), ns,
-			map[string]string{"app": "erp", "soteria.io/wave": "1"})
+			map[string]string{"app": ns, "soteria.io/wave": "1"})
 	}
 
 	plan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "max-exceeded", Namespace: ns},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			VMSelector:             metav1.LabelSelector{MatchLabels: map[string]string{"app": "erp"}},
+			VMSelector:             metav1.LabelSelector{MatchLabels: sel},
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 4,
 		},
@@ -258,13 +283,14 @@ func TestDRPlanWebhook_ValidPlan_Allowed(t *testing.T) {
 	ns := fmt.Sprintf("valid-plan-%d", uniqueCounter())
 	createTestNamespace(t, ctx, ns, nil)
 
-	createTestVM(t, ctx, "vm-1", ns, map[string]string{"app": "valid", "soteria.io/wave": "1"})
-	createTestVM(t, ctx, "vm-2", ns, map[string]string{"app": "valid", "soteria.io/wave": "1"})
+	sel := map[string]string{"app": ns}
+	createTestVM(t, ctx, "vm-1", ns, map[string]string{"app": ns, "soteria.io/wave": "1"})
+	createTestVM(t, ctx, "vm-2", ns, map[string]string{"app": ns, "soteria.io/wave": "1"})
 
 	plan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "valid-plan", Namespace: ns},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			VMSelector:             metav1.LabelSelector{MatchLabels: map[string]string{"app": "valid"}},
+			VMSelector:             metav1.LabelSelector{MatchLabels: sel},
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 10,
 		},
@@ -280,12 +306,13 @@ func TestDRPlanWebhook_Update_ExclusivityExcludesSelf(t *testing.T) {
 	ns := fmt.Sprintf("update-self-%d", uniqueCounter())
 	createTestNamespace(t, ctx, ns, nil)
 
-	createTestVM(t, ctx, "vm-1", ns, map[string]string{"app": "erp", "soteria.io/wave": "1"})
+	sel := map[string]string{"app": ns}
+	createTestVM(t, ctx, "vm-1", ns, map[string]string{"app": ns, "soteria.io/wave": "1"})
 
 	plan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "plan-self", Namespace: ns},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			VMSelector:             metav1.LabelSelector{MatchLabels: map[string]string{"app": "erp"}},
+			VMSelector:             metav1.LabelSelector{MatchLabels: sel},
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 10,
 		},
@@ -295,9 +322,8 @@ func TestDRPlanWebhook_Update_ExclusivityExcludesSelf(t *testing.T) {
 	}
 	defer cleanupDRPlan(t, ctx, "plan-self", ns)
 
-	// Re-fetch to get resource version
 	var existing soteriav1alpha1.DRPlan
-	if err := testClient.Get(ctx, client.ObjectKey{Name: "plan-self", Namespace: ns}, &existing); err != nil {
+	if err := waitForObject(ctx, client.ObjectKey{Name: "plan-self", Namespace: ns}, &existing); err != nil {
 		t.Fatalf("Failed to get plan: %v", err)
 	}
 

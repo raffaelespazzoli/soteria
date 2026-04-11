@@ -65,7 +65,8 @@ func TestMain(m *testing.M) {
 	_ = apiextensionsv1.AddToScheme(testScheme)
 	_ = admissionregistrationv1.AddToScheme(testScheme)
 
-	webhookPath := soteriaadmission.ValidateDRPlanPath
+	drplanWebhookPath := soteriaadmission.ValidateDRPlanPath
+	vmWebhookPath := soteriaadmission.ValidateVMPath
 	fail := admissionregistrationv1.Fail
 	sideEffects := admissionregistrationv1.SideEffectClassNone
 	equivalent := admissionregistrationv1.Equivalent
@@ -92,7 +93,7 @@ func TestMain(m *testing.M) {
 							SideEffects:             &sideEffects,
 							ClientConfig: admissionregistrationv1.WebhookClientConfig{
 								Service: &admissionregistrationv1.ServiceReference{
-									Path: &webhookPath,
+									Path: &drplanWebhookPath,
 								},
 							},
 							Rules: []admissionregistrationv1.RuleWithOperations{
@@ -105,6 +106,31 @@ func TestMain(m *testing.M) {
 										APIGroups:   []string{"soteria.io"},
 										APIVersions: []string{"v1alpha1"},
 										Resources:   []string{"drplans"},
+									},
+								},
+							},
+						},
+						{
+							Name:                    "vvm.kb.io",
+							AdmissionReviewVersions: []string{"v1"},
+							FailurePolicy:           &fail,
+							MatchPolicy:             &equivalent,
+							SideEffects:             &sideEffects,
+							ClientConfig: admissionregistrationv1.WebhookClientConfig{
+								Service: &admissionregistrationv1.ServiceReference{
+									Path: &vmWebhookPath,
+								},
+							},
+							Rules: []admissionregistrationv1.RuleWithOperations{
+								{
+									Operations: []admissionregistrationv1.OperationType{
+										admissionregistrationv1.Create,
+										admissionregistrationv1.Update,
+									},
+									Rule: admissionregistrationv1.Rule{
+										APIGroups:   []string{"kubevirt.io"},
+										APIVersions: []string{"v1"},
+										Resources:   []string{"virtualmachines"},
 									},
 								},
 							},
@@ -146,8 +172,17 @@ func TestMain(m *testing.M) {
 	}
 	nsLookup := &engine.DefaultNamespaceLookup{Client: clientset.CoreV1()}
 
-	if err := soteriaadmission.SetupDRPlanWebhook(mgr, vmDiscoverer, nsLookup); err != nil {
+	exclusivityChecker := &soteriaadmission.ExclusivityChecker{
+		Client:       mgr.GetClient(),
+		VMDiscoverer: vmDiscoverer,
+	}
+
+	if err := soteriaadmission.SetupDRPlanWebhook(mgr, exclusivityChecker, nsLookup); err != nil {
 		panic(fmt.Sprintf("setting up DRPlan webhook: %v", err))
+	}
+
+	if err := soteriaadmission.SetupVMWebhook(mgr, exclusivityChecker, nsLookup, vmDiscoverer); err != nil {
+		panic(fmt.Sprintf("setting up VM webhook: %v", err))
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
