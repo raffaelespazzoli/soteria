@@ -1,0 +1,39 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: soteria-editor
+  labels:
+    app.kubernetes.io/name: dr-orchestrator
+    app.kubernetes.io/managed-by: kustomize
+    rbac.authorization.k8s.io/aggregate-to-edit: "true"
+rules:
+- apiGroups:
+  - soteria.io
+  resources:
+  - drplans
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+- apiGroups:
+  - soteria.io
+  resources:
+  - drexecutions
+  - drgroupstatuses
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - soteria.io
+  resources:
+  - drplans/status
+  - drexecutions/status
+  - drgroupstatuses/status
+  verbs:
+  - get

@@ -36,6 +36,7 @@
 
 generated: 2026-04-06
 last_updated: 2026-04-11
+# 2.5 done: RBAC & Secure Credential Handling — code review fixes applied, all tests green
 # 2.4 done: Pre-flight Plan Composition Check — code review fixes applied, all tests green
 # 2.3.1 done: VM Label Validation Webhook — reviewed, kubebuilder markers + test isolation fixes applied
 # 2.3 done: Admission Webhooks — DRPlan Validation implemented, reviewed, fail-open fixes applied
@@ -68,13 +69,13 @@ development_status:
   epic-1-retrospective: done
 
   # Epic 2: DR Plan Discovery, Validation & Access Control
-  epic-2: in-progress
+  epic-2: done
   2-1-drplan-controller-vm-auto-discovery: done
   2-2-namespace-level-volume-consistency: done
   2-3-admission-webhooks-drplan-validation: done
   2-3-1-vm-label-validation-webhook: done
   2-4-pre-flight-plan-composition-check: done
-  2-5-rbac-secure-credential-handling: ready-for-dev
+  2-5-rbac-secure-credential-handling: done
   epic-2-retrospective: optional
 
   # Epic 3: Storage Driver Framework & Reference Implementations

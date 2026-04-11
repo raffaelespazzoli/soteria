@@ -72,12 +72,14 @@ const (
 	requeueInterval = 10 * time.Minute
 )
 
-// +kubebuilder:rbac:groups=soteria.io,resources=drplans,verbs=get;list;watch
+// +kubebuilder:rbac:groups=soteria.io,resources=drplans,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=soteria.io,resources=drplans/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=soteria.io,resources=drplans/finalizers,verbs=update
 // +kubebuilder:rbac:groups=kubevirt.io,resources=virtualmachines,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch
 // +kubebuilder:rbac:groups=storage.k8s.io,resources=storageclasses,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=secrets,verbs=get
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 
 // DRPlanReconciler reconciles DRPlan objects by discovering VMs, grouping them

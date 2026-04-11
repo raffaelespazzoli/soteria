@@ -1,0 +1,50 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: soteria-operator
+  labels:
+    app.kubernetes.io/name: dr-orchestrator
+    app.kubernetes.io/managed-by: kustomize
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
+rules:
+- apiGroups:
+  - soteria.io
+  resources:
+  - drplans
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+  - update
+  - patch
+  - delete
+# DRExecution gets create but not update/patch/delete because executions are
+# immutable audit records (FR41) — only the controller writes status updates
+# via the status subresource.
+- apiGroups:
+  - soteria.io
+  resources:
+  - drexecutions
+  verbs:
+  - get
+  - list
+  - watch
+  - create
+- apiGroups:
+  - soteria.io
+  resources:
+  - drgroupstatuses
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - soteria.io
+  resources:
+  - drplans/status
+  - drexecutions/status
+  - drgroupstatuses/status
+  verbs:
+  - get

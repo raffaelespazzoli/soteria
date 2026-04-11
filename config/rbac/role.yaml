@@ -14,6 +14,12 @@ rules:
   - list
   - watch
 - apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - get
+- apiGroups:
   - events.k8s.io
   resources:
   - events
@@ -31,7 +37,7 @@ rules:
 - apiGroups:
   - soteria.io
   resources:
-  - drplans
+  - drexecutions
   verbs:
   - get
   - list
@@ -39,10 +45,40 @@ rules:
 - apiGroups:
   - soteria.io
   resources:
+  - drexecutions/status
+  - drgroupstatuses/status
   - drplans/status
   verbs:
   - get
   - patch
+  - update
+- apiGroups:
+  - soteria.io
+  resources:
+  - drgroupstatuses
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - soteria.io
+  resources:
+  - drplans
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - soteria.io
+  resources:
+  - drplans/finalizers
+  verbs:
   - update
 - apiGroups:
   - storage.k8s.io

@@ -14,9 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package drivers defines the StorageProvider interface for DR storage drivers
-// and the credential reference types used to resolve storage credentials at
-// operation time. Credentials are always external (Kubernetes Secrets or Vault)
-// and resolved per-operation through the CredentialResolver interface — the
-// orchestrator never stores credential values in its own resources (FR45).
-package drivers
+// Package sanitize provides credential sanitization for log messages, events,
+// and metric labels. It ensures no Secret values appear in any orchestrator
+// output (NFR14). Sanitization is applied at the formatting boundary, not at
+// the storage layer, to catch all output paths.
+package sanitize
