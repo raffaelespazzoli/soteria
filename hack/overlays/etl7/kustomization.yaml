@@ -1,0 +1,22 @@
+# etl7 cluster overlay — second DC (joins etl6 via MCS externalSeeds).
+# Deploy this AFTER etl6 ScyllaDB is ready.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../base
+
+patches:
+  # Set datacenter to etl7, add externalSeeds for etl6 via MCS
+  - path: scyllacluster-patch.yaml
+    target:
+      group: scylla.scylladb.com
+      version: v1
+      kind: ScyllaCluster
+      name: soteria-scylladb
+
+  # Add --scylladb-local-dc=etl7
+  - path: manager-dc-patch.yaml
+    target:
+      kind: Deployment
+      name: soteria-controller-manager

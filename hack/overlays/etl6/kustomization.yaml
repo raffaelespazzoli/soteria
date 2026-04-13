@@ -1,0 +1,22 @@
+# etl6 cluster overlay — first DC (seed cluster, no externalSeeds).
+# Deploy this cluster first; etl7 joins via externalSeeds.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../base
+
+patches:
+  # Set datacenter to etl6, remove zone affinity placeholder
+  - path: scyllacluster-patch.yaml
+    target:
+      group: scylla.scylladb.com
+      version: v1
+      kind: ScyllaCluster
+      name: soteria-scylladb
+
+  # Add --scylladb-local-dc=etl6
+  - path: manager-dc-patch.yaml
+    target:
+      kind: Deployment
+      name: soteria-controller-manager

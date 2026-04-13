@@ -35,6 +35,10 @@ type SchemaConfig struct {
 	// DCReplication maps datacenter names to replication factors.
 	// Used with NetworkTopologyStrategy (e.g., {"dc1": 2, "dc2": 2}).
 	DCReplication map[string]int
+	// DisableTablets appends AND TABLETS = {'enabled': false} to the
+	// CREATE KEYSPACE statement. ScyllaDB tablets must be disabled for
+	// CDC to work.
+	DisableTablets bool
 }
 
 // EnsureKeyspace creates the keyspace if it does not already exist, using the
@@ -72,7 +76,24 @@ func EnsureKeyspace(session *gocql.Session, cfg SchemaConfig) error {
 		"CREATE KEYSPACE IF NOT EXISTS %s WITH replication = %s",
 		cfg.Keyspace, replicationMap,
 	)
+	if cfg.DisableTablets {
+		cql += " AND TABLETS = {'enabled': false}"
+	}
 	return session.Query(cql).Exec()
+}
+
+// KeyspaceExists returns true if the named keyspace already exists in
+// ScyllaDB's system schema.
+func KeyspaceExists(session *gocql.Session, keyspace string) (bool, error) {
+	var count int
+	err := session.Query(
+		`SELECT count(*) FROM system_schema.keyspaces WHERE keyspace_name = ?`,
+		keyspace,
+	).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("querying system_schema.keyspaces: %w", err)
+	}
+	return count > 0, nil
 }
 
 // EnsureTable creates the kv_store table with CDC enabled if it does not

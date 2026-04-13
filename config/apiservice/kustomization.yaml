@@ -5,7 +5,7 @@ resources:
 - apiservice.yaml
 - service.yaml
 
-# The APIService spec.service.namespace must be replaced with the
-# actual namespace after kustomize applies its namespace transform.
-# Use a kustomize replacement or overlay to set $(NAMESPACE) to the
-# target namespace (e.g. dr-orchestrator-system).
+# Imported by config/default which applies namePrefix: soteria-.
+# The Service name "apiserver" becomes "soteria-apiserver" after prefix.
+# The APIService name "v1alpha1.soteria.io" is fixed back via a
+# replacement in config/default (namePrefix must not alter it).

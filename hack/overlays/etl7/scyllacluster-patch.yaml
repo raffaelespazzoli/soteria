@@ -1,0 +1,13 @@
+# etl7 discovers etl6 via Submariner MCS DNS.
+# The clusterset.local domain resolves to ScyllaDB endpoints
+# exported by the ServiceExport on the etl6 cluster.
+- op: replace
+  path: /spec/datacenter/name
+  value: etl7
+- op: add
+  path: /spec/externalSeeds
+  value:
+    - soteria-scylladb-client.soteria.svc.clusterset.local
+- op: replace
+  path: /spec/datacenter/racks/0/placement
+  value: {}

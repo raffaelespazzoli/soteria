@@ -1,0 +1,22 @@
+# TLS serving certificate for the Soteria aggregated API server.
+# cert-manager's CA injector patches the APIService with the CA bundle
+# so kube-apiserver trusts the aggregated API server's TLS.
+# DNS names are wired by kustomize replacements from the apiserver Service.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: soteria-apiserver-cert
+  namespace: soteria
+spec:
+  secretName: soteria-apiserver-tls
+  duration: 8760h # 1 year
+  renewBefore: 720h # 30 days
+  issuerRef:
+    name: soteria-internal
+    kind: Issuer
+  commonName: soteria-apiserver
+  dnsNames:
+    - APISERVER_SERVICE_NAME.APISERVER_SERVICE_NAMESPACE.svc
+    - APISERVER_SERVICE_NAME.APISERVER_SERVICE_NAMESPACE.svc.cluster.local
+  usages:
+    - server auth

@@ -44,7 +44,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -91,7 +91,7 @@ type DRPlanReconciler struct {
 	VMDiscoverer    engine.VMDiscoverer
 	NamespaceLookup engine.NamespaceLookup
 	StorageResolver preflight.StorageBackendResolver
-	Recorder        record.EventRecorder
+	Recorder        events.EventRecorder
 }
 
 func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -244,13 +244,13 @@ func (r *DRPlanReconciler) event(
 	plan *soteriav1alpha1.DRPlan, eventType, reason, msg string,
 ) {
 	if r.Recorder != nil {
-		r.Recorder.Event(plan, eventType, reason, msg)
+		r.Recorder.Eventf(plan, nil, eventType, reason, "Reconcile", msg)
 	}
 }
 
 func (r *DRPlanReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&soteriav1alpha1.DRPlan{}).
+		For(&soteriav1alpha1.DRPlan{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Watches(
 			&kubevirtv1.VirtualMachine{},
 			handler.EnqueueRequestsFromMapFunc(r.mapVMToDRPlans),
@@ -489,24 +489,59 @@ func (r *DRPlanReconciler) updateStatus(
 	}
 
 	oldWaves := plan.Status.Waves
+	oldCondition := meta.FindStatusCondition(plan.Status.Conditions, condition.Type)
+	conditionChanged := oldCondition == nil ||
+		oldCondition.Status != condition.Status ||
+		oldCondition.Reason != condition.Reason ||
+		oldCondition.Message != condition.Message ||
+		oldCondition.ObservedGeneration != condition.ObservedGeneration
+	wavesChanged := !reflect.DeepEqual(oldWaves, waves)
+	countChanged := plan.Status.DiscoveredVMCount != totalVMs
+	genChanged := plan.Status.ObservedGeneration != plan.Generation
+	reportChanged := preflightReportChanged(plan.Status.Preflight, preflightReport)
+
+	if !conditionChanged && !wavesChanged && !countChanged && !genChanged && !reportChanged {
+		logger.V(1).Info("Status unchanged, skipping patch")
+		return ctrl.Result{RequeueAfter: requeueInterval}, nil
+	}
+
+	patch := client.MergeFrom(plan.DeepCopy())
+
 	plan.Status.Waves = waves
 	plan.Status.DiscoveredVMCount = totalVMs
 	plan.Status.ObservedGeneration = plan.Generation
 	plan.Status.Preflight = preflightReport
 	meta.SetStatusCondition(&plan.Status.Conditions, condition)
 
-	if err := r.Status().Update(ctx, plan); err != nil {
-		logger.Error(err, "Failed to update DRPlan status")
+	if err := r.Status().Patch(ctx, plan, patch); err != nil {
+		logger.Error(err, "Failed to patch DRPlan status")
 		return ctrl.Result{}, err
 	}
 
-	if !reflect.DeepEqual(oldWaves, waves) {
+	if wavesChanged {
 		logger.Info("Discovery completed", "totalVMs", totalVMs, "waves", len(waves))
 		r.event(plan, "Normal", "DiscoveryCompleted",
 			fmt.Sprintf("Discovered %d VMs across %d waves", totalVMs, len(waves)))
 	}
 
 	return ctrl.Result{RequeueAfter: requeueInterval}, nil
+}
+
+// preflightReportChanged compares two preflight reports ignoring the
+// GeneratedAt timestamp so that a timestamp-only difference does not trigger
+// a status patch (which would re-queue the controller in an infinite loop).
+func preflightReportChanged(old, new *soteriav1alpha1.PreflightReport) bool {
+	if old == nil && new == nil {
+		return false
+	}
+	if old == nil || new == nil {
+		return true
+	}
+	oldCopy := old.DeepCopy()
+	newCopy := new.DeepCopy()
+	oldCopy.GeneratedAt = nil
+	newCopy.GeneratedAt = nil
+	return !reflect.DeepEqual(oldCopy, newCopy)
 }
 
 // vmRelevantChangePredicate filters VM events to only those that affect DRPlan

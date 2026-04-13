@@ -1,0 +1,37 @@
+# JSON6902 patch: add aggregated API server and ScyllaDB flags to the
+# manager container. The base manager.yaml already supplies
+# --leader-elect and --health-probe-bind-address=:8081.
+# The --scylladb-local-dc flag is set per-cluster by the etl6/etl7 overlays.
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --secure-port=6443
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --scylladb-contact-points=soteria-scylladb-client.soteria.svc:9142
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --scylladb-keyspace=soteria
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --scylladb-dc-replication=etl6:2,etl7:2
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --scylladb-tls-cert=/etc/soteria/scylladb-client-tls/tls.crt
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --scylladb-tls-key=/etc/soteria/scylladb-client-tls/tls.key
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --scylladb-tls-ca=/etc/soteria/scylladb-client-tls/ca.crt
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --scylladb-tls-server-name=soteria-scylladb-client.soteria.svc
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --tls-cert-file=/etc/soteria/apiserver-tls/tls.crt
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --tls-private-key-file=/etc/soteria/apiserver-tls/tls.key
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --disable-admission-plugins=ValidatingAdmissionPolicy,ValidatingAdmissionWebhook,MutatingAdmissionWebhook

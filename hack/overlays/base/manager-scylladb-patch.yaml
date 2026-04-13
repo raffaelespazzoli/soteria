@@ -1,0 +1,27 @@
+# Strategic merge patch: mount APIServer serving cert and ScyllaDB client
+# cert into the manager pod. Both certs are issued by cert-manager from
+# the shared soteria-internal CA, enabling cross-DC mTLS.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: soteria-controller-manager
+  namespace: soteria
+spec:
+  template:
+    spec:
+      containers:
+        - name: manager
+          volumeMounts:
+            - name: apiserver-tls
+              mountPath: /etc/soteria/apiserver-tls
+              readOnly: true
+            - name: scylladb-client-tls
+              mountPath: /etc/soteria/scylladb-client-tls
+              readOnly: true
+      volumes:
+        - name: apiserver-tls
+          secret:
+            secretName: soteria-apiserver-tls
+        - name: scylladb-client-tls
+          secret:
+            secretName: soteria-scylladb-client-tls

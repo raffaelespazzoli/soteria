@@ -4,13 +4,13 @@
 #
 # CROSS-DC: Both OpenShift clusters must share the same CA key pair.
 # After cert-manager creates soteria-ca-secret on the first cluster,
-# copy it to the second cluster's soteria-system namespace before
+# copy it to the second cluster's soteria namespace before
 # deploying cert-manager resources there.
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: soteria-ca
-  namespace: soteria-system
+  name: ca
+  namespace: soteria
 spec:
   isCA: true
   commonName: soteria-ca

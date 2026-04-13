@@ -26,7 +26,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -118,7 +118,7 @@ func newReconcilerWithNSLookup(
 		Scheme:          scheme,
 		VMDiscoverer:    discoverer,
 		NamespaceLookup: nsLookup,
-		Recorder:        record.NewFakeRecorder(10),
+		Recorder:        events.NewFakeRecorder(10),
 	}, fakeClient
 }
 
@@ -943,7 +943,7 @@ func newReconcilerWithStorage(
 		VMDiscoverer:    discoverer,
 		NamespaceLookup: nsLookup,
 		StorageResolver: storage,
-		Recorder:        record.NewFakeRecorder(10),
+		Recorder:        events.NewFakeRecorder(10),
 	}, fakeClient
 }
 

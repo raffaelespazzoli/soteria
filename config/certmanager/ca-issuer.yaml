@@ -3,7 +3,7 @@
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
-  name: soteria-ca-issuer
+  name: ca-issuer
 spec:
   selfSigned: {}
 ---
@@ -12,8 +12,8 @@ spec:
 apiVersion: cert-manager.io/v1
 kind: Issuer
 metadata:
-  name: soteria-ca
-  namespace: soteria-system
+  name: ca
+  namespace: soteria
 spec:
   ca:
     secretName: soteria-ca-secret

@@ -1,0 +1,18 @@
+# TLS certificate for the controller-manager metrics endpoint.
+# The metrics server presents this cert over HTTPS on port 8443.
+# Prometheus verifies the server identity using the CA from this secret.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: metrics-certs
+  namespace: soteria
+spec:
+  secretName: metrics-server-cert
+  duration: 8760h # 1 year
+  renewBefore: 720h # 30 days
+  issuerRef:
+    name: soteria-ca
+    kind: Issuer
+  dnsNames:
+    - METRICS_SERVICE_NAME.METRICS_SERVICE_NAMESPACE.svc
+    - METRICS_SERVICE_NAME.METRICS_SERVICE_NAMESPACE.svc.cluster.local

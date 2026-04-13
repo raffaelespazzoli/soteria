@@ -1,0 +1,8 @@
+# etl6 is the seed DC — no externalSeeds needed.
+# Deploy etl6 first; etl7 discovers this DC via MCS.
+- op: replace
+  path: /spec/datacenter/name
+  value: etl6
+- op: replace
+  path: /spec/datacenter/racks/0/placement
+  value: {}

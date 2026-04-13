@@ -70,7 +70,7 @@ spec:
         version: v1alpha1
         kind: DRPlan
         name: drplans
-        deploymentName: dr-orchestrator-controller-manager
+        deploymentName: soteria-controller-manager
         containerPort: 6443
         displayName: DR Plan
         description: Defines a disaster recovery plan for a set of VMs
@@ -78,7 +78,7 @@ spec:
         version: v1alpha1
         kind: DRExecution
         name: drexecutions
-        deploymentName: dr-orchestrator-controller-manager
+        deploymentName: soteria-controller-manager
         containerPort: 6443
         displayName: DR Execution
         description: Records an immutable execution of a DRPlan
@@ -86,7 +86,7 @@ spec:
         version: v1alpha1
         kind: DRGroupStatus
         name: drgroupstatuses
-        deploymentName: dr-orchestrator-controller-manager
+        deploymentName: soteria-controller-manager
         containerPort: 6443
         displayName: DR Group Status
         description: Tracks real-time state of a DRGroup during execution
@@ -109,26 +109,26 @@ spec:
     strategy: deployment
     spec:
       deployments:
-        - name: dr-orchestrator-controller-manager
+        - name: soteria-controller-manager
           spec:
             replicas: 1
             selector:
               matchLabels:
                 control-plane: controller-manager
-                app.kubernetes.io/name: dr-orchestrator
+                app.kubernetes.io/name: soteria
             template:
               metadata:
                 annotations:
                   kubectl.kubernetes.io/default-container: manager
                 labels:
                   control-plane: controller-manager
-                  app.kubernetes.io/name: dr-orchestrator
+                  app.kubernetes.io/name: soteria
               spec:
                 securityContext:
                   runAsNonRoot: true
                   seccompProfile:
                     type: RuntimeDefault
-                serviceAccountName: dr-orchestrator-controller-manager
+                serviceAccountName: soteria-controller-manager
                 terminationGracePeriodSeconds: 10
                 containers:
                   - name: manager
@@ -169,7 +169,7 @@ spec:
                         cpu: 10m
                         memory: 64Mi
       permissions:
-        - serviceAccountName: dr-orchestrator-controller-manager
+        - serviceAccountName: soteria-controller-manager
           rules:
             - apiGroups: [""]
               resources: [configmaps]
@@ -181,7 +181,7 @@ spec:
               resources: [events]
               verbs: [create, patch]
       clusterPermissions:
-        - serviceAccountName: dr-orchestrator-controller-manager
+        - serviceAccountName: soteria-controller-manager
           rules:
             - apiGroups: [""]
               resources: [pods]

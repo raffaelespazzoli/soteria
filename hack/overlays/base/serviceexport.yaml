@@ -1,0 +1,9 @@
+# Submariner MCS ServiceExport for the ScyllaDB client headless service.
+# The scylla-operator creates a Service named <ScyllaCluster>-client;
+# exporting it makes ScyllaDB endpoints discoverable from the remote
+# cluster at <name>.<namespace>.svc.clusterset.local.
+apiVersion: multicluster.x-k8s.io/v1alpha1
+kind: ServiceExport
+metadata:
+  name: soteria-scylladb-client
+  namespace: soteria

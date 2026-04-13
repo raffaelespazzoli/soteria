@@ -6,7 +6,7 @@ apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: scylladb-serving
-  namespace: soteria-system
+  namespace: soteria
 spec:
   secretName: scylladb-serving-tls
   duration: 8760h # 1 year
@@ -16,9 +16,9 @@ spec:
     kind: Issuer
   commonName: soteria-scylladb
   dnsNames:
-    - "soteria-scylladb-client.soteria-system.svc"
-    - "*.soteria-scylladb.soteria-system.svc.cluster.local"
-    - "*.soteria-scylladb-client.soteria-system.svc"
+    - "soteria-scylladb-client.soteria.svc"
+    - "*.soteria-scylladb.soteria.svc.cluster.local"
+    - "*.soteria-scylladb-client.soteria.svc"
   usages:
     - server auth
     - client auth

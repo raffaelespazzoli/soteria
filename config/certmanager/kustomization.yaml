@@ -6,3 +6,4 @@ resources:
   - scylladb-serving-cert.yaml
   - scylladb-client-cert.yaml
   - webhook-serving-cert.yaml
+  - metrics-serving-cert.yaml

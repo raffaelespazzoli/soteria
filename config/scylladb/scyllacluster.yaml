@@ -13,21 +13,16 @@
 apiVersion: scylla.scylladb.com/v1
 kind: ScyllaCluster
 metadata:
-  name: soteria-scylladb
-  namespace: soteria-system
+  name: scylladb
+  namespace: soteria
 spec:
-  version: "6.2"
+  version: "6.2.3"
   agentVersion: "3.3.3"
   developerMode: false
-  # Both clusters MUST share the same clusterName for multi-DC gossip.
-  clusterName: soteria
+  # Multi-DC gossip uses metadata.name as the cluster identity.
+  # Both clusters MUST use the same ScyllaCluster name.
   sysctls:
     - "fs.aio-max-nr=2097152"
-  network:
-    # Reference the TLS serving certificate for internode and client encryption.
-    # The scylla-operator configures ScyllaDB's server_encryption_options and
-    # client_encryption_options from this secret.
-    tlsCertSecretName: scylladb-serving-tls
   # externalSeeds must list at least one seed node from the OTHER DC.
   # Replace with actual IPs or DNS entries of the remote DC's ScyllaDB nodes.
   # externalSeeds:

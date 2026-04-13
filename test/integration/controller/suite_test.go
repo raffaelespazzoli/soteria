@@ -37,6 +37,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/tools/events"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -110,18 +111,22 @@ func TestMain(m *testing.M) {
 		DriverMap:  storageDriverMap,
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+
+	eventBroadcaster := events.NewEventBroadcasterAdapterWithContext(ctx, clientset)
+	eventBroadcaster.StartRecordingToSink(ctx.Done())
+	eventRecorder := eventBroadcaster.NewRecorder("drplan-controller")
+
 	if err := (&drplan.DRPlanReconciler{
 		Client:          mgr.GetClient(),
 		Scheme:          mgr.GetScheme(),
 		VMDiscoverer:    vmDiscoverer,
 		NamespaceLookup: nsLookup,
 		StorageResolver: storageResolver,
-		Recorder:        mgr.GetEventRecorderFor("drplan-controller"),
+		Recorder:        eventRecorder,
 	}).SetupWithManager(mgr); err != nil {
 		panic(fmt.Sprintf("setting up DRPlan controller: %v", err))
 	}
-
-	ctx, cancel := context.WithCancel(context.Background())
 	cancelFunc = cancel
 
 	go func() {
@@ -140,6 +145,7 @@ func TestMain(m *testing.M) {
 	exitCode := m.Run()
 
 	cancelFunc()
+	eventBroadcaster.Shutdown()
 	if err := testEnv.Stop(); err != nil {
 		fmt.Fprintf(os.Stderr, "stopping envtest: %v\n", err)
 	}

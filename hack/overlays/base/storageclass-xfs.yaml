@@ -1,0 +1,12 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: ontap-san-xfs
+provisioner: csi.trident.netapp.io
+parameters:
+  backendType: ontap-san
+  provisioningType: thin
+  fsType: xfs
+reclaimPolicy: Delete
+allowVolumeExpansion: true
+volumeBindingMode: Immediate

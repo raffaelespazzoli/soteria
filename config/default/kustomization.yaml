@@ -1,12 +1,12 @@
 # Adds namespace to all resources.
-namespace: dr-orchestrator-system
+namespace: soteria
 
 # Value of this field is prepended to the
 # names of all resources, e.g. a deployment named
 # "wordpress" becomes "alices-wordpress".
 # Note that it should also match with the prefix (text before '-') of the namespace
 # field above.
-namePrefix: dr-orchestrator-
+namePrefix: soteria-
 
 # Labels to add to all resources and selectors.
 #labels:
@@ -18,24 +18,25 @@ resources:
 #- ../crd
 - ../rbac
 - ../manager
-# [APISERVICE] Aggregated API server registration (soteria.io/v1alpha1)
-#- ../apiservice
 # [WEBHOOK] To enable webhook, uncomment all the sections with [WEBHOOK] prefix including the one in
 # crd/kustomization.yaml
 - ../webhook
 # [CERTMANAGER] To enable cert-manager, uncomment all sections with 'CERTMANAGER'. 'WEBHOOK' components are required.
 - ../certmanager
 # [PROMETHEUS] To enable prometheus monitor, uncomment all sections with 'PROMETHEUS'.
-#- ../prometheus
+- ../prometheus
 # [METRICS] Expose the controller manager metrics service.
 - metrics_service.yaml
+# Aggregated API server registration + Service
+- ../apiservice
+# ScyllaDB cluster (scylla-operator must already be installed)
+- ../scylladb
 # [NETWORK POLICY] Protect the /metrics endpoint and Webhook Server with NetworkPolicy.
 # Only Pod(s) running a namespace labeled with 'metrics: enabled' will be able to gather the metrics.
 # Only CR(s) which requires webhooks and are applied on namespaces labeled with 'webhooks: enabled' will
 # be able to communicate with the Webhook Server.
 #- ../network-policy
 
-# Uncomment the patches line if you enable Metrics
 patches:
 # [METRICS] The following patch will enable the metrics endpoint using HTTPS and the port :8443.
 # More info: https://book.kubebuilder.io/reference/metrics
@@ -43,12 +44,10 @@ patches:
   target:
     kind: Deployment
 
-# Uncomment the patches line if you enable Metrics and CertManager
-# [METRICS-WITH-CERTS] To enable metrics protected with certManager, uncomment the following line.
-# This patch will protect the metrics with certManager self-signed certs.
-#- path: cert_metrics_manager_patch.yaml
-#  target:
-#    kind: Deployment
+# [METRICS-WITH-CERTS] Protect metrics with certManager self-signed certs.
+- path: cert_metrics_manager_patch.yaml
+  target:
+    kind: Deployment
 
 # [WEBHOOK] To enable webhook, uncomment all the sections with [WEBHOOK] prefix including the one in
 # crd/kustomization.yaml
@@ -59,66 +58,100 @@ patches:
 # [CERTMANAGER] To enable cert-manager, uncomment all sections with 'CERTMANAGER' prefix.
 # Uncomment the following replacements to add the cert-manager CA injection annotations
 replacements:
-# - source: # Uncomment the following block to enable certificates for metrics
-#     kind: Service
-#     version: v1
-#     name: controller-manager-metrics-service
-#     fieldPath: metadata.name
-#   targets:
-#     - select:
-#         kind: Certificate
-#         group: cert-manager.io
-#         version: v1
-#         name: metrics-certs
-#       fieldPaths:
-#         - spec.dnsNames.0
-#         - spec.dnsNames.1
-#       options:
-#         delimiter: '.'
-#         index: 0
-#         create: true
-#     - select: # Uncomment the following to set the Service name for TLS config in Prometheus ServiceMonitor
-#         kind: ServiceMonitor
-#         group: monitoring.coreos.com
-#         version: v1
-#         name: controller-manager-metrics-monitor
-#       fieldPaths:
-#         - spec.endpoints.0.tlsConfig.serverName
-#       options:
-#         delimiter: '.'
-#         index: 0
-#         create: true
+  # --- Fix APIService name: undo namePrefix (v1alpha1.soteria.io must not be prefixed) ---
+  - source:
+      kind: APIService
+      group: apiregistration.k8s.io
+      version: v1
+      name: v1alpha1.soteria.io
+      fieldPath: spec.version
+    targets:
+      - select:
+          kind: APIService
+          group: apiregistration.k8s.io
+        fieldPaths:
+          - metadata.name
+        options:
+          delimiter: '.'
+          index: 0
 
-# - source:
-#     kind: Service
-#     version: v1
-#     name: controller-manager-metrics-service
-#     fieldPath: metadata.namespace
-#   targets:
-#     - select:
-#         kind: Certificate
-#         group: cert-manager.io
-#         version: v1
-#         name: metrics-certs
-#       fieldPaths:
-#         - spec.dnsNames.0
-#         - spec.dnsNames.1
-#       options:
-#         delimiter: '.'
-#         index: 1
-#         create: true
-#     - select: # Uncomment the following to set the Service namespace for TLS in Prometheus ServiceMonitor
-#         kind: ServiceMonitor
-#         group: monitoring.coreos.com
-#         version: v1
-#         name: controller-manager-metrics-monitor
-#       fieldPaths:
-#         - spec.endpoints.0.tlsConfig.serverName
-#       options:
-#         delimiter: '.'
-#         index: 1
-#         create: true
+  # --- APIService service namespace (from the apiserver Service) ---
+  - source:
+      kind: Service
+      version: v1
+      name: apiserver
+      fieldPath: .metadata.namespace
+    targets:
+      - select:
+          group: apiregistration.k8s.io
+          version: v1
+          kind: APIService
+          name: v1alpha1.soteria.io
+        fieldPaths:
+          - .spec.service.namespace
 
+  # --- Metrics cert DNS names (from controller-manager-metrics-service) ---
+  - source:
+      kind: Service
+      version: v1
+      name: controller-manager-metrics-service
+      fieldPath: metadata.name
+    targets:
+      - select:
+          kind: Certificate
+          group: cert-manager.io
+          version: v1
+          name: metrics-certs
+        fieldPaths:
+          - spec.dnsNames.0
+          - spec.dnsNames.1
+        options:
+          delimiter: '.'
+          index: 0
+          create: true
+      - select:
+          kind: ServiceMonitor
+          group: monitoring.coreos.com
+          version: v1
+          name: controller-manager-metrics-monitor
+        fieldPaths:
+          - spec.endpoints.0.tlsConfig.serverName
+        options:
+          delimiter: '.'
+          index: 0
+          create: true
+
+  - source:
+      kind: Service
+      version: v1
+      name: controller-manager-metrics-service
+      fieldPath: metadata.namespace
+    targets:
+      - select:
+          kind: Certificate
+          group: cert-manager.io
+          version: v1
+          name: metrics-certs
+        fieldPaths:
+          - spec.dnsNames.0
+          - spec.dnsNames.1
+        options:
+          delimiter: '.'
+          index: 1
+          create: true
+      - select:
+          kind: ServiceMonitor
+          group: monitoring.coreos.com
+          version: v1
+          name: controller-manager-metrics-monitor
+        fieldPaths:
+          - spec.endpoints.0.tlsConfig.serverName
+        options:
+          delimiter: '.'
+          index: 1
+          create: true
+
+  # --- Webhook cert DNS names ---
   - source:
       kind: Service
       version: v1
@@ -156,6 +189,7 @@ replacements:
           index: 1
           create: true
 
+  # --- Webhook CA injection annotation ---
   - source:
       kind: Certificate
       group: cert-manager.io

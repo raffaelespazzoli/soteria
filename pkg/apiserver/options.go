@@ -31,17 +31,21 @@ import (
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
 )
 
-// SoteriaServerOptions holds the options for starting the Soteria API server.
+// SoteriaServerOptions holds the options for the aggregated API server and
+// ScyllaDB backend. Controller-runtime flags (leader-elect, probes, metrics)
+// are handled in main.go following the kubebuilder scaffold convention.
 type SoteriaServerOptions struct {
 	RecommendedOptions *genericoptions.RecommendedOptions
 
 	// ScyllaDB connection options
-	ScyllaDBContactPoints string
-	ScyllaDBKeyspace      string
-	ScyllaDBLocalDC       string
-	ScyllaDBTLSCert       string
-	ScyllaDBTLSKey        string
-	ScyllaDBTLSCA         string
+	ScyllaDBContactPoints  string
+	ScyllaDBKeyspace       string
+	ScyllaDBLocalDC        string
+	ScyllaDBDCReplication  string
+	ScyllaDBTLSCert        string
+	ScyllaDBTLSKey         string
+	ScyllaDBTLSCA          string
+	ScyllaDBTLSServerName  string
 }
 
 // NewSoteriaServerOptions creates default options.
@@ -66,12 +70,18 @@ func (o *SoteriaServerOptions) AddFlags(fs *pflag.FlagSet) {
 		"ScyllaDB keyspace name")
 	fs.StringVar(&o.ScyllaDBLocalDC, "scylladb-local-dc", "",
 		"Local ScyllaDB datacenter name for DC-aware routing (e.g. 'dc1')")
+	fs.StringVar(&o.ScyllaDBDCReplication, "scylladb-dc-replication", "",
+		"Auto-create keyspace with NetworkTopologyStrategy. "+
+			"Comma-separated dc:rf pairs (e.g. 'etl6:2,etl7:2'). "+
+			"When empty the keyspace must already exist.")
 	fs.StringVar(&o.ScyllaDBTLSCert, "scylladb-tls-cert", "",
 		"Path to ScyllaDB TLS client certificate")
 	fs.StringVar(&o.ScyllaDBTLSKey, "scylladb-tls-key", "",
 		"Path to ScyllaDB TLS client key")
 	fs.StringVar(&o.ScyllaDBTLSCA, "scylladb-tls-ca", "",
 		"Path to ScyllaDB TLS CA certificate")
+	fs.StringVar(&o.ScyllaDBTLSServerName, "scylladb-tls-server-name", "",
+		"TLS server name for ScyllaDB certificate verification (overrides hostname from contact points)")
 }
 
 func gvk(group, version, kind string) []any {
