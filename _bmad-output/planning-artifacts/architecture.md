@@ -292,7 +292,7 @@ kubebuilder init --domain dr.orchestrator --repo github.com/soteria-project/sote
 | Interface files | Defined in the package that uses them | `StorageProvider` in `pkg/drivers/interface.go` |
 | Internal packages | `internal/` for non-importable code | Driver authors import `pkg/`, not `internal/` |
 | Console plugin | `console-plugin/` at repo root | Separate build, image, and concerns |
-| Driver packages | `pkg/drivers/<vendor>/` | `pkg/drivers/noop/`, `pkg/drivers/odf/` |
+| Driver packages | `pkg/drivers/<vendor>/` | `pkg/drivers/noop/` |
 | Driver mocks | `pkg/drivers/fake/` | k8s `<package>fake` convention |
 | Conformance tests | `pkg/drivers/conformance/` | All drivers must pass; validates 9-method contract |
 
@@ -424,8 +424,6 @@ soteria/
 │   │   ├── registry.go                      # Driver registration + discovery from PVC storage class
 │   │   ├── noop/
 │   │   │   └── driver.go                    # No-op driver (dev/test/CI)
-│   │   ├── odf/
-│   │   │   └── driver.go                    # ODF driver (CSI-Addons pass-through)
 │   │   ├── fake/
 │   │   │   └── driver.go                    # Mock driver for unit tests
 │   │   └── conformance/
@@ -533,7 +531,7 @@ ScyllaDB (generic KV store)
 Only `pkg/storage/scylladb/` touches ScyllaDB directly. The controller and Console go through the Kubernetes API. Enforced by `internal/` convention and anti-pattern rules.
 
 **Driver Boundary:**
-`pkg/drivers/interface.go` defines the 9-method contract. Everything above (`pkg/engine/`, `pkg/controller/`) is driver-agnostic. Everything below (`pkg/drivers/odf/`, `pkg/drivers/noop/`) is vendor-specific. External driver authors import `pkg/drivers/`.
+`pkg/drivers/interface.go` defines the 9-method contract. Everything above (`pkg/engine/`, `pkg/controller/`) is driver-agnostic. Everything below (`pkg/drivers/noop/`) is vendor-specific. External driver authors import `pkg/drivers/`.
 
 **Engine Boundary:**
 `pkg/engine/` owns workflow execution. Receives a plan and a driver, executes waves, writes checkpoints via the Kubernetes API. Does not know about ScyllaDB, CDC, or API server internals.
@@ -547,7 +545,7 @@ Only `pkg/storage/scylladb/` touches ScyllaDB directly. The controller and Conso
 |---|---|---|
 | DR Plan Management (FR1–FR8) | `pkg/apis/`, `pkg/controller/drplan/`, `pkg/admission/` | `types.go`, `reconciler.go`, `drplan_validator.go` |
 | DR Execution & Workflow (FR9–FR19) | `pkg/engine/`, `pkg/controller/drexecution/` | `executor.go`, `statemachine.go`, `checkpoint.go` |
-| Storage Abstraction (FR20–FR25) | `pkg/drivers/` | `interface.go`, `registry.go`, `noop/driver.go`, `odf/driver.go` |
+| Storage Abstraction (FR20, FR21, FR23–FR25) | `pkg/drivers/` | `interface.go`, `registry.go`, `noop/driver.go` |
 | Cross-Site Shared State (FR26–FR30) | `pkg/storage/scylladb/`, `pkg/apiserver/` | `store.go`, `watch.go`, `versioner.go` |
 | Monitoring (FR31–FR34) | `pkg/metrics/`, `pkg/controller/drplan/` | `metrics.go`, `reconciler.go` |
 | Console Plugin (FR35–FR40) | `console-plugin/src/components/` | `DRDashboard/`, `ExecutionMonitor/` |
@@ -593,7 +591,7 @@ Only `pkg/storage/scylladb/` touches ScyllaDB directly. The controller and Conso
 |---|---|---|
 | FR1–FR8 (Plan Management) | ✅ | `pkg/apis/`, `pkg/controller/drplan/`, `pkg/admission/`, `pkg/engine/discovery.go` |
 | FR9–FR19 (Execution) | ✅ | `pkg/engine/`, `pkg/controller/drexecution/`, `internal/preflight/` |
-| FR20–FR25 (Storage) | ✅ | `pkg/drivers/`, `conformance/`, `noop/`, `odf/` |
+| FR20, FR21, FR23–FR25 (Storage) | ✅ | `pkg/drivers/`, `conformance/`, `noop/` |
 | FR26–FR30 (Cross-Site) | ✅ | `pkg/storage/scylladb/`, `pkg/apiserver/` |
 | FR31–FR34 (Monitoring) | ✅ | `pkg/metrics/`, `pkg/controller/drplan/` |
 | FR35–FR40 (Console) | ✅ | `console-plugin/src/components/` |

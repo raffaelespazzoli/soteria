@@ -37,7 +37,7 @@ so that all subsequent development has a consistent foundation with build toolin
 - [x] Task 2: Create full directory layout (AC: #4)
   - [x] 2.1 Create `pkg/apis/soteria.io/v1alpha1/` — type definitions home
   - [x] 2.2 Create `pkg/apis/soteria.io/install/` — scheme registration
-  - [x] 2.3 Create stub directories with `doc.go` placeholder: `pkg/apiserver/`, `pkg/registry/drplan/`, `pkg/registry/drexecution/`, `pkg/registry/drgroupstatus/`, `pkg/storage/scylladb/`, `pkg/drivers/`, `pkg/drivers/noop/`, `pkg/drivers/odf/`, `pkg/drivers/fake/`, `pkg/drivers/conformance/`, `pkg/engine/`, `pkg/controller/drplan/`, `pkg/controller/drexecution/`, `pkg/admission/`, `pkg/metrics/`
+  - [x] 2.3 Create stub directories with `doc.go` placeholder: `pkg/apiserver/`, `pkg/registry/drplan/`, `pkg/registry/drexecution/`, `pkg/registry/drgroupstatus/`, `pkg/storage/scylladb/`, `pkg/drivers/`, `pkg/drivers/noop/`, `pkg/drivers/fake/`, `pkg/drivers/conformance/`, `pkg/engine/`, `pkg/controller/drplan/`, `pkg/controller/drexecution/`, `pkg/admission/`, `pkg/metrics/`
   - [x] 2.4 Create stub `internal/preflight/`
   - [x] 2.5 Create `console-plugin/` placeholder (README only — full scaffold in Story 6.1)
   - [x] 2.6 Create `test/integration/storage/`, `test/integration/engine/`, `test/integration/apiserver/`, `test/e2e/`
@@ -392,7 +392,6 @@ soteria/
 ├── pkg/drivers/
 │   ├── doc.go                               # stub
 │   ├── noop/doc.go                          # stub
-│   ├── odf/doc.go                           # stub
 │   ├── fake/doc.go                          # stub
 │   └── conformance/doc.go                   # stub
 ├── pkg/engine/
@@ -510,7 +509,6 @@ claude-4.6-opus (Cursor Agent)
 - pkg/storage/scylladb/doc.go
 - pkg/drivers/doc.go
 - pkg/drivers/noop/doc.go
-- pkg/drivers/odf/doc.go
 - pkg/drivers/fake/doc.go
 - pkg/drivers/conformance/doc.go
 - pkg/engine/doc.go

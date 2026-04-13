@@ -56,7 +56,6 @@ FR19: Execution mode (planned_migration or disaster) is specified at execution t
 **Storage Abstraction:**
 FR20: Orchestrator interacts with storage backends exclusively through a StorageProvider Go interface with 9 methods: CreateVolumeGroup, DeleteVolumeGroup, GetVolumeGroup, EnableReplication, DisableReplication, PromoteVolume, DemoteVolume, ResyncVolume, GetReplicationInfo
 FR21: Orchestrator determines which StorageProvider driver to use by inspecting the storage class of the VMs' PVCs — no explicit storage configuration resource required
-FR22: ODF driver implements the StorageProvider interface as a native CSI-Addons pass-through
 FR23: No-op driver implements the full StorageProvider interface but performs no actual storage operations, enabling development, testing, and CI without storage infrastructure
 FR24: Storage vendor engineer can implement a new StorageProvider driver by implementing the 9-method Go interface and running the conformance test suite
 FR25: Orchestrator supports heterogeneous storage within a single DRPlan — different VMs can use different storage backends, each handled by the appropriate driver
@@ -185,7 +184,6 @@ The PRD is exceptionally complete:
 | FR19 | Execution mode at runtime, not on DRPlan | Epic 4 | 4.1, 4.4 | ✓ Covered |
 | FR20 | StorageProvider Go interface with 9 methods | Epic 3 | 3.1 | ✓ Covered |
 | FR21 | Implicit driver selection from PVC storage class | Epic 3 | 3.1 | ✓ Covered |
-| FR22 | ODF driver as CSI-Addons pass-through | Epic 3 | 3.5 | ✓ Covered |
 | FR23 | No-op driver for dev/test/CI | Epic 3 | 3.2 | ✓ Covered |
 | FR24 | Driver contribution via interface + conformance suite | Epic 3 | 3.4 | ✓ Covered |
 | FR25 | Heterogeneous storage within single DRPlan | Epic 3 | 3.1 | ✓ Covered |

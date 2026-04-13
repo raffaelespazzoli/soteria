@@ -35,7 +35,8 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-06
-last_updated: 2026-04-11
+last_updated: 2026-04-13
+# epic-2-retrospective done: retrospective completed, action items captured, Epic 2b sequencing confirmed
 # 2.5 done: RBAC & Secure Credential Handling — code review fixes applied, all tests green
 # 2.4 done: Pre-flight Plan Composition Check — code review fixes applied, all tests green
 # 2.3.1 done: VM Label Validation Webhook — reviewed, kubebuilder markers + test isolation fixes applied
@@ -76,7 +77,15 @@ development_status:
   2-3-1-vm-label-validation-webhook: done
   2-4-pre-flight-plan-composition-check: done
   2-5-rbac-secure-credential-handling: done
-  epic-2-retrospective: optional
+  epic-2-retrospective: done
+
+  # Epic 2b: VM-to-DRPlan Label Convention Refactoring
+  epic-2b: backlog
+  2b-1-label-convention-api-discovery-controller: backlog
+  2b-2-webhook-simplification: backlog
+  2b-3-test-suite-documentation-requirement-updates: backlog
+  2b-4-scylladb-scan-cap-integration-test: backlog
+  epic-2b-retrospective: optional
 
   # Epic 3: Storage Driver Framework & Reference Implementations
   epic-3: backlog
@@ -84,7 +93,6 @@ development_status:
   3-2-no-op-driver: backlog
   3-3-fake-driver-for-unit-testing: backlog
   3-4-conformance-test-suite: backlog
-  3-5-odf-driver-implementation: backlog
   epic-3-retrospective: optional
 
   # Epic 4: DR Workflow Engine — Full Lifecycle

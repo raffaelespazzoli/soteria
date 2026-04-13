@@ -193,7 +193,7 @@ PRD includes a comprehensive Journey Requirements Summary table (lines 149-169) 
 - Journey 4: FR20, FR23, FR24 (storage interface, no-op driver, conformance)
 
 **Scope -> FR Alignment:** Intact
-All 14 MVP Feature Set items map to specific FRs: StorageProvider (FR20), ODF driver (FR22), No-op driver (FR23), DRPlan CRD (FR1/FR3), DRExecution CRD (FR41), Planned migration (FR9), Disaster recovery (FR10), Re-protect (FR16), Failback (FR17), ScyllaDB/Aggregated API (FR26-FR30), OCP Console (FR35-FR40), Prometheus metrics (FR33), RBAC (FR44).
+All MVP Feature Set items map to specific FRs: StorageProvider (FR20), No-op driver (FR23), DRPlan CRD (FR1/FR3), DRExecution CRD (FR41), Planned migration (FR9), Disaster recovery (FR10), Re-protect (FR16), Failback (FR17), ScyllaDB/Aggregated API (FR26-FR30), OCP Console (FR35-FR40), Prometheus metrics (FR33), RBAC (FR44).
 
 #### Orphan Elements
 
@@ -245,7 +245,6 @@ Kubernetes, OpenShift, OLM, Prometheus, PatternFly, CSI-Addons, and Go interface
 
 **Capability-Relevant Technology References (not violations):**
 - FR20/FR24: "Go interface" — driver authoring language constraint
-- FR22: "CSI-Addons pass-through" — driver behavior definition
 - FR33/NFR18: "Prometheus" — K8s monitoring integration target
 - FR45: "Kubernetes Secrets or HashiCorp Vault" — supported integration targets
 - NFR16: "OLM" — OpenShift platform deployment standard

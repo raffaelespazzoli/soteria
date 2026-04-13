@@ -4,9 +4,9 @@ workflowCompleted: true
 completedAt: '2026-04-06'
 project_name: 'dr-orchestrator'
 user_name: 'Raffa'
-totalEpics: 7
-totalStories: 39
-totalFRsCovered: 45
+totalEpics: 8
+totalStories: 41
+totalFRsCovered: 44
 totalNFRsAddressed: 19
 totalUXDRsCovered: 20
 totalDeferredItems: 21
@@ -53,7 +53,6 @@ FR19: Execution mode (planned_migration or disaster) is specified at execution t
 **Storage Abstraction:**
 FR20: Orchestrator interacts with storage backends exclusively through a StorageProvider Go interface with 9 methods: CreateVolumeGroup, DeleteVolumeGroup, GetVolumeGroup, EnableReplication, DisableReplication, PromoteVolume, DemoteVolume, ResyncVolume, GetReplicationInfo
 FR21: Orchestrator determines which StorageProvider driver to use by inspecting the storage class of the VMs' PVCs — no explicit storage configuration resource required
-FR22: ODF driver implements the StorageProvider interface as a native CSI-Addons pass-through
 FR23: No-op driver implements the full StorageProvider interface but performs no actual storage operations, enabling development, testing, and CI without storage infrastructure
 FR24: Storage vendor engineer can implement a new StorageProvider driver by implementing the 9-method Go interface and running the conformance test suite
 FR25: Orchestrator supports heterogeneous storage within a single DRPlan — different VMs can use different storage backends, each handled by the appropriate driver
@@ -252,7 +251,6 @@ FR18: Epic 4 — Human-triggered only — no auto-failover
 FR19: Epic 4 — Execution mode specified at runtime, not on DRPlan
 FR20: Epic 3 — StorageProvider Go interface with 9 methods
 FR21: Epic 3 — Implicit driver selection from PVC storage class
-FR22: Epic 3 — ODF driver as CSI-Addons pass-through
 FR23: Epic 3 — No-op driver for dev/test/CI
 FR24: Epic 3 — Driver contribution path via interface + conformance suite
 FR25: Epic 3 — Heterogeneous storage within single DRPlan
@@ -287,9 +285,13 @@ Platform engineers can create, view, and manage DRPlan resources via kubectl on 
 VMs self-organize into DR plans via Kubernetes labels, waves auto-form from wave label values, namespace-level consistency is enforced, admission webhooks prevent misconfiguration, pre-flight checks validate plan composition, RBAC controls access, and storage credentials are handled securely.
 **FRs covered:** FR3, FR4, FR5, FR6, FR7, FR8, FR44, FR45
 
+### Epic 2b: VM-to-DRPlan Label Convention Refactoring
+Replace the `vmSelector` label-selector approach with a convention-based `soteria.io/drplan: <planName>` label on VMs. VMs declare their plan membership explicitly via a single label, structurally enforcing one-VM-one-plan exclusivity through Kubernetes label semantics. Admission webhooks are simplified — the O(plans x VMs) cross-check is eliminated. Discovery becomes an exact-match label query.
+**FRs refined:** FR1, FR3, FR4, FR5
+
 ### Epic 3: Storage Driver Framework & Reference Implementations
-Storage vendor engineers can implement and validate new drivers using the 9-method Go interface and conformance test suite. The no-op driver enables full dev/CI without real storage. The ODF driver provides production-ready storage interaction. Driver selection is automatic from PVC storage classes.
-**FRs covered:** FR20, FR21, FR22, FR23, FR24, FR25
+Storage vendor engineers can implement and validate new drivers using the 9-method Go interface and conformance test suite. The no-op driver enables full dev/CI without real storage. Driver selection is automatic from PVC storage classes.
+**FRs covered:** FR20, FR21, FR23, FR24, FR25
 
 ### Epic 4: DR Workflow Engine — Full Lifecycle
 Operators can execute the complete 4-state DR lifecycle: planned migration (RPO=0), disaster failover (RPO>0), re-protect, and failback. Execution respects wave ordering, DRGroup chunking with throttling, fail-forward error handling, checkpoint-based pod restart resumption, and manual retry of failed groups.
@@ -734,7 +736,7 @@ So that access is properly controlled and no credentials are stored or exposed b
 **And** no custom authorization logic exists — Kubernetes RBAC is the only access control mechanism (FR44)
 
 **Given** the storage driver framework
-**When** a driver needs storage credentials (e.g., for the ODF CSI-Addons endpoint)
+**When** a driver needs storage credentials (e.g., for a CSI-Addons endpoint)
 **Then** credentials are read from Kubernetes Secrets referenced by the driver configuration or discovered via PVC storage class annotations
 **And** the orchestrator never stores credentials in its own resources, config maps, or local state (FR45)
 
@@ -750,9 +752,170 @@ So that access is properly controlled and no credentials are stored or exposed b
 
 ---
 
+## Epic 2b: VM-to-DRPlan Label Convention Refactoring
+
+Replace the `vmSelector` label-selector approach with a convention-based `soteria.io/drplan: <planName>` label on VMs. VMs declare their plan membership explicitly via a single label, structurally enforcing one-VM-one-plan exclusivity through Kubernetes label semantics. Admission webhooks are simplified — the O(plans × VMs) cross-check is eliminated. Discovery becomes an exact-match label query.
+
+**Motivation:**
+- **Structural exclusivity:** A Kubernetes label key can only have one value per resource, so a VM with `soteria.io/drplan: plan-a` physically cannot also belong to `plan-b`. This eliminates FR4 as a code concern.
+- **Performance:** The current `ExclusivityChecker.FindMatchingPlans` lists every DRPlan, parses each `vmSelector`, and tests `sel.Matches(vmLabels)` for every VM — O(plans × VMs) on every admission. The new model requires no cross-resource check.
+- **Simplicity:** The `DRPlanSpec.VMSelector` field, `exclusivity.go`, and the VM discovery call in the DRPlan webhook are all removed. The controller's `mapVMToDRPlans` becomes O(1).
+
+**FRs refined:** FR1, FR3, FR4, FR5
+
+### Story 2b.1: Label Convention — API, Discovery & Controller Refactoring
+
+As a platform engineer,
+I want VMs to declare their DRPlan membership via the `soteria.io/drplan` label,
+So that plan membership is explicit, unambiguous, and structurally limited to one plan per VM.
+
+**Acceptance Criteria:**
+
+**Given** the `DRPlanSpec` in `pkg/apis/soteria.io/v1alpha1/types.go`
+**When** the label convention is adopted
+**Then** the `VMSelector metav1.LabelSelector` field is removed from `DRPlanSpec`
+**And** a new exported constant `DRPlanLabel = "soteria.io/drplan"` is added to the API package
+**And** `make manifests` and `make generate` succeed with the updated types
+
+**Given** the `TypedVMDiscoverer` in `pkg/engine/discovery.go`
+**When** `DiscoverVMs` is called
+**Then** the method signature changes from `DiscoverVMs(ctx, metav1.LabelSelector)` to `DiscoverVMs(ctx, planName string)`
+**And** VMs are listed using an exact label selector: `soteria.io/drplan=<planName>`
+**And** the `VMDiscoverer` interface is updated to match the new signature
+**And** `GroupByWave` remains unchanged — waves are still determined by the separate wave label
+
+**Given** the `DRPlanReconciler` in `pkg/controller/drplan/reconciler.go`
+**When** a DRPlan is reconciled
+**Then** `DiscoverVMs` is called with `plan.Name` instead of `plan.Spec.VMSelector`
+**And** all downstream logic (wave grouping, volume group resolution, chunking, preflight) operates identically
+
+**Given** the `mapVMToDRPlans` function in the reconciler
+**When** a VM label changes
+**Then** the function reads the VM's `soteria.io/drplan` label and enqueues the single named plan — O(1) instead of O(N) DRPlan scanning
+**And** if the label is absent or empty, no reconcile requests are enqueued
+
+**Given** the `vmRelevantChangePredicate`
+**When** the `soteria.io/drplan` label is added, removed, or changed on a VM
+**Then** the predicate fires and the relevant DRPlan(s) are reconciled (both old and new plan if the value changed)
+
+**Given** the validation in `pkg/apis/soteria.io/v1alpha1/validation.go`
+**When** `ValidateDRPlan` is called
+**Then** the `validateVMSelector` function is removed
+**And** validation of `waveLabel` and `maxConcurrentFailovers` remains unchanged
+
+**Given** the updated discovery engine
+**When** unit tests in `pkg/engine/discovery_test.go` run
+**Then** tests verify: VMs with matching `soteria.io/drplan` label are discovered, VMs without the label are not discovered, VMs with a different plan name are not discovered, wave grouping still works correctly
+
+### Story 2b.2: Webhook Simplification
+
+As a platform engineer,
+I want admission webhooks to be simpler and faster after the label convention change,
+So that DRPlan and VM mutations are validated without expensive cross-resource queries.
+
+**Acceptance Criteria:**
+
+**Given** the `ExclusivityChecker` in `pkg/admission/exclusivity.go`
+**When** the label convention is adopted
+**Then** the entire `exclusivity.go` file is deleted — `FindMatchingPlans`, `CheckVMExclusivity`, and `CheckDRPlanExclusivity` are no longer needed
+**And** `exclusivity_test.go` is deleted
+
+**Given** the `DRPlanValidator` in `pkg/admission/drplan_validator.go`
+**When** a DRPlan CREATE or UPDATE is admitted
+**Then** the webhook no longer calls `DiscoverVMs` or `CheckDRPlanExclusivity`
+**And** the `ExclusivityChecker` dependency is removed from `DRPlanValidator`
+**And** validation of `waveLabel`, `maxConcurrentFailovers` (field-level) remains
+**And** namespace consistency and throttle capacity checks remain — but are now performed by the controller during reconciliation (eventual consistency), not at admission time
+**And** the webhook becomes a lightweight field validator only
+
+**Given** the `VMValidator` in `pkg/admission/vm_validator.go`
+**When** a VirtualMachine CREATE or UPDATE is admitted with a `soteria.io/drplan` label
+**Then** the webhook validates that the referenced DRPlan exists (by name lookup) — if not, it issues a warning (not a rejection, to avoid ordering issues during GitOps apply)
+**And** the `CheckVMExclusivity` call is removed entirely — exclusivity is guaranteed by label semantics
+**And** wave conflict checking for namespace-level consistency is simplified: the webhook reads the plan name from the label, fetches that single plan, and checks wave consistency only within that plan's VMs
+
+**Given** the webhook configuration markers
+**When** `make manifests` is run
+**Then** RBAC markers are updated to reflect reduced permissions (no longer needs to list all DRPlans for exclusivity scanning)
+
+**Given** the updated webhooks
+**When** integration tests in `test/integration/admission/` run
+**Then** DRPlan webhook tests verify field validation without VM discovery
+**And** VM webhook tests verify: VM with valid `soteria.io/drplan` label is accepted, VM with wave conflict in namespace-level namespace is rejected, VM without the label is always accepted
+
+### Story 2b.3: Test Suite, Documentation & Requirement Updates
+
+As a team member,
+I want all tests, documentation, and requirements to reflect the label convention change,
+So that the codebase is consistent and future contributors understand the new design.
+
+**Acceptance Criteria:**
+
+**Given** the existing integration tests
+**When** the test suite runs after the refactoring
+**Then** all tests in `test/integration/admission/` are updated to use the `soteria.io/drplan` label instead of `vmSelector` overlap scenarios
+**And** all tests in `pkg/engine/discovery_test.go` use the new `DiscoverVMs(ctx, planName)` signature
+**And** `make test` passes with 100% of existing test scenarios adapted to the new convention
+**And** no test files reference `vmSelector` or `ExclusivityChecker`
+
+**Given** the PRD at `_bmad-output/planning-artifacts/prd.md`
+**When** updated for the label convention
+**Then** FR1 reads: "Platform engineer can create a DRPlan by defining a wave label key and a max concurrent failovers parameter. VMs are associated to the plan by setting the `soteria.io/drplan: <planName>` label"
+**And** FR3 reads: "Orchestrator automatically discovers VMs with the `soteria.io/drplan` label matching the plan name and groups them into waves based on the wave label value"
+**And** FR4 reads: "VM exclusivity is structurally enforced — a Kubernetes label key can have only one value, so a VM can belong to at most one DRPlan"
+**And** FR5 reads: "Platform engineer can add a VM to an existing DRPlan by setting `soteria.io/drplan: <planName>` on the VM — no plan editing required"
+
+**Given** the architecture doc at `_bmad-output/planning-artifacts/architecture.md`
+**When** updated
+**Then** the admission webhook section reflects the simplified design
+**And** the data flow diagram no longer shows `vmSelector` parsing
+
+**Given** the project context at `_bmad-output/project-context.md`
+**When** updated
+**Then** the CRD JSON fields section removes `vmSelector` and documents `soteria.io/drplan` as the VM association label
+**And** the Labels/annotations table includes `soteria.io/drplan`
+
+**Given** sample CRs in `config/samples/`
+**When** updated
+**Then** DRPlan samples no longer contain `vmSelector`
+**And** VM samples include `soteria.io/drplan: <sample-plan-name>` in their labels
+
+### Story 2b.4: ScyllaDB Label-Indexed Pagination — Scan Cap Integration Test
+
+As a developer,
+I want the scan cap behavior of the label-indexed pagination re-fetch loop to be verified end-to-end against real ScyllaDB,
+So that I am confident the bounded scan and partial-list continue-token logic works correctly under realistic data volumes.
+
+**Background:** Story 1.3.1 implemented label-indexed pagination with a bounded re-fetch loop in `pkg/storage/scylladb/store.go`. The loop has a scan cap (`maxScanRows = limit * 10`) that returns a partial list with a continue token when reached. Task 6.9 — the integration test verifying this behavior — was deferred because it requires creating enough objects with low-selectivity labels to trigger the scan cap, which is expensive in testcontainers. This debt has been carried since Epic 1.
+
+**Acceptance Criteria:**
+
+**Given** the bounded re-fetch loop in `GetList` (path B: negative-only selectors, or label-index path with residual filters)
+**When** the label selector has very low selectivity (e.g., fewer than `limit` matches exist within the scan cap window)
+**Then** the loop stops at `maxScanRows` and returns a partial list
+**And** the response includes a valid continue token
+**And** the client can resume from the continue token to retrieve remaining matching objects
+
+**Given** a ScyllaDB testcontainers environment with 100+ objects where only a small fraction (e.g., 5 out of 100) match a given label selector
+**When** `GetList` is called with `limit=10` and the matching label selector
+**Then** the scan cap is reached before 10 matches are found
+**And** the returned list contains fewer than `limit` items (the 5 matches found within the scan window)
+**And** `list.Continue` is non-empty (indicating more rows exist beyond the scan cap)
+
+**Given** the partial list with a continue token from the scan cap scenario
+**When** the client issues a follow-up `GetList` with the continue token
+**Then** the follow-up request resumes scanning from where the previous request stopped
+**And** any additional matches beyond the scan cap window are returned
+
+**Given** the scan cap integration test
+**When** `make integration` runs
+**Then** the test passes alongside all existing label-indexed pagination tests (Story 1.3.1 Tasks 6.1–6.8, 6.10)
+
+---
+
 ## Epic 3: Storage Driver Framework & Reference Implementations
 
-Storage vendor engineers can implement and validate new drivers using the 9-method Go interface and conformance test suite. The no-op driver enables full dev/CI without real storage. The ODF driver provides production-ready storage interaction. Driver selection is automatic from PVC storage classes.
+Storage vendor engineers can implement and validate new drivers using the 9-method Go interface and conformance test suite. The no-op driver enables full dev/CI without real storage. Driver selection is automatic from PVC storage classes.
 
 ### Story 3.1: StorageProvider Interface & Driver Registry
 
@@ -786,7 +949,7 @@ So that I know exactly what to implement and how drivers are discovered at runti
 **And** returns the registered driver for that provisioner
 **And** returns `ErrDriverNotFound` if no driver is registered for the provisioner
 
-**Given** a DRPlan with VMs using different storage backends (e.g., ODF and Dell)
+**Given** a DRPlan with VMs using different storage backends
 **When** the orchestrator processes different VMs
 **Then** each VM is handled by the appropriate driver selected from the registry (FR25)
 
@@ -895,52 +1058,6 @@ So that I can prove my driver implementation is correct before submitting it.
 **Given** the conformance suite documentation
 **When** a vendor engineer reads it
 **Then** clear instructions explain how to wire their driver into the suite and run it: `go test ./pkg/drivers/conformance/ -run TestConformance -driver=<name>`
-
-### Story 3.5: ODF Driver Implementation
-
-As a platform engineer,
-I want the ODF driver to provide production-ready DR storage operations via CSI-Addons pass-through,
-So that ODF-backed workloads have full DR support.
-
-**Acceptance Criteria:**
-
-**Given** the ODF driver in `pkg/drivers/odf/driver.go`
-**When** any StorageProvider method is called
-**Then** it translates to the corresponding CSI-Addons operation via the native ODF CSI-Addons gRPC interface (FR22)
-**And** the translation is direct pass-through — no additional abstraction layers
-
-**Given** the ODF driver
-**When** `CreateVolumeGroup` is called
-**Then** it creates a CSI-Addons VolumeGroup via the ODF CSI driver
-**And** returns the VolumeGroup handle for subsequent operations
-
-**Given** the ODF driver
-**When** `PromoteVolume` is called with force=false (planned migration)
-**Then** it issues a CSI-Addons VolumeGroupReplication promote request without force
-**And** waits for the operation to complete synchronously
-
-**Given** the ODF driver
-**When** `PromoteVolume` is called with force=true (disaster failover)
-**Then** it issues a CSI-Addons VolumeGroupReplication promote request with force flag
-**And** errors from the origin site are ignored as expected in disaster mode
-
-**Given** the ODF driver
-**When** `GetReplicationInfo` is called
-**Then** it returns replication state (Healthy/Degraded/Error), last sync timestamp, and estimated RPO
-**And** the data is sourced from the CSI-Addons VolumeGroupReplication status
-
-**Given** the ODF driver
-**When** all 9 methods are called
-**Then** every method is idempotent — safe to retry after crash/restart
-**And** all methods return typed errors from `pkg/drivers/errors.go`
-
-**Given** the ODF driver
-**When** registered via `init()`
-**Then** it registers under the ODF CSI provisioner name (e.g., `openshift-storage.cephfs.csi.ceph.com`, `openshift-storage.rbd.csi.ceph.com`)
-
-**Given** the ODF driver
-**When** the conformance test suite is run against it (with a real or simulated ODF environment)
-**Then** all conformance tests pass
 
 ---
 

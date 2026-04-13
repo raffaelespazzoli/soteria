@@ -99,7 +99,7 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 - Driver selection is implicit from PVC storage class — no StorageProviderConfig CRD
 - Registration: `init()` + registry pattern, discovered at startup
 - Timeouts: accept `context.Context`, respect cancellation
-- Driver packages: `pkg/drivers/<vendor>/` — `noop/`, `odf/`, `fake/`
+- Driver packages: `pkg/drivers/<vendor>/` — `noop/`, `fake/`
 - All drivers must pass conformance suite at `pkg/drivers/conformance/suite.go`
 
 **React / Console Plugin:**
@@ -170,13 +170,14 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 - `make manifests` to regenerate RBAC/webhook configs after changes
 - `hack/verify-codegen.sh` in CI — ensures generated code is up to date
 
-**Documentation (Tiered Comment Standards):**
+**Documentation (Tiered Comment Standards — enforced on every story):**
 
 - Code comments explain *why*, not *what* — never narrate obvious logic
 - Event messages: human-readable sentences — `"Failover started for plan erp-full-stack in disaster mode"`
 - Error messages: lowercase, no punctuation, descriptive context
+- **Every story must verify Tier 1/2/3 compliance before marking done** — this is a finalization gate, not optional
 
-*Tier 1 — Package doc comments (mandatory for all `pkg/` packages):*
+*Tier 1 — Package doc comments (mandatory for all `pkg/` and `internal/` packages):*
 - Every package under `pkg/` must have a `doc.go` with a 3-5 sentence godoc overview
 - Explains the package's purpose, its primary types, and its relationship to the architecture
 - Follows Go convention: first sentence is `// Package <name> ...`
@@ -194,6 +195,13 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 - Strategy files following `k8s.io/apiserver` registry conventions, standard storage wiring (`NewREST`, `StatusREST`), `main.go` flag parsing, and other idiomatic Kubernetes plumbing do not need additional comments beyond standard godoc on exported symbols
 
 ### Development Workflow Rules
+
+**Story Execution Discipline:**
+
+- Task checkboxes in story files (`- [ ]` / `- [x]`) must be updated as work progresses during implementation — a story must never reach "done" status with all task checkboxes still unchecked
+- Every story goes through the `bmad-dev-story` workflow — no manual sprint-status edits
+- Code reviews use a different LLM than the implementing agent
+- Deferred items from code reviews are tracked in the story file and reviewed at the start of the next epic
 
 **Project Initialization:**
 

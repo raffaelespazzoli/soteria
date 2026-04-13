@@ -56,6 +56,7 @@ validation-rules:
 - [ ] **Change Log Updated:** Change Log includes clear summary of what changed and why
 - [ ] **Review Follow-ups:** All review follow-up tasks (marked [AI-Review]) completed and corresponding review items marked resolved (if applicable)
 - [ ] **Story Structure Compliance:** Only permitted sections of story file were modified
+- [ ] **Tiered Documentation:** All new/modified code meets project-context.md Tier 1/2/3 documentation standards (package doc.go, architecture block comments, domain 'why' comments)
 
 ## 🔚 Final Status Verification
 

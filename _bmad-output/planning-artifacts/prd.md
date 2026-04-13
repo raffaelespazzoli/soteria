@@ -23,7 +23,7 @@ classification:
 
 Soteria is an open-source, Kubernetes-native disaster recovery orchestrator for OpenShift Virtualization. It provides storage-agnostic DR across heterogeneous storage backends — ODF, Dell, Pure Storage, NetApp — through a single, consistent workflow engine. Platform engineers define DR plans using standard Kubernetes labels and CRDs. The orchestrator handles volume promotion, VM startup sequencing, wave-based throttling, and full audit trails. VMs already exist on both clusters with correct PVC bindings; the orchestrator's role is to promote replicated volumes to read-write and start VMs in the right order at the right time. Both datacenters see the same DR state through a Kubernetes Aggregated API Server backed by ScyllaDB with async cross-site replication.
 
-The project exists because thousands of organizations migrating from VMware vSphere to OpenShift Virtualization are discovering there is no equivalent to VMware Site Recovery Manager. DR is the gating blocker for many of these migrations. Each storage vendor offers its own replication tooling, but no unified orchestration layer exists. Soteria fills that gap — starting lean with ODF, growing toward SRM-class maturity, and doing it in the open under Apache 2.0.
+The project exists because thousands of organizations migrating from VMware vSphere to OpenShift Virtualization are discovering there is no equivalent to VMware Site Recovery Manager. DR is the gating blocker for many of these migrations. Each storage vendor offers its own replication tooling, but no unified orchestration layer exists. Soteria fills that gap — starting lean with a pluggable driver framework and no-op driver for development, growing toward SRM-class maturity, and doing it in the open under Apache 2.0.
 
 The target users are platform engineers and infrastructure architects responsible for RTO/RPO commitments, compliance audits, and DR testing across OpenShift Virtualization deployments. Secondary users are storage vendors who want first-class participation in the DR story through a bounded driver interface.
 
@@ -55,7 +55,7 @@ The vendor-specific surface is narrow — six storage operations modeled on CSI-
 
 - **Failover success rate:** Target 99% successful failover executions, measured across plan types (planned migration, disaster recovery). Partial failures attributable to orchestrator bugs (not external storage/infrastructure issues) should be exceptional.
 - **Full DR lifecycle:** The orchestrator executes the complete 4-state cycle — failover, re-protect, failback, restore — against real OpenShift Virtualization clusters with real storage replication.
-- **Storage-agnostic validation:** Three or more StorageProvider driver implementations validated end-to-end (ODF + no-op + at least one of Dell, Pure, or NetApp).
+- **Storage-agnostic validation:** StorageProvider interface validated via no-op driver and conformance test suite. Production driver implementations (ODF, Dell, Pure, or NetApp) validated end-to-end as they are contributed.
 - **Cross-site state consistency:** Both clusters serve identical DR state via the Aggregated API Server. State survives single-datacenter failure and auto-reconciles on recovery.
 
 ### Measurable Outcomes
@@ -210,7 +210,7 @@ She applies it and opens the OCP Console. The DR Dashboard shows `erp-full-stack
 ### Validation Approach
 
 - **ScyllaDB + Aggregated API:** Prototype with two OpenShift clusters, validate that `kubectl get drplan` returns identical data on both sides, test failure scenarios (single DC loss, network partition, recovery reconciliation), measure replication lag under load.
-- **Storage interface:** Implement ODF driver (native CSI-Addons pass-through) and no-op driver first. Validate that the interface contract is sufficient for the full DR lifecycle. Use Dell driver implementation as the first real test of the shim model.
+- **Storage interface:** Implement no-op driver first. Validate that the interface contract is sufficient for the full DR lifecycle via the conformance test suite. Use the first production driver implementation as the real test of the shim model.
 - **Label-driven waves:** Validate with real-world plan structures (mixed wave sizes, throttling, namespace-level consistency). Test edge cases: VMs added/removed between plan creation and execution, label changes during execution.
 
 ### Risk Mitigation
@@ -282,7 +282,6 @@ Metrics are exposed via standard `/metrics` endpoint and scraped by Prometheus. 
 | Component | Description |
 |---|---|
 | StorageProvider Go interface | 9-method interface modeled on CSI-Addons semantics |
-| ODF driver | Native CSI-Addons pass-through |
 | No-op driver | Full interface implementation for dev/test/CI |
 | DRPlan CRD | Label-driven wave formation, vmSelector, waveLabel, maxConcurrentFailovers. No `type` field — execution mode chosen at runtime |
 | DRExecution CRD | Immutable audit record. Execution mode (planned_migration, disaster) is a field on DRExecution, not DRPlan |
@@ -368,7 +367,6 @@ Metrics are exposed via standard `/metrics` endpoint and scraped by Prometheus. 
 
 - **FR20:** Orchestrator interacts with storage backends exclusively through a StorageProvider Go interface with 9 methods: CreateVolumeGroup, DeleteVolumeGroup, GetVolumeGroup, EnableReplication, DisableReplication, PromoteVolume, DemoteVolume, ResyncVolume, GetReplicationInfo
 - **FR21:** Orchestrator determines which StorageProvider driver to use by inspecting the storage class of the VMs' PVCs — no explicit storage configuration resource required
-- **FR22:** ODF driver implements the StorageProvider interface as a native CSI-Addons pass-through
 - **FR23:** No-op driver implements the full StorageProvider interface but performs no actual storage operations, enabling development, testing, and CI without storage infrastructure
 - **FR24:** Storage vendor engineer can implement a new StorageProvider driver by implementing the 9-method Go interface and running the conformance test suite
 - **FR25:** Orchestrator supports heterogeneous storage within a single DRPlan — different VMs can use different storage backends, each handled by the appropriate driver
