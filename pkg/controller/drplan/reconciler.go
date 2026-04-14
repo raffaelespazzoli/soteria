@@ -299,7 +299,8 @@ func (r *DRPlanReconciler) vmEventHandler() handler.Funcs {
 }
 
 // enqueueForVM reads the soteria.io/drplan label from a VM and enqueues
-// a reconcile request for the named plan. O(1) — no DRPlan list needed.
+// a reconcile request for the named plan. DRPlan is cluster-scoped, so the
+// namespace is always empty. O(1) — no DRPlan list needed.
 func (r *DRPlanReconciler) enqueueForVM(obj client.Object, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
 	if obj == nil {
 		return
@@ -310,8 +311,7 @@ func (r *DRPlanReconciler) enqueueForVM(obj client.Object, q workqueue.TypedRate
 	}
 	q.Add(reconcile.Request{
 		NamespacedName: types.NamespacedName{
-			Name:      planName,
-			Namespace: obj.GetNamespace(),
+			Name: planName,
 		},
 	})
 }
@@ -339,8 +339,7 @@ func (r *DRPlanReconciler) mapNamespaceToDRPlans(
 		if planReferencesNamespace(plan, nsName) {
 			requests = append(requests, reconcile.Request{
 				NamespacedName: types.NamespacedName{
-					Name:      plan.Name,
-					Namespace: plan.Namespace,
+					Name: plan.Name,
 				},
 			})
 		}

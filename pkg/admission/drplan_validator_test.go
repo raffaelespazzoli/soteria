@@ -100,7 +100,7 @@ func TestDRPlanValidator_VMExclusivity(t *testing.T) {
 		{
 			name: "no existing plans — allowed",
 			plan: &soteriav1alpha1.DRPlan{
-				ObjectMeta: metav1.ObjectMeta{Name: "plan-a", Namespace: "default"},
+				ObjectMeta: metav1.ObjectMeta{Name: "plan-a"},
 				Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
 			},
 			op: admissionv1.Create,
@@ -112,12 +112,12 @@ func TestDRPlanValidator_VMExclusivity(t *testing.T) {
 		{
 			name: "non-overlapping selector — allowed",
 			plan: &soteriav1alpha1.DRPlan{
-				ObjectMeta: metav1.ObjectMeta{Name: "plan-b", Namespace: "default"},
+				ObjectMeta: metav1.ObjectMeta{Name: "plan-b"},
 				Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
 			},
 			existingPlans: []*soteriav1alpha1.DRPlan{
 				{
-					ObjectMeta: metav1.ObjectMeta{Name: "plan-a", Namespace: "default"},
+					ObjectMeta: metav1.ObjectMeta{Name: "plan-a"},
 					Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
 				},
 			},
@@ -130,12 +130,12 @@ func TestDRPlanValidator_VMExclusivity(t *testing.T) {
 		{
 			name: "overlapping selector — denied",
 			plan: &soteriav1alpha1.DRPlan{
-				ObjectMeta: metav1.ObjectMeta{Name: "plan-b", Namespace: "default"},
+				ObjectMeta: metav1.ObjectMeta{Name: "plan-b"},
 				Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
 			},
 			existingPlans: []*soteriav1alpha1.DRPlan{
 				{
-					ObjectMeta: metav1.ObjectMeta{Name: "plan-a", Namespace: "default"},
+					ObjectMeta: metav1.ObjectMeta{Name: "plan-a"},
 					Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
 				},
 			},
@@ -150,12 +150,12 @@ func TestDRPlanValidator_VMExclusivity(t *testing.T) {
 		{
 			name: "update same plan (self) — allowed",
 			plan: &soteriav1alpha1.DRPlan{
-				ObjectMeta: metav1.ObjectMeta{Name: "plan-a", Namespace: "default"},
+				ObjectMeta: metav1.ObjectMeta{Name: "plan-a"},
 				Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
 			},
 			existingPlans: []*soteriav1alpha1.DRPlan{
 				{
-					ObjectMeta: metav1.ObjectMeta{Name: "plan-a", Namespace: "default"},
+					ObjectMeta: metav1.ObjectMeta{Name: "plan-a"},
 					Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
 				},
 			},
@@ -164,25 +164,6 @@ func TestDRPlanValidator_VMExclusivity(t *testing.T) {
 				"plan-a": erpVMsPlanA,
 			},
 			wantAllowed: true,
-		},
-		{
-			name: "cluster-wide exclusivity — different namespace overlaps denied",
-			plan: &soteriav1alpha1.DRPlan{
-				ObjectMeta: metav1.ObjectMeta{Name: "plan-b", Namespace: "other-ns"},
-				Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
-			},
-			existingPlans: []*soteriav1alpha1.DRPlan{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "plan-a", Namespace: "default"},
-					Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
-				},
-			},
-			op: admissionv1.Create,
-			discovererVMs: map[string][]engine.VMReference{
-				"plan-b": erpVMsPlanA,
-			},
-			wantAllowed: false,
-			wantMessage: "already belongs to DRPlan",
 		},
 	}
 
@@ -291,7 +272,7 @@ func TestDRPlanValidator_NamespaceConsistency(t *testing.T) {
 			}
 
 			plan := &soteriav1alpha1.DRPlan{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-plan", Namespace: "default"},
+				ObjectMeta: metav1.ObjectMeta{Name: "test-plan"},
 				Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 10},
 			}
 
@@ -403,7 +384,7 @@ func TestDRPlanValidator_MaxConcurrentCapacity(t *testing.T) {
 			}
 
 			plan := &soteriav1alpha1.DRPlan{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-plan", Namespace: "default"},
+				ObjectMeta: metav1.ObjectMeta{Name: "test-plan"},
 				Spec: soteriav1alpha1.DRPlanSpec{
 					WaveLabel:              "wave",
 					MaxConcurrentFailovers: tt.maxConcurrent,
@@ -444,7 +425,7 @@ func TestDRPlanValidator_AllowedAndEdgeCases(t *testing.T) {
 		}
 
 		plan := &soteriav1alpha1.DRPlan{
-			ObjectMeta: metav1.ObjectMeta{Name: "plan-a", Namespace: "default"},
+			ObjectMeta: metav1.ObjectMeta{Name: "plan-a"},
 			Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
 		}
 
@@ -465,7 +446,7 @@ func TestDRPlanValidator_AllowedAndEdgeCases(t *testing.T) {
 		}
 
 		plan := &soteriav1alpha1.DRPlan{
-			ObjectMeta: metav1.ObjectMeta{Name: "plan-a", Namespace: "default"},
+			ObjectMeta: metav1.ObjectMeta{Name: "plan-a"},
 			Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
 		}
 
@@ -490,7 +471,7 @@ func TestDRPlanValidator_AllowedAndEdgeCases(t *testing.T) {
 		}
 
 		plan := &soteriav1alpha1.DRPlan{
-			ObjectMeta: metav1.ObjectMeta{Name: "plan-a", Namespace: "default"},
+			ObjectMeta: metav1.ObjectMeta{Name: "plan-a"},
 			Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
 		}
 
@@ -520,7 +501,7 @@ func TestDRPlanValidator_ErrorPaths(t *testing.T) {
 		}
 
 		plan := &soteriav1alpha1.DRPlan{
-			ObjectMeta: metav1.ObjectMeta{Name: "plan-a", Namespace: "default"},
+			ObjectMeta: metav1.ObjectMeta{Name: "plan-a"},
 			Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
 		}
 
@@ -536,7 +517,7 @@ func TestDRPlanValidator_ErrorPaths(t *testing.T) {
 	t.Run("exclusivity check detects overlap with existing plan", func(t *testing.T) {
 		scheme := buildScheme()
 		existingPlan := &soteriav1alpha1.DRPlan{
-			ObjectMeta: metav1.ObjectMeta{Name: "plan-existing", Namespace: "default"},
+			ObjectMeta: metav1.ObjectMeta{Name: "plan-existing"},
 			Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
 		}
 		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existingPlan).Build()
@@ -557,7 +538,7 @@ func TestDRPlanValidator_ErrorPaths(t *testing.T) {
 		}
 
 		plan := &soteriav1alpha1.DRPlan{
-			ObjectMeta: metav1.ObjectMeta{Name: "plan-new", Namespace: "default"},
+			ObjectMeta: metav1.ObjectMeta{Name: "plan-new"},
 			Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
 		}
 
@@ -589,7 +570,7 @@ func TestDRPlanValidator_ErrorPaths(t *testing.T) {
 		}
 
 		plan := &soteriav1alpha1.DRPlan{
-			ObjectMeta: metav1.ObjectMeta{Name: "plan-a", Namespace: "default"},
+			ObjectMeta: metav1.ObjectMeta{Name: "plan-a"},
 			Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
 		}
 

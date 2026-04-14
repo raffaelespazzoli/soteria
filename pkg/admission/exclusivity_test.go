@@ -32,21 +32,14 @@ import (
 
 func TestFindMatchingPlans(t *testing.T) {
 	planERP := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-erp", Namespace: "default"},
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-erp"},
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "wave",
 			MaxConcurrentFailovers: 4,
 		},
 	}
 	planDB := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-db", Namespace: "default"},
-		Spec: soteriav1alpha1.DRPlanSpec{
-			WaveLabel:              "wave",
-			MaxConcurrentFailovers: 4,
-		},
-	}
-	planERPOtherNS := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-erp", Namespace: "other-ns"},
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-db"},
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "wave",
 			MaxConcurrentFailovers: 4,
@@ -75,16 +68,10 @@ func TestFindMatchingPlans(t *testing.T) {
 			wantNames: []string{"plan-erp"},
 		},
 		{
-			name:      "VM drplan label matches two DRPlans with the same name in different namespaces",
-			plans:     []*soteriav1alpha1.DRPlan{planERP, planERPOtherNS},
-			vmLabels:  labels.Set{soteriav1alpha1.DRPlanLabel: "plan-erp"},
-			wantCount: 2,
-		},
-		{
 			name:      "VM drplan label matches a DRPlan but it is excluded",
 			plans:     []*soteriav1alpha1.DRPlan{planERP},
 			vmLabels:  labels.Set{soteriav1alpha1.DRPlanLabel: "plan-erp"},
-			exclude:   &types.NamespacedName{Namespace: "default", Name: "plan-erp"},
+			exclude:   &types.NamespacedName{Name: "plan-erp"},
 			wantCount: 0,
 		},
 		{
@@ -142,28 +129,14 @@ func TestFindMatchingPlans(t *testing.T) {
 
 func TestCheckVMExclusivity(t *testing.T) {
 	planERP := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-erp", Namespace: "default"},
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-erp"},
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "wave",
 			MaxConcurrentFailovers: 4,
 		},
 	}
 	planDB := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-db", Namespace: "default"},
-		Spec: soteriav1alpha1.DRPlanSpec{
-			WaveLabel:              "wave",
-			MaxConcurrentFailovers: 4,
-		},
-	}
-	planERPOtherNS := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-erp", Namespace: "other-ns"},
-		Spec: soteriav1alpha1.DRPlanSpec{
-			WaveLabel:              "wave",
-			MaxConcurrentFailovers: 4,
-		},
-	}
-	planERPThirdNS := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-erp", Namespace: "third-ns"},
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-db"},
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "wave",
 			MaxConcurrentFailovers: 4,
@@ -188,20 +161,6 @@ func TestCheckVMExclusivity(t *testing.T) {
 			plans:     []*soteriav1alpha1.DRPlan{planERP, planDB},
 			vmLabels:  labels.Set{soteriav1alpha1.DRPlanLabel: "plan-erp"},
 			wantCount: 0,
-		},
-		{
-			name:      "VM matches 2 plans — error listing both",
-			plans:     []*soteriav1alpha1.DRPlan{planERP, planERPOtherNS},
-			vmLabels:  labels.Set{soteriav1alpha1.DRPlanLabel: "plan-erp"},
-			wantCount: 1,
-			wantMsg:   "would belong to multiple DRPlans",
-		},
-		{
-			name:      "VM matches 3 plans — error listing all three",
-			plans:     []*soteriav1alpha1.DRPlan{planERP, planERPOtherNS, planERPThirdNS},
-			vmLabels:  labels.Set{soteriav1alpha1.DRPlanLabel: "plan-erp"},
-			wantCount: 1,
-			wantMsg:   "would belong to multiple DRPlans",
 		},
 	}
 
@@ -239,14 +198,14 @@ func TestCheckVMExclusivity(t *testing.T) {
 
 func TestCheckDRPlanExclusivity(t *testing.T) {
 	planERP := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-erp", Namespace: "default"},
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-erp"},
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "wave",
 			MaxConcurrentFailovers: 4,
 		},
 	}
 	planCRM := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-crm", Namespace: "default"},
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-crm"},
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "wave",
 			MaxConcurrentFailovers: 4,
@@ -264,7 +223,7 @@ func TestCheckDRPlanExclusivity(t *testing.T) {
 		{
 			name: "all discovered VMs unique to this plan — no errors",
 			candidatePlan: &soteriav1alpha1.DRPlan{
-				ObjectMeta: metav1.ObjectMeta{Name: "plan-new", Namespace: "default"},
+				ObjectMeta: metav1.ObjectMeta{Name: "plan-new"},
 				Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
 			},
 			discoveredVMs: []engine.VMReference{
@@ -276,7 +235,7 @@ func TestCheckDRPlanExclusivity(t *testing.T) {
 		{
 			name: "one discovered VM also matches another plan — one error",
 			candidatePlan: &soteriav1alpha1.DRPlan{
-				ObjectMeta: metav1.ObjectMeta{Name: "plan-new", Namespace: "default"},
+				ObjectMeta: metav1.ObjectMeta{Name: "plan-new"},
 				Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
 			},
 			discoveredVMs: []engine.VMReference{
@@ -289,7 +248,7 @@ func TestCheckDRPlanExclusivity(t *testing.T) {
 		{
 			name: "multiple VMs each match different other plans — multiple errors",
 			candidatePlan: &soteriav1alpha1.DRPlan{
-				ObjectMeta: metav1.ObjectMeta{Name: "plan-new", Namespace: "default"},
+				ObjectMeta: metav1.ObjectMeta{Name: "plan-new"},
 				Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
 			},
 			discoveredVMs: []engine.VMReference{
@@ -302,7 +261,7 @@ func TestCheckDRPlanExclusivity(t *testing.T) {
 		{
 			name: "discovered VMs match the plan being validated (self) — excluded, no errors",
 			candidatePlan: &soteriav1alpha1.DRPlan{
-				ObjectMeta: metav1.ObjectMeta{Name: "plan-erp", Namespace: "default"},
+				ObjectMeta: metav1.ObjectMeta{Name: "plan-erp"},
 				Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
 			},
 			discoveredVMs: []engine.VMReference{

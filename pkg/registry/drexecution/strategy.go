@@ -37,7 +37,9 @@ type drexecutionStrategy struct {
 
 var Strategy = drexecutionStrategy{soteriainstall.Scheme, names.SimpleNameGenerator}
 
-func (drexecutionStrategy) NamespaceScoped() bool { return true }
+// DRExecution is cluster-scoped: it references a cluster-scoped DRPlan by name,
+// so the execution must also be cluster-scoped to avoid cross-scope references.
+func (drexecutionStrategy) NamespaceScoped() bool { return false }
 
 func (drexecutionStrategy) PrepareForCreate(_ context.Context, obj runtime.Object) {
 	exec := obj.(*soteriav1alpha1.DRExecution)
@@ -105,8 +107,7 @@ func GetAttrs(obj runtime.Object) (labels.Set, fields.Set, error) {
 		return nil, nil, field.Invalid(field.NewPath(""), obj, "expected DRExecution")
 	}
 	return exec.Labels, fields.Set{
-		"metadata.name":      exec.Name,
-		"metadata.namespace": exec.Namespace,
+		"metadata.name": exec.Name,
 	}, nil
 }
 

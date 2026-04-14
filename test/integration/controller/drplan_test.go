@@ -62,12 +62,11 @@ func createVM(t *testing.T, ctx context.Context, name, namespace string, labels 
 	return vm
 }
 
-func createDRPlan(t *testing.T, ctx context.Context, name, namespace string, waveLabel string) *soteriav1alpha1.DRPlan {
+func createDRPlan(t *testing.T, ctx context.Context, name, waveLabel string) *soteriav1alpha1.DRPlan {
 	t.Helper()
 	plan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
+			Name: name,
 		},
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              waveLabel,
@@ -75,7 +74,7 @@ func createDRPlan(t *testing.T, ctx context.Context, name, namespace string, wav
 		},
 	}
 	if err := testClient.Create(ctx, plan); err != nil {
-		t.Fatalf("Failed to create DRPlan %s/%s: %v", namespace, name, err)
+		t.Fatalf("Failed to create DRPlan %s: %v", name, err)
 	}
 	return plan
 }
@@ -89,9 +88,9 @@ func TestDRPlanReconciler_DiscoverVMs_WavesPopulated(t *testing.T) {
 	createVM(t, ctx, "vm-w1-b", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-discover", "soteria.io/wave": "1"})
 	createVM(t, ctx, "vm-w2-a", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-discover", "soteria.io/wave": "2"})
 
-	createDRPlan(t, ctx, "plan-discover", ns, "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-discover", "soteria.io/wave")
 
-	plan, err := waitForCondition(ctx, "plan-discover", ns, "Ready", metav1.ConditionTrue, testTimeout)
+	plan, err := waitForCondition(ctx, "plan-discover", "", "Ready", metav1.ConditionTrue, testTimeout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,16 +113,16 @@ func TestDRPlanReconciler_NewVMAdded_WatchTriggersReconcile(t *testing.T) {
 	createNamespace(t, ctx, ns)
 
 	createVM(t, ctx, "vm-initial", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-add", "soteria.io/wave": "1"})
-	createDRPlan(t, ctx, "plan-add", ns, "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-add", "soteria.io/wave")
 
-	_, err := waitForVMCount(ctx, "plan-add", ns, 1, testTimeout)
+	_, err := waitForVMCount(ctx, "plan-add", "", 1, testTimeout)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	createVM(t, ctx, "vm-new", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-add", "soteria.io/wave": "1"})
 
-	plan, err := waitForVMCount(ctx, "plan-add", ns, 2, testTimeout)
+	plan, err := waitForVMCount(ctx, "plan-add", "", 2, testTimeout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,9 +139,9 @@ func TestDRPlanReconciler_WaveLabelChanged_WatchTriggersReconcile(t *testing.T) 
 
 	vm := createVM(t, ctx, "vm-move", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-wave", "soteria.io/wave": "1"})
 	createVM(t, ctx, "vm-stay", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-wave", "soteria.io/wave": "1"})
-	createDRPlan(t, ctx, "plan-wave", ns, "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-wave", "soteria.io/wave")
 
-	plan, err := waitForCondition(ctx, "plan-wave", ns, "Ready", metav1.ConditionTrue, testTimeout)
+	plan, err := waitForCondition(ctx, "plan-wave", "", "Ready", metav1.ConditionTrue, testTimeout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,7 +157,7 @@ func TestDRPlanReconciler_WaveLabelChanged_WatchTriggersReconcile(t *testing.T) 
 	deadline := time.Now().Add(testTimeout)
 	for time.Now().Before(deadline) {
 		var updated soteriav1alpha1.DRPlan
-		if err := testClient.Get(ctx, client.ObjectKey{Name: "plan-wave", Namespace: ns}, &updated); err == nil {
+		if err := testClient.Get(ctx, client.ObjectKey{Name: "plan-wave"}, &updated); err == nil {
 			if len(updated.Status.Waves) == 2 {
 				return
 			}
@@ -175,9 +174,9 @@ func TestDRPlanReconciler_VMDeleted_WatchTriggersReconcile(t *testing.T) {
 
 	vm := createVM(t, ctx, "vm-delete-me", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-delete", "soteria.io/wave": "1"})
 	createVM(t, ctx, "vm-keep", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-delete", "soteria.io/wave": "1"})
-	createDRPlan(t, ctx, "plan-delete", ns, "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-delete", "soteria.io/wave")
 
-	_, err := waitForVMCount(ctx, "plan-delete", ns, 2, testTimeout)
+	_, err := waitForVMCount(ctx, "plan-delete", "", 2, testTimeout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -186,7 +185,7 @@ func TestDRPlanReconciler_VMDeleted_WatchTriggersReconcile(t *testing.T) {
 		t.Fatalf("Failed to delete VM: %v", err)
 	}
 
-	_, err = waitForVMCount(ctx, "plan-delete", ns, 1, testTimeout)
+	_, err = waitForVMCount(ctx, "plan-delete", "", 1, testTimeout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,9 +196,9 @@ func TestDRPlanReconciler_ReadyCondition_ReflectsDiscovery(t *testing.T) {
 	ns := "test-ready-cond"
 	createNamespace(t, ctx, ns)
 
-	createDRPlan(t, ctx, "plan-empty", ns, "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-empty", "soteria.io/wave")
 
-	plan, err := waitForCondition(ctx, "plan-empty", ns, "Ready", metav1.ConditionFalse, testTimeout)
+	plan, err := waitForCondition(ctx, "plan-empty", "", "Ready", metav1.ConditionFalse, testTimeout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -227,9 +226,9 @@ func TestDRPlanReconciler_50VMs_CompletesWithin10s(t *testing.T) {
 	}
 
 	start := time.Now()
-	createDRPlan(t, ctx, "plan-perf", ns, "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-perf", "soteria.io/wave")
 
-	plan, err := waitForVMCount(ctx, "plan-perf", ns, 50, testTimeout)
+	plan, err := waitForVMCount(ctx, "plan-perf", "", 50, testTimeout)
 	elapsed := time.Since(start)
 	if err != nil {
 		t.Fatal(err)

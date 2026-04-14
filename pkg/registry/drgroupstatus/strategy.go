@@ -38,7 +38,9 @@ type drgroupstatusStrategy struct {
 
 var Strategy = drgroupstatusStrategy{soteriainstall.Scheme, names.SimpleNameGenerator}
 
-func (drgroupstatusStrategy) NamespaceScoped() bool { return true }
+// DRGroupStatus is cluster-scoped: it references a cluster-scoped DRExecution
+// by name, so it must also be cluster-scoped to avoid cross-scope references.
+func (drgroupstatusStrategy) NamespaceScoped() bool { return false }
 
 func (drgroupstatusStrategy) PrepareForCreate(_ context.Context, obj runtime.Object) {
 	gs := obj.(*soteriav1alpha1.DRGroupStatus)
@@ -105,8 +107,7 @@ func GetAttrs(obj runtime.Object) (labels.Set, fields.Set, error) {
 		return nil, nil, field.Invalid(field.NewPath(""), obj, "expected DRGroupStatus")
 	}
 	return gs.Labels, fields.Set{
-		"metadata.name":      gs.Name,
-		"metadata.namespace": gs.Namespace,
+		"metadata.name": gs.Name,
 	}, nil
 }
 

@@ -21,6 +21,9 @@ limitations under the License.
 // FindMatchingPlans which lists all DRPlans and checks whether the VM's
 // soteria.io/drplan label value matches each plan's name.
 //
+// DRPlans are cluster-scoped, so plan names are globally unique. A VM's
+// soteria.io/drplan label unambiguously identifies exactly one plan.
+//
 // CheckVMExclusivity wraps FindMatchingPlans for the VM webhook: it checks
 // whether a VM's labels match more than one DRPlan.
 //
@@ -70,14 +73,13 @@ func (c *ExclusivityChecker) FindMatchingPlans(
 	var matching []types.NamespacedName
 	for i := range planList.Items {
 		plan := &planList.Items[i]
-		if excludePlan != nil && plan.Namespace == excludePlan.Namespace && plan.Name == excludePlan.Name {
+		if excludePlan != nil && plan.Name == excludePlan.Name {
 			continue
 		}
 
 		if plan.Name == drplanLabel {
 			matching = append(matching, types.NamespacedName{
-				Namespace: plan.Namespace,
-				Name:      plan.Name,
+				Name: plan.Name,
 			})
 		}
 	}
@@ -124,7 +126,7 @@ func (c *ExclusivityChecker) CheckDRPlanExclusivity(
 		return nil, nil
 	}
 
-	excludePlan := types.NamespacedName{Namespace: plan.Namespace, Name: plan.Name}
+	excludePlan := types.NamespacedName{Name: plan.Name}
 
 	var conflicts []string
 	for _, vm := range discoveredVMs {
@@ -134,8 +136,8 @@ func (c *ExclusivityChecker) CheckDRPlanExclusivity(
 		}
 		for _, p := range matchingPlans {
 			conflicts = append(conflicts,
-				fmt.Sprintf("VM %s/%s already belongs to DRPlan %s/%s",
-					vm.Namespace, vm.Name, p.Namespace, p.Name))
+				fmt.Sprintf("VM %s/%s already belongs to DRPlan %s",
+					vm.Namespace, vm.Name, p.Name))
 		}
 	}
 

@@ -43,12 +43,11 @@ func createNamespaceWithAnnotations(t *testing.T, ctx context.Context, name stri
 	}
 }
 
-func createDRPlanWithThrottle(t *testing.T, ctx context.Context, name, namespace string, waveLabel string, maxConcurrent int) *soteriav1alpha1.DRPlan {
+func createDRPlanWithThrottle(t *testing.T, ctx context.Context, name, waveLabel string, maxConcurrent int) *soteriav1alpha1.DRPlan {
 	t.Helper()
 	plan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
+			Name: name,
 		},
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              waveLabel,
@@ -56,7 +55,7 @@ func createDRPlanWithThrottle(t *testing.T, ctx context.Context, name, namespace
 		},
 	}
 	if err := testClient.Create(ctx, plan); err != nil {
-		t.Fatalf("Failed to create DRPlan %s/%s: %v", namespace, name, err)
+		t.Fatalf("Failed to create DRPlan %s: %v", name, err)
 	}
 	return plan
 }
@@ -72,9 +71,9 @@ func TestDRPlanReconciler_NamespaceConsistency_VolumeGroupsFormed(t *testing.T) 
 	createVM(t, ctx, "vm-ns-b", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-ns-consist", "soteria.io/wave": "1"})
 	createVM(t, ctx, "vm-ns-c", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-ns-consist", "soteria.io/wave": "1"})
 
-	createDRPlan(t, ctx, "plan-ns-consist", ns, "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-ns-consist", "soteria.io/wave")
 
-	plan, err := waitForWaveGroups(ctx, "plan-ns-consist", ns, testTimeout)
+	plan, err := waitForWaveGroups(ctx, "plan-ns-consist", "", testTimeout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,9 +102,9 @@ func TestDRPlanReconciler_VMConsistency_IndividualVolumeGroups(t *testing.T) {
 	createVM(t, ctx, "vm-ind-a", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-vm-consist", "soteria.io/wave": "1"})
 	createVM(t, ctx, "vm-ind-b", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-vm-consist", "soteria.io/wave": "1"})
 
-	createDRPlan(t, ctx, "plan-vm-consist", ns, "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-vm-consist", "soteria.io/wave")
 
-	plan, err := waitForWaveGroups(ctx, "plan-vm-consist", ns, testTimeout)
+	plan, err := waitForWaveGroups(ctx, "plan-vm-consist", "", testTimeout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,9 +136,9 @@ func TestDRPlanReconciler_WaveConflict_ReadyFalse(t *testing.T) {
 	createVM(t, ctx, "vm-conflict-a", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-conflict", "soteria.io/wave": "1"})
 	createVM(t, ctx, "vm-conflict-b", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-conflict", "soteria.io/wave": "2"})
 
-	createDRPlan(t, ctx, "plan-conflict", ns, "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-conflict", "soteria.io/wave")
 
-	plan, err := waitForConditionReason(ctx, "plan-conflict", ns, "Ready", "WaveConflict", testTimeout)
+	plan, err := waitForConditionReason(ctx, "plan-conflict", "", "Ready", "WaveConflict", testTimeout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -165,9 +164,9 @@ func TestDRPlanReconciler_WaveConflictResolved_ReadyTrue(t *testing.T) {
 	createVM(t, ctx, "vm-resolve-a", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-resolve", "soteria.io/wave": "1"})
 	vm := createVM(t, ctx, "vm-resolve-b", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-resolve", "soteria.io/wave": "2"})
 
-	createDRPlan(t, ctx, "plan-resolve", ns, "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-resolve", "soteria.io/wave")
 
-	_, err := waitForConditionReason(ctx, "plan-resolve", ns, "Ready", "WaveConflict", testTimeout)
+	_, err := waitForConditionReason(ctx, "plan-resolve", "", "Ready", "WaveConflict", testTimeout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +176,7 @@ func TestDRPlanReconciler_WaveConflictResolved_ReadyTrue(t *testing.T) {
 		t.Fatalf("Failed to update VM labels: %v", err)
 	}
 
-	plan, err := waitForCondition(ctx, "plan-resolve", ns, "Ready", metav1.ConditionTrue, testTimeout)
+	plan, err := waitForCondition(ctx, "plan-resolve", "", "Ready", metav1.ConditionTrue, testTimeout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,9 +200,9 @@ func TestDRPlanReconciler_NamespaceGroupExceedsThrottle_ReadyFalse(t *testing.T)
 	createVM(t, ctx, "vm-throttle-b", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-throttle", "soteria.io/wave": "1"})
 	createVM(t, ctx, "vm-throttle-c", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-throttle", "soteria.io/wave": "1"})
 
-	createDRPlanWithThrottle(t, ctx, "plan-throttle", ns, "soteria.io/wave", 2)
+	createDRPlanWithThrottle(t, ctx, "plan-throttle", "soteria.io/wave", 2)
 
-	plan, err := waitForConditionReason(ctx, "plan-throttle", ns, "Ready", "NamespaceGroupExceedsThrottle", testTimeout)
+	plan, err := waitForConditionReason(ctx, "plan-throttle", "", "Ready", "NamespaceGroupExceedsThrottle", testTimeout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -233,9 +232,9 @@ func TestDRPlanReconciler_MixedConsistency_CorrectGrouping(t *testing.T) {
 	createVM(t, ctx, "vm-mixed-vm-a", vmLevel, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-mixed", "soteria.io/wave": "1"})
 	createVM(t, ctx, "vm-mixed-vm-b", vmLevel, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-mixed", "soteria.io/wave": "1"})
 
-	createDRPlan(t, ctx, "plan-mixed", nsLevel, "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-mixed", "soteria.io/wave")
 
-	plan, err := waitForWaveGroups(ctx, "plan-mixed", nsLevel, testTimeout)
+	plan, err := waitForWaveGroups(ctx, "plan-mixed", "", testTimeout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,9 +276,9 @@ func TestDRPlanReconciler_ChunkingPreview_NamespaceGroupIndivisible(t *testing.T
 	createVM(t, ctx, "vm-chunk-b", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-chunk", "soteria.io/wave": "1"})
 	createVM(t, ctx, "vm-chunk-c", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-chunk", "soteria.io/wave": "1"})
 
-	createDRPlanWithThrottle(t, ctx, "plan-chunk", ns, "soteria.io/wave", 4)
+	createDRPlanWithThrottle(t, ctx, "plan-chunk", "soteria.io/wave", 4)
 
-	plan, err := waitForWaveGroups(ctx, "plan-chunk", ns, testTimeout)
+	plan, err := waitForWaveGroups(ctx, "plan-chunk", "", testTimeout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -301,7 +300,7 @@ func TestDRPlanReconciler_ChunkingPreview_NamespaceGroupIndivisible(t *testing.T
 	deadline := time.Now().Add(testTimeout)
 	for time.Now().Before(deadline) {
 		var updated soteriav1alpha1.DRPlan
-		if err := testClient.Get(ctx, client.ObjectKey{Name: "plan-chunk", Namespace: ns}, &updated); err == nil {
+		if err := testClient.Get(ctx, client.ObjectKey{Name: "plan-chunk"}, &updated); err == nil {
 			for _, c := range updated.Status.Conditions {
 				if c.Type == "Ready" && c.Status == metav1.ConditionTrue {
 					return

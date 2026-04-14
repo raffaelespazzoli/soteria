@@ -54,21 +54,14 @@ func makeVMRequest(vm *kubevirtv1.VirtualMachine, op admissionv1.Operation) admi
 
 func TestVMValidator_Exclusivity(t *testing.T) {
 	planERP := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-erp", Namespace: "default"},
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-erp"},
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "wave",
 			MaxConcurrentFailovers: 4,
 		},
 	}
 	planDB := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-db", Namespace: "default"},
-		Spec: soteriav1alpha1.DRPlanSpec{
-			WaveLabel:              "wave",
-			MaxConcurrentFailovers: 4,
-		},
-	}
-	planERPOtherNS := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-erp", Namespace: "other-ns"},
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-db"},
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "wave",
 			MaxConcurrentFailovers: 4,
@@ -106,32 +99,6 @@ func TestVMValidator_Exclusivity(t *testing.T) {
 			plans:       []*soteriav1alpha1.DRPlan{planERP, planDB},
 			op:          admissionv1.Create,
 			wantAllowed: true,
-		},
-		{
-			name: "VM CREATE matching 2 DRPlans — denied",
-			vm: &kubevirtv1.VirtualMachine{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "vm-1", Namespace: "default",
-					Labels: map[string]string{soteriav1alpha1.DRPlanLabel: "plan-erp"},
-				},
-			},
-			plans:       []*soteriav1alpha1.DRPlan{planERP, planERPOtherNS},
-			op:          admissionv1.Create,
-			wantAllowed: false,
-			wantMessage: "would belong to multiple DRPlans",
-		},
-		{
-			name: "VM UPDATE adding label matching 2nd DRPlan — denied",
-			vm: &kubevirtv1.VirtualMachine{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "vm-1", Namespace: "default",
-					Labels: map[string]string{soteriav1alpha1.DRPlanLabel: "plan-erp"},
-				},
-			},
-			plans:       []*soteriav1alpha1.DRPlan{planERP, planERPOtherNS},
-			op:          admissionv1.Update,
-			wantAllowed: false,
-			wantMessage: "would belong to multiple DRPlans",
 		},
 		{
 			name: "VM UPDATE removing labels — matches 0 plans — allowed",
@@ -193,7 +160,7 @@ func TestVMValidator_Exclusivity(t *testing.T) {
 
 func TestVMValidator_WaveConflict(t *testing.T) {
 	planERP := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-erp", Namespace: "default"},
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-erp"},
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "wave",
 			MaxConcurrentFailovers: 4,
@@ -393,19 +360,12 @@ func TestVMValidator_DeleteAllowed(t *testing.T) {
 	}
 }
 
-func TestVMValidator_CombinedViolations(t *testing.T) {
+func TestVMValidator_WaveConflict_OnlyViolation(t *testing.T) {
 	erpW1Labels := map[string]string{soteriav1alpha1.DRPlanLabel: "plan-erp", "wave": "1"}
 	erpW2Labels := map[string]string{soteriav1alpha1.DRPlanLabel: "plan-erp", "wave": "2"}
 
 	planERP := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-erp", Namespace: "default"},
-		Spec: soteriav1alpha1.DRPlanSpec{
-			WaveLabel:              "wave",
-			MaxConcurrentFailovers: 4,
-		},
-	}
-	planERPOtherNS := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-erp", Namespace: "other-ns"},
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-erp"},
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "wave",
 			MaxConcurrentFailovers: 4,
@@ -414,7 +374,7 @@ func TestVMValidator_CombinedViolations(t *testing.T) {
 
 	scheme := buildVMScheme()
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(planERP.DeepCopy(), planERPOtherNS.DeepCopy()).Build()
+		WithObjects(planERP.DeepCopy()).Build()
 
 	discoverer := &mockVMDiscoverer{vms: map[string][]engine.VMReference{
 		"plan-erp": {
@@ -442,12 +402,9 @@ func TestVMValidator_CombinedViolations(t *testing.T) {
 
 	resp := v.Handle(context.Background(), makeVMRequest(vm, admissionv1.Create))
 	if resp.Allowed {
-		t.Fatal("expected denied for combined violations")
+		t.Fatal("expected denied for wave conflict")
 	}
 	msg := resp.Result.Message
-	if !strings.Contains(msg, "would belong to multiple DRPlans") {
-		t.Errorf("expected exclusivity error in message, got: %s", msg)
-	}
 	if !strings.Contains(msg, "wave label") {
 		t.Errorf("expected wave conflict error in message, got: %s", msg)
 	}

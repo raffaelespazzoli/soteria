@@ -37,12 +37,12 @@ func ensureNamespace(t *testing.T, ctx context.Context, name string) {
 	}
 }
 
-func newDRPlan(name, ns string) *unstructured.Unstructured {
+func newDRPlan(name string) *unstructured.Unstructured {
 	return &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": "soteria.io/v1alpha1",
 			"kind":       "DRPlan",
-			"metadata":   map[string]any{"name": name, "namespace": ns},
+			"metadata":   map[string]any{"name": name},
 			"spec": map[string]any{
 				"waveLabel":              "wave",
 				"maxConcurrentFailovers": int64(2),
@@ -51,12 +51,12 @@ func newDRPlan(name, ns string) *unstructured.Unstructured {
 	}
 }
 
-func newDRExecution(name, ns string) *unstructured.Unstructured {
+func newDRExecution(name string) *unstructured.Unstructured {
 	return &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": "soteria.io/v1alpha1",
 			"kind":       "DRExecution",
-			"metadata":   map[string]any{"name": name, "namespace": ns},
+			"metadata":   map[string]any{"name": name},
 			"spec": map[string]any{
 				"planName": "my-plan",
 				"mode":     "PlannedMigration",
@@ -75,7 +75,7 @@ func TestRBAC_ViewerCanReadDRPlan(t *testing.T) {
 	}
 
 	// Pre-create a DRPlan as admin
-	plan := newDRPlan("viewer-plan", ns)
+	plan := newDRPlan("viewer-plan")
 	if err := adminClient.Create(ctx, plan); err != nil {
 		t.Fatalf("admin creating DRPlan: %v", err)
 	}
@@ -88,12 +88,12 @@ func TestRBAC_ViewerCanReadDRPlan(t *testing.T) {
 	// Viewer can GET DRPlan
 	got := &unstructured.Unstructured{}
 	got.SetGroupVersionKind(plan.GroupVersionKind())
-	if err := viewerClient.Get(ctx, types.NamespacedName{Name: "viewer-plan", Namespace: ns}, got); err != nil {
+	if err := viewerClient.Get(ctx, types.NamespacedName{Name: "viewer-plan"}, got); err != nil {
 		t.Fatalf("viewer GET DRPlan should succeed: %v", err)
 	}
 
 	// Viewer cannot CREATE DRExecution
-	exec := newDRExecution("viewer-exec", ns)
+	exec := newDRExecution("viewer-exec")
 	err = viewerClient.Create(ctx, exec)
 	if err == nil {
 		t.Fatal("viewer CREATE DRExecution should be forbidden")
@@ -103,7 +103,7 @@ func TestRBAC_ViewerCanReadDRPlan(t *testing.T) {
 	}
 
 	// Viewer cannot CREATE DRPlan
-	extraPlan := newDRPlan("viewer-extra-plan", ns)
+	extraPlan := newDRPlan("viewer-extra-plan")
 	err = viewerClient.Create(ctx, extraPlan)
 	if err == nil {
 		t.Fatal("viewer CREATE DRPlan should be forbidden")
@@ -128,13 +128,13 @@ func TestRBAC_EditorCanCreateDRPlan(t *testing.T) {
 	}
 
 	// Editor can CREATE DRPlan
-	plan := newDRPlan("editor-plan", ns)
+	plan := newDRPlan("editor-plan")
 	if err := editorClient.Create(ctx, plan); err != nil {
 		t.Fatalf("editor CREATE DRPlan should succeed: %v", err)
 	}
 
 	// Editor cannot CREATE DRExecution
-	exec := newDRExecution("editor-exec", ns)
+	exec := newDRExecution("editor-exec")
 	err = editorClient.Create(ctx, exec)
 	if err == nil {
 		t.Fatal("editor CREATE DRExecution should be forbidden")
@@ -159,13 +159,13 @@ func TestRBAC_OperatorCanCreateDRExecution(t *testing.T) {
 	}
 
 	// Operator can CREATE DRExecution
-	exec := newDRExecution("operator-exec", ns)
+	exec := newDRExecution("operator-exec")
 	if err := operatorClient.Create(ctx, exec); err != nil {
 		t.Fatalf("operator CREATE DRExecution should succeed: %v", err)
 	}
 
 	// Operator can also CREATE DRPlan
-	plan := newDRPlan("operator-plan", ns)
+	plan := newDRPlan("operator-plan")
 	if err := operatorClient.Create(ctx, plan); err != nil {
 		t.Fatalf("operator CREATE DRPlan should succeed: %v", err)
 	}
@@ -181,7 +181,7 @@ func TestRBAC_OperatorCannotDeleteDRExecution(t *testing.T) {
 	}
 
 	// Pre-create a DRExecution as admin
-	exec := newDRExecution("nodelete-exec", ns)
+	exec := newDRExecution("nodelete-exec")
 	if err := adminClient.Create(ctx, exec); err != nil {
 		t.Fatalf("admin creating DRExecution: %v", err)
 	}
@@ -195,7 +195,6 @@ func TestRBAC_OperatorCannotDeleteDRExecution(t *testing.T) {
 	toDelete := &unstructured.Unstructured{}
 	toDelete.SetGroupVersionKind(exec.GroupVersionKind())
 	toDelete.SetName("nodelete-exec")
-	toDelete.SetNamespace(ns)
 	err = operatorClient.Delete(ctx, toDelete)
 	if err == nil {
 		t.Fatal("operator DELETE DRExecution should be forbidden")
@@ -215,7 +214,7 @@ func TestRBAC_UnboundUserRejected(t *testing.T) {
 		t.Fatalf("creating unbound-user client: %v", err)
 	}
 
-	plan := newDRPlan("noauth-plan", ns)
+	plan := newDRPlan("noauth-plan")
 	err = noBindingClient.Create(ctx, plan)
 	if err == nil {
 		t.Fatal("user with no bindings should be rejected")
@@ -226,7 +225,7 @@ func TestRBAC_UnboundUserRejected(t *testing.T) {
 
 	got := &unstructured.Unstructured{}
 	got.SetGroupVersionKind(plan.GroupVersionKind())
-	err = noBindingClient.Get(ctx, types.NamespacedName{Name: "any-plan", Namespace: ns}, got)
+	err = noBindingClient.Get(ctx, types.NamespacedName{Name: "any-plan"}, got)
 	if err == nil {
 		t.Fatal("user with no bindings GET should be rejected")
 	}

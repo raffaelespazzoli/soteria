@@ -64,7 +64,7 @@ func (m *mockNamespaceLookup) GetConsistencyLevel(
 	return soteriav1alpha1.ConsistencyLevelVM, nil
 }
 
-var planKey = types.NamespacedName{Name: "plan-1", Namespace: "default"}
+var planKey = types.NamespacedName{Name: "plan-1"}
 
 func newTestScheme() *runtime.Scheme {
 	s := runtime.NewScheme()
@@ -77,7 +77,6 @@ func newTestPlan(name string) *soteriav1alpha1.DRPlan {
 	return &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       name,
-			Namespace:  "default",
 			Generation: 1,
 		},
 		Spec: soteriav1alpha1.DRPlanSpec{
@@ -131,7 +130,7 @@ func TestReconcile_VMsDiscovered_StatusPopulated(t *testing.T) {
 	r, c := newReconciler([]client.Object{plan}, &mockVMDiscoverer{vms: vms})
 
 	result, err := r.Reconcile(context.Background(), ctrl.Request{
-		NamespacedName: types.NamespacedName{Name: "plan-1", Namespace: "default"},
+		NamespacedName: types.NamespacedName{Name: "plan-1"},
 	})
 	if err != nil {
 		t.Fatalf("Reconcile() error: %v", err)
@@ -176,7 +175,7 @@ func TestReconcile_NoVMs_ReadyFalse(t *testing.T) {
 	r, c := newReconciler([]client.Object{plan}, &mockVMDiscoverer{vms: nil})
 
 	_, err := r.Reconcile(context.Background(), ctrl.Request{
-		NamespacedName: types.NamespacedName{Name: "plan-1", Namespace: "default"},
+		NamespacedName: types.NamespacedName{Name: "plan-1"},
 	})
 	if err != nil {
 		t.Fatalf("Reconcile() error: %v", err)
@@ -226,7 +225,7 @@ func TestReconcile_VMAdded_StatusUpdated(t *testing.T) {
 	r, c := newReconciler([]client.Object{plan}, mock)
 
 	_, err := r.Reconcile(context.Background(), ctrl.Request{
-		NamespacedName: types.NamespacedName{Name: "plan-1", Namespace: "default"},
+		NamespacedName: types.NamespacedName{Name: "plan-1"},
 	})
 	if err != nil {
 		t.Fatalf("First Reconcile() error: %v", err)
@@ -237,7 +236,7 @@ func TestReconcile_VMAdded_StatusUpdated(t *testing.T) {
 	})
 
 	_, err = r.Reconcile(context.Background(), ctrl.Request{
-		NamespacedName: types.NamespacedName{Name: "plan-1", Namespace: "default"},
+		NamespacedName: types.NamespacedName{Name: "plan-1"},
 	})
 	if err != nil {
 		t.Fatalf("Second Reconcile() error: %v", err)
@@ -267,12 +266,12 @@ func TestReconcile_WaveLabelChanged_VMMoved(t *testing.T) {
 	r, c := newReconciler([]client.Object{plan}, mock)
 
 	_, _ = r.Reconcile(context.Background(), ctrl.Request{
-		NamespacedName: types.NamespacedName{Name: "plan-1", Namespace: "default"},
+		NamespacedName: types.NamespacedName{Name: "plan-1"},
 	})
 
 	mock.vms[1].Labels["soteria.io/wave"] = "2"
 	_, err := r.Reconcile(context.Background(), ctrl.Request{
-		NamespacedName: types.NamespacedName{Name: "plan-1", Namespace: "default"},
+		NamespacedName: types.NamespacedName{Name: "plan-1"},
 	})
 	if err != nil {
 		t.Fatalf("Reconcile() error: %v", err)
@@ -296,7 +295,7 @@ func TestReconcile_PlanNotFound_NoError(t *testing.T) {
 	r, _ := newReconciler(nil, &mockVMDiscoverer{})
 
 	result, err := r.Reconcile(context.Background(), ctrl.Request{
-		NamespacedName: types.NamespacedName{Name: "nonexistent", Namespace: "default"},
+		NamespacedName: types.NamespacedName{Name: "nonexistent"},
 	})
 	if err != nil {
 		t.Fatalf("Reconcile() error: %v, want nil", err)
@@ -311,7 +310,7 @@ func TestReconcile_DiscoveryError_ReadyFalseWithBackoff(t *testing.T) {
 	r, c := newReconciler([]client.Object{plan}, &mockVMDiscoverer{err: fmt.Errorf("connection refused")})
 
 	result, err := r.Reconcile(context.Background(), ctrl.Request{
-		NamespacedName: types.NamespacedName{Name: "plan-1", Namespace: "default"},
+		NamespacedName: types.NamespacedName{Name: "plan-1"},
 	})
 	if err == nil {
 		t.Fatal("Reconcile() expected error, got nil")
@@ -377,8 +376,8 @@ func TestEnqueueForVM_MatchesOnePlan(t *testing.T) {
 		t.Fatalf("expected 1 request, got %d", q.Len())
 	}
 	item, _ := q.Get()
-	if item.Name != "plan-1" || item.Namespace != "default" {
-		t.Errorf("request = %v, want plan-1/default", item.NamespacedName)
+	if item.Name != "plan-1" || item.Namespace != "" {
+		t.Errorf("request = %v, want plan-1 (cluster-scoped)", item.NamespacedName)
 	}
 }
 
@@ -481,7 +480,7 @@ func TestReconcile_VMLevel_IndividualVolumeGroups(t *testing.T) {
 	r, c := newReconcilerWithNSLookup([]client.Object{plan}, &mockVMDiscoverer{vms: vms}, nsLookup)
 
 	_, err := r.Reconcile(context.Background(), ctrl.Request{
-		NamespacedName: types.NamespacedName{Name: "plan-1", Namespace: "default"},
+		NamespacedName: types.NamespacedName{Name: "plan-1"},
 	})
 	if err != nil {
 		t.Fatalf("Reconcile() error: %v", err)
@@ -524,7 +523,7 @@ func TestReconcile_NamespaceLevel_SingleVolumeGroup(t *testing.T) {
 	r, c := newReconcilerWithNSLookup([]client.Object{plan}, &mockVMDiscoverer{vms: vms}, nsLookup)
 
 	_, err := r.Reconcile(context.Background(), ctrl.Request{
-		NamespacedName: types.NamespacedName{Name: "plan-1", Namespace: "default"},
+		NamespacedName: types.NamespacedName{Name: "plan-1"},
 	})
 	if err != nil {
 		t.Fatalf("Reconcile() error: %v", err)
@@ -564,7 +563,7 @@ func TestReconcile_WaveConflict_ReadyFalse(t *testing.T) {
 	r, c := newReconcilerWithNSLookup([]client.Object{plan}, &mockVMDiscoverer{vms: vms}, nsLookup)
 
 	_, err := r.Reconcile(context.Background(), ctrl.Request{
-		NamespacedName: types.NamespacedName{Name: "plan-1", Namespace: "default"},
+		NamespacedName: types.NamespacedName{Name: "plan-1"},
 	})
 	if err != nil {
 		t.Fatalf("Reconcile() error: %v", err)
@@ -626,7 +625,7 @@ func TestReconcile_NamespaceGroupExceedsThrottle_ReadyFalse(t *testing.T) {
 	r, c := newReconcilerWithNSLookup([]client.Object{plan}, &mockVMDiscoverer{vms: vms}, nsLookup)
 
 	_, err := r.Reconcile(context.Background(), ctrl.Request{
-		NamespacedName: types.NamespacedName{Name: "plan-1", Namespace: "default"},
+		NamespacedName: types.NamespacedName{Name: "plan-1"},
 	})
 	if err != nil {
 		t.Fatalf("Reconcile() error: %v", err)
@@ -681,12 +680,12 @@ func TestReconcile_WaveConflictResolved_ReadyTrue(t *testing.T) {
 	r, c := newReconcilerWithNSLookup([]client.Object{plan}, mock, nsLookup)
 
 	_, _ = r.Reconcile(context.Background(), ctrl.Request{
-		NamespacedName: types.NamespacedName{Name: "plan-1", Namespace: "default"},
+		NamespacedName: types.NamespacedName{Name: "plan-1"},
 	})
 
 	mock.vms[1].Labels["soteria.io/wave"] = "1"
 	_, err := r.Reconcile(context.Background(), ctrl.Request{
-		NamespacedName: types.NamespacedName{Name: "plan-1", Namespace: "default"},
+		NamespacedName: types.NamespacedName{Name: "plan-1"},
 	})
 	if err != nil {
 		t.Fatalf("Reconcile() error: %v", err)
@@ -718,7 +717,7 @@ func TestReconcile_MixedConsistency_CorrectGrouping(t *testing.T) {
 	r, c := newReconcilerWithNSLookup([]client.Object{plan}, &mockVMDiscoverer{vms: vms}, nsLookup)
 
 	_, err := r.Reconcile(context.Background(), ctrl.Request{
-		NamespacedName: types.NamespacedName{Name: "plan-1", Namespace: "default"},
+		NamespacedName: types.NamespacedName{Name: "plan-1"},
 	})
 	if err != nil {
 		t.Fatalf("Reconcile() error: %v", err)
@@ -839,7 +838,7 @@ func TestMapNamespaceToDRPlans_MatchesOne(t *testing.T) {
 
 	_, _ = r.Reconcile(context.Background(), ctrl.Request{
 		NamespacedName: types.NamespacedName{
-			Name: "plan-1", Namespace: "default",
+			Name: "plan-1",
 		},
 	})
 
@@ -867,7 +866,7 @@ func TestMapNamespaceToDRPlans_MatchesNone(t *testing.T) {
 
 	_, _ = r.Reconcile(context.Background(), ctrl.Request{
 		NamespacedName: types.NamespacedName{
-			Name: "plan-1", Namespace: "default",
+			Name: "plan-1",
 		},
 	})
 
@@ -963,7 +962,7 @@ func TestReconcile_Preflight_PopulatedOnSuccess(t *testing.T) {
 	r, c := newReconcilerWithStorage([]client.Object{plan}, &mockVMDiscoverer{vms: vms}, nsLookup, storage)
 
 	_, err := r.Reconcile(context.Background(), ctrl.Request{
-		NamespacedName: types.NamespacedName{Name: "plan-1", Namespace: "default"},
+		NamespacedName: types.NamespacedName{Name: "plan-1"},
 	})
 	if err != nil {
 		t.Fatalf("Reconcile() error: %v", err)
@@ -1013,7 +1012,7 @@ func TestReconcile_Preflight_StorageResolutionFailure_StillPopulated(t *testing.
 	r, c := newReconcilerWithStorage([]client.Object{plan}, &mockVMDiscoverer{vms: vms}, nsLookup, storage)
 
 	_, err := r.Reconcile(context.Background(), ctrl.Request{
-		NamespacedName: types.NamespacedName{Name: "plan-1", Namespace: "default"},
+		NamespacedName: types.NamespacedName{Name: "plan-1"},
 	})
 	if err != nil {
 		t.Fatalf("Reconcile() error: %v", err)
@@ -1060,7 +1059,7 @@ func TestReconcile_Preflight_UnknownStorageBackends_WarningsAdded(t *testing.T) 
 	r, c := newReconcilerWithStorage([]client.Object{plan}, &mockVMDiscoverer{vms: vms}, nsLookup, storage)
 
 	_, err := r.Reconcile(context.Background(), ctrl.Request{
-		NamespacedName: types.NamespacedName{Name: "plan-1", Namespace: "default"},
+		NamespacedName: types.NamespacedName{Name: "plan-1"},
 	})
 	if err != nil {
 		t.Fatalf("Reconcile() error: %v", err)
@@ -1092,7 +1091,7 @@ func TestReconcile_Preflight_UpdatesEveryReconcileCycle(t *testing.T) {
 	r, c := newReconcilerWithStorage([]client.Object{plan}, mock, nsLookup, storage)
 
 	_, err := r.Reconcile(context.Background(), ctrl.Request{
-		NamespacedName: types.NamespacedName{Name: "plan-1", Namespace: "default"},
+		NamespacedName: types.NamespacedName{Name: "plan-1"},
 	})
 	if err != nil {
 		t.Fatalf("First Reconcile() error: %v", err)
@@ -1111,7 +1110,7 @@ func TestReconcile_Preflight_UpdatesEveryReconcileCycle(t *testing.T) {
 	})
 
 	_, err = r.Reconcile(context.Background(), ctrl.Request{
-		NamespacedName: types.NamespacedName{Name: "plan-1", Namespace: "default"},
+		NamespacedName: types.NamespacedName{Name: "plan-1"},
 	})
 	if err != nil {
 		t.Fatalf("Second Reconcile() error: %v", err)

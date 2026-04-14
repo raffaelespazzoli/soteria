@@ -61,10 +61,10 @@ func createTestVM(t *testing.T, ctx context.Context, name, namespace string, lab
 	}
 }
 
-func cleanupDRPlan(t *testing.T, ctx context.Context, name, namespace string) {
+func cleanupDRPlan(t *testing.T, ctx context.Context, name string) {
 	t.Helper()
 	plan := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: namespace},
+		ObjectMeta: metav1.ObjectMeta{Name: name},
 	}
 	_ = testClient.Delete(ctx, plan)
 }
@@ -91,9 +91,7 @@ func TestDRPlanWebhook_VMExclusivity_Rejected(t *testing.T) {
 	ctx := context.Background()
 	id := uniqueCounter()
 	nsA := fmt.Sprintf("ns-a-%d", id)
-	nsB := fmt.Sprintf("ns-b-%d", id)
 	createTestNamespace(t, ctx, nsA, nil)
-	createTestNamespace(t, ctx, nsB, nil)
 
 	labels := map[string]string{
 		soteriav1alpha1.DRPlanLabel: "plan-excl",
@@ -104,7 +102,7 @@ func TestDRPlanWebhook_VMExclusivity_Rejected(t *testing.T) {
 	createTestVM(t, ctx, "erp-vm-3", nsA, labels)
 
 	planA := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-excl", Namespace: nsA},
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-excl"},
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 10,
@@ -113,10 +111,10 @@ func TestDRPlanWebhook_VMExclusivity_Rejected(t *testing.T) {
 	if err := testClient.Create(ctx, planA); err != nil {
 		t.Fatalf("Failed to create plan-excl in ns-a: %v", err)
 	}
-	defer cleanupDRPlan(t, ctx, "plan-excl", nsA)
+	defer cleanupDRPlan(t, ctx, "plan-excl")
 
 	planB := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-excl", Namespace: nsB},
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-excl"},
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 10,
@@ -124,11 +122,10 @@ func TestDRPlanWebhook_VMExclusivity_Rejected(t *testing.T) {
 	}
 	err := testClient.Create(ctx, planB)
 	if err == nil {
-		defer cleanupDRPlan(t, ctx, "plan-excl", nsB)
-		t.Fatal("Expected plan-excl creation in ns-b to be denied, but it succeeded")
+		t.Fatal("Expected duplicate plan-excl creation to be denied, but it succeeded")
 	}
-	if !strings.Contains(err.Error(), "already belongs to DRPlan") {
-		t.Errorf("Expected exclusivity error, got: %v", err)
+	if !errors.IsAlreadyExists(err) {
+		t.Errorf("Expected AlreadyExists for duplicate DRPlan name, got: %v", err)
 	}
 }
 
@@ -147,7 +144,7 @@ func TestDRPlanWebhook_VMExclusivity_NonOverlapping_Allowed(t *testing.T) {
 	})
 
 	planA := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-erp", Namespace: ns},
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-erp"},
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 10,
@@ -156,10 +153,10 @@ func TestDRPlanWebhook_VMExclusivity_NonOverlapping_Allowed(t *testing.T) {
 	if err := testClient.Create(ctx, planA); err != nil {
 		t.Fatalf("Failed to create plan-erp: %v", err)
 	}
-	defer cleanupDRPlan(t, ctx, "plan-erp", ns)
+	defer cleanupDRPlan(t, ctx, "plan-erp")
 
 	planB := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-crm", Namespace: ns},
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-crm"},
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 10,
@@ -168,7 +165,7 @@ func TestDRPlanWebhook_VMExclusivity_NonOverlapping_Allowed(t *testing.T) {
 	if err := testClient.Create(ctx, planB); err != nil {
 		t.Fatalf("Expected plan-crm creation to succeed, but failed: %v", err)
 	}
-	defer cleanupDRPlan(t, ctx, "plan-crm", ns)
+	defer cleanupDRPlan(t, ctx, "plan-crm")
 }
 
 func TestDRPlanWebhook_WaveConflict_Rejected(t *testing.T) {
@@ -188,7 +185,7 @@ func TestDRPlanWebhook_WaveConflict_Rejected(t *testing.T) {
 	})
 
 	plan := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "wave-conflict", Namespace: ns},
+		ObjectMeta: metav1.ObjectMeta{Name: "wave-conflict"},
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 10,
@@ -196,7 +193,7 @@ func TestDRPlanWebhook_WaveConflict_Rejected(t *testing.T) {
 	}
 	err := testClient.Create(ctx, plan)
 	if err == nil {
-		defer cleanupDRPlan(t, ctx, "wave-conflict", ns)
+		defer cleanupDRPlan(t, ctx, "wave-conflict")
 		t.Fatal("Expected creation to be denied for wave conflict, but it succeeded")
 	}
 	if !strings.Contains(err.Error(), "conflicting wave labels") {
@@ -221,7 +218,7 @@ func TestDRPlanWebhook_WaveConflict_SameWave_Allowed(t *testing.T) {
 	})
 
 	plan := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "wave-ok", Namespace: ns},
+		ObjectMeta: metav1.ObjectMeta{Name: "wave-ok"},
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 10,
@@ -230,7 +227,7 @@ func TestDRPlanWebhook_WaveConflict_SameWave_Allowed(t *testing.T) {
 	if err := testClient.Create(ctx, plan); err != nil {
 		t.Fatalf("Expected creation to succeed for same-wave VMs, but failed: %v", err)
 	}
-	defer cleanupDRPlan(t, ctx, "wave-ok", ns)
+	defer cleanupDRPlan(t, ctx, "wave-ok")
 }
 
 func TestDRPlanWebhook_MaxConcurrentExceeded_Rejected(t *testing.T) {
@@ -249,7 +246,7 @@ func TestDRPlanWebhook_MaxConcurrentExceeded_Rejected(t *testing.T) {
 	}
 
 	plan := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "max-exceeded", Namespace: ns},
+		ObjectMeta: metav1.ObjectMeta{Name: "max-exceeded"},
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 4,
@@ -257,7 +254,7 @@ func TestDRPlanWebhook_MaxConcurrentExceeded_Rejected(t *testing.T) {
 	}
 	err := testClient.Create(ctx, plan)
 	if err == nil {
-		defer cleanupDRPlan(t, ctx, "max-exceeded", ns)
+		defer cleanupDRPlan(t, ctx, "max-exceeded")
 		t.Fatal("Expected creation to be denied for maxConcurrentFailovers exceeded, but it succeeded")
 	}
 	if !strings.Contains(err.Error(), "maxConcurrentFailovers") {
@@ -280,7 +277,7 @@ func TestDRPlanWebhook_ValidPlan_Allowed(t *testing.T) {
 	})
 
 	plan := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "valid-plan", Namespace: ns},
+		ObjectMeta: metav1.ObjectMeta{Name: "valid-plan"},
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 10,
@@ -289,7 +286,7 @@ func TestDRPlanWebhook_ValidPlan_Allowed(t *testing.T) {
 	if err := testClient.Create(ctx, plan); err != nil {
 		t.Fatalf("Expected valid plan creation to succeed, but failed: %v", err)
 	}
-	defer cleanupDRPlan(t, ctx, "valid-plan", ns)
+	defer cleanupDRPlan(t, ctx, "valid-plan")
 }
 
 func TestDRPlanWebhook_Update_ExclusivityExcludesSelf(t *testing.T) {
@@ -303,7 +300,7 @@ func TestDRPlanWebhook_Update_ExclusivityExcludesSelf(t *testing.T) {
 	})
 
 	plan := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-self", Namespace: ns},
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-self"},
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 10,
@@ -312,10 +309,10 @@ func TestDRPlanWebhook_Update_ExclusivityExcludesSelf(t *testing.T) {
 	if err := testClient.Create(ctx, plan); err != nil {
 		t.Fatalf("Failed to create initial plan: %v", err)
 	}
-	defer cleanupDRPlan(t, ctx, "plan-self", ns)
+	defer cleanupDRPlan(t, ctx, "plan-self")
 
 	var existing soteriav1alpha1.DRPlan
-	if err := waitForObject(ctx, client.ObjectKey{Name: "plan-self", Namespace: ns}, &existing); err != nil {
+	if err := waitForObject(ctx, client.ObjectKey{Name: "plan-self"}, &existing); err != nil {
 		t.Fatalf("Failed to get plan: %v", err)
 	}
 

@@ -25,6 +25,7 @@ import (
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -44,19 +45,17 @@ func TestVMWebhook_Exclusivity_CreateMatchingTwoPlans_Rejected(t *testing.T) {
 	ctx := context.Background()
 	id := uniqueCounter()
 	nsA := fmt.Sprintf("ns-a-%d", id)
-	nsB := fmt.Sprintf("ns-b-%d", id)
 	createTestNamespace(t, ctx, nsA, nil)
-	createTestNamespace(t, ctx, nsB, nil)
 
 	planA := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-shared", Namespace: nsA},
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-shared"},
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 10,
 		},
 	}
 	planB := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-shared", Namespace: nsB},
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-shared"},
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 10,
@@ -65,11 +64,12 @@ func TestVMWebhook_Exclusivity_CreateMatchingTwoPlans_Rejected(t *testing.T) {
 	if err := testClient.Create(ctx, planA); err != nil {
 		t.Fatalf("Failed to create plan-shared in ns-a: %v", err)
 	}
-	defer cleanupDRPlan(t, ctx, "plan-shared", nsA)
-	if err := testClient.Create(ctx, planB); err != nil {
-		t.Fatalf("Failed to create plan-shared in ns-b: %v", err)
+	defer cleanupDRPlan(t, ctx, "plan-shared")
+	if err := testClient.Create(ctx, planB); err == nil {
+		t.Fatal("Expected duplicate DRPlan name to be rejected, but it succeeded")
+	} else if !errors.IsAlreadyExists(err) {
+		t.Fatalf("Expected AlreadyExists for duplicate plan name, got: %v", err)
 	}
-	defer cleanupDRPlan(t, ctx, "plan-shared", nsB)
 
 	vm := &kubevirtv1.VirtualMachine{
 		ObjectMeta: metav1.ObjectMeta{
@@ -81,14 +81,10 @@ func TestVMWebhook_Exclusivity_CreateMatchingTwoPlans_Rejected(t *testing.T) {
 			},
 		},
 	}
-	err := testClient.Create(ctx, vm)
-	if err == nil {
-		defer cleanupVM(t, ctx, "vm-both", nsA)
-		t.Fatal("Expected VM creation to be denied (matches two plans), but it succeeded")
+	if err := testClient.Create(ctx, vm); err != nil {
+		t.Fatalf("Expected VM creation to succeed (single cluster-scoped plan), but failed: %v", err)
 	}
-	if !strings.Contains(err.Error(), "would belong to multiple DRPlans") {
-		t.Errorf("Expected exclusivity error, got: %v", err)
-	}
+	defer cleanupVM(t, ctx, "vm-both", nsA)
 }
 
 func TestVMWebhook_Exclusivity_CreateMatchingOnePlan_Allowed(t *testing.T) {
@@ -97,7 +93,7 @@ func TestVMWebhook_Exclusivity_CreateMatchingOnePlan_Allowed(t *testing.T) {
 	createTestNamespace(t, ctx, ns, nil)
 
 	plan := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-a", Namespace: ns},
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-a"},
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 10,
@@ -106,7 +102,7 @@ func TestVMWebhook_Exclusivity_CreateMatchingOnePlan_Allowed(t *testing.T) {
 	if err := testClient.Create(ctx, plan); err != nil {
 		t.Fatalf("Failed to create plan-a: %v", err)
 	}
-	defer cleanupDRPlan(t, ctx, "plan-a", ns)
+	defer cleanupDRPlan(t, ctx, "plan-a")
 
 	vm := &kubevirtv1.VirtualMachine{
 		ObjectMeta: metav1.ObjectMeta{
@@ -124,63 +120,46 @@ func TestVMWebhook_Exclusivity_CreateMatchingOnePlan_Allowed(t *testing.T) {
 	defer cleanupVM(t, ctx, "vm-ok", ns)
 }
 
-func TestVMWebhook_Exclusivity_UpdateAddsSecondPlanMatch_Rejected(t *testing.T) {
+func TestVMWebhook_Exclusivity_UpdateAddsPlanLabel_OneClusterPlan_Allowed(t *testing.T) {
 	ctx := context.Background()
-	id := uniqueCounter()
-	nsA := fmt.Sprintf("ns-a-%d", id)
-	nsB := fmt.Sprintf("ns-b-%d", id)
-	createTestNamespace(t, ctx, nsA, nil)
-	createTestNamespace(t, ctx, nsB, nil)
+	ns := fmt.Sprintf("vm-excl-upd-%d", uniqueCounter())
+	createTestNamespace(t, ctx, ns, nil)
 
-	planA := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-shared", Namespace: nsA},
+	plan := &soteriav1alpha1.DRPlan{
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-shared"},
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 10,
 		},
 	}
-	planB := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-shared", Namespace: nsB},
-		Spec: soteriav1alpha1.DRPlanSpec{
-			WaveLabel:              "soteria.io/wave",
-			MaxConcurrentFailovers: 10,
-		},
+	if err := testClient.Create(ctx, plan); err != nil {
+		t.Fatalf("Failed to create plan-shared: %v", err)
 	}
-	if err := testClient.Create(ctx, planA); err != nil {
-		t.Fatalf("Failed to create plan-shared in ns-a: %v", err)
-	}
-	defer cleanupDRPlan(t, ctx, "plan-shared", nsA)
-	if err := testClient.Create(ctx, planB); err != nil {
-		t.Fatalf("Failed to create plan-shared in ns-b: %v", err)
-	}
-	defer cleanupDRPlan(t, ctx, "plan-shared", nsB)
+	defer cleanupDRPlan(t, ctx, "plan-shared")
 
 	vm := &kubevirtv1.VirtualMachine{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "vm-update",
-			Namespace: nsA,
+			Namespace: ns,
 			Labels:    map[string]string{"unrelated": "true"},
 		},
 	}
 	if err := testClient.Create(ctx, vm); err != nil {
 		t.Fatalf("Failed to create VM: %v", err)
 	}
-	defer cleanupVM(t, ctx, "vm-update", nsA)
+	defer cleanupVM(t, ctx, "vm-update", ns)
 
 	var existing kubevirtv1.VirtualMachine
-	if err := waitForObject(ctx, client.ObjectKey{Name: "vm-update", Namespace: nsA}, &existing); err != nil {
+	if err := waitForObject(ctx, client.ObjectKey{Name: "vm-update", Namespace: ns}, &existing); err != nil {
 		t.Fatalf("Failed to get VM: %v", err)
 	}
 	if existing.Labels == nil {
 		existing.Labels = map[string]string{}
 	}
 	existing.Labels[soteriav1alpha1.DRPlanLabel] = "plan-shared"
-	err := testClient.Update(ctx, &existing)
-	if err == nil {
-		t.Fatal("Expected VM update to be denied (label matches two plans), but it succeeded")
-	}
-	if !strings.Contains(err.Error(), "would belong to multiple DRPlans") {
-		t.Errorf("Expected exclusivity error, got: %v", err)
+	existing.Labels["soteria.io/wave"] = "1"
+	if err := testClient.Update(ctx, &existing); err != nil {
+		t.Fatalf("Expected VM update to succeed (single cluster-scoped DRPlan), but failed: %v", err)
 	}
 }
 
@@ -190,7 +169,7 @@ func TestVMWebhook_Exclusivity_UpdateRemovesLabels_Allowed(t *testing.T) {
 	createTestNamespace(t, ctx, ns, nil)
 
 	plan := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-a", Namespace: ns},
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-a"},
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 10,
@@ -199,7 +178,7 @@ func TestVMWebhook_Exclusivity_UpdateRemovesLabels_Allowed(t *testing.T) {
 	if err := testClient.Create(ctx, plan); err != nil {
 		t.Fatalf("Failed to create plan: %v", err)
 	}
-	defer cleanupDRPlan(t, ctx, "plan-a", ns)
+	defer cleanupDRPlan(t, ctx, "plan-a")
 
 	vm := &kubevirtv1.VirtualMachine{
 		ObjectMeta: metav1.ObjectMeta{
@@ -234,7 +213,7 @@ func TestVMWebhook_WaveConflict_CreateConflicting_Rejected(t *testing.T) {
 	})
 
 	plan := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-wave", Namespace: ns},
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-wave"},
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 10,
@@ -243,7 +222,7 @@ func TestVMWebhook_WaveConflict_CreateConflicting_Rejected(t *testing.T) {
 	if err := testClient.Create(ctx, plan); err != nil {
 		t.Fatalf("Failed to create plan: %v", err)
 	}
-	defer cleanupDRPlan(t, ctx, "plan-wave", ns)
+	defer cleanupDRPlan(t, ctx, "plan-wave")
 
 	vm1 := &kubevirtv1.VirtualMachine{
 		ObjectMeta: metav1.ObjectMeta{
@@ -288,7 +267,7 @@ func TestVMWebhook_WaveConflict_UpdateChangesWave_Rejected(t *testing.T) {
 	})
 
 	plan := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-wave", Namespace: ns},
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-wave"},
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 10,
@@ -297,7 +276,7 @@ func TestVMWebhook_WaveConflict_UpdateChangesWave_Rejected(t *testing.T) {
 	if err := testClient.Create(ctx, plan); err != nil {
 		t.Fatalf("Failed to create plan: %v", err)
 	}
-	defer cleanupDRPlan(t, ctx, "plan-wave", ns)
+	defer cleanupDRPlan(t, ctx, "plan-wave")
 
 	vm1 := &kubevirtv1.VirtualMachine{
 		ObjectMeta: metav1.ObjectMeta{
@@ -350,7 +329,7 @@ func TestVMWebhook_WaveConflict_SameWave_Allowed(t *testing.T) {
 	})
 
 	plan := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-wave", Namespace: ns},
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-wave"},
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 10,
@@ -359,7 +338,7 @@ func TestVMWebhook_WaveConflict_SameWave_Allowed(t *testing.T) {
 	if err := testClient.Create(ctx, plan); err != nil {
 		t.Fatalf("Failed to create plan: %v", err)
 	}
-	defer cleanupDRPlan(t, ctx, "plan-wave", ns)
+	defer cleanupDRPlan(t, ctx, "plan-wave")
 
 	vm1 := &kubevirtv1.VirtualMachine{
 		ObjectMeta: metav1.ObjectMeta{
@@ -397,7 +376,7 @@ func TestVMWebhook_NoViolations_Allowed(t *testing.T) {
 	createTestNamespace(t, ctx, ns, nil)
 
 	plan := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-single", Namespace: ns},
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-single"},
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 10,
@@ -406,7 +385,7 @@ func TestVMWebhook_NoViolations_Allowed(t *testing.T) {
 	if err := testClient.Create(ctx, plan); err != nil {
 		t.Fatalf("Failed to create plan: %v", err)
 	}
-	defer cleanupDRPlan(t, ctx, "plan-single", ns)
+	defer cleanupDRPlan(t, ctx, "plan-single")
 
 	vm := &kubevirtv1.VirtualMachine{
 		ObjectMeta: metav1.ObjectMeta{

@@ -37,7 +37,9 @@ type drplanStrategy struct {
 
 var Strategy = drplanStrategy{soteriainstall.Scheme, names.SimpleNameGenerator}
 
-func (drplanStrategy) NamespaceScoped() bool { return true }
+// DRPlan is cluster-scoped: plans manage VMs across namespaces, so the plan
+// name must be globally unique to avoid soteria.io/drplan label collisions.
+func (drplanStrategy) NamespaceScoped() bool { return false }
 
 func (drplanStrategy) PrepareForCreate(_ context.Context, obj runtime.Object) {
 	plan := obj.(*soteriav1alpha1.DRPlan)
@@ -76,8 +78,7 @@ func GetAttrs(obj runtime.Object) (labels.Set, fields.Set, error) {
 		return nil, nil, field.Invalid(field.NewPath(""), obj, "expected DRPlan")
 	}
 	return plan.Labels, fields.Set{
-		"metadata.name":      plan.Name,
-		"metadata.namespace": plan.Namespace,
+		"metadata.name": plan.Name,
 	}, nil
 }
 

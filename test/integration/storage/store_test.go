@@ -134,16 +134,15 @@ func cleanupObjectLabels(t *testing.T, key string, lbls map[string]string) {
 	}
 }
 
-func newDRPlan(namespace, name string) *v1alpha1.DRPlan {
+func newDRPlan(name string) *v1alpha1.DRPlan {
 	return &v1alpha1.DRPlan{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "soteria.io/v1alpha1",
 			Kind:       "DRPlan",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: namespace,
-			Name:      name,
-			UID:       types.UID(gocql.TimeUUID().String()),
+			Name: name,
+			UID:  types.UID(gocql.TimeUUID().String()),
 		},
 		Spec: v1alpha1.DRPlanSpec{
 			WaveLabel:              "wave",
@@ -157,10 +156,10 @@ func newDRPlan(namespace, name string) *v1alpha1.DRPlan {
 func TestStore_Create_NewObject(t *testing.T) {
 	store := setupStoreTest(t)
 	ctx := context.Background()
-	key := "/soteria.io/drplans/default/create-new"
+	key := "/soteria.io/drplans/create-new"
 	t.Cleanup(func() { cleanupKey(t, key) })
 
-	plan := newDRPlan("default", "create-new")
+	plan := newDRPlan("create-new")
 	out := &v1alpha1.DRPlan{}
 
 	if err := store.Create(ctx, key, plan, out, 0); err != nil {
@@ -178,15 +177,15 @@ func TestStore_Create_NewObject(t *testing.T) {
 func TestStore_Create_DuplicateKey_ReturnsAlreadyExists(t *testing.T) {
 	store := setupStoreTest(t)
 	ctx := context.Background()
-	key := "/soteria.io/drplans/default/create-dup"
+	key := "/soteria.io/drplans/create-dup"
 	t.Cleanup(func() { cleanupKey(t, key) })
 
-	plan := newDRPlan("default", "create-dup")
+	plan := newDRPlan("create-dup")
 	if err := store.Create(ctx, key, plan, &v1alpha1.DRPlan{}, 0); err != nil {
 		t.Fatalf("first Create failed: %v", err)
 	}
 
-	plan2 := newDRPlan("default", "create-dup")
+	plan2 := newDRPlan("create-dup")
 	err := store.Create(ctx, key, plan2, &v1alpha1.DRPlan{}, 0)
 	if !storage.IsExist(err) {
 		t.Fatalf("expected KeyExists error, got %v", err)
@@ -196,10 +195,10 @@ func TestStore_Create_DuplicateKey_ReturnsAlreadyExists(t *testing.T) {
 func TestStore_Create_ResourceVersionAssigned(t *testing.T) {
 	store := setupStoreTest(t)
 	ctx := context.Background()
-	key := "/soteria.io/drplans/default/create-rv"
+	key := "/soteria.io/drplans/create-rv"
 	t.Cleanup(func() { cleanupKey(t, key) })
 
-	plan := newDRPlan("default", "create-rv")
+	plan := newDRPlan("create-rv")
 	out := &v1alpha1.DRPlan{}
 	if err := store.Create(ctx, key, plan, out, 0); err != nil {
 		t.Fatalf("Create failed: %v", err)
@@ -217,10 +216,10 @@ func TestStore_Create_ResourceVersionAssigned(t *testing.T) {
 func TestStore_Create_ResourceVersionSetOnCreate_Fails(t *testing.T) {
 	store := setupStoreTest(t)
 	ctx := context.Background()
-	key := "/soteria.io/drplans/default/create-rv-set"
+	key := "/soteria.io/drplans/create-rv-set"
 	t.Cleanup(func() { cleanupKey(t, key) })
 
-	plan := newDRPlan("default", "create-rv-set")
+	plan := newDRPlan("create-rv-set")
 	plan.ResourceVersion = "12345"
 
 	err := store.Create(ctx, key, plan, &v1alpha1.DRPlan{}, 0)
@@ -234,10 +233,10 @@ func TestStore_Create_ResourceVersionSetOnCreate_Fails(t *testing.T) {
 func TestStore_Get_ExistingObject(t *testing.T) {
 	store := setupStoreTest(t)
 	ctx := context.Background()
-	key := "/soteria.io/drplans/default/get-existing"
+	key := "/soteria.io/drplans/get-existing"
 	t.Cleanup(func() { cleanupKey(t, key) })
 
-	plan := newDRPlan("default", "get-existing")
+	plan := newDRPlan("get-existing")
 	if err := store.Create(ctx, key, plan, &v1alpha1.DRPlan{}, 0); err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
@@ -261,7 +260,7 @@ func TestStore_Get_ExistingObject(t *testing.T) {
 func TestStore_Get_NotFound(t *testing.T) {
 	store := setupStoreTest(t)
 	ctx := context.Background()
-	key := "/soteria.io/drplans/default/get-missing"
+	key := "/soteria.io/drplans/get-missing"
 
 	err := store.Get(ctx, key, storage.GetOptions{}, &v1alpha1.DRPlan{})
 	if !storage.IsNotFound(err) {
@@ -272,7 +271,7 @@ func TestStore_Get_NotFound(t *testing.T) {
 func TestStore_Get_IgnoreNotFound(t *testing.T) {
 	store := setupStoreTest(t)
 	ctx := context.Background()
-	key := "/soteria.io/drplans/default/get-ignore-missing"
+	key := "/soteria.io/drplans/get-ignore-missing"
 
 	out := &v1alpha1.DRPlan{}
 	err := store.Get(ctx, key, storage.GetOptions{IgnoreNotFound: true}, out)
@@ -292,9 +291,9 @@ func TestStore_GetList_MultipleResources(t *testing.T) {
 
 	names := []string{"list-a", "list-b", "list-c"}
 	for _, name := range names {
-		key := "/soteria.io/drplans/default/" + name
+		key := "/soteria.io/drplans/" + name
 		t.Cleanup(func() { cleanupKey(t, key) })
-		if err := store.Create(ctx, key, newDRPlan("default", name), &v1alpha1.DRPlan{}, 0); err != nil {
+		if err := store.Create(ctx, key, newDRPlan(name), &v1alpha1.DRPlan{}, 0); err != nil {
 			t.Fatalf("Create %s failed: %v", name, err)
 		}
 	}
@@ -319,23 +318,23 @@ func TestStore_GetList_MultipleResources(t *testing.T) {
 	}
 }
 
-func TestStore_GetList_NamespaceScoped(t *testing.T) {
+func TestStore_GetList_ClusterScoped(t *testing.T) {
 	store := setupStoreTest(t)
 	ctx := context.Background()
 
-	key1 := "/soteria.io/drplans/ns-a/plan1"
-	key2 := "/soteria.io/drplans/ns-b/plan2"
+	key1 := "/soteria.io/drplans/plan1"
+	key2 := "/soteria.io/drplans/plan2"
 	t.Cleanup(func() { cleanupKey(t, key1); cleanupKey(t, key2) })
 
-	if err := store.Create(ctx, key1, newDRPlan("ns-a", "plan1"), &v1alpha1.DRPlan{}, 0); err != nil {
+	if err := store.Create(ctx, key1, newDRPlan("plan1"), &v1alpha1.DRPlan{}, 0); err != nil {
 		t.Fatalf("Create plan1 failed: %v", err)
 	}
-	if err := store.Create(ctx, key2, newDRPlan("ns-b", "plan2"), &v1alpha1.DRPlan{}, 0); err != nil {
+	if err := store.Create(ctx, key2, newDRPlan("plan2"), &v1alpha1.DRPlan{}, 0); err != nil {
 		t.Fatalf("Create plan2 failed: %v", err)
 	}
 
 	list := &v1alpha1.DRPlanList{}
-	err := store.GetList(ctx, "/soteria.io/drplans/ns-a", storage.ListOptions{
+	err := store.GetList(ctx, "/soteria.io/drplans", storage.ListOptions{
 		Recursive: true,
 		Predicate: storage.SelectionPredicate{
 			Label: labels.Everything(),
@@ -343,13 +342,18 @@ func TestStore_GetList_NamespaceScoped(t *testing.T) {
 		},
 	}, list)
 	if err != nil {
-		t.Fatalf("GetList ns-a failed: %v", err)
+		t.Fatalf("GetList cluster drplans failed: %v", err)
 	}
 
+	names := map[string]bool{}
 	for _, item := range list.Items {
-		if item.Namespace != "ns-a" {
-			t.Fatalf("expected all items in ns-a, found item in %q", item.Namespace)
+		if item.Namespace != "" {
+			t.Fatalf("expected cluster-scoped DRPlan to have empty namespace, got %q", item.Namespace)
 		}
+		names[item.Name] = true
+	}
+	if !names["plan1"] || !names["plan2"] {
+		t.Fatalf("expected plan1 and plan2 in list, got names %v", names)
 	}
 }
 
@@ -357,13 +361,13 @@ func TestStore_GetList_LabelSelector(t *testing.T) {
 	store := setupStoreTest(t)
 	ctx := context.Background()
 
-	plan1 := newDRPlan("default", "label-a")
+	plan1 := newDRPlan("label-a")
 	plan1.Labels = map[string]string{"tier": "frontend"}
-	key1 := "/soteria.io/drplans/default/label-a"
+	key1 := "/soteria.io/drplans/label-a"
 
-	plan2 := newDRPlan("default", "label-b")
+	plan2 := newDRPlan("label-b")
 	plan2.Labels = map[string]string{"tier": "backend"}
-	key2 := "/soteria.io/drplans/default/label-b"
+	key2 := "/soteria.io/drplans/label-b"
 
 	t.Cleanup(func() { cleanupKey(t, key1); cleanupKey(t, key2) })
 
@@ -381,7 +385,7 @@ func TestStore_GetList_LabelSelector(t *testing.T) {
 		Predicate: storage.SelectionPredicate{
 			Label:    selector,
 			Field:    fields.Everything(),
-			GetAttrs: storage.DefaultNamespaceScopedAttr,
+			GetAttrs: storage.DefaultClusterScopedAttr,
 		},
 	}, list)
 	if err != nil {
@@ -401,9 +405,9 @@ func TestStore_GetList_Pagination(t *testing.T) {
 
 	for i := 0; i < 5; i++ {
 		name := fmt.Sprintf("page-%02d", i)
-		key := "/soteria.io/drplans/default/" + name
+		key := "/soteria.io/drplans/" + name
 		t.Cleanup(func() { cleanupKey(t, key) })
-		if err := store.Create(ctx, key, newDRPlan("default", name), &v1alpha1.DRPlan{}, 0); err != nil {
+		if err := store.Create(ctx, key, newDRPlan(name), &v1alpha1.DRPlan{}, 0); err != nil {
 			t.Fatalf("Create %s failed: %v", name, err)
 		}
 	}
@@ -463,10 +467,10 @@ func TestStore_GetList_Pagination(t *testing.T) {
 func TestStore_GuaranteedUpdate_Success(t *testing.T) {
 	store := setupStoreTest(t)
 	ctx := context.Background()
-	key := "/soteria.io/drplans/default/update-ok"
+	key := "/soteria.io/drplans/update-ok"
 	t.Cleanup(func() { cleanupKey(t, key) })
 
-	plan := newDRPlan("default", "update-ok")
+	plan := newDRPlan("update-ok")
 	created := &v1alpha1.DRPlan{}
 	if err := store.Create(ctx, key, plan, created, 0); err != nil {
 		t.Fatalf("Create failed: %v", err)
@@ -495,7 +499,7 @@ func TestStore_GuaranteedUpdate_Success(t *testing.T) {
 func TestStore_GuaranteedUpdate_NotFound(t *testing.T) {
 	store := setupStoreTest(t)
 	ctx := context.Background()
-	key := "/soteria.io/drplans/default/update-missing"
+	key := "/soteria.io/drplans/update-missing"
 
 	err := store.GuaranteedUpdate(ctx, key, &v1alpha1.DRPlan{}, false, nil,
 		func(input runtime.Object, _ storage.ResponseMeta) (runtime.Object, *uint64, error) {
@@ -509,7 +513,7 @@ func TestStore_GuaranteedUpdate_NotFound(t *testing.T) {
 func TestStore_GuaranteedUpdate_IgnoreNotFound_Creates(t *testing.T) {
 	store := setupStoreTest(t)
 	ctx := context.Background()
-	key := "/soteria.io/drplans/default/update-create"
+	key := "/soteria.io/drplans/update-create"
 	t.Cleanup(func() { cleanupKey(t, key) })
 
 	dest := &v1alpha1.DRPlan{}
@@ -517,7 +521,6 @@ func TestStore_GuaranteedUpdate_IgnoreNotFound_Creates(t *testing.T) {
 		func(input runtime.Object, _ storage.ResponseMeta) (runtime.Object, *uint64, error) {
 			p := input.(*v1alpha1.DRPlan)
 			p.Name = "update-create"
-			p.Namespace = "default"
 			p.Spec.WaveLabel = "wave"
 			return p, nil, nil
 		}, nil)
@@ -538,10 +541,10 @@ func TestStore_GuaranteedUpdate_IgnoreNotFound_Creates(t *testing.T) {
 func TestStore_GuaranteedUpdate_NoChange_ShortCircuits(t *testing.T) {
 	store := setupStoreTest(t)
 	ctx := context.Background()
-	key := "/soteria.io/drplans/default/update-noop"
+	key := "/soteria.io/drplans/update-noop"
 	t.Cleanup(func() { cleanupKey(t, key) })
 
-	plan := newDRPlan("default", "update-noop")
+	plan := newDRPlan("update-noop")
 	created := &v1alpha1.DRPlan{}
 	if err := store.Create(ctx, key, plan, created, 0); err != nil {
 		t.Fatalf("Create failed: %v", err)
@@ -566,10 +569,10 @@ func TestStore_GuaranteedUpdate_NoChange_ShortCircuits(t *testing.T) {
 func TestStore_Delete_ExistingObject(t *testing.T) {
 	store := setupStoreTest(t)
 	ctx := context.Background()
-	key := "/soteria.io/drplans/default/delete-ok"
+	key := "/soteria.io/drplans/delete-ok"
 	t.Cleanup(func() { cleanupKey(t, key) })
 
-	plan := newDRPlan("default", "delete-ok")
+	plan := newDRPlan("delete-ok")
 	if err := store.Create(ctx, key, plan, &v1alpha1.DRPlan{}, 0); err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
@@ -593,7 +596,7 @@ func TestStore_Delete_ExistingObject(t *testing.T) {
 func TestStore_Delete_NotFound(t *testing.T) {
 	store := setupStoreTest(t)
 	ctx := context.Background()
-	key := "/soteria.io/drplans/default/delete-missing"
+	key := "/soteria.io/drplans/delete-missing"
 
 	err := store.Delete(ctx, key, &v1alpha1.DRPlan{}, nil, storage.ValidateAllObjectFunc, nil, storage.DeleteOptions{})
 	if !storage.IsNotFound(err) {
@@ -604,10 +607,10 @@ func TestStore_Delete_NotFound(t *testing.T) {
 func TestStore_Delete_PreconditionUID(t *testing.T) {
 	store := setupStoreTest(t)
 	ctx := context.Background()
-	key := "/soteria.io/drplans/default/delete-uid"
+	key := "/soteria.io/drplans/delete-uid"
 	t.Cleanup(func() { cleanupKey(t, key) })
 
-	plan := newDRPlan("default", "delete-uid")
+	plan := newDRPlan("delete-uid")
 	created := &v1alpha1.DRPlan{}
 	if err := store.Create(ctx, key, plan, created, 0); err != nil {
 		t.Fatalf("Create failed: %v", err)
@@ -625,10 +628,10 @@ func TestStore_Delete_PreconditionUID(t *testing.T) {
 func TestStore_Delete_PreconditionResourceVersion(t *testing.T) {
 	store := setupStoreTest(t)
 	ctx := context.Background()
-	key := "/soteria.io/drplans/default/delete-rv"
+	key := "/soteria.io/drplans/delete-rv"
 	t.Cleanup(func() { cleanupKey(t, key) })
 
-	plan := newDRPlan("default", "delete-rv")
+	plan := newDRPlan("delete-rv")
 	if err := store.Create(ctx, key, plan, &v1alpha1.DRPlan{}, 0); err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
@@ -648,10 +651,10 @@ func TestStore_Stats(t *testing.T) {
 	store := setupStoreTest(t)
 	ctx := context.Background()
 
-	key := "/soteria.io/drplans/default/stats-test"
+	key := "/soteria.io/drplans/stats-test"
 	t.Cleanup(func() { cleanupKey(t, key) })
 
-	if err := store.Create(ctx, key, newDRPlan("default", "stats-test"), &v1alpha1.DRPlan{}, 0); err != nil {
+	if err := store.Create(ctx, key, newDRPlan("stats-test"), &v1alpha1.DRPlan{}, 0); err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
 
@@ -678,10 +681,10 @@ func TestStore_ReadinessCheck(t *testing.T) {
 func TestStore_ResourceVersion_Monotonically_Increases(t *testing.T) {
 	store := setupStoreTest(t)
 	ctx := context.Background()
-	key := "/soteria.io/drplans/default/rv-mono"
+	key := "/soteria.io/drplans/rv-mono"
 	t.Cleanup(func() { cleanupKey(t, key) })
 
-	plan := newDRPlan("default", "rv-mono")
+	plan := newDRPlan("rv-mono")
 	created := &v1alpha1.DRPlan{}
 	if err := store.Create(ctx, key, plan, created, 0); err != nil {
 		t.Fatalf("Create failed: %v", err)
@@ -715,15 +718,14 @@ func TestStore_DRExecution_CRUD(t *testing.T) {
 		func() runtime.Object { return &v1alpha1.DRExecutionList{} },
 	)
 	ctx := context.Background()
-	key := "/soteria.io/drexecutions/default/exec-001"
+	key := "/soteria.io/drexecutions/exec-001"
 	t.Cleanup(func() { cleanupKey(t, key) })
 
 	exec := &v1alpha1.DRExecution{
 		TypeMeta: metav1.TypeMeta{APIVersion: "soteria.io/v1alpha1", Kind: "DRExecution"},
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: "default",
-			Name:      "exec-001",
-			UID:       types.UID(gocql.TimeUUID().String()),
+			Name: "exec-001",
+			UID:  types.UID(gocql.TimeUUID().String()),
 		},
 		Spec: v1alpha1.DRExecutionSpec{
 			PlanName: "erp-full-stack",
@@ -756,15 +758,14 @@ func TestStore_DRGroupStatus_CRUD(t *testing.T) {
 		func() runtime.Object { return &v1alpha1.DRGroupStatusList{} },
 	)
 	ctx := context.Background()
-	key := "/soteria.io/drgroupstatuses/default/exec-001-wave0-group0"
+	key := "/soteria.io/drgroupstatuses/exec-001-wave0-group0"
 	t.Cleanup(func() { cleanupKey(t, key) })
 
 	gs := &v1alpha1.DRGroupStatus{
 		TypeMeta: metav1.TypeMeta{APIVersion: "soteria.io/v1alpha1", Kind: "DRGroupStatus"},
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: "default",
-			Name:      "exec-001-wave0-group0",
-			UID:       types.UID(gocql.TimeUUID().String()),
+			Name: "exec-001-wave0-group0",
+			UID:  types.UID(gocql.TimeUUID().String()),
 		},
 		Spec: v1alpha1.DRGroupStatusSpec{
 			ExecutionName: "exec-001",
@@ -803,9 +804,9 @@ func TestStore_GetList_Pagination_StableResourceVersion(t *testing.T) {
 
 	for i := 0; i < 6; i++ {
 		name := fmt.Sprintf("rv-stable-%02d", i)
-		key := "/soteria.io/drplans/default/" + name
+		key := "/soteria.io/drplans/" + name
 		t.Cleanup(func() { cleanupKey(t, key) })
-		if err := store.Create(ctx, key, newDRPlan("default", name), &v1alpha1.DRPlan{}, 0); err != nil {
+		if err := store.Create(ctx, key, newDRPlan(name), &v1alpha1.DRPlan{}, 0); err != nil {
 			t.Fatalf("Create %s failed: %v", name, err)
 		}
 	}
@@ -877,7 +878,7 @@ func TestStore_GetList_CorruptRow_ReturnsError(t *testing.T) {
 	ctx := context.Background()
 
 	name := "corrupt-row"
-	key := "/soteria.io/drplans/default/" + name
+	key := "/soteria.io/drplans/" + name
 	t.Cleanup(func() { cleanupKey(t, key) })
 
 	cql := fmt.Sprintf(
@@ -887,7 +888,7 @@ func TestStore_GetList_CorruptRow_ReturnsError(t *testing.T) {
 		storeTestKeyspace,
 	)
 	if err := testSession.Query(cql,
-		"soteria.io", "drplans", "default", name,
+		"soteria.io", "drplans", "", name,
 		[]byte("this is not valid encoded data"),
 		gocql.TimeUUID(),
 	).Exec(); err != nil {
@@ -895,7 +896,7 @@ func TestStore_GetList_CorruptRow_ReturnsError(t *testing.T) {
 	}
 
 	list := &v1alpha1.DRPlanList{}
-	err := store.GetList(ctx, "/soteria.io/drplans/default", storage.ListOptions{
+	err := store.GetList(ctx, "/soteria.io/drplans", storage.ListOptions{
 		Recursive: true,
 		Predicate: storage.SelectionPredicate{
 			Label: labels.Everything(),
@@ -915,7 +916,7 @@ func TestStore_Get_CorruptRow_ReturnsError(t *testing.T) {
 	ctx := context.Background()
 
 	name := "corrupt-get"
-	key := "/soteria.io/drplans/default/" + name
+	key := "/soteria.io/drplans/" + name
 	t.Cleanup(func() { cleanupKey(t, key) })
 
 	cql := fmt.Sprintf(
@@ -925,7 +926,7 @@ func TestStore_Get_CorruptRow_ReturnsError(t *testing.T) {
 		storeTestKeyspace,
 	)
 	if err := testSession.Query(cql,
-		"soteria.io", "drplans", "default", name,
+		"soteria.io", "drplans", "", name,
 		[]byte("garbage bytes"),
 		gocql.TimeUUID(),
 	).Exec(); err != nil {
@@ -947,10 +948,10 @@ func TestStore_Get_CorruptRow_ReturnsError(t *testing.T) {
 func TestStore_GetCurrentResourceVersion(t *testing.T) {
 	store := setupStoreTest(t)
 	ctx := context.Background()
-	key := "/soteria.io/drplans/default/rv-current"
+	key := "/soteria.io/drplans/rv-current"
 	t.Cleanup(func() { cleanupKey(t, key) })
 
-	if err := store.Create(ctx, key, newDRPlan("default", "rv-current"), &v1alpha1.DRPlan{}, 0); err != nil {
+	if err := store.Create(ctx, key, newDRPlan("rv-current"), &v1alpha1.DRPlan{}, 0); err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
 
@@ -965,8 +966,8 @@ func TestStore_GetCurrentResourceVersion(t *testing.T) {
 
 // ---- Label-indexed pagination tests (Story 1.3.1) ----
 
-func newDRPlanWithLabels(namespace, name string, lbls map[string]string) *v1alpha1.DRPlan {
-	plan := newDRPlan(namespace, name)
+func newDRPlanWithLabels(name string, lbls map[string]string) *v1alpha1.DRPlan {
+	plan := newDRPlan(name)
 	plan.Labels = lbls
 	return plan
 }
@@ -980,23 +981,23 @@ func TestStore_LabelIndex_EqualityPagination(t *testing.T) {
 	var allLabels []map[string]string
 	for i := 0; i < 10; i++ {
 		name := fmt.Sprintf("li-web-%02d", i)
-		key := "/soteria.io/drplans/default/" + name
+		key := "/soteria.io/drplans/" + name
 		lbls := map[string]string{"app": "web"}
 		allKeys = append(allKeys, key)
 		allLabels = append(allLabels, lbls)
 		t.Cleanup(func() { cleanupKey(t, key); cleanupObjectLabels(t, key, lbls) })
-		if err := store.Create(ctx, key, newDRPlanWithLabels("default", name, lbls), &v1alpha1.DRPlan{}, 0); err != nil {
+		if err := store.Create(ctx, key, newDRPlanWithLabels(name, lbls), &v1alpha1.DRPlan{}, 0); err != nil {
 			t.Fatalf("Create %s failed: %v", name, err)
 		}
 	}
 	for i := 0; i < 10; i++ {
 		name := fmt.Sprintf("li-api-%02d", i)
-		key := "/soteria.io/drplans/default/" + name
+		key := "/soteria.io/drplans/" + name
 		lbls := map[string]string{"app": "api"}
 		allKeys = append(allKeys, key)
 		allLabels = append(allLabels, lbls)
 		t.Cleanup(func() { cleanupKey(t, key); cleanupObjectLabels(t, key, lbls) })
-		if err := store.Create(ctx, key, newDRPlanWithLabels("default", name, lbls), &v1alpha1.DRPlan{}, 0); err != nil {
+		if err := store.Create(ctx, key, newDRPlanWithLabels(name, lbls), &v1alpha1.DRPlan{}, 0); err != nil {
 			t.Fatalf("Create %s failed: %v", name, err)
 		}
 	}
@@ -1010,7 +1011,7 @@ func TestStore_LabelIndex_EqualityPagination(t *testing.T) {
 		Predicate: storage.SelectionPredicate{
 			Label:    selector,
 			Field:    fields.Everything(),
-			GetAttrs: storage.DefaultNamespaceScopedAttr,
+			GetAttrs: storage.DefaultClusterScopedAttr,
 			Limit:    3,
 		},
 	}, list1)
@@ -1036,7 +1037,7 @@ func TestStore_LabelIndex_EqualityPagination(t *testing.T) {
 		Predicate: storage.SelectionPredicate{
 			Label:    selector,
 			Field:    fields.Everything(),
-			GetAttrs: storage.DefaultNamespaceScopedAttr,
+			GetAttrs: storage.DefaultClusterScopedAttr,
 			Limit:    3,
 			Continue: list1.Continue,
 		},
@@ -1076,10 +1077,10 @@ func TestStore_LabelIndex_MultiLabelAND(t *testing.T) {
 	}
 
 	for _, obj := range objects {
-		key := "/soteria.io/drplans/default/" + obj.name
+		key := "/soteria.io/drplans/" + obj.name
 		lbls := obj.labels
 		t.Cleanup(func() { cleanupKey(t, key); cleanupObjectLabels(t, key, lbls) })
-		if err := store.Create(ctx, key, newDRPlanWithLabels("default", obj.name, obj.labels), &v1alpha1.DRPlan{}, 0); err != nil {
+		if err := store.Create(ctx, key, newDRPlanWithLabels(obj.name, obj.labels), &v1alpha1.DRPlan{}, 0); err != nil {
 			t.Fatalf("Create %s failed: %v", obj.name, err)
 		}
 	}
@@ -1091,7 +1092,7 @@ func TestStore_LabelIndex_MultiLabelAND(t *testing.T) {
 		Predicate: storage.SelectionPredicate{
 			Label:    selector,
 			Field:    fields.Everything(),
-			GetAttrs: storage.DefaultNamespaceScopedAttr,
+			GetAttrs: storage.DefaultClusterScopedAttr,
 		},
 	}, list)
 	if err != nil {
@@ -1122,10 +1123,10 @@ func TestStore_LabelIndex_InSelector(t *testing.T) {
 	}
 
 	for _, obj := range objects {
-		key := "/soteria.io/drplans/default/" + obj.name
+		key := "/soteria.io/drplans/" + obj.name
 		lbls := obj.labels
 		t.Cleanup(func() { cleanupKey(t, key); cleanupObjectLabels(t, key, lbls) })
-		if err := store.Create(ctx, key, newDRPlanWithLabels("default", obj.name, obj.labels), &v1alpha1.DRPlan{}, 0); err != nil {
+		if err := store.Create(ctx, key, newDRPlanWithLabels(obj.name, obj.labels), &v1alpha1.DRPlan{}, 0); err != nil {
 			t.Fatalf("Create %s failed: %v", obj.name, err)
 		}
 	}
@@ -1137,7 +1138,7 @@ func TestStore_LabelIndex_InSelector(t *testing.T) {
 		Predicate: storage.SelectionPredicate{
 			Label:    selector,
 			Field:    fields.Everything(),
-			GetAttrs: storage.DefaultNamespaceScopedAttr,
+			GetAttrs: storage.DefaultClusterScopedAttr,
 		},
 	}, list)
 	if err != nil {
@@ -1169,10 +1170,10 @@ func TestStore_LabelIndex_ExistsSelector(t *testing.T) {
 	}
 
 	for _, obj := range objects {
-		key := "/soteria.io/drplans/default/" + obj.name
+		key := "/soteria.io/drplans/" + obj.name
 		lbls := obj.labels
 		t.Cleanup(func() { cleanupKey(t, key); cleanupObjectLabels(t, key, lbls) })
-		if err := store.Create(ctx, key, newDRPlanWithLabels("default", obj.name, obj.labels), &v1alpha1.DRPlan{}, 0); err != nil {
+		if err := store.Create(ctx, key, newDRPlanWithLabels(obj.name, obj.labels), &v1alpha1.DRPlan{}, 0); err != nil {
 			t.Fatalf("Create %s failed: %v", obj.name, err)
 		}
 	}
@@ -1184,7 +1185,7 @@ func TestStore_LabelIndex_ExistsSelector(t *testing.T) {
 		Predicate: storage.SelectionPredicate{
 			Label:    selector,
 			Field:    fields.Everything(),
-			GetAttrs: storage.DefaultNamespaceScopedAttr,
+			GetAttrs: storage.DefaultClusterScopedAttr,
 		},
 	}, list)
 	if err != nil {
@@ -1215,10 +1216,10 @@ func TestStore_LabelIndex_NegativeSelector(t *testing.T) {
 	}
 
 	for _, obj := range objects {
-		key := "/soteria.io/drplans/default/" + obj.name
+		key := "/soteria.io/drplans/" + obj.name
 		lbls := obj.labels
 		t.Cleanup(func() { cleanupKey(t, key); cleanupObjectLabels(t, key, lbls) })
-		if err := store.Create(ctx, key, newDRPlanWithLabels("default", obj.name, obj.labels), &v1alpha1.DRPlan{}, 0); err != nil {
+		if err := store.Create(ctx, key, newDRPlanWithLabels(obj.name, obj.labels), &v1alpha1.DRPlan{}, 0); err != nil {
 			t.Fatalf("Create %s failed: %v", obj.name, err)
 		}
 	}
@@ -1230,7 +1231,7 @@ func TestStore_LabelIndex_NegativeSelector(t *testing.T) {
 		Predicate: storage.SelectionPredicate{
 			Label:    selector,
 			Field:    fields.Everything(),
-			GetAttrs: storage.DefaultNamespaceScopedAttr,
+			GetAttrs: storage.DefaultClusterScopedAttr,
 		},
 	}, list)
 	if err != nil {
@@ -1248,7 +1249,7 @@ func TestStore_LabelIndex_UpdateSyncsLabels(t *testing.T) {
 	store := setupStoreTest(t)
 	ctx := context.Background()
 
-	key := "/soteria.io/drplans/default/label-update"
+	key := "/soteria.io/drplans/label-update"
 	initialLabels := map[string]string{"app": "web", "tier": "frontend"}
 	updatedLabels := map[string]string{"app": "web", "tier": "backend"}
 	t.Cleanup(func() {
@@ -1257,7 +1258,7 @@ func TestStore_LabelIndex_UpdateSyncsLabels(t *testing.T) {
 		cleanupObjectLabels(t, key, updatedLabels)
 	})
 
-	plan := newDRPlanWithLabels("default", "label-update", initialLabels)
+	plan := newDRPlanWithLabels("label-update", initialLabels)
 	if err := store.Create(ctx, key, plan, &v1alpha1.DRPlan{}, 0); err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
@@ -1270,7 +1271,7 @@ func TestStore_LabelIndex_UpdateSyncsLabels(t *testing.T) {
 		Predicate: storage.SelectionPredicate{
 			Label:    selector,
 			Field:    fields.Everything(),
-			GetAttrs: storage.DefaultNamespaceScopedAttr,
+			GetAttrs: storage.DefaultClusterScopedAttr,
 		},
 	}, list); err != nil {
 		t.Fatalf("GetList initial failed: %v", err)
@@ -1304,7 +1305,7 @@ func TestStore_LabelIndex_UpdateSyncsLabels(t *testing.T) {
 		Predicate: storage.SelectionPredicate{
 			Label:    selector,
 			Field:    fields.Everything(),
-			GetAttrs: storage.DefaultNamespaceScopedAttr,
+			GetAttrs: storage.DefaultClusterScopedAttr,
 		},
 	}, list2); err != nil {
 		t.Fatalf("GetList after update failed: %v", err)
@@ -1323,7 +1324,7 @@ func TestStore_LabelIndex_UpdateSyncsLabels(t *testing.T) {
 		Predicate: storage.SelectionPredicate{
 			Label:    selector2,
 			Field:    fields.Everything(),
-			GetAttrs: storage.DefaultNamespaceScopedAttr,
+			GetAttrs: storage.DefaultClusterScopedAttr,
 		},
 	}, list3); err != nil {
 		t.Fatalf("GetList tier=backend failed: %v", err)
@@ -1343,11 +1344,11 @@ func TestStore_LabelIndex_DeleteCleansUpLabels(t *testing.T) {
 	store := setupStoreTest(t)
 	ctx := context.Background()
 
-	key := "/soteria.io/drplans/default/label-delete"
+	key := "/soteria.io/drplans/label-delete"
 	lbls := map[string]string{"app": "web"}
 	t.Cleanup(func() { cleanupKey(t, key); cleanupObjectLabels(t, key, lbls) })
 
-	plan := newDRPlanWithLabels("default", "label-delete", lbls)
+	plan := newDRPlanWithLabels("label-delete", lbls)
 	if err := store.Create(ctx, key, plan, &v1alpha1.DRPlan{}, 0); err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
@@ -1360,7 +1361,7 @@ func TestStore_LabelIndex_DeleteCleansUpLabels(t *testing.T) {
 		Predicate: storage.SelectionPredicate{
 			Label:    selector,
 			Field:    fields.Everything(),
-			GetAttrs: storage.DefaultNamespaceScopedAttr,
+			GetAttrs: storage.DefaultClusterScopedAttr,
 		},
 	}, list); err != nil {
 		t.Fatalf("GetList before delete failed: %v", err)
@@ -1389,7 +1390,7 @@ func TestStore_LabelIndex_DeleteCleansUpLabels(t *testing.T) {
 		Predicate: storage.SelectionPredicate{
 			Label:    selector,
 			Field:    fields.Everything(),
-			GetAttrs: storage.DefaultNamespaceScopedAttr,
+			GetAttrs: storage.DefaultClusterScopedAttr,
 		},
 	}, list2); err != nil {
 		t.Fatalf("GetList after delete failed: %v", err)
@@ -1407,10 +1408,10 @@ func TestStore_LabelIndex_PaginationStableResourceVersion(t *testing.T) {
 
 	for i := 0; i < 8; i++ {
 		name := fmt.Sprintf("li-rv-%02d", i)
-		key := "/soteria.io/drplans/default/" + name
+		key := "/soteria.io/drplans/" + name
 		lbls := map[string]string{"app": "web"}
 		t.Cleanup(func() { cleanupKey(t, key); cleanupObjectLabels(t, key, lbls) })
-		if err := store.Create(ctx, key, newDRPlanWithLabels("default", name, lbls), &v1alpha1.DRPlan{}, 0); err != nil {
+		if err := store.Create(ctx, key, newDRPlanWithLabels(name, lbls), &v1alpha1.DRPlan{}, 0); err != nil {
 			t.Fatalf("Create %s failed: %v", name, err)
 		}
 	}
@@ -1422,7 +1423,7 @@ func TestStore_LabelIndex_PaginationStableResourceVersion(t *testing.T) {
 		Predicate: storage.SelectionPredicate{
 			Label:    selector,
 			Field:    fields.Everything(),
-			GetAttrs: storage.DefaultNamespaceScopedAttr,
+			GetAttrs: storage.DefaultClusterScopedAttr,
 			Limit:    3,
 		},
 	}, list1)
@@ -1440,7 +1441,7 @@ func TestStore_LabelIndex_PaginationStableResourceVersion(t *testing.T) {
 		Predicate: storage.SelectionPredicate{
 			Label:    selector,
 			Field:    fields.Everything(),
-			GetAttrs: storage.DefaultNamespaceScopedAttr,
+			GetAttrs: storage.DefaultClusterScopedAttr,
 			Limit:    3,
 			Continue: list1.Continue,
 		},
@@ -1465,10 +1466,9 @@ func TestStore_LabelIndex_DRExecution(t *testing.T) {
 	exec := &v1alpha1.DRExecution{
 		TypeMeta: metav1.TypeMeta{APIVersion: "soteria.io/v1alpha1", Kind: "DRExecution"},
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: "default",
-			Name:      "exec-label-test",
-			UID:       types.UID(gocql.TimeUUID().String()),
-			Labels:    map[string]string{"mode": "planned"},
+			Name:   "exec-label-test",
+			UID:    types.UID(gocql.TimeUUID().String()),
+			Labels: map[string]string{"mode": "planned"},
 		},
 		Spec: v1alpha1.DRExecutionSpec{
 			PlanName: "erp-full-stack",
@@ -1476,7 +1476,7 @@ func TestStore_LabelIndex_DRExecution(t *testing.T) {
 		},
 	}
 
-	key := "/soteria.io/drexecutions/default/exec-label-test"
+	key := "/soteria.io/drexecutions/exec-label-test"
 	t.Cleanup(func() {
 		cleanupKey(t, key)
 		cleanupObjectLabels(t, key, map[string]string{"mode": "planned"})
@@ -1493,7 +1493,7 @@ func TestStore_LabelIndex_DRExecution(t *testing.T) {
 		Predicate: storage.SelectionPredicate{
 			Label:    selector,
 			Field:    fields.Everything(),
-			GetAttrs: storage.DefaultNamespaceScopedAttr,
+			GetAttrs: storage.DefaultClusterScopedAttr,
 		},
 	}, list)
 	if err != nil {
@@ -1521,10 +1521,9 @@ func TestStore_LabelIndex_DRGroupStatus(t *testing.T) {
 	gs := &v1alpha1.DRGroupStatus{
 		TypeMeta: metav1.TypeMeta{APIVersion: "soteria.io/v1alpha1", Kind: "DRGroupStatus"},
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: "default",
-			Name:      "gs-label-test",
-			UID:       types.UID(gocql.TimeUUID().String()),
-			Labels:    map[string]string{"wave": "0"},
+			Name:   "gs-label-test",
+			UID:    types.UID(gocql.TimeUUID().String()),
+			Labels: map[string]string{"wave": "0"},
 		},
 		Spec: v1alpha1.DRGroupStatusSpec{
 			ExecutionName: "exec-001",
@@ -1534,7 +1533,7 @@ func TestStore_LabelIndex_DRGroupStatus(t *testing.T) {
 		},
 	}
 
-	key := "/soteria.io/drgroupstatuses/default/gs-label-test"
+	key := "/soteria.io/drgroupstatuses/gs-label-test"
 	t.Cleanup(func() {
 		cleanupKey(t, key)
 		cleanupObjectLabels(t, key, map[string]string{"wave": "0"})
@@ -1551,7 +1550,7 @@ func TestStore_LabelIndex_DRGroupStatus(t *testing.T) {
 		Predicate: storage.SelectionPredicate{
 			Label:    selector,
 			Field:    fields.Everything(),
-			GetAttrs: storage.DefaultNamespaceScopedAttr,
+			GetAttrs: storage.DefaultClusterScopedAttr,
 		},
 	}, list)
 	if err != nil {

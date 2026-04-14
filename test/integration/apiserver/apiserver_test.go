@@ -103,7 +103,6 @@ func TestAPIServer_Discovery_SoteriaGroupRegistered(t *testing.T) {
 
 func TestAPIServer_DRPlan_CRUD(t *testing.T) {
 	client := newDynamicClient(t)
-	ns := "test-drplan-crud"
 	ctx := context.Background()
 
 	plan := &unstructured.Unstructured{
@@ -111,8 +110,7 @@ func TestAPIServer_DRPlan_CRUD(t *testing.T) {
 			"apiVersion": "soteria.io/v1alpha1",
 			"kind":       "DRPlan",
 			"metadata": map[string]any{
-				"name":      "test-plan",
-				"namespace": ns,
+				"name": "test-plan",
 			},
 			"spec": map[string]any{
 				"waveLabel":              "wave",
@@ -122,7 +120,7 @@ func TestAPIServer_DRPlan_CRUD(t *testing.T) {
 	}
 
 	// Create
-	created, err := client.Resource(drplanGVR()).Namespace(ns).Create(ctx, plan, metav1.CreateOptions{})
+	created, err := client.Resource(drplanGVR()).Create(ctx, plan, metav1.CreateOptions{})
 	if err != nil {
 		t.Fatalf("Create DRPlan failed: %v", err)
 	}
@@ -134,7 +132,7 @@ func TestAPIServer_DRPlan_CRUD(t *testing.T) {
 	}
 
 	// Get
-	got, err := client.Resource(drplanGVR()).Namespace(ns).Get(ctx, "test-plan", metav1.GetOptions{})
+	got, err := client.Resource(drplanGVR()).Get(ctx, "test-plan", metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("Get DRPlan failed: %v", err)
 	}
@@ -148,7 +146,7 @@ func TestAPIServer_DRPlan_CRUD(t *testing.T) {
 	}
 
 	// List
-	list, err := client.Resource(drplanGVR()).Namespace(ns).List(ctx, metav1.ListOptions{})
+	list, err := client.Resource(drplanGVR()).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		t.Fatalf("List DRPlan failed: %v", err)
 	}
@@ -158,7 +156,7 @@ func TestAPIServer_DRPlan_CRUD(t *testing.T) {
 
 	// Update
 	got.Object["spec"].(map[string]any)["maxConcurrentFailovers"] = int64(5)
-	updated, err := client.Resource(drplanGVR()).Namespace(ns).Update(ctx, got, metav1.UpdateOptions{})
+	updated, err := client.Resource(drplanGVR()).Update(ctx, got, metav1.UpdateOptions{})
 	if err != nil {
 		t.Fatalf("Update DRPlan failed: %v", err)
 	}
@@ -167,13 +165,13 @@ func TestAPIServer_DRPlan_CRUD(t *testing.T) {
 	}
 
 	// Delete
-	err = client.Resource(drplanGVR()).Namespace(ns).Delete(ctx, "test-plan", metav1.DeleteOptions{})
+	err = client.Resource(drplanGVR()).Delete(ctx, "test-plan", metav1.DeleteOptions{})
 	if err != nil {
 		t.Fatalf("Delete DRPlan failed: %v", err)
 	}
 
 	// Verify deleted
-	_, err = client.Resource(drplanGVR()).Namespace(ns).Get(ctx, "test-plan", metav1.GetOptions{})
+	_, err = client.Resource(drplanGVR()).Get(ctx, "test-plan", metav1.GetOptions{})
 	if err == nil {
 		t.Fatal("expected NotFound error after delete")
 	}
@@ -181,7 +179,6 @@ func TestAPIServer_DRPlan_CRUD(t *testing.T) {
 
 func TestAPIServer_DRPlan_StatusSubresource(t *testing.T) {
 	client := newDynamicClient(t)
-	ns := "test-drplan-status"
 	ctx := context.Background()
 
 	plan := &unstructured.Unstructured{
@@ -189,8 +186,7 @@ func TestAPIServer_DRPlan_StatusSubresource(t *testing.T) {
 			"apiVersion": "soteria.io/v1alpha1",
 			"kind":       "DRPlan",
 			"metadata": map[string]any{
-				"name":      "plan-status-test",
-				"namespace": ns,
+				"name": "plan-status-test",
 			},
 			"spec": map[string]any{
 				"waveLabel":              "wave",
@@ -199,7 +195,7 @@ func TestAPIServer_DRPlan_StatusSubresource(t *testing.T) {
 		},
 	}
 
-	created, err := client.Resource(drplanGVR()).Namespace(ns).Create(ctx, plan, metav1.CreateOptions{})
+	created, err := client.Resource(drplanGVR()).Create(ctx, plan, metav1.CreateOptions{})
 	if err != nil {
 		t.Fatalf("Create DRPlan failed: %v", err)
 	}
@@ -208,7 +204,7 @@ func TestAPIServer_DRPlan_StatusSubresource(t *testing.T) {
 	created.Object["status"] = map[string]any{
 		"phase": soteriav1alpha1.PhaseFailingOver,
 	}
-	statusUpdated, err := client.Resource(drplanGVR()).Namespace(ns).UpdateStatus(ctx, created, metav1.UpdateOptions{})
+	statusUpdated, err := client.Resource(drplanGVR()).UpdateStatus(ctx, created, metav1.UpdateOptions{})
 	if err != nil {
 		t.Fatalf("UpdateStatus failed: %v", err)
 	}
@@ -227,7 +223,6 @@ func TestAPIServer_DRPlan_StatusSubresource(t *testing.T) {
 
 func TestAPIServer_DRPlan_Validation_MissingWaveLabel(t *testing.T) {
 	client := newDynamicClient(t)
-	ns := "test-drplan-validation"
 	ctx := context.Background()
 
 	invalidPlan := &unstructured.Unstructured{
@@ -235,8 +230,7 @@ func TestAPIServer_DRPlan_Validation_MissingWaveLabel(t *testing.T) {
 			"apiVersion": "soteria.io/v1alpha1",
 			"kind":       "DRPlan",
 			"metadata": map[string]any{
-				"name":      "invalid-plan",
-				"namespace": ns,
+				"name": "invalid-plan",
 			},
 			"spec": map[string]any{
 				"waveLabel":              "",
@@ -245,7 +239,7 @@ func TestAPIServer_DRPlan_Validation_MissingWaveLabel(t *testing.T) {
 		},
 	}
 
-	_, err := client.Resource(drplanGVR()).Namespace(ns).Create(ctx, invalidPlan, metav1.CreateOptions{})
+	_, err := client.Resource(drplanGVR()).Create(ctx, invalidPlan, metav1.CreateOptions{})
 	if err == nil {
 		t.Fatal("expected validation error for missing waveLabel")
 	}
@@ -253,7 +247,6 @@ func TestAPIServer_DRPlan_Validation_MissingWaveLabel(t *testing.T) {
 
 func TestAPIServer_DRExecution_CRUD(t *testing.T) {
 	client := newDynamicClient(t)
-	ns := "test-drexec-crud"
 	ctx := context.Background()
 
 	exec := &unstructured.Unstructured{
@@ -261,8 +254,7 @@ func TestAPIServer_DRExecution_CRUD(t *testing.T) {
 			"apiVersion": "soteria.io/v1alpha1",
 			"kind":       "DRExecution",
 			"metadata": map[string]any{
-				"name":      "test-exec",
-				"namespace": ns,
+				"name": "test-exec",
 			},
 			"spec": map[string]any{
 				"planName": "my-plan",
@@ -271,7 +263,7 @@ func TestAPIServer_DRExecution_CRUD(t *testing.T) {
 		},
 	}
 
-	created, err := client.Resource(drexecutionGVR()).Namespace(ns).Create(ctx, exec, metav1.CreateOptions{})
+	created, err := client.Resource(drexecutionGVR()).Create(ctx, exec, metav1.CreateOptions{})
 	if err != nil {
 		t.Fatalf("Create DRExecution failed: %v", err)
 	}
@@ -280,20 +272,20 @@ func TestAPIServer_DRExecution_CRUD(t *testing.T) {
 	}
 
 	// Get
-	got, err := client.Resource(drexecutionGVR()).Namespace(ns).Get(ctx, "test-exec", metav1.GetOptions{})
+	got, err := client.Resource(drexecutionGVR()).Get(ctx, "test-exec", metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("Get DRExecution failed: %v", err)
 	}
 
 	// Verify spec immutability on update: changing spec should be rejected
 	got.Object["spec"].(map[string]any)["planName"] = "changed-plan"
-	_, err = client.Resource(drexecutionGVR()).Namespace(ns).Update(ctx, got, metav1.UpdateOptions{})
+	_, err = client.Resource(drexecutionGVR()).Update(ctx, got, metav1.UpdateOptions{})
 	if err == nil {
 		t.Fatal("expected error when changing immutable DRExecution spec")
 	}
 
 	// Delete
-	err = client.Resource(drexecutionGVR()).Namespace(ns).Delete(ctx, "test-exec", metav1.DeleteOptions{})
+	err = client.Resource(drexecutionGVR()).Delete(ctx, "test-exec", metav1.DeleteOptions{})
 	if err != nil {
 		t.Fatalf("Delete DRExecution failed: %v", err)
 	}
@@ -301,7 +293,6 @@ func TestAPIServer_DRExecution_CRUD(t *testing.T) {
 
 func TestAPIServer_DRExecution_AppendOnly(t *testing.T) {
 	client := newDynamicClient(t)
-	ns := "test-drexec-append"
 	ctx := context.Background()
 
 	exec := &unstructured.Unstructured{
@@ -309,8 +300,7 @@ func TestAPIServer_DRExecution_AppendOnly(t *testing.T) {
 			"apiVersion": "soteria.io/v1alpha1",
 			"kind":       "DRExecution",
 			"metadata": map[string]any{
-				"name":      "completed-exec",
-				"namespace": ns,
+				"name": "completed-exec",
 			},
 			"spec": map[string]any{
 				"planName": "my-plan",
@@ -319,7 +309,7 @@ func TestAPIServer_DRExecution_AppendOnly(t *testing.T) {
 		},
 	}
 
-	created, err := client.Resource(drexecutionGVR()).Namespace(ns).Create(ctx, exec, metav1.CreateOptions{})
+	created, err := client.Resource(drexecutionGVR()).Create(ctx, exec, metav1.CreateOptions{})
 	if err != nil {
 		t.Fatalf("Create DRExecution failed: %v", err)
 	}
@@ -328,7 +318,7 @@ func TestAPIServer_DRExecution_AppendOnly(t *testing.T) {
 	created.Object["status"] = map[string]any{
 		"result": string(soteriav1alpha1.ExecutionResultSucceeded),
 	}
-	completed, err := client.Resource(drexecutionGVR()).Namespace(ns).UpdateStatus(ctx, created, metav1.UpdateOptions{})
+	completed, err := client.Resource(drexecutionGVR()).UpdateStatus(ctx, created, metav1.UpdateOptions{})
 	if err != nil {
 		t.Fatalf("UpdateStatus to completed failed: %v", err)
 	}
@@ -337,7 +327,7 @@ func TestAPIServer_DRExecution_AppendOnly(t *testing.T) {
 	completed.Object["status"] = map[string]any{
 		"result": string(soteriav1alpha1.ExecutionResultFailed),
 	}
-	_, err = client.Resource(drexecutionGVR()).Namespace(ns).UpdateStatus(ctx, completed, metav1.UpdateOptions{})
+	_, err = client.Resource(drexecutionGVR()).UpdateStatus(ctx, completed, metav1.UpdateOptions{})
 	if err == nil {
 		t.Fatal("expected error when updating completed DRExecution status (append-only)")
 	}
@@ -345,7 +335,6 @@ func TestAPIServer_DRExecution_AppendOnly(t *testing.T) {
 
 func TestAPIServer_DRExecution_Validation_InvalidMode(t *testing.T) {
 	client := newDynamicClient(t)
-	ns := "test-drexec-validation"
 	ctx := context.Background()
 
 	invalidExec := &unstructured.Unstructured{
@@ -353,8 +342,7 @@ func TestAPIServer_DRExecution_Validation_InvalidMode(t *testing.T) {
 			"apiVersion": "soteria.io/v1alpha1",
 			"kind":       "DRExecution",
 			"metadata": map[string]any{
-				"name":      "invalid-exec",
-				"namespace": ns,
+				"name": "invalid-exec",
 			},
 			"spec": map[string]any{
 				"planName": "my-plan",
@@ -363,7 +351,7 @@ func TestAPIServer_DRExecution_Validation_InvalidMode(t *testing.T) {
 		},
 	}
 
-	_, err := client.Resource(drexecutionGVR()).Namespace(ns).Create(ctx, invalidExec, metav1.CreateOptions{})
+	_, err := client.Resource(drexecutionGVR()).Create(ctx, invalidExec, metav1.CreateOptions{})
 	if err == nil {
 		t.Fatal("expected validation error for invalid mode")
 	}
@@ -371,7 +359,6 @@ func TestAPIServer_DRExecution_Validation_InvalidMode(t *testing.T) {
 
 func TestAPIServer_DRGroupStatus_CRUD(t *testing.T) {
 	client := newDynamicClient(t)
-	ns := "test-drgroupstatus-crud"
 	ctx := context.Background()
 
 	gs := &unstructured.Unstructured{
@@ -379,8 +366,7 @@ func TestAPIServer_DRGroupStatus_CRUD(t *testing.T) {
 			"apiVersion": "soteria.io/v1alpha1",
 			"kind":       "DRGroupStatus",
 			"metadata": map[string]any{
-				"name":      "test-gs",
-				"namespace": ns,
+				"name": "test-gs",
 			},
 			"spec": map[string]any{
 				"executionName": "my-exec",
@@ -391,7 +377,7 @@ func TestAPIServer_DRGroupStatus_CRUD(t *testing.T) {
 		},
 	}
 
-	created, err := client.Resource(drgroupstatusGVR()).Namespace(ns).Create(ctx, gs, metav1.CreateOptions{})
+	created, err := client.Resource(drgroupstatusGVR()).Create(ctx, gs, metav1.CreateOptions{})
 	if err != nil {
 		t.Fatalf("Create DRGroupStatus failed: %v", err)
 	}
@@ -400,7 +386,7 @@ func TestAPIServer_DRGroupStatus_CRUD(t *testing.T) {
 	}
 
 	// Get
-	got, err := client.Resource(drgroupstatusGVR()).Namespace(ns).Get(ctx, "test-gs", metav1.GetOptions{})
+	got, err := client.Resource(drgroupstatusGVR()).Get(ctx, "test-gs", metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("Get DRGroupStatus failed: %v", err)
 	}
@@ -409,7 +395,7 @@ func TestAPIServer_DRGroupStatus_CRUD(t *testing.T) {
 	got.Object["status"] = map[string]any{
 		"phase": string(soteriav1alpha1.DRGroupResultInProgress),
 	}
-	statusUpdated, err := client.Resource(drgroupstatusGVR()).Namespace(ns).UpdateStatus(ctx, got, metav1.UpdateOptions{})
+	statusUpdated, err := client.Resource(drgroupstatusGVR()).UpdateStatus(ctx, got, metav1.UpdateOptions{})
 	if err != nil {
 		t.Fatalf("UpdateStatus DRGroupStatus failed: %v", err)
 	}
@@ -419,7 +405,7 @@ func TestAPIServer_DRGroupStatus_CRUD(t *testing.T) {
 	}
 
 	// Delete
-	err = client.Resource(drgroupstatusGVR()).Namespace(ns).Delete(ctx, "test-gs", metav1.DeleteOptions{})
+	err = client.Resource(drgroupstatusGVR()).Delete(ctx, "test-gs", metav1.DeleteOptions{})
 	if err != nil {
 		t.Fatalf("Delete DRGroupStatus failed: %v", err)
 	}
@@ -427,7 +413,6 @@ func TestAPIServer_DRGroupStatus_CRUD(t *testing.T) {
 
 func TestAPIServer_DRGroupStatus_SpecImmutable(t *testing.T) {
 	client := newDynamicClient(t)
-	ns := "test-drgroupstatus-immutable"
 	ctx := context.Background()
 
 	gs := &unstructured.Unstructured{
@@ -435,8 +420,7 @@ func TestAPIServer_DRGroupStatus_SpecImmutable(t *testing.T) {
 			"apiVersion": "soteria.io/v1alpha1",
 			"kind":       "DRGroupStatus",
 			"metadata": map[string]any{
-				"name":      "immutable-gs",
-				"namespace": ns,
+				"name": "immutable-gs",
 			},
 			"spec": map[string]any{
 				"executionName": "my-exec",
@@ -447,19 +431,19 @@ func TestAPIServer_DRGroupStatus_SpecImmutable(t *testing.T) {
 		},
 	}
 
-	_, err := client.Resource(drgroupstatusGVR()).Namespace(ns).Create(ctx, gs, metav1.CreateOptions{})
+	_, err := client.Resource(drgroupstatusGVR()).Create(ctx, gs, metav1.CreateOptions{})
 	if err != nil {
 		t.Fatalf("Create DRGroupStatus failed: %v", err)
 	}
 
-	got, err := client.Resource(drgroupstatusGVR()).Namespace(ns).Get(ctx, "immutable-gs", metav1.GetOptions{})
+	got, err := client.Resource(drgroupstatusGVR()).Get(ctx, "immutable-gs", metav1.GetOptions{})
 	if err != nil {
 		t.Fatalf("Get DRGroupStatus failed: %v", err)
 	}
 
 	// Attempt to change spec.groupName — should be rejected
 	got.Object["spec"].(map[string]any)["groupName"] = "changed-group"
-	_, err = client.Resource(drgroupstatusGVR()).Namespace(ns).Update(ctx, got, metav1.UpdateOptions{})
+	_, err = client.Resource(drgroupstatusGVR()).Update(ctx, got, metav1.UpdateOptions{})
 	if err == nil {
 		t.Fatal("expected error when changing immutable DRGroupStatus spec")
 	}
@@ -513,7 +497,6 @@ func TestAPIServer_OpenAPI_SoteriaTypesPresent(t *testing.T) {
 
 func TestAPIServer_DRPlan_Watch(t *testing.T) {
 	client := newDynamicClient(t)
-	ns := "test-drplan-watch"
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
@@ -523,8 +506,7 @@ func TestAPIServer_DRPlan_Watch(t *testing.T) {
 			"apiVersion": "soteria.io/v1alpha1",
 			"kind":       "DRPlan",
 			"metadata": map[string]any{
-				"name":      "watched-plan",
-				"namespace": ns,
+				"name": "watched-plan",
 			},
 			"spec": map[string]any{
 				"waveLabel":              "wave",
@@ -533,14 +515,14 @@ func TestAPIServer_DRPlan_Watch(t *testing.T) {
 		},
 	}
 
-	_, err := client.Resource(drplanGVR()).Namespace(ns).Create(ctx, plan, metav1.CreateOptions{})
+	_, err := client.Resource(drplanGVR()).Create(ctx, plan, metav1.CreateOptions{})
 	if err != nil {
 		t.Fatalf("Create DRPlan for watch failed: %v", err)
 	}
 
 	// Start watch — the initial snapshot should emit an ADDED event for
 	// the plan we just created.
-	watcher, err := client.Resource(drplanGVR()).Namespace(ns).Watch(ctx, metav1.ListOptions{})
+	watcher, err := client.Resource(drplanGVR()).Watch(ctx, metav1.ListOptions{})
 	if err != nil {
 		t.Fatalf("Watch DRPlan failed: %v", err)
 	}

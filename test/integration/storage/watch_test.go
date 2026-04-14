@@ -112,16 +112,15 @@ func watchCleanupKey(t *testing.T, key string) {
 	_ = testSession.Query(cql, kc.APIGroup, kc.ResourceType, kc.Namespace, kc.Name).Exec()
 }
 
-func newWatchDRPlan(namespace, name string) *v1alpha1.DRPlan {
+func newWatchDRPlan(name string) *v1alpha1.DRPlan {
 	return &v1alpha1.DRPlan{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "soteria.io/v1alpha1",
 			Kind:       "DRPlan",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: namespace,
-			Name:      name,
-			UID:       types.UID(gocql.TimeUUID().String()),
+			Name: name,
+			UID:  types.UID(gocql.TimeUUID().String()),
 		},
 		Spec: v1alpha1.DRPlanSpec{
 			WaveLabel:              "wave",
@@ -162,6 +161,39 @@ func expectNoEvent(t *testing.T, w watch.Interface, dur time.Duration) {
 
 const watchTimeout = 30 * time.Second
 
+// expectNamedEvent consumes events from w until it finds one whose object name
+// equals expectedName AND whose type equals expectedType. All other events are
+// logged and skipped — including snapshot ADDED events for the same name when
+// the caller is waiting for MODIFIED or DELETED.
+// Cluster-scoped resources share a single key prefix, so a watch may receive
+// events for objects created or deleted by other tests in the same run, as well
+// as snapshot events for the object under test.
+func expectNamedEvent(t *testing.T, w watch.Interface, expectedType watch.EventType, expectedName string, timeout time.Duration) *watch.Event {
+	t.Helper()
+	deadline := time.After(timeout)
+	for {
+		select {
+		case evt, ok := <-w.ResultChan():
+			if !ok {
+				t.Fatal("watch channel closed unexpectedly")
+			}
+			acc, ok := evt.Object.(metav1.ObjectMetaAccessor)
+			name := ""
+			if ok {
+				name = acc.GetObjectMeta().GetName()
+			}
+			if name == expectedName && evt.Type == expectedType {
+				return &evt
+			}
+			t.Logf("skipping event: type=%v name=%q (waiting for %v %q)",
+				evt.Type, name, expectedType, expectedName)
+		case <-deadline:
+			t.Fatalf("timed out after %v waiting for %v event for %q", timeout, expectedType, expectedName)
+			return nil
+		}
+	}
+}
+
 // TestWatch_ResourceVersion0_DeliversSnapshot verifies that a watch started
 // with resourceVersion="0" delivers ADDED events for all existing objects.
 func TestWatch_ResourceVersion0_DeliversSnapshot(t *testing.T) {
@@ -169,19 +201,18 @@ func TestWatch_ResourceVersion0_DeliversSnapshot(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	ns := "ns-snap"
-	key1 := "/soteria.io/drplans/" + ns + "/watch-snap-1"
-	key2 := "/soteria.io/drplans/" + ns + "/watch-snap-2"
+	key1 := "/soteria.io/drplans/watch-snap-1"
+	key2 := "/soteria.io/drplans/watch-snap-2"
 	t.Cleanup(func() { watchCleanupKey(t, key1); watchCleanupKey(t, key2) })
 
-	if err := store.Create(ctx, key1, newWatchDRPlan(ns, "watch-snap-1"), &v1alpha1.DRPlan{}, 0); err != nil {
+	if err := store.Create(ctx, key1, newWatchDRPlan("watch-snap-1"), &v1alpha1.DRPlan{}, 0); err != nil {
 		t.Fatalf("Create 1 failed: %v", err)
 	}
-	if err := store.Create(ctx, key2, newWatchDRPlan(ns, "watch-snap-2"), &v1alpha1.DRPlan{}, 0); err != nil {
+	if err := store.Create(ctx, key2, newWatchDRPlan("watch-snap-2"), &v1alpha1.DRPlan{}, 0); err != nil {
 		t.Fatalf("Create 2 failed: %v", err)
 	}
 
-	w, err := store.Watch(ctx, "/soteria.io/drplans/"+ns, storage.ListOptions{
+	w, err := store.Watch(ctx, "/soteria.io/drplans", storage.ListOptions{
 		ResourceVersion: "0",
 		Recursive:       true,
 	})
@@ -209,8 +240,7 @@ func TestWatch_Create_DeliversAddedEvent(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	ns := "ns-create"
-	w, err := store.Watch(ctx, "/soteria.io/drplans/"+ns, storage.ListOptions{
+	w, err := store.Watch(ctx, "/soteria.io/drplans", storage.ListOptions{
 		ResourceVersion: "0",
 		Recursive:       true,
 	})
@@ -222,18 +252,14 @@ func TestWatch_Create_DeliversAddedEvent(t *testing.T) {
 	// Give the CDC reader a moment to start before creating.
 	time.Sleep(2 * time.Second)
 
-	key := "/soteria.io/drplans/" + ns + "/watch-create"
+	key := "/soteria.io/drplans/watch-create"
 	t.Cleanup(func() { watchCleanupKey(t, key) })
 
-	if err := store.Create(ctx, key, newWatchDRPlan(ns, "watch-create"), &v1alpha1.DRPlan{}, 0); err != nil {
+	if err := store.Create(ctx, key, newWatchDRPlan("watch-create"), &v1alpha1.DRPlan{}, 0); err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
 
-	evt := expectEvent(t, w, watch.Added, watchTimeout)
-	plan := evt.Object.(*v1alpha1.DRPlan)
-	if plan.Name != "watch-create" {
-		t.Fatalf("expected name 'watch-create', got %q", plan.Name)
-	}
+	expectNamedEvent(t, w, watch.Added, "watch-create", watchTimeout)
 }
 
 // TestWatch_Update_DeliversModifiedEvent verifies that updating an object
@@ -243,15 +269,14 @@ func TestWatch_Update_DeliversModifiedEvent(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	ns := "ns-update"
-	key := "/soteria.io/drplans/" + ns + "/watch-update"
+	key := "/soteria.io/drplans/watch-update"
 	t.Cleanup(func() { watchCleanupKey(t, key) })
 
-	if err := store.Create(ctx, key, newWatchDRPlan(ns, "watch-update"), &v1alpha1.DRPlan{}, 0); err != nil {
+	if err := store.Create(ctx, key, newWatchDRPlan("watch-update"), &v1alpha1.DRPlan{}, 0); err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
 
-	w, err := store.Watch(ctx, "/soteria.io/drplans/"+ns, storage.ListOptions{
+	w, err := store.Watch(ctx, "/soteria.io/drplans", storage.ListOptions{
 		ResourceVersion: "0",
 		Recursive:       true,
 	})
@@ -259,9 +284,6 @@ func TestWatch_Update_DeliversModifiedEvent(t *testing.T) {
 		t.Fatalf("Watch failed: %v", err)
 	}
 	defer w.Stop()
-
-	// Drain the snapshot ADDED event.
-	expectEvent(t, w, watch.Added, watchTimeout)
 
 	// Give the CDC reader a moment to start.
 	time.Sleep(2 * time.Second)
@@ -277,7 +299,7 @@ func TestWatch_Update_DeliversModifiedEvent(t *testing.T) {
 		t.Fatalf("GuaranteedUpdate failed: %v", err)
 	}
 
-	evt := expectEvent(t, w, watch.Modified, watchTimeout)
+	evt := expectNamedEvent(t, w, watch.Modified, "watch-update", watchTimeout)
 	plan := evt.Object.(*v1alpha1.DRPlan)
 	if plan.Spec.MaxConcurrentFailovers != 99 {
 		t.Fatalf("expected MaxConcurrentFailovers=99, got %d", plan.Spec.MaxConcurrentFailovers)
@@ -291,15 +313,14 @@ func TestWatch_Delete_DeliversDeletedEvent(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	ns := "ns-delete"
-	key := "/soteria.io/drplans/" + ns + "/watch-delete"
+	key := "/soteria.io/drplans/watch-delete"
 	t.Cleanup(func() { watchCleanupKey(t, key) })
 
-	if err := store.Create(ctx, key, newWatchDRPlan(ns, "watch-delete"), &v1alpha1.DRPlan{}, 0); err != nil {
+	if err := store.Create(ctx, key, newWatchDRPlan("watch-delete"), &v1alpha1.DRPlan{}, 0); err != nil {
 		t.Fatalf("Create failed: %v", err)
 	}
 
-	w, err := store.Watch(ctx, "/soteria.io/drplans/"+ns, storage.ListOptions{
+	w, err := store.Watch(ctx, "/soteria.io/drplans", storage.ListOptions{
 		ResourceVersion: "0",
 		Recursive:       true,
 	})
@@ -307,9 +328,6 @@ func TestWatch_Delete_DeliversDeletedEvent(t *testing.T) {
 		t.Fatalf("Watch failed: %v", err)
 	}
 	defer w.Stop()
-
-	// Drain snapshot ADDED event (populates the object cache).
-	expectEvent(t, w, watch.Added, watchTimeout)
 
 	// Give CDC reader time to start.
 	time.Sleep(2 * time.Second)
@@ -319,11 +337,7 @@ func TestWatch_Delete_DeliversDeletedEvent(t *testing.T) {
 		t.Fatalf("Delete failed: %v", err)
 	}
 
-	evt := expectEvent(t, w, watch.Deleted, watchTimeout)
-	plan := evt.Object.(*v1alpha1.DRPlan)
-	if plan.Name != "watch-delete" {
-		t.Fatalf("expected name 'watch-delete', got %q", plan.Name)
-	}
+	expectNamedEvent(t, w, watch.Deleted, "watch-delete", watchTimeout)
 }
 
 // TestWatch_Stop_ClosesChannel verifies that stopping a watch closes its
@@ -360,14 +374,13 @@ func TestWatch_KeyPrefixFiltering(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	ns := "ns-filter"
 	planStore := setupWatchTest(t)
 	execStore := setupWatchTestForResource(t, "drexecutions",
 		func() runtime.Object { return &v1alpha1.DRExecution{} },
 		func() runtime.Object { return &v1alpha1.DRExecutionList{} },
 	)
 
-	w, err := planStore.Watch(ctx, "/soteria.io/drplans/"+ns, storage.ListOptions{
+	w, err := planStore.Watch(ctx, "/soteria.io/drplans", storage.ListOptions{
 		ResourceVersion: "0",
 		Recursive:       true,
 	})
@@ -380,15 +393,14 @@ func TestWatch_KeyPrefixFiltering(t *testing.T) {
 	time.Sleep(2 * time.Second)
 
 	// Create an execution (different resource type).
-	execKey := "/soteria.io/drexecutions/" + ns + "/watch-exec"
+	execKey := "/soteria.io/drexecutions/watch-exec"
 	t.Cleanup(func() { watchCleanupKey(t, execKey) })
 
 	exec := &v1alpha1.DRExecution{
 		TypeMeta: metav1.TypeMeta{APIVersion: "soteria.io/v1alpha1", Kind: "DRExecution"},
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: ns,
-			Name:      "watch-exec",
-			UID:       types.UID(gocql.TimeUUID().String()),
+			Name: "watch-exec",
+			UID:  types.UID(gocql.TimeUUID().String()),
 		},
 		Spec: v1alpha1.DRExecutionSpec{
 			PlanName: "test-plan",
@@ -400,18 +412,14 @@ func TestWatch_KeyPrefixFiltering(t *testing.T) {
 	}
 
 	// Create a plan (matching resource type) — this should generate an event.
-	planKey := "/soteria.io/drplans/" + ns + "/watch-filter-plan"
+	planKey := "/soteria.io/drplans/watch-filter-plan"
 	t.Cleanup(func() { watchCleanupKey(t, planKey) })
-	if err := planStore.Create(ctx, planKey, newWatchDRPlan(ns, "watch-filter-plan"), &v1alpha1.DRPlan{}, 0); err != nil {
+	if err := planStore.Create(ctx, planKey, newWatchDRPlan("watch-filter-plan"), &v1alpha1.DRPlan{}, 0); err != nil {
 		t.Fatalf("Create DRPlan failed: %v", err)
 	}
 
 	// We should receive the DRPlan event, not the DRExecution.
-	evt := expectEvent(t, w, watch.Added, watchTimeout)
-	plan := evt.Object.(*v1alpha1.DRPlan)
-	if plan.Name != "watch-filter-plan" {
-		t.Fatalf("expected 'watch-filter-plan', got %q", plan.Name)
-	}
+	expectNamedEvent(t, w, watch.Added, "watch-filter-plan", watchTimeout)
 }
 
 // TestWatch_DRExecution_CRUD verifies watch events for DRExecution resources.
@@ -423,8 +431,7 @@ func TestWatch_DRExecution_CRUD(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	ns := "ns-exec"
-	w, err := store.Watch(ctx, "/soteria.io/drexecutions/"+ns, storage.ListOptions{
+	w, err := store.Watch(ctx, "/soteria.io/drexecutions", storage.ListOptions{
 		ResourceVersion: "0",
 		Recursive:       true,
 	})
@@ -435,15 +442,14 @@ func TestWatch_DRExecution_CRUD(t *testing.T) {
 
 	time.Sleep(2 * time.Second)
 
-	key := "/soteria.io/drexecutions/" + ns + "/watch-exec-crud"
+	key := "/soteria.io/drexecutions/watch-exec-crud"
 	t.Cleanup(func() { watchCleanupKey(t, key) })
 
 	exec := &v1alpha1.DRExecution{
 		TypeMeta: metav1.TypeMeta{APIVersion: "soteria.io/v1alpha1", Kind: "DRExecution"},
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: ns,
-			Name:      "watch-exec-crud",
-			UID:       types.UID(gocql.TimeUUID().String()),
+			Name: "watch-exec-crud",
+			UID:  types.UID(gocql.TimeUUID().String()),
 		},
 		Spec: v1alpha1.DRExecutionSpec{
 			PlanName: "test-plan",
@@ -470,8 +476,7 @@ func TestWatch_DRGroupStatus_CRUD(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	ns := "ns-gs"
-	w, err := store.Watch(ctx, "/soteria.io/drgroupstatuses/"+ns, storage.ListOptions{
+	w, err := store.Watch(ctx, "/soteria.io/drgroupstatuses", storage.ListOptions{
 		ResourceVersion: "0",
 		Recursive:       true,
 	})
@@ -482,15 +487,14 @@ func TestWatch_DRGroupStatus_CRUD(t *testing.T) {
 
 	time.Sleep(2 * time.Second)
 
-	key := "/soteria.io/drgroupstatuses/" + ns + "/watch-gs-crud"
+	key := "/soteria.io/drgroupstatuses/watch-gs-crud"
 	t.Cleanup(func() { watchCleanupKey(t, key) })
 
 	gs := &v1alpha1.DRGroupStatus{
 		TypeMeta: metav1.TypeMeta{APIVersion: "soteria.io/v1alpha1", Kind: "DRGroupStatus"},
 		ObjectMeta: metav1.ObjectMeta{
-			Namespace: ns,
-			Name:      "watch-gs-crud",
-			UID:       types.UID(gocql.TimeUUID().String()),
+			Name: "watch-gs-crud",
+			UID:  types.UID(gocql.TimeUUID().String()),
 		},
 		Spec: v1alpha1.DRGroupStatusSpec{
 			ExecutionName: "exec-001",

@@ -188,9 +188,9 @@ func (v *VMValidator) checkWaveConflictForPlan(
 		if siblingWave != thisVMWave {
 			conflicts = append(conflicts, fmt.Sprintf(
 				"VM %s/%s wave label '%s' conflicts with existing VMs in "+
-					"namespace-level namespace %s under DRPlan %s/%s (expected wave '%s')",
+					"namespace-level namespace %s under DRPlan %s (expected wave '%s')",
 				vmNamespace, vmName, thisVMWave, vmNamespace,
-				planRef.Namespace, planRef.Name, siblingWave))
+				planRef.Name, siblingWave))
 			break
 		}
 	}

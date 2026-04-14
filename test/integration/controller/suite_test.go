@@ -163,7 +163,7 @@ func drplanCRD() *apiextensionsv1.CustomResourceDefinition {
 				Kind:     "DRPlan",
 				ListKind: "DRPlanList",
 			},
-			Scope: apiextensionsv1.NamespaceScoped,
+			Scope: apiextensionsv1.ClusterScoped,
 			Versions: []apiextensionsv1.CustomResourceDefinitionVersion{{
 				Name:    "v1alpha1",
 				Served:  true,
