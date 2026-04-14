@@ -170,7 +170,7 @@ func (v *VMValidator) checkWaveConflictForPlan(
 	waveLabel := plan.Spec.WaveLabel
 	thisVMWave := vmLabels[waveLabel]
 
-	siblingVMs, err := v.VMDiscoverer.DiscoverVMs(ctx, plan.Spec.VMSelector)
+	siblingVMs, err := v.VMDiscoverer.DiscoverVMs(ctx, plan.Name)
 	if err != nil {
 		return nil, fmt.Errorf("discovering sibling VMs for plan %s: %w", planRef, err)
 	}

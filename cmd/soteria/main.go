@@ -46,9 +46,9 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	"github.com/soteria-project/soteria/internal/preflight"
+	"github.com/soteria-project/soteria/pkg/admission"
 	soteriainstall "github.com/soteria-project/soteria/pkg/apis/soteria.io/install"
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
-	"github.com/soteria-project/soteria/pkg/admission"
 	"github.com/soteria-project/soteria/pkg/apiserver"
 	"github.com/soteria-project/soteria/pkg/controller/drplan"
 	"github.com/soteria-project/soteria/pkg/engine"
@@ -297,7 +297,7 @@ func main() {
 // parseDCReplication parses a "dc1:rf,dc2:rf" string into a map.
 func parseDCReplication(raw string) (map[string]int, error) {
 	m := make(map[string]int)
-	for _, pair := range strings.Split(raw, ",") {
+	for pair := range strings.SplitSeq(raw, ",") {
 		pair = strings.TrimSpace(pair)
 		if pair == "" {
 			continue

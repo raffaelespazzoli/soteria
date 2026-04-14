@@ -89,14 +89,12 @@ func TestDRPlanReconciler_Preflight_BasicComposition(t *testing.T) {
 	ns := "test-pf-basic"
 	createNamespace(t, ctx, ns)
 
-	appLabels := map[string]string{"app.kubernetes.io/part-of": "erp-pfbasic"}
-
 	createPVC(t, ctx, "vm-pf-1-root", ns, "test-odf")
 	createPVC(t, ctx, "vm-pf-2-root", ns, "test-odf")
-	createVMWithPVC(t, ctx, "vm-pf-1", ns, merge(appLabels, map[string]string{"soteria.io/wave": "1"}), "vm-pf-1-root")
-	createVMWithPVC(t, ctx, "vm-pf-2", ns, merge(appLabels, map[string]string{"soteria.io/wave": "1"}), "vm-pf-2-root")
+	createVMWithPVC(t, ctx, "vm-pf-1", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-pf-basic", "soteria.io/wave": "1"}, "vm-pf-1-root")
+	createVMWithPVC(t, ctx, "vm-pf-2", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-pf-basic", "soteria.io/wave": "1"}, "vm-pf-2-root")
 
-	createDRPlan(t, ctx, "plan-pf-basic", ns, appLabels, "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-pf-basic", ns, "soteria.io/wave")
 
 	plan, err := waitForPreflight(ctx, "plan-pf-basic", ns, testTimeout)
 	if err != nil {
@@ -133,14 +131,12 @@ func TestDRPlanReconciler_Preflight_NamespaceConsistency(t *testing.T) {
 		soteriav1alpha1.ConsistencyAnnotation: "namespace",
 	})
 
-	appLabels := map[string]string{"app.kubernetes.io/part-of": "erp-pfnscons"}
-
 	createPVC(t, ctx, "vm-pfns-1-root", ns, "test-odf")
 	createPVC(t, ctx, "vm-pfns-2-root", ns, "test-odf")
-	createVMWithPVC(t, ctx, "vm-pfns-1", ns, merge(appLabels, map[string]string{"soteria.io/wave": "1"}), "vm-pfns-1-root")
-	createVMWithPVC(t, ctx, "vm-pfns-2", ns, merge(appLabels, map[string]string{"soteria.io/wave": "1"}), "vm-pfns-2-root")
+	createVMWithPVC(t, ctx, "vm-pfns-1", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-pf-nscons", "soteria.io/wave": "1"}, "vm-pfns-1-root")
+	createVMWithPVC(t, ctx, "vm-pfns-2", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-pf-nscons", "soteria.io/wave": "1"}, "vm-pfns-2-root")
 
-	createDRPlan(t, ctx, "plan-pf-nscons", ns, appLabels, "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-pf-nscons", ns, "soteria.io/wave")
 
 	plan, err := waitForPreflight(ctx, "plan-pf-nscons", ns, testTimeout)
 	if err != nil {
@@ -167,12 +163,10 @@ func TestDRPlanReconciler_Preflight_StorageBackendUnknown(t *testing.T) {
 	ns := "test-pf-unknown-sc"
 	createNamespace(t, ctx, ns)
 
-	appLabels := map[string]string{"app.kubernetes.io/part-of": "erp-pfunknown"}
-
 	createPVC(t, ctx, "vm-pfu-root", ns, "unlisted-storage-class")
-	createVMWithPVC(t, ctx, "vm-pfu-1", ns, merge(appLabels, map[string]string{"soteria.io/wave": "1"}), "vm-pfu-root")
+	createVMWithPVC(t, ctx, "vm-pfu-1", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-pf-unknown", "soteria.io/wave": "1"}, "vm-pfu-root")
 
-	createDRPlan(t, ctx, "plan-pf-unknown", ns, appLabels, "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-pf-unknown", ns, "soteria.io/wave")
 
 	plan, err := waitForPreflight(ctx, "plan-pf-unknown", ns, testTimeout)
 	if err != nil {
@@ -196,12 +190,10 @@ func TestDRPlanReconciler_Preflight_KubectlAccess(t *testing.T) {
 	ns := "test-pf-kubectl"
 	createNamespace(t, ctx, ns)
 
-	appLabels := map[string]string{"app.kubernetes.io/part-of": "erp-pfkubectl"}
-
 	createPVC(t, ctx, "vm-pfk-root", ns, "test-odf")
-	createVMWithPVC(t, ctx, "vm-pfk-1", ns, merge(appLabels, map[string]string{"soteria.io/wave": "1"}), "vm-pfk-root")
+	createVMWithPVC(t, ctx, "vm-pfk-1", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-pf-kubectl", "soteria.io/wave": "1"}, "vm-pfk-root")
 
-	createDRPlan(t, ctx, "plan-pf-kubectl", ns, appLabels, "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-pf-kubectl", ns, "soteria.io/wave")
 
 	plan, err := waitForPreflight(ctx, "plan-pf-kubectl", ns, testTimeout)
 	if err != nil {
@@ -241,17 +233,15 @@ func TestDRPlanReconciler_Preflight_MultiWaveChunking(t *testing.T) {
 	ns := "test-pf-multiwave"
 	createNamespace(t, ctx, ns)
 
-	appLabels := map[string]string{"app.kubernetes.io/part-of": "erp-pfmultiwave"}
-
 	for i := range 6 {
 		wave := fmt.Sprintf("%d", (i%3)+1)
 		vmName := fmt.Sprintf("vm-pfmw-%d", i)
 		pvcName := fmt.Sprintf("vm-pfmw-%d-root", i)
 		createPVC(t, ctx, pvcName, ns, "test-odf")
-		createVMWithPVC(t, ctx, vmName, ns, merge(appLabels, map[string]string{"soteria.io/wave": wave}), pvcName)
+		createVMWithPVC(t, ctx, vmName, ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-pf-multiwave", "soteria.io/wave": wave}, pvcName)
 	}
 
-	createDRPlan(t, ctx, "plan-pf-multiwave", ns, appLabels, "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-pf-multiwave", ns, "soteria.io/wave")
 
 	plan, err := waitForPreflight(ctx, "plan-pf-multiwave", ns, testTimeout)
 	if err != nil {
@@ -281,13 +271,11 @@ func TestDRPlanReconciler_Preflight_WarningsPopulated(t *testing.T) {
 	ns := "test-pf-warnings"
 	createNamespace(t, ctx, ns)
 
-	appLabels := map[string]string{"app.kubernetes.io/part-of": "erp-pfwarnings"}
-
 	// VM with unlisted storage class — should generate warning
 	createPVC(t, ctx, "vm-pfw-root", ns, "mystery-class")
-	createVMWithPVC(t, ctx, "vm-pfw-1", ns, merge(appLabels, map[string]string{"soteria.io/wave": "1"}), "vm-pfw-root")
+	createVMWithPVC(t, ctx, "vm-pfw-1", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-pf-warnings", "soteria.io/wave": "1"}, "vm-pfw-root")
 
-	createDRPlan(t, ctx, "plan-pf-warnings", ns, appLabels, "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-pf-warnings", ns, "soteria.io/wave")
 
 	deadline := time.Now().Add(testTimeout)
 	for time.Now().Before(deadline) {

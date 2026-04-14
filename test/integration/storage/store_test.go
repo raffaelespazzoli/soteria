@@ -146,7 +146,6 @@ func newDRPlan(namespace, name string) *v1alpha1.DRPlan {
 			UID:       types.UID(gocql.TimeUUID().String()),
 		},
 		Spec: v1alpha1.DRPlanSpec{
-			VMSelector:             metav1.LabelSelector{MatchLabels: map[string]string{"app": name}},
 			WaveLabel:              "wave",
 			MaxConcurrentFailovers: 2,
 		},

@@ -20,7 +20,9 @@ limitations under the License.
 // passes the results through GroupByWave — a pure function that partitions VMs by
 // their wave-label value. This separation keeps the reconciler testable: unit tests
 // inject a mock VMDiscoverer while the production path uses TypedVMDiscoverer backed
-// by controller-runtime's cached client.
+// by controller-runtime's cached client. Discovery uses the soteria.io/drplan label
+// to find VMs belonging to a specific plan by name, replacing the previous arbitrary
+// label-selector approach.
 
 package engine
 
@@ -29,9 +31,11 @@ import (
 	"maps"
 	"sort"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
 )
 
 // VMReference is a lightweight projection of kubevirt VM metadata. It carries
@@ -55,11 +59,11 @@ type DiscoveryResult struct {
 	TotalVMs int
 }
 
-// VMDiscoverer abstracts the Kubernetes API call that lists VMs matching a
-// label selector. Implementations: TypedVMDiscoverer (production, uses
-// controller-runtime client) and test mocks.
+// VMDiscoverer abstracts the Kubernetes API call that lists VMs belonging to a
+// named DRPlan (via the soteria.io/drplan label). Implementations:
+// TypedVMDiscoverer (production, uses controller-runtime client) and test mocks.
 type VMDiscoverer interface {
-	DiscoverVMs(ctx context.Context, selector metav1.LabelSelector) ([]VMReference, error)
+	DiscoverVMs(ctx context.Context, planName string) ([]VMReference, error)
 }
 
 // GroupByWave partitions VMs into waves keyed by the value of waveLabel.
@@ -97,11 +101,8 @@ type TypedVMDiscoverer struct {
 	Reader client.Reader
 }
 
-func (d *TypedVMDiscoverer) DiscoverVMs(ctx context.Context, selector metav1.LabelSelector) ([]VMReference, error) {
-	sel, err := metav1.LabelSelectorAsSelector(&selector)
-	if err != nil {
-		return nil, err
-	}
+func (d *TypedVMDiscoverer) DiscoverVMs(ctx context.Context, planName string) ([]VMReference, error) {
+	sel := labels.SelectorFromSet(labels.Set{soteriav1alpha1.DRPlanLabel: planName})
 
 	var vmList kubevirtv1.VirtualMachineList
 	if err := d.Reader.List(ctx, &vmList, &client.ListOptions{

@@ -27,6 +27,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/client-go/util/workqueue"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -45,7 +46,7 @@ type mockVMDiscoverer struct {
 	err error
 }
 
-func (m *mockVMDiscoverer) DiscoverVMs(_ context.Context, _ metav1.LabelSelector) ([]engine.VMReference, error) {
+func (m *mockVMDiscoverer) DiscoverVMs(_ context.Context, _ string) ([]engine.VMReference, error) {
 	return m.vms, m.err
 }
 
@@ -80,9 +81,6 @@ func newTestPlan(name string) *soteriav1alpha1.DRPlan {
 			Generation: 1,
 		},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			VMSelector: metav1.LabelSelector{
-				MatchLabels: map[string]string{"app.kubernetes.io/part-of": "erp-system"},
-			},
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 5,
 		},
@@ -360,57 +358,35 @@ func TestReconcile_DiscoveryError_ReadyFalseWithBackoff(t *testing.T) {
 	}
 }
 
-func TestMapVMToDRPlans_MatchesOne(t *testing.T) {
-	plan := newTestPlan("plan-1")
-	r, _ := newReconciler([]client.Object{plan}, &mockVMDiscoverer{})
+func TestEnqueueForVM_MatchesOnePlan(t *testing.T) {
+	r, _ := newReconciler(nil, &mockVMDiscoverer{})
+
+	q := workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[reconcile.Request]())
+	defer q.ShutDown()
 
 	vm := &kubevirtv1.VirtualMachine{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "vm-1",
 			Namespace: "default",
-			Labels:    map[string]string{"app.kubernetes.io/part-of": "erp-system"},
+			Labels:    map[string]string{soteriav1alpha1.DRPlanLabel: "plan-1"},
 		},
 	}
 
-	requests := r.mapVMToDRPlans(context.Background(), vm)
-	if len(requests) != 1 {
-		t.Fatalf("expected 1 request, got %d", len(requests))
+	r.enqueueForVM(vm, q)
+	if q.Len() != 1 {
+		t.Fatalf("expected 1 request, got %d", q.Len())
 	}
-	if requests[0].Name != "plan-1" || requests[0].Namespace != "default" {
-		t.Errorf("request = %v, want plan-1/default", requests[0].NamespacedName)
-	}
-}
-
-func TestMapVMToDRPlans_MatchesTwo(t *testing.T) {
-	plan1 := newTestPlan("plan-1")
-	plan2 := newTestPlan("plan-2")
-	r, _ := newReconciler([]client.Object{plan1, plan2}, &mockVMDiscoverer{})
-
-	vm := &kubevirtv1.VirtualMachine{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "vm-1",
-			Namespace: "default",
-			Labels:    map[string]string{"app.kubernetes.io/part-of": "erp-system"},
-		},
-	}
-
-	requests := r.mapVMToDRPlans(context.Background(), vm)
-	if len(requests) != 2 {
-		t.Fatalf("expected 2 requests, got %d", len(requests))
-	}
-
-	names := map[string]bool{}
-	for _, req := range requests {
-		names[req.Name] = true
-	}
-	if !names["plan-1"] || !names["plan-2"] {
-		t.Errorf("expected plan-1 and plan-2, got %v", names)
+	item, _ := q.Get()
+	if item.Name != "plan-1" || item.Namespace != "default" {
+		t.Errorf("request = %v, want plan-1/default", item.NamespacedName)
 	}
 }
 
-func TestMapVMToDRPlans_MatchesNone(t *testing.T) {
-	plan := newTestPlan("plan-1")
-	r, _ := newReconciler([]client.Object{plan}, &mockVMDiscoverer{})
+func TestEnqueueForVM_NoLabel_NoRequests(t *testing.T) {
+	r, _ := newReconciler(nil, &mockVMDiscoverer{})
+
+	q := workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[reconcile.Request]())
+	defer q.ShutDown()
 
 	vm := &kubevirtv1.VirtualMachine{
 		ObjectMeta: metav1.ObjectMeta{
@@ -420,9 +396,29 @@ func TestMapVMToDRPlans_MatchesNone(t *testing.T) {
 		},
 	}
 
-	requests := r.mapVMToDRPlans(context.Background(), vm)
-	if len(requests) != 0 {
-		t.Errorf("expected 0 requests, got %d", len(requests))
+	r.enqueueForVM(vm, q)
+	if q.Len() != 0 {
+		t.Errorf("expected 0 requests, got %d", q.Len())
+	}
+}
+
+func TestEnqueueForVM_EmptyLabel_NoRequests(t *testing.T) {
+	r, _ := newReconciler(nil, &mockVMDiscoverer{})
+
+	q := workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[reconcile.Request]())
+	defer q.ShutDown()
+
+	vm := &kubevirtv1.VirtualMachine{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "vm-1",
+			Namespace: "default",
+			Labels:    map[string]string{soteriav1alpha1.DRPlanLabel: ""},
+		},
+	}
+
+	r.enqueueForVM(vm, q)
+	if q.Len() != 0 {
+		t.Errorf("expected 0 requests for empty label, got %d", q.Len())
 	}
 }
 
@@ -991,7 +987,6 @@ func TestReconcile_Preflight_PopulatedOnSuccess(t *testing.T) {
 		t.Error("Preflight.GeneratedAt should not be nil")
 	}
 
-	// Verify VM storage backends are correct
 	wave1 := updated.Status.Preflight.Waves[0]
 	for _, vm := range wave1.VMs {
 		if vm.StorageBackend != "odf" {

@@ -24,6 +24,8 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+
+	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
 )
 
 func TestGroupByWave(t *testing.T) {
@@ -156,7 +158,7 @@ func TestTypedVMDiscoverer(t *testing.T) {
 			Name:      "vm-match-1",
 			Namespace: "default",
 			Labels: map[string]string{
-				"app.kubernetes.io/part-of": "erp-system",
+				soteriav1alpha1.DRPlanLabel: "plan-a",
 				"soteria.io/wave":           "1",
 			},
 		},
@@ -166,7 +168,7 @@ func TestTypedVMDiscoverer(t *testing.T) {
 			Name:      "vm-match-2",
 			Namespace: "default",
 			Labels: map[string]string{
-				"app.kubernetes.io/part-of": "erp-system",
+				soteriav1alpha1.DRPlanLabel: "plan-a",
 				"soteria.io/wave":           "2",
 			},
 		},
@@ -176,22 +178,29 @@ func TestTypedVMDiscoverer(t *testing.T) {
 			Name:      "vm-other",
 			Namespace: "default",
 			Labels: map[string]string{
-				"app.kubernetes.io/part-of": "other-system",
+				soteriav1alpha1.DRPlanLabel: "plan-b",
+			},
+		},
+	}
+	noLabelVM := &kubevirtv1.VirtualMachine{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "vm-no-label",
+			Namespace: "default",
+			Labels: map[string]string{
+				"app": "standalone",
 			},
 		},
 	}
 
 	fakeClient := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithObjects(matchingVM1, matchingVM2, nonMatchingVM).
+		WithObjects(matchingVM1, matchingVM2, nonMatchingVM, noLabelVM).
 		Build()
 
 	discoverer := NewTypedVMDiscoverer(fakeClient)
 
-	t.Run("selector matches subset of VMs", func(t *testing.T) {
-		refs, err := discoverer.DiscoverVMs(context.Background(), metav1.LabelSelector{
-			MatchLabels: map[string]string{"app.kubernetes.io/part-of": "erp-system"},
-		})
+	t.Run("discovers VMs with matching drplan label", func(t *testing.T) {
+		refs, err := discoverer.DiscoverVMs(context.Background(), "plan-a")
 		if err != nil {
 			t.Fatalf("DiscoverVMs() error: %v", err)
 		}
@@ -214,10 +223,32 @@ func TestTypedVMDiscoverer(t *testing.T) {
 		}
 	})
 
-	t.Run("selector matches no VMs", func(t *testing.T) {
-		refs, err := discoverer.DiscoverVMs(context.Background(), metav1.LabelSelector{
-			MatchLabels: map[string]string{"nonexistent": "label"},
-		})
+	t.Run("VMs without drplan label are not discovered", func(t *testing.T) {
+		refs, err := discoverer.DiscoverVMs(context.Background(), "plan-a")
+		if err != nil {
+			t.Fatalf("DiscoverVMs() error: %v", err)
+		}
+		for _, ref := range refs {
+			if ref.Name == "vm-no-label" {
+				t.Error("VM without drplan label should not be discovered")
+			}
+		}
+	})
+
+	t.Run("VMs with different plan name are not discovered", func(t *testing.T) {
+		refs, err := discoverer.DiscoverVMs(context.Background(), "plan-a")
+		if err != nil {
+			t.Fatalf("DiscoverVMs() error: %v", err)
+		}
+		for _, ref := range refs {
+			if ref.Name == "vm-other" {
+				t.Error("VM with different plan name should not be discovered")
+			}
+		}
+	})
+
+	t.Run("no VMs match nonexistent plan", func(t *testing.T) {
+		refs, err := discoverer.DiscoverVMs(context.Background(), "nonexistent-plan")
 		if err != nil {
 			t.Fatalf("DiscoverVMs() error: %v", err)
 		}
@@ -227,9 +258,7 @@ func TestTypedVMDiscoverer(t *testing.T) {
 	})
 
 	t.Run("labels are correctly extracted", func(t *testing.T) {
-		refs, err := discoverer.DiscoverVMs(context.Background(), metav1.LabelSelector{
-			MatchLabels: map[string]string{"app.kubernetes.io/part-of": "erp-system"},
-		})
+		refs, err := discoverer.DiscoverVMs(context.Background(), "plan-a")
 		if err != nil {
 			t.Fatalf("DiscoverVMs() error: %v", err)
 		}

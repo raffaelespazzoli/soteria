@@ -56,7 +56,6 @@ func TestVMValidator_Exclusivity(t *testing.T) {
 	planERP := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "plan-erp", Namespace: "default"},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			VMSelector:             metav1.LabelSelector{MatchLabels: map[string]string{"app": "erp"}},
 			WaveLabel:              "wave",
 			MaxConcurrentFailovers: 4,
 		},
@@ -64,7 +63,13 @@ func TestVMValidator_Exclusivity(t *testing.T) {
 	planDB := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "plan-db", Namespace: "default"},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			VMSelector:             metav1.LabelSelector{MatchLabels: map[string]string{"tier": "db"}},
+			WaveLabel:              "wave",
+			MaxConcurrentFailovers: 4,
+		},
+	}
+	planERPOtherNS := &soteriav1alpha1.DRPlan{
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-erp", Namespace: "other-ns"},
+		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "wave",
 			MaxConcurrentFailovers: 4,
 		},
@@ -95,7 +100,7 @@ func TestVMValidator_Exclusivity(t *testing.T) {
 			vm: &kubevirtv1.VirtualMachine{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "vm-1", Namespace: "default",
-					Labels: map[string]string{"app": "erp"},
+					Labels: map[string]string{soteriav1alpha1.DRPlanLabel: "plan-erp"},
 				},
 			},
 			plans:       []*soteriav1alpha1.DRPlan{planERP, planDB},
@@ -107,10 +112,10 @@ func TestVMValidator_Exclusivity(t *testing.T) {
 			vm: &kubevirtv1.VirtualMachine{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "vm-1", Namespace: "default",
-					Labels: map[string]string{"app": "erp", "tier": "db"},
+					Labels: map[string]string{soteriav1alpha1.DRPlanLabel: "plan-erp"},
 				},
 			},
-			plans:       []*soteriav1alpha1.DRPlan{planERP, planDB},
+			plans:       []*soteriav1alpha1.DRPlan{planERP, planERPOtherNS},
 			op:          admissionv1.Create,
 			wantAllowed: false,
 			wantMessage: "would belong to multiple DRPlans",
@@ -120,10 +125,10 @@ func TestVMValidator_Exclusivity(t *testing.T) {
 			vm: &kubevirtv1.VirtualMachine{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "vm-1", Namespace: "default",
-					Labels: map[string]string{"app": "erp", "tier": "db"},
+					Labels: map[string]string{soteriav1alpha1.DRPlanLabel: "plan-erp"},
 				},
 			},
-			plans:       []*soteriav1alpha1.DRPlan{planERP, planDB},
+			plans:       []*soteriav1alpha1.DRPlan{planERP, planERPOtherNS},
 			op:          admissionv1.Update,
 			wantAllowed: false,
 			wantMessage: "would belong to multiple DRPlans",
@@ -190,13 +195,13 @@ func TestVMValidator_WaveConflict(t *testing.T) {
 	planERP := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "plan-erp", Namespace: "default"},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			VMSelector:             metav1.LabelSelector{MatchLabels: map[string]string{"app": "erp"}},
 			WaveLabel:              "wave",
 			MaxConcurrentFailovers: 4,
 		},
 	}
 
-	erpSelector := metav1.LabelSelector{MatchLabels: map[string]string{"app": "erp"}}
+	erpW1Labels := map[string]string{soteriav1alpha1.DRPlanLabel: "plan-erp", "wave": "1"}
+	erpW2Labels := map[string]string{soteriav1alpha1.DRPlanLabel: "plan-erp", "wave": "2"}
 
 	tests := []struct {
 		name        string
@@ -213,7 +218,10 @@ func TestVMValidator_WaveConflict(t *testing.T) {
 			vm: &kubevirtv1.VirtualMachine{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "vm-1", Namespace: "default",
-					Labels: map[string]string{"app": "erp", "wave": "2"},
+					Labels: map[string]string{
+						soteriav1alpha1.DRPlanLabel: "plan-erp",
+						"wave":                      "2",
+					},
 				},
 			},
 			plans:       []*soteriav1alpha1.DRPlan{planERP},
@@ -225,15 +233,18 @@ func TestVMValidator_WaveConflict(t *testing.T) {
 			vm: &kubevirtv1.VirtualMachine{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "vm-new", Namespace: "erp-db",
-					Labels: map[string]string{"app": "erp", "wave": "1"},
+					Labels: map[string]string{
+						soteriav1alpha1.DRPlanLabel: "plan-erp",
+						"wave":                      "1",
+					},
 				},
 			},
 			plans:    []*soteriav1alpha1.DRPlan{planERP},
 			nsLevels: map[string]soteriav1alpha1.ConsistencyLevel{"erp-db": soteriav1alpha1.ConsistencyLevelNamespace},
 			siblingVMs: map[string][]engine.VMReference{
-				selectorKey(erpSelector): {
-					{Name: "vm-existing", Namespace: "erp-db", Labels: map[string]string{"app": "erp", "wave": "1"}},
-					{Name: "vm-new", Namespace: "erp-db", Labels: map[string]string{"app": "erp", "wave": "1"}},
+				"plan-erp": {
+					{Name: "vm-existing", Namespace: "erp-db", Labels: erpW1Labels},
+					{Name: "vm-new", Namespace: "erp-db", Labels: erpW1Labels},
 				},
 			},
 			wantAllowed: true,
@@ -243,15 +254,18 @@ func TestVMValidator_WaveConflict(t *testing.T) {
 			vm: &kubevirtv1.VirtualMachine{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "vm-new", Namespace: "erp-db",
-					Labels: map[string]string{"app": "erp", "wave": "2"},
+					Labels: map[string]string{
+						soteriav1alpha1.DRPlanLabel: "plan-erp",
+						"wave":                      "2",
+					},
 				},
 			},
 			plans:    []*soteriav1alpha1.DRPlan{planERP},
 			nsLevels: map[string]soteriav1alpha1.ConsistencyLevel{"erp-db": soteriav1alpha1.ConsistencyLevelNamespace},
 			siblingVMs: map[string][]engine.VMReference{
-				selectorKey(erpSelector): {
-					{Name: "vm-existing", Namespace: "erp-db", Labels: map[string]string{"app": "erp", "wave": "1"}},
-					{Name: "vm-new", Namespace: "erp-db", Labels: map[string]string{"app": "erp", "wave": "2"}},
+				"plan-erp": {
+					{Name: "vm-existing", Namespace: "erp-db", Labels: erpW1Labels},
+					{Name: "vm-new", Namespace: "erp-db", Labels: erpW2Labels},
 				},
 			},
 			wantAllowed: false,
@@ -262,15 +276,18 @@ func TestVMValidator_WaveConflict(t *testing.T) {
 			vm: &kubevirtv1.VirtualMachine{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "vm-existing", Namespace: "erp-db",
-					Labels: map[string]string{"app": "erp", "wave": "2"},
+					Labels: map[string]string{
+						soteriav1alpha1.DRPlanLabel: "plan-erp",
+						"wave":                      "2",
+					},
 				},
 			},
 			plans:    []*soteriav1alpha1.DRPlan{planERP},
 			nsLevels: map[string]soteriav1alpha1.ConsistencyLevel{"erp-db": soteriav1alpha1.ConsistencyLevelNamespace},
 			siblingVMs: map[string][]engine.VMReference{
-				selectorKey(erpSelector): {
-					{Name: "vm-existing", Namespace: "erp-db", Labels: map[string]string{"app": "erp", "wave": "2"}},
-					{Name: "vm-other", Namespace: "erp-db", Labels: map[string]string{"app": "erp", "wave": "1"}},
+				"plan-erp": {
+					{Name: "vm-existing", Namespace: "erp-db", Labels: erpW2Labels},
+					{Name: "vm-other", Namespace: "erp-db", Labels: erpW1Labels},
 				},
 			},
 			op:          admissionv1.Update,
@@ -294,14 +311,17 @@ func TestVMValidator_WaveConflict(t *testing.T) {
 			vm: &kubevirtv1.VirtualMachine{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "vm-solo", Namespace: "erp-db",
-					Labels: map[string]string{"app": "erp", "wave": "1"},
+					Labels: map[string]string{
+						soteriav1alpha1.DRPlanLabel: "plan-erp",
+						"wave":                      "1",
+					},
 				},
 			},
 			plans:    []*soteriav1alpha1.DRPlan{planERP},
 			nsLevels: map[string]soteriav1alpha1.ConsistencyLevel{"erp-db": soteriav1alpha1.ConsistencyLevelNamespace},
 			siblingVMs: map[string][]engine.VMReference{
-				selectorKey(erpSelector): {
-					{Name: "vm-solo", Namespace: "erp-db", Labels: map[string]string{"app": "erp", "wave": "1"}},
+				"plan-erp": {
+					{Name: "vm-solo", Namespace: "erp-db", Labels: erpW1Labels},
 				},
 			},
 			wantAllowed: true,
@@ -363,7 +383,7 @@ func TestVMValidator_DeleteAllowed(t *testing.T) {
 	vm := &kubevirtv1.VirtualMachine{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "vm-1", Namespace: "default",
-			Labels: map[string]string{"app": "erp"},
+			Labels: map[string]string{soteriav1alpha1.DRPlanLabel: "plan-erp"},
 		},
 	}
 
@@ -374,37 +394,32 @@ func TestVMValidator_DeleteAllowed(t *testing.T) {
 }
 
 func TestVMValidator_CombinedViolations(t *testing.T) {
+	erpW1Labels := map[string]string{soteriav1alpha1.DRPlanLabel: "plan-erp", "wave": "1"}
+	erpW2Labels := map[string]string{soteriav1alpha1.DRPlanLabel: "plan-erp", "wave": "2"}
+
 	planERP := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "plan-erp", Namespace: "default"},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			VMSelector:             metav1.LabelSelector{MatchLabels: map[string]string{"app": "erp"}},
 			WaveLabel:              "wave",
 			MaxConcurrentFailovers: 4,
 		},
 	}
-	planDB := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-db", Namespace: "default"},
+	planERPOtherNS := &soteriav1alpha1.DRPlan{
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-erp", Namespace: "other-ns"},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			VMSelector:             metav1.LabelSelector{MatchLabels: map[string]string{"tier": "db"}},
 			WaveLabel:              "wave",
 			MaxConcurrentFailovers: 4,
 		},
 	}
-
-	erpSelector := metav1.LabelSelector{MatchLabels: map[string]string{"app": "erp"}}
-	dbSelector := metav1.LabelSelector{MatchLabels: map[string]string{"tier": "db"}}
 
 	scheme := buildVMScheme()
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(planERP.DeepCopy(), planDB.DeepCopy()).Build()
+		WithObjects(planERP.DeepCopy(), planERPOtherNS.DeepCopy()).Build()
 
 	discoverer := &mockVMDiscoverer{vms: map[string][]engine.VMReference{
-		selectorKey(erpSelector): {
-			{Name: "vm-conflict", Namespace: "erp-db", Labels: map[string]string{"app": "erp", "tier": "db", "wave": "2"}},
-			{Name: "vm-sibling", Namespace: "erp-db", Labels: map[string]string{"app": "erp", "wave": "1"}},
-		},
-		selectorKey(dbSelector): {
-			{Name: "vm-conflict", Namespace: "erp-db", Labels: map[string]string{"app": "erp", "tier": "db", "wave": "2"}},
+		"plan-erp": {
+			{Name: "vm-conflict", Namespace: "erp-db", Labels: erpW2Labels},
+			{Name: "vm-sibling", Namespace: "erp-db", Labels: erpW1Labels},
 		},
 	}}
 
@@ -421,7 +436,7 @@ func TestVMValidator_CombinedViolations(t *testing.T) {
 	vm := &kubevirtv1.VirtualMachine{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "vm-conflict", Namespace: "erp-db",
-			Labels: map[string]string{"app": "erp", "tier": "db", "wave": "2"},
+			Labels: map[string]string{soteriav1alpha1.DRPlanLabel: "plan-erp", "wave": "2"},
 		},
 	}
 

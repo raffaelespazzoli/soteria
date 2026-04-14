@@ -62,7 +62,7 @@ func createVM(t *testing.T, ctx context.Context, name, namespace string, labels 
 	return vm
 }
 
-func createDRPlan(t *testing.T, ctx context.Context, name, namespace string, selector map[string]string, waveLabel string) *soteriav1alpha1.DRPlan {
+func createDRPlan(t *testing.T, ctx context.Context, name, namespace string, waveLabel string) *soteriav1alpha1.DRPlan {
 	t.Helper()
 	plan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{
@@ -70,9 +70,6 @@ func createDRPlan(t *testing.T, ctx context.Context, name, namespace string, sel
 			Namespace: namespace,
 		},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			VMSelector: metav1.LabelSelector{
-				MatchLabels: selector,
-			},
 			WaveLabel:              waveLabel,
 			MaxConcurrentFailovers: 5,
 		},
@@ -88,15 +85,11 @@ func TestDRPlanReconciler_DiscoverVMs_WavesPopulated(t *testing.T) {
 	ns := "test-discover"
 	createNamespace(t, ctx, ns)
 
-	appLabels := map[string]string{
-		"app.kubernetes.io/part-of": "erp-discover",
-	}
+	createVM(t, ctx, "vm-w1-a", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-discover", "soteria.io/wave": "1"})
+	createVM(t, ctx, "vm-w1-b", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-discover", "soteria.io/wave": "1"})
+	createVM(t, ctx, "vm-w2-a", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-discover", "soteria.io/wave": "2"})
 
-	createVM(t, ctx, "vm-w1-a", ns, merge(appLabels, map[string]string{"soteria.io/wave": "1"}))
-	createVM(t, ctx, "vm-w1-b", ns, merge(appLabels, map[string]string{"soteria.io/wave": "1"}))
-	createVM(t, ctx, "vm-w2-a", ns, merge(appLabels, map[string]string{"soteria.io/wave": "2"}))
-
-	createDRPlan(t, ctx, "plan-discover", ns, appLabels, "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-discover", ns, "soteria.io/wave")
 
 	plan, err := waitForCondition(ctx, "plan-discover", ns, "Ready", metav1.ConditionTrue, testTimeout)
 	if err != nil {
@@ -120,19 +113,15 @@ func TestDRPlanReconciler_NewVMAdded_WatchTriggersReconcile(t *testing.T) {
 	ns := "test-vm-add"
 	createNamespace(t, ctx, ns)
 
-	appLabels := map[string]string{
-		"app.kubernetes.io/part-of": "erp-add",
-	}
-
-	createVM(t, ctx, "vm-initial", ns, merge(appLabels, map[string]string{"soteria.io/wave": "1"}))
-	createDRPlan(t, ctx, "plan-add", ns, appLabels, "soteria.io/wave")
+	createVM(t, ctx, "vm-initial", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-add", "soteria.io/wave": "1"})
+	createDRPlan(t, ctx, "plan-add", ns, "soteria.io/wave")
 
 	_, err := waitForVMCount(ctx, "plan-add", ns, 1, testTimeout)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	createVM(t, ctx, "vm-new", ns, merge(appLabels, map[string]string{"soteria.io/wave": "1"}))
+	createVM(t, ctx, "vm-new", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-add", "soteria.io/wave": "1"})
 
 	plan, err := waitForVMCount(ctx, "plan-add", ns, 2, testTimeout)
 	if err != nil {
@@ -149,13 +138,9 @@ func TestDRPlanReconciler_WaveLabelChanged_WatchTriggersReconcile(t *testing.T) 
 	ns := "test-wave-change"
 	createNamespace(t, ctx, ns)
 
-	appLabels := map[string]string{
-		"app.kubernetes.io/part-of": "erp-wave",
-	}
-
-	vm := createVM(t, ctx, "vm-move", ns, merge(appLabels, map[string]string{"soteria.io/wave": "1"}))
-	createVM(t, ctx, "vm-stay", ns, merge(appLabels, map[string]string{"soteria.io/wave": "1"}))
-	createDRPlan(t, ctx, "plan-wave", ns, appLabels, "soteria.io/wave")
+	vm := createVM(t, ctx, "vm-move", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-wave", "soteria.io/wave": "1"})
+	createVM(t, ctx, "vm-stay", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-wave", "soteria.io/wave": "1"})
+	createDRPlan(t, ctx, "plan-wave", ns, "soteria.io/wave")
 
 	plan, err := waitForCondition(ctx, "plan-wave", ns, "Ready", metav1.ConditionTrue, testTimeout)
 	if err != nil {
@@ -188,13 +173,9 @@ func TestDRPlanReconciler_VMDeleted_WatchTriggersReconcile(t *testing.T) {
 	ns := "test-vm-delete"
 	createNamespace(t, ctx, ns)
 
-	appLabels := map[string]string{
-		"app.kubernetes.io/part-of": "erp-del",
-	}
-
-	vm := createVM(t, ctx, "vm-delete-me", ns, merge(appLabels, map[string]string{"soteria.io/wave": "1"}))
-	createVM(t, ctx, "vm-keep", ns, merge(appLabels, map[string]string{"soteria.io/wave": "1"}))
-	createDRPlan(t, ctx, "plan-delete", ns, appLabels, "soteria.io/wave")
+	vm := createVM(t, ctx, "vm-delete-me", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-delete", "soteria.io/wave": "1"})
+	createVM(t, ctx, "vm-keep", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-delete", "soteria.io/wave": "1"})
+	createDRPlan(t, ctx, "plan-delete", ns, "soteria.io/wave")
 
 	_, err := waitForVMCount(ctx, "plan-delete", ns, 2, testTimeout)
 	if err != nil {
@@ -216,8 +197,7 @@ func TestDRPlanReconciler_ReadyCondition_ReflectsDiscovery(t *testing.T) {
 	ns := "test-ready-cond"
 	createNamespace(t, ctx, ns)
 
-	createDRPlan(t, ctx, "plan-empty", ns,
-		map[string]string{"app": "nonexistent"}, "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-empty", ns, "soteria.io/wave")
 
 	plan, err := waitForCondition(ctx, "plan-empty", ns, "Ready", metav1.ConditionFalse, testTimeout)
 	if err != nil {
@@ -240,18 +220,14 @@ func TestDRPlanReconciler_50VMs_CompletesWithin10s(t *testing.T) {
 	ns := "test-perf"
 	createNamespace(t, ctx, ns)
 
-	appLabels := map[string]string{
-		"app.kubernetes.io/part-of": "erp-perf",
-	}
-
 	for i := range 50 {
 		wave := fmt.Sprintf("%d", (i%5)+1)
 		createVM(t, ctx, fmt.Sprintf("vm-perf-%03d", i), ns,
-			merge(appLabels, map[string]string{"soteria.io/wave": wave}))
+			map[string]string{soteriav1alpha1.DRPlanLabel: "plan-perf", "soteria.io/wave": wave})
 	}
 
 	start := time.Now()
-	createDRPlan(t, ctx, "plan-perf", ns, appLabels, "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-perf", ns, "soteria.io/wave")
 
 	plan, err := waitForVMCount(ctx, "plan-perf", ns, 50, testTimeout)
 	elapsed := time.Since(start)
@@ -267,15 +243,4 @@ func TestDRPlanReconciler_50VMs_CompletesWithin10s(t *testing.T) {
 	if len(plan.Status.Waves) != 5 {
 		t.Errorf("len(Waves) = %d, want 5", len(plan.Status.Waves))
 	}
-}
-
-func merge(base, overlay map[string]string) map[string]string {
-	result := make(map[string]string, len(base)+len(overlay))
-	for k, v := range base {
-		result[k] = v
-	}
-	for k, v := range overlay {
-		result[k] = v
-	}
-	return result
 }

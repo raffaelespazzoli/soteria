@@ -17,16 +17,17 @@ limitations under the License.
 // reconciler.go implements the DRPlan reconciliation loop.
 //
 // Architecture: On every reconcile the controller fetches the DRPlan, discovers
-// VMs matching the plan's label selector, partitions them into waves via
-// engine.GroupByWave, then resolves volume group consistency from namespace
-// annotations (engine.ResolveVolumeGroups) and chunks the result into DRGroups
-// respecting maxConcurrentFailovers (engine.ChunkWaves). If namespace-level VMs
-// span multiple waves, the plan is marked Ready=False with reason WaveConflict.
-// If a namespace group exceeds the throttle, Ready=False with reason
-// NamespaceGroupExceedsThrottle. Secondary watches on kubevirt VirtualMachines
-// (label-change predicate) and core Namespaces (consistency-annotation predicate)
-// trigger reconciliation when VM membership or namespace consistency configuration
-// changes.
+// VMs carrying the soteria.io/drplan label for this plan, partitions them into
+// waves via engine.GroupByWave, then resolves volume group consistency from
+// namespace annotations (engine.ResolveVolumeGroups) and chunks the result into
+// DRGroups respecting maxConcurrentFailovers (engine.ChunkWaves). If
+// namespace-level VMs span multiple waves, the plan is marked Ready=False with
+// reason WaveConflict. If a namespace group exceeds the throttle, Ready=False
+// with reason NamespaceGroupExceedsThrottle. Secondary watches on kubevirt
+// VirtualMachines (label-change predicate with a custom event handler that
+// enqueues both old and new plan on label change) and core Namespaces
+// (consistency-annotation predicate) trigger reconciliation when VM membership
+// or namespace consistency configuration changes.
 
 package drplan
 
@@ -41,10 +42,10 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/client-go/util/workqueue"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -108,7 +109,7 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	logger.Info("Starting reconciliation")
 
-	vms, err := r.VMDiscoverer.DiscoverVMs(ctx, plan.Spec.VMSelector)
+	vms, err := r.VMDiscoverer.DiscoverVMs(ctx, plan.Name)
 	if err != nil {
 		logger.Error(err, "Failed to discover VMs")
 		r.event(&plan, "Warning", "DiscoveryFailed", err.Error())
@@ -151,7 +152,7 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			Type:               conditionTypeReady,
 			Status:             metav1.ConditionFalse,
 			Reason:             reasonNoVMs,
-			Message:            "No VMs match the plan's vmSelector",
+			Message:            "No VMs have the soteria.io/drplan label for this plan",
 			ObservedGeneration: plan.Generation,
 		})
 	}
@@ -253,7 +254,7 @@ func (r *DRPlanReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&soteriav1alpha1.DRPlan{}, builder.WithPredicates(predicate.GenerationChangedPredicate{})).
 		Watches(
 			&kubevirtv1.VirtualMachine{},
-			handler.EnqueueRequestsFromMapFunc(r.mapVMToDRPlans),
+			r.vmEventHandler(),
 			builder.WithPredicates(vmRelevantChangePredicate()),
 		).
 		Watches(
@@ -264,43 +265,55 @@ func (r *DRPlanReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-// mapVMToDRPlans returns reconcile requests for every DRPlan whose vmSelector
-// matches the changed VM. The DRPlan list is served from the informer cache
-// (O(N) where N = number of DRPlans, capped at ~100 by NFR9).
-func (r *DRPlanReconciler) mapVMToDRPlans(ctx context.Context, obj client.Object) []reconcile.Request {
-	logger := log.FromContext(ctx)
+type reqQueue = workqueue.TypedRateLimitingInterface[reconcile.Request]
 
-	vmLabels := obj.GetLabels()
-
-	var planList soteriav1alpha1.DRPlanList
-	if err := r.List(ctx, &planList); err != nil {
-		logger.Error(err, "Failed to list DRPlans for VM mapping")
-		return nil
+// vmEventHandler returns a handler.Funcs that enqueues reconcile requests
+// for the DRPlan(s) referenced by the VM's soteria.io/drplan label. On
+// update, both old and new plan names are enqueued so that label changes
+// promptly reconcile both the departing and arriving plan.
+func (r *DRPlanReconciler) vmEventHandler() handler.Funcs {
+	return handler.Funcs{
+		CreateFunc: func(
+			_ context.Context,
+			e event.TypedCreateEvent[client.Object],
+			q reqQueue,
+		) {
+			r.enqueueForVM(e.Object, q)
+		},
+		UpdateFunc: func(
+			_ context.Context,
+			e event.TypedUpdateEvent[client.Object],
+			q reqQueue,
+		) {
+			r.enqueueForVM(e.ObjectOld, q)
+			r.enqueueForVM(e.ObjectNew, q)
+		},
+		DeleteFunc: func(
+			_ context.Context,
+			e event.TypedDeleteEvent[client.Object],
+			q reqQueue,
+		) {
+			r.enqueueForVM(e.Object, q)
+		},
 	}
+}
 
-	var requests []reconcile.Request
-	for i := range planList.Items {
-		plan := &planList.Items[i]
-		sel, err := metav1.LabelSelectorAsSelector(&plan.Spec.VMSelector)
-		if err != nil {
-			logger.V(1).Info("Skipping DRPlan with invalid selector",
-				"drplan", plan.Name, "namespace", plan.Namespace, "error", err)
-			continue
-		}
-		if sel.Matches(labels.Set(vmLabels)) {
-			requests = append(requests, reconcile.Request{
-				NamespacedName: types.NamespacedName{
-					Name:      plan.Name,
-					Namespace: plan.Namespace,
-				},
-			})
-		}
+// enqueueForVM reads the soteria.io/drplan label from a VM and enqueues
+// a reconcile request for the named plan. O(1) — no DRPlan list needed.
+func (r *DRPlanReconciler) enqueueForVM(obj client.Object, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+	if obj == nil {
+		return
 	}
-
-	logger.V(2).Info("VM change mapped to DRPlans",
-		"vm", obj.GetName(), "namespace", obj.GetNamespace(), "matchedPlans", len(requests))
-
-	return requests
+	planName := obj.GetLabels()[soteriav1alpha1.DRPlanLabel]
+	if planName == "" {
+		return
+	}
+	q.Add(reconcile.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      planName,
+			Namespace: obj.GetNamespace(),
+		},
+	})
 }
 
 // mapNamespaceToDRPlans returns reconcile requests for every DRPlan that has

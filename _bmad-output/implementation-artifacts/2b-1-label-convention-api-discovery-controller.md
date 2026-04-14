@@ -1,6 +1,6 @@
 # Story 2b.1: Label Convention — API, Discovery & Controller Refactoring
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -26,58 +26,58 @@ So that plan membership is explicit, unambiguous, and structurally limited to on
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: API type changes (AC: #1, #6)
-  - [ ] 1.1 Add `DRPlanLabel = "soteria.io/drplan"` constant to `pkg/apis/soteria.io/v1alpha1/types.go`
-  - [ ] 1.2 Remove `VMSelector metav1.LabelSelector` field from `DRPlanSpec`
-  - [ ] 1.3 Update `DRPlanStatus.DiscoveredVMCount` comment — remove "matching the plan's vmSelector" wording
-  - [ ] 1.4 Remove `validateVMSelector` function from `validation.go`
-  - [ ] 1.5 Update `ValidateDRPlan` — remove `validateVMSelector` call, keep `waveLabel`+`maxConcurrentFailovers` validation
-  - [ ] 1.6 Update `ValidateDRPlanUpdate` if it references vmSelector
-  - [ ] 1.7 Run `make manifests && make generate` to regenerate CRDs and DeepCopy
+- [x] Task 1: API type changes (AC: #1, #6)
+  - [x] 1.1 Add `DRPlanLabel = "soteria.io/drplan"` constant to `pkg/apis/soteria.io/v1alpha1/types.go`
+  - [x] 1.2 Remove `VMSelector metav1.LabelSelector` field from `DRPlanSpec`
+  - [x] 1.3 Update `DRPlanStatus.DiscoveredVMCount` comment — remove "matching the plan's vmSelector" wording
+  - [x] 1.4 Remove `validateVMSelector` function from `validation.go`
+  - [x] 1.5 Update `ValidateDRPlan` — remove `validateVMSelector` call, keep `waveLabel`+`maxConcurrentFailovers` validation
+  - [x] 1.6 Update `ValidateDRPlanUpdate` if it references vmSelector
+  - [x] 1.7 Run `make manifests && make generate` to regenerate CRDs and DeepCopy
 
-- [ ] Task 2: Discovery engine refactoring (AC: #2)
-  - [ ] 2.1 Change `VMDiscoverer` interface: `DiscoverVMs(ctx context.Context, planName string) ([]VMReference, error)`
-  - [ ] 2.2 Rewrite `TypedVMDiscoverer.DiscoverVMs` — build `labels.SelectorFromSet(labels.Set{DRPlanLabel: planName})` and list VMs with that exact selector
-  - [ ] 2.3 Remove `metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"` import from `discovery.go` if no longer needed (keep `"k8s.io/apimachinery/pkg/labels"` for the new selector)
-  - [ ] 2.4 Import `soteriav1alpha1` for the `DRPlanLabel` constant, or define a local constant — prefer importing from `pkg/apis/soteria.io/v1alpha1` for single source of truth
+- [x] Task 2: Discovery engine refactoring (AC: #2)
+  - [x] 2.1 Change `VMDiscoverer` interface: `DiscoverVMs(ctx context.Context, planName string) ([]VMReference, error)`
+  - [x] 2.2 Rewrite `TypedVMDiscoverer.DiscoverVMs` — build `labels.SelectorFromSet(labels.Set{DRPlanLabel: planName})` and list VMs with that exact selector
+  - [x] 2.3 Remove `metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"` import from `discovery.go` if no longer needed (keep `"k8s.io/apimachinery/pkg/labels"` for the new selector)
+  - [x] 2.4 Import `soteriav1alpha1` for the `DRPlanLabel` constant, or define a local constant — prefer importing from `pkg/apis/soteria.io/v1alpha1` for single source of truth
 
-- [ ] Task 3: Reconciler refactoring (AC: #3, #4, #5)
-  - [ ] 3.1 Update `Reconcile` — change `r.VMDiscoverer.DiscoverVMs(ctx, plan.Spec.VMSelector)` to `r.VMDiscoverer.DiscoverVMs(ctx, plan.Name)`
-  - [ ] 3.2 Update "No VMs" condition message — change `"No VMs match the plan's vmSelector"` to `"No VMs have the soteria.io/drplan label for this plan"`
-  - [ ] 3.3 Rewrite `mapVMToDRPlans` — read `soteria.io/drplan` label from `obj.GetLabels()`, return a single reconcile request for that named plan (O(1) — no DRPlan list needed)
-  - [ ] 3.4 Handle the case where the label is absent/empty — return nil (no requests)
-  - [ ] 3.5 Handle `soteria.io/drplan` label value change — use a custom `handler.EventHandler` (see Dev Notes) so that on UpdateEvent both old and new label values are enqueued. Do NOT rely on periodic requeue — AC5 requires prompt reconciliation of both old and new plan
-  - [ ] 3.6 Update `vmRelevantChangePredicate` — specifically detect `soteria.io/drplan` label add/remove/change; also still trigger on wave label changes that affect wave grouping
-  - [ ] 3.7 Remove unused imports from reconciler (`"k8s.io/apimachinery/pkg/labels"`, `metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"` if no longer needed)
-  - [ ] 3.8 RBAC markers: the `+kubebuilder:rbac:groups=soteria.io,resources=drplans,verbs=get;list;watch` marker on `reconciler.go` must STAY — it is needed for the primary informer. The map function no longer lists DRPlans but the controller still watches them
+- [x] Task 3: Reconciler refactoring (AC: #3, #4, #5)
+  - [x] 3.1 Update `Reconcile` — change `r.VMDiscoverer.DiscoverVMs(ctx, plan.Spec.VMSelector)` to `r.VMDiscoverer.DiscoverVMs(ctx, plan.Name)`
+  - [x] 3.2 Update "No VMs" condition message — change `"No VMs match the plan's vmSelector"` to `"No VMs have the soteria.io/drplan label for this plan"`
+  - [x] 3.3 Rewrite `mapVMToDRPlans` — read `soteria.io/drplan` label from `obj.GetLabels()`, return a single reconcile request for that named plan (O(1) — no DRPlan list needed)
+  - [x] 3.4 Handle the case where the label is absent/empty — return nil (no requests)
+  - [x] 3.5 Handle `soteria.io/drplan` label value change — use a custom `handler.EventHandler` (see Dev Notes) so that on UpdateEvent both old and new label values are enqueued. Do NOT rely on periodic requeue — AC5 requires prompt reconciliation of both old and new plan
+  - [x] 3.6 Update `vmRelevantChangePredicate` — specifically detect `soteria.io/drplan` label add/remove/change; also still trigger on wave label changes that affect wave grouping
+  - [x] 3.7 Remove unused imports from reconciler (`"k8s.io/apimachinery/pkg/labels"`, `metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"` if no longer needed)
+  - [x] 3.8 RBAC markers: the `+kubebuilder:rbac:groups=soteria.io,resources=drplans,verbs=get;list;watch` marker on `reconciler.go` must STAY — it is needed for the primary informer. The map function no longer lists DRPlans but the controller still watches them
 
-- [ ] Task 4: Update tests (AC: #7)
-  - [ ] 4.1 Rewrite `TestTypedVMDiscoverer` — update VMs to use `soteria.io/drplan: <planName>` labels, call `DiscoverVMs(ctx, "plan-a")`, assert only matching VMs returned
-  - [ ] 4.2 Add test: VMs without `soteria.io/drplan` label are not discovered
-  - [ ] 4.3 Add test: VMs with different plan name are not discovered
-  - [ ] 4.4 Verify `TestGroupByWave` still passes unchanged (wave grouping is plan-name agnostic)
-  - [ ] 4.5 Update reconciler unit tests in `pkg/controller/drplan/reconciler_test.go` — update mock `DiscoverVMs` calls to use plan name string instead of label selector
-  - [ ] 4.6 Add reconciler test: `mapVMToDRPlans` returns single request for plan named in label
-  - [ ] 4.7 Add reconciler test: `mapVMToDRPlans` returns nil when label absent
-  - [ ] 4.8 Update or add validation tests in `pkg/apis/soteria.io/v1alpha1/` — `ValidateDRPlan` should no longer reject plans without `vmSelector`
+- [x] Task 4: Update tests (AC: #7)
+  - [x] 4.1 Rewrite `TestTypedVMDiscoverer` — update VMs to use `soteria.io/drplan: <planName>` labels, call `DiscoverVMs(ctx, "plan-a")`, assert only matching VMs returned
+  - [x] 4.2 Add test: VMs without `soteria.io/drplan` label are not discovered
+  - [x] 4.3 Add test: VMs with different plan name are not discovered
+  - [x] 4.4 Verify `TestGroupByWave` still passes unchanged (wave grouping is plan-name agnostic)
+  - [x] 4.5 Update reconciler unit tests in `pkg/controller/drplan/reconciler_test.go` — update mock `DiscoverVMs` calls to use plan name string instead of label selector
+  - [x] 4.6 Add reconciler test: `mapVMToDRPlans` returns single request for plan named in label
+  - [x] 4.7 Add reconciler test: `mapVMToDRPlans` returns nil when label absent
+  - [x] 4.8 Update or add validation tests in `pkg/apis/soteria.io/v1alpha1/` — `ValidateDRPlan` should no longer reject plans without `vmSelector`
 
-- [ ] Task 5: Fix compilation across the codebase (AC: all)
-  - [ ] 5.1 Update all callers of `DiscoverVMs` in `pkg/admission/` — the DRPlan validator calls `v.ExclusivityChecker.VMDiscoverer.DiscoverVMs(ctx, plan.Spec.VMSelector)` — change to `DiscoverVMs(ctx, plan.Name)`
-  - [ ] 5.2 Update VM validator's `checkWaveConflictForPlan` which calls `v.VMDiscoverer.DiscoverVMs(ctx, plan.Spec.VMSelector)` — change to `DiscoverVMs(ctx, plan.Name)`
-  - [ ] 5.3 Update `ExclusivityChecker` methods if they reference `VMSelector` — note: `FindMatchingPlans` uses `plan.Spec.VMSelector` on line 76 of `exclusivity.go` — this needs updating to use the `DRPlanLabel` for matching
-  - [ ] 5.4 Update admission test files (`exclusivity_test.go`, `drplan_validator_test.go`, `vm_validator_test.go`) to use new interface signature and remove `VMSelector` references
-  - [ ] 5.5 Update `setup.go` if any setup function signatures reference `VMSelector`
-  - [ ] 5.6 Grep for any remaining `VMSelector` or `vmSelector` references across the codebase and fix — check `cmd/`, `test/integration/`, and any other callers
-  - [ ] 5.7 Run `make test` to verify all unit tests pass
-  - [ ] 5.8 Run `make lint-fix` followed by `make lint`
+- [x] Task 5: Fix compilation across the codebase (AC: all)
+  - [x] 5.1 Update all callers of `DiscoverVMs` in `pkg/admission/` — the DRPlan validator calls `v.ExclusivityChecker.VMDiscoverer.DiscoverVMs(ctx, plan.Spec.VMSelector)` — change to `DiscoverVMs(ctx, plan.Name)`
+  - [x] 5.2 Update VM validator's `checkWaveConflictForPlan` which calls `v.VMDiscoverer.DiscoverVMs(ctx, plan.Spec.VMSelector)` — change to `DiscoverVMs(ctx, plan.Name)`
+  - [x] 5.3 Update `ExclusivityChecker` methods if they reference `VMSelector` — note: `FindMatchingPlans` uses `plan.Spec.VMSelector` on line 76 of `exclusivity.go` — this needs updating to use the `DRPlanLabel` for matching
+  - [x] 5.4 Update admission test files (`exclusivity_test.go`, `drplan_validator_test.go`, `vm_validator_test.go`) to use new interface signature and remove `VMSelector` references
+  - [x] 5.5 Update `setup.go` if any setup function signatures reference `VMSelector`
+  - [x] 5.6 Grep for any remaining `VMSelector` or `vmSelector` references across the codebase and fix — check `cmd/`, `test/integration/`, and any other callers
+  - [x] 5.7 Run `make test` to verify all unit tests pass
+  - [x] 5.8 Run `make lint-fix` followed by `make lint`
 
-- [ ] Task 6: Tiered documentation compliance
-  - [ ] 6.1 Update `discovery.go` file-level block comment (Tier 2) — describe the new plan-name-based discovery instead of label-selector
-  - [ ] 6.2 Update `reconciler.go` file-level block comment (Tier 2) — replace "VMs matching the plan's label selector" with "VMs carrying the `soteria.io/drplan` label"
-  - [ ] 6.3 Update `mapVMToDRPlans` godoc — describe the O(1) label read instead of O(N) DRPlan scanning
-  - [ ] 6.4 Add Tier 3 domain 'why' comment on `DRPlanLabel` constant — explain that the single-label-key-per-resource Kubernetes semantics structurally enforce one-plan-per-VM exclusivity
-  - [ ] 6.5 Update `exclusivity.go` Tier 2 block comment — the `FindMatchingPlans` O(plans × VMs) cross-check pattern is being removed/simplified
-  - [ ] 6.6 Verify all `pkg/` packages still have Tier 1 `doc.go` godoc
+- [x] Task 6: Tiered documentation compliance
+  - [x] 6.1 Update `discovery.go` file-level block comment (Tier 2) — describe the new plan-name-based discovery instead of label-selector
+  - [x] 6.2 Update `reconciler.go` file-level block comment (Tier 2) — replace "VMs matching the plan's label selector" with "VMs carrying the `soteria.io/drplan` label"
+  - [x] 6.3 Update `mapVMToDRPlans` godoc — describe the O(1) label read instead of O(N) DRPlan scanning
+  - [x] 6.4 Add Tier 3 domain 'why' comment on `DRPlanLabel` constant — explain that the single-label-key-per-resource Kubernetes semantics structurally enforce one-plan-per-VM exclusivity
+  - [x] 6.5 Update `exclusivity.go` Tier 2 block comment — the `FindMatchingPlans` O(plans × VMs) cross-check pattern is being removed/simplified
+  - [x] 6.6 Verify all `pkg/` packages still have Tier 1 `doc.go` godoc
 
 ## Dev Notes
 
@@ -234,3 +234,11 @@ make test         # Unit + envtest tests
 ### Completion Notes List
 
 ### File List
+
+### Review Findings
+
+- [x] [Review][Decision] `soteria.io/drplan=<planName>` is not enough to map VM watch events back to a namespaced DRPlan when VMs can live outside the plan namespace — Deferred to **Story 2b-1.5** (Cluster-Scoped CRD Migration): making DRPlan cluster-scoped eliminates the namespace mismatch entirely.
+
+- [x] [Review][Decision] The new label convention is not actually unambiguous across namespaces — Deferred to **Story 2b-1.5** (Cluster-Scoped CRD Migration): cluster-scoped names are globally unique, so `plan.Name == drplanLabel` becomes unambiguous.
+
+- [x] [Review][Patch] Story tracking is out of sync with the implementation state [`_bmad-output/implementation-artifacts/2b-1-label-convention-api-discovery-controller.md:3`] — Fixed: updated Status to `review`, checked all task boxes, synced sprint-status to `review`.

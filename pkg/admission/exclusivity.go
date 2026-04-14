@@ -17,15 +17,15 @@ limitations under the License.
 // Tier 2 – Architecture:
 // exclusivity.go provides shared VM exclusivity checking logic used by both the
 // DRPlan webhook (Story 2.3) and the VM webhook (Story 2.3.1). The core question
-// is "given a VM's labels, which DRPlans select it?" — answered by
-// FindMatchingPlans which lists all DRPlans, parses their vmSelector, and returns
-// those whose selector matches the given label set.
+// is "given a VM's labels, which DRPlans claim it?" — answered by
+// FindMatchingPlans which lists all DRPlans and checks whether the VM's
+// soteria.io/drplan label value matches each plan's name.
 //
 // CheckVMExclusivity wraps FindMatchingPlans for the VM webhook: it checks
 // whether a VM's labels match more than one DRPlan.
 //
 // CheckDRPlanExclusivity wraps FindMatchingPlans for the DRPlan webhook: for
-// each discovered VM, it checks whether any other plan also selects that VM.
+// each discovered VM, it checks whether any other plan also claims that VM.
 
 package admission
 
@@ -34,7 +34,6 @@ import (
 	"fmt"
 	"strings"
 
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -53,9 +52,9 @@ type ExclusivityChecker struct {
 	VMDiscoverer engine.VMDiscoverer
 }
 
-// FindMatchingPlans returns all DRPlans whose vmSelector matches the given
-// label set, optionally excluding a specific plan (used when validating the
-// plan itself to avoid self-conflict).
+// FindMatchingPlans returns all DRPlans whose name matches the VM's
+// soteria.io/drplan label, optionally excluding a specific plan (used when
+// validating the plan itself to avoid self-conflict).
 func (c *ExclusivityChecker) FindMatchingPlans(
 	ctx context.Context,
 	vmLabels labels.Set,
@@ -66,6 +65,8 @@ func (c *ExclusivityChecker) FindMatchingPlans(
 		return nil, fmt.Errorf("listing DRPlans: %w", err)
 	}
 
+	drplanLabel := vmLabels[soteriav1alpha1.DRPlanLabel]
+
 	var matching []types.NamespacedName
 	for i := range planList.Items {
 		plan := &planList.Items[i]
@@ -73,12 +74,7 @@ func (c *ExclusivityChecker) FindMatchingPlans(
 			continue
 		}
 
-		sel, err := metav1.LabelSelectorAsSelector(&plan.Spec.VMSelector)
-		if err != nil {
-			continue
-		}
-
-		if sel.Matches(vmLabels) {
+		if plan.Name == drplanLabel {
 			matching = append(matching, types.NamespacedName{
 				Namespace: plan.Namespace,
 				Name:      plan.Name,

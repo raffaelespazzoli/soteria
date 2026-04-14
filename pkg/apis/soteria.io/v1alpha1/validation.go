@@ -17,7 +17,6 @@ limitations under the License.
 package v1alpha1
 
 import (
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
@@ -29,8 +28,6 @@ func ValidateDRPlan(plan *DRPlan) field.ErrorList {
 	allErrs := field.ErrorList{}
 	specPath := field.NewPath("spec")
 
-	allErrs = append(allErrs, validateVMSelector(plan.Spec.VMSelector, specPath.Child("vmSelector"))...)
-
 	if plan.Spec.WaveLabel == "" {
 		allErrs = append(allErrs, field.Required(specPath.Child("waveLabel"), ""))
 	}
@@ -41,22 +38,6 @@ func ValidateDRPlan(plan *DRPlan) field.ErrorList {
 			plan.Spec.MaxConcurrentFailovers,
 			"must be greater than 0",
 		))
-	}
-
-	return allErrs
-}
-
-func validateVMSelector(sel metav1.LabelSelector, fldPath *field.Path) field.ErrorList {
-	allErrs := field.ErrorList{}
-
-	if len(sel.MatchLabels) == 0 && len(sel.MatchExpressions) == 0 {
-		allErrs = append(allErrs, field.Required(fldPath,
-			"at least one matchLabels entry or matchExpressions entry is required"))
-		return allErrs
-	}
-
-	if _, err := metav1.LabelSelectorAsSelector(&sel); err != nil {
-		allErrs = append(allErrs, field.Invalid(fldPath, sel, err.Error()))
 	}
 
 	return allErrs

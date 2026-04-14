@@ -38,14 +38,14 @@ type SoteriaServerOptions struct {
 	RecommendedOptions *genericoptions.RecommendedOptions
 
 	// ScyllaDB connection options
-	ScyllaDBContactPoints  string
-	ScyllaDBKeyspace       string
-	ScyllaDBLocalDC        string
-	ScyllaDBDCReplication  string
-	ScyllaDBTLSCert        string
-	ScyllaDBTLSKey         string
-	ScyllaDBTLSCA          string
-	ScyllaDBTLSServerName  string
+	ScyllaDBContactPoints string
+	ScyllaDBKeyspace      string
+	ScyllaDBLocalDC       string
+	ScyllaDBDCReplication string
+	ScyllaDBTLSCert       string
+	ScyllaDBTLSKey        string
+	ScyllaDBTLSCA         string
+	ScyllaDBTLSServerName string
 }
 
 // NewSoteriaServerOptions creates default options.

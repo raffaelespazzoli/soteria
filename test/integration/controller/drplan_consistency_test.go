@@ -43,7 +43,7 @@ func createNamespaceWithAnnotations(t *testing.T, ctx context.Context, name stri
 	}
 }
 
-func createDRPlanWithThrottle(t *testing.T, ctx context.Context, name, namespace string, selector map[string]string, waveLabel string, maxConcurrent int) *soteriav1alpha1.DRPlan {
+func createDRPlanWithThrottle(t *testing.T, ctx context.Context, name, namespace string, waveLabel string, maxConcurrent int) *soteriav1alpha1.DRPlan {
 	t.Helper()
 	plan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{
@@ -51,9 +51,6 @@ func createDRPlanWithThrottle(t *testing.T, ctx context.Context, name, namespace
 			Namespace: namespace,
 		},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			VMSelector: metav1.LabelSelector{
-				MatchLabels: selector,
-			},
 			WaveLabel:              waveLabel,
 			MaxConcurrentFailovers: maxConcurrent,
 		},
@@ -71,13 +68,11 @@ func TestDRPlanReconciler_NamespaceConsistency_VolumeGroupsFormed(t *testing.T) 
 		soteriav1alpha1.ConsistencyAnnotation: "namespace",
 	})
 
-	appLabels := map[string]string{"app.kubernetes.io/part-of": "erp-nsconsist"}
+	createVM(t, ctx, "vm-ns-a", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-ns-consist", "soteria.io/wave": "1"})
+	createVM(t, ctx, "vm-ns-b", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-ns-consist", "soteria.io/wave": "1"})
+	createVM(t, ctx, "vm-ns-c", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-ns-consist", "soteria.io/wave": "1"})
 
-	createVM(t, ctx, "vm-ns-a", ns, merge(appLabels, map[string]string{"soteria.io/wave": "1"}))
-	createVM(t, ctx, "vm-ns-b", ns, merge(appLabels, map[string]string{"soteria.io/wave": "1"}))
-	createVM(t, ctx, "vm-ns-c", ns, merge(appLabels, map[string]string{"soteria.io/wave": "1"}))
-
-	createDRPlan(t, ctx, "plan-ns-consist", ns, appLabels, "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-ns-consist", ns, "soteria.io/wave")
 
 	plan, err := waitForWaveGroups(ctx, "plan-ns-consist", ns, testTimeout)
 	if err != nil {
@@ -105,12 +100,10 @@ func TestDRPlanReconciler_VMConsistency_IndividualVolumeGroups(t *testing.T) {
 	ns := "test-vm-consistency"
 	createNamespace(t, ctx, ns)
 
-	appLabels := map[string]string{"app.kubernetes.io/part-of": "erp-vmconsist"}
+	createVM(t, ctx, "vm-ind-a", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-vm-consist", "soteria.io/wave": "1"})
+	createVM(t, ctx, "vm-ind-b", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-vm-consist", "soteria.io/wave": "1"})
 
-	createVM(t, ctx, "vm-ind-a", ns, merge(appLabels, map[string]string{"soteria.io/wave": "1"}))
-	createVM(t, ctx, "vm-ind-b", ns, merge(appLabels, map[string]string{"soteria.io/wave": "1"}))
-
-	createDRPlan(t, ctx, "plan-vm-consist", ns, appLabels, "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-vm-consist", ns, "soteria.io/wave")
 
 	plan, err := waitForWaveGroups(ctx, "plan-vm-consist", ns, testTimeout)
 	if err != nil {
@@ -141,12 +134,10 @@ func TestDRPlanReconciler_WaveConflict_ReadyFalse(t *testing.T) {
 		soteriav1alpha1.ConsistencyAnnotation: "namespace",
 	})
 
-	appLabels := map[string]string{"app.kubernetes.io/part-of": "erp-conflict"}
+	createVM(t, ctx, "vm-conflict-a", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-conflict", "soteria.io/wave": "1"})
+	createVM(t, ctx, "vm-conflict-b", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-conflict", "soteria.io/wave": "2"})
 
-	createVM(t, ctx, "vm-conflict-a", ns, merge(appLabels, map[string]string{"soteria.io/wave": "1"}))
-	createVM(t, ctx, "vm-conflict-b", ns, merge(appLabels, map[string]string{"soteria.io/wave": "2"}))
-
-	createDRPlan(t, ctx, "plan-conflict", ns, appLabels, "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-conflict", ns, "soteria.io/wave")
 
 	plan, err := waitForConditionReason(ctx, "plan-conflict", ns, "Ready", "WaveConflict", testTimeout)
 	if err != nil {
@@ -171,12 +162,10 @@ func TestDRPlanReconciler_WaveConflictResolved_ReadyTrue(t *testing.T) {
 		soteriav1alpha1.ConsistencyAnnotation: "namespace",
 	})
 
-	appLabels := map[string]string{"app.kubernetes.io/part-of": "erp-resolve"}
+	createVM(t, ctx, "vm-resolve-a", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-resolve", "soteria.io/wave": "1"})
+	vm := createVM(t, ctx, "vm-resolve-b", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-resolve", "soteria.io/wave": "2"})
 
-	createVM(t, ctx, "vm-resolve-a", ns, merge(appLabels, map[string]string{"soteria.io/wave": "1"}))
-	vm := createVM(t, ctx, "vm-resolve-b", ns, merge(appLabels, map[string]string{"soteria.io/wave": "2"}))
-
-	createDRPlan(t, ctx, "plan-resolve", ns, appLabels, "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-resolve", ns, "soteria.io/wave")
 
 	_, err := waitForConditionReason(ctx, "plan-resolve", ns, "Ready", "WaveConflict", testTimeout)
 	if err != nil {
@@ -208,13 +197,11 @@ func TestDRPlanReconciler_NamespaceGroupExceedsThrottle_ReadyFalse(t *testing.T)
 		soteriav1alpha1.ConsistencyAnnotation: "namespace",
 	})
 
-	appLabels := map[string]string{"app.kubernetes.io/part-of": "erp-throttle"}
+	createVM(t, ctx, "vm-throttle-a", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-throttle", "soteria.io/wave": "1"})
+	createVM(t, ctx, "vm-throttle-b", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-throttle", "soteria.io/wave": "1"})
+	createVM(t, ctx, "vm-throttle-c", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-throttle", "soteria.io/wave": "1"})
 
-	createVM(t, ctx, "vm-throttle-a", ns, merge(appLabels, map[string]string{"soteria.io/wave": "1"}))
-	createVM(t, ctx, "vm-throttle-b", ns, merge(appLabels, map[string]string{"soteria.io/wave": "1"}))
-	createVM(t, ctx, "vm-throttle-c", ns, merge(appLabels, map[string]string{"soteria.io/wave": "1"}))
-
-	createDRPlanWithThrottle(t, ctx, "plan-throttle", ns, appLabels, "soteria.io/wave", 2)
+	createDRPlanWithThrottle(t, ctx, "plan-throttle", ns, "soteria.io/wave", 2)
 
 	plan, err := waitForConditionReason(ctx, "plan-throttle", ns, "Ready", "NamespaceGroupExceedsThrottle", testTimeout)
 	if err != nil {
@@ -241,14 +228,12 @@ func TestDRPlanReconciler_MixedConsistency_CorrectGrouping(t *testing.T) {
 	})
 	createNamespace(t, ctx, vmLevel)
 
-	appLabels := map[string]string{"app.kubernetes.io/part-of": "erp-mixed"}
+	createVM(t, ctx, "vm-mixed-ns-a", nsLevel, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-mixed", "soteria.io/wave": "1"})
+	createVM(t, ctx, "vm-mixed-ns-b", nsLevel, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-mixed", "soteria.io/wave": "1"})
+	createVM(t, ctx, "vm-mixed-vm-a", vmLevel, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-mixed", "soteria.io/wave": "1"})
+	createVM(t, ctx, "vm-mixed-vm-b", vmLevel, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-mixed", "soteria.io/wave": "1"})
 
-	createVM(t, ctx, "vm-mixed-ns-a", nsLevel, merge(appLabels, map[string]string{"soteria.io/wave": "1"}))
-	createVM(t, ctx, "vm-mixed-ns-b", nsLevel, merge(appLabels, map[string]string{"soteria.io/wave": "1"}))
-	createVM(t, ctx, "vm-mixed-vm-a", vmLevel, merge(appLabels, map[string]string{"soteria.io/wave": "1"}))
-	createVM(t, ctx, "vm-mixed-vm-b", vmLevel, merge(appLabels, map[string]string{"soteria.io/wave": "1"}))
-
-	createDRPlan(t, ctx, "plan-mixed", nsLevel, appLabels, "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-mixed", nsLevel, "soteria.io/wave")
 
 	plan, err := waitForWaveGroups(ctx, "plan-mixed", nsLevel, testTimeout)
 	if err != nil {
@@ -288,13 +273,11 @@ func TestDRPlanReconciler_ChunkingPreview_NamespaceGroupIndivisible(t *testing.T
 		soteriav1alpha1.ConsistencyAnnotation: "namespace",
 	})
 
-	appLabels := map[string]string{"app.kubernetes.io/part-of": "erp-chunk"}
+	createVM(t, ctx, "vm-chunk-a", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-chunk", "soteria.io/wave": "1"})
+	createVM(t, ctx, "vm-chunk-b", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-chunk", "soteria.io/wave": "1"})
+	createVM(t, ctx, "vm-chunk-c", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-chunk", "soteria.io/wave": "1"})
 
-	createVM(t, ctx, "vm-chunk-a", ns, merge(appLabels, map[string]string{"soteria.io/wave": "1"}))
-	createVM(t, ctx, "vm-chunk-b", ns, merge(appLabels, map[string]string{"soteria.io/wave": "1"}))
-	createVM(t, ctx, "vm-chunk-c", ns, merge(appLabels, map[string]string{"soteria.io/wave": "1"}))
-
-	createDRPlanWithThrottle(t, ctx, "plan-chunk", ns, appLabels, "soteria.io/wave", 4)
+	createDRPlanWithThrottle(t, ctx, "plan-chunk", ns, "soteria.io/wave", 4)
 
 	plan, err := waitForWaveGroups(ctx, "plan-chunk", ns, testTimeout)
 	if err != nil {

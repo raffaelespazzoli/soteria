@@ -668,13 +668,6 @@ func schema_pkg_apis_soteriaio_v1alpha1_DRPlanSpec(ref common.ReferenceCallback)
 			SchemaProps: spec.SchemaProps{
 				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
-					"vmSelector": {
-						SchemaProps: spec.SchemaProps{
-							Description: "VMSelector selects VMs to include in this DR plan.",
-							Default:     map[string]interface{}{},
-							Ref:         ref(v1.LabelSelector{}.OpenAPIModelName()),
-						},
-					},
 					"waveLabel": {
 						SchemaProps: spec.SchemaProps{
 							Description: "WaveLabel is the label key used to assign VMs to execution waves.",
@@ -692,11 +685,9 @@ func schema_pkg_apis_soteriaio_v1alpha1_DRPlanSpec(ref common.ReferenceCallback)
 						},
 					},
 				},
-				Required: []string{"vmSelector", "waveLabel", "maxConcurrentFailovers"},
+				Required: []string{"waveLabel", "maxConcurrentFailovers"},
 			},
 		},
-		Dependencies: []string{
-			v1.LabelSelector{}.OpenAPIModelName()},
 	}
 }
 
@@ -750,7 +741,7 @@ func schema_pkg_apis_soteriaio_v1alpha1_DRPlanStatus(ref common.ReferenceCallbac
 					},
 					"discoveredVMCount": {
 						SchemaProps: spec.SchemaProps{
-							Description: "DiscoveredVMCount is the total number of VMs matching the plan's vmSelector.",
+							Description: "DiscoveredVMCount is the total number of VMs discovered for this plan.",
 							Type:        []string{"integer"},
 							Format:      "int32",
 						},

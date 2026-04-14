@@ -18,8 +18,6 @@ package v1alpha1
 
 import (
 	"testing"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestValidateDRPlan(t *testing.T) {
@@ -30,64 +28,19 @@ func TestValidateDRPlan(t *testing.T) {
 		wantFields []string
 	}{
 		{
-			name: "valid plan with matchLabels",
+			name: "valid plan",
 			plan: &DRPlan{
 				Spec: DRPlanSpec{
-					VMSelector:             metav1.LabelSelector{MatchLabels: map[string]string{"app": "erp"}},
 					WaveLabel:              "soteria.io/wave",
 					MaxConcurrentFailovers: 4,
 				},
 			},
 			wantErrors: 0,
-		},
-		{
-			name: "valid plan with matchExpressions",
-			plan: &DRPlan{
-				Spec: DRPlanSpec{
-					VMSelector: metav1.LabelSelector{
-						MatchExpressions: []metav1.LabelSelectorRequirement{
-							{Key: "env", Operator: metav1.LabelSelectorOpIn, Values: []string{"prod"}},
-						},
-					},
-					WaveLabel:              "soteria.io/wave",
-					MaxConcurrentFailovers: 2,
-				},
-			},
-			wantErrors: 0,
-		},
-		{
-			name: "invalid vmSelector matchExpressions operator",
-			plan: &DRPlan{
-				Spec: DRPlanSpec{
-					VMSelector: metav1.LabelSelector{
-						MatchExpressions: []metav1.LabelSelectorRequirement{
-							{Key: "env", Operator: "InvalidOp", Values: []string{"prod"}},
-						},
-					},
-					WaveLabel:              "soteria.io/wave",
-					MaxConcurrentFailovers: 4,
-				},
-			},
-			wantErrors: 1,
-			wantFields: []string{"spec.vmSelector"},
-		},
-		{
-			name: "empty vmSelector — no matchLabels or matchExpressions",
-			plan: &DRPlan{
-				Spec: DRPlanSpec{
-					VMSelector:             metav1.LabelSelector{},
-					WaveLabel:              "soteria.io/wave",
-					MaxConcurrentFailovers: 4,
-				},
-			},
-			wantErrors: 1,
-			wantFields: []string{"spec.vmSelector"},
 		},
 		{
 			name: "empty waveLabel",
 			plan: &DRPlan{
 				Spec: DRPlanSpec{
-					VMSelector:             metav1.LabelSelector{MatchLabels: map[string]string{"app": "erp"}},
 					WaveLabel:              "",
 					MaxConcurrentFailovers: 4,
 				},
@@ -99,7 +52,6 @@ func TestValidateDRPlan(t *testing.T) {
 			name: "maxConcurrentFailovers zero",
 			plan: &DRPlan{
 				Spec: DRPlanSpec{
-					VMSelector:             metav1.LabelSelector{MatchLabels: map[string]string{"app": "erp"}},
 					WaveLabel:              "soteria.io/wave",
 					MaxConcurrentFailovers: 0,
 				},
@@ -111,7 +63,6 @@ func TestValidateDRPlan(t *testing.T) {
 			name: "maxConcurrentFailovers negative",
 			plan: &DRPlan{
 				Spec: DRPlanSpec{
-					VMSelector:             metav1.LabelSelector{MatchLabels: map[string]string{"app": "erp"}},
 					WaveLabel:              "soteria.io/wave",
 					MaxConcurrentFailovers: -1,
 				},
@@ -123,13 +74,22 @@ func TestValidateDRPlan(t *testing.T) {
 			name: "multiple errors: empty waveLabel + maxConcurrent zero",
 			plan: &DRPlan{
 				Spec: DRPlanSpec{
-					VMSelector:             metav1.LabelSelector{MatchLabels: map[string]string{"app": "erp"}},
 					WaveLabel:              "",
 					MaxConcurrentFailovers: 0,
 				},
 			},
 			wantErrors: 2,
 			wantFields: []string{"spec.waveLabel", "spec.maxConcurrentFailovers"},
+		},
+		{
+			name: "plan without vmSelector is valid",
+			plan: &DRPlan{
+				Spec: DRPlanSpec{
+					WaveLabel:              "soteria.io/wave",
+					MaxConcurrentFailovers: 2,
+				},
+			},
+			wantErrors: 0,
 		},
 	}
 
@@ -156,14 +116,12 @@ func TestValidateDRPlan(t *testing.T) {
 func TestValidateDRPlanUpdate(t *testing.T) {
 	validPlan := &DRPlan{
 		Spec: DRPlanSpec{
-			VMSelector:             metav1.LabelSelector{MatchLabels: map[string]string{"app": "erp"}},
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 4,
 		},
 	}
 	invalidPlan := &DRPlan{
 		Spec: DRPlanSpec{
-			VMSelector:             metav1.LabelSelector{},
 			WaveLabel:              "",
 			MaxConcurrentFailovers: 0,
 		},

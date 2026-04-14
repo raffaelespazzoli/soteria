@@ -537,7 +537,6 @@ func newDRPlan(name, namespace string) *v1alpha1.DRPlan {
 			Namespace: namespace,
 		},
 		Spec: v1alpha1.DRPlanSpec{
-			VMSelector:             metav1.LabelSelector{MatchLabels: map[string]string{"app": name}},
 			WaveLabel:              "wave",
 			MaxConcurrentFailovers: 2,
 		},

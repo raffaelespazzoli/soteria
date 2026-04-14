@@ -47,6 +47,11 @@ const (
 // namespace share a single VolumeGroup.
 const ConsistencyAnnotation = "soteria.io/consistency-level"
 
+// DRPlanLabel is the label key that VMs use to declare membership in a DRPlan.
+// Because a Kubernetes label key can only have one value per resource, this
+// structurally enforces one-plan-per-VM exclusivity without runtime checks.
+const DRPlanLabel = "soteria.io/drplan"
+
 // DRPlan defines a disaster recovery plan for a set of VMs selected by labels.
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type DRPlan struct {
@@ -57,8 +62,6 @@ type DRPlan struct {
 }
 
 type DRPlanSpec struct {
-	// VMSelector selects VMs to include in this DR plan.
-	VMSelector metav1.LabelSelector `json:"vmSelector"`
 	// WaveLabel is the label key used to assign VMs to execution waves.
 	WaveLabel string `json:"waveLabel"`
 	// MaxConcurrentFailovers limits concurrent VM failovers per wave chunk.
@@ -75,7 +78,7 @@ type DRPlanStatus struct {
 	ObservedGeneration int64 `json:"observedGeneration,omitempty"`
 	// Waves contains the discovered VMs grouped by wave label value.
 	Waves []WaveInfo `json:"waves,omitempty"`
-	// DiscoveredVMCount is the total number of VMs matching the plan's vmSelector.
+	// DiscoveredVMCount is the total number of VMs discovered for this plan.
 	DiscoveredVMCount int `json:"discoveredVMCount,omitempty"`
 	// Preflight contains the pre-flight plan composition report, populated on
 	// every reconcile to give platform engineers visibility into plan structure

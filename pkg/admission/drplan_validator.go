@@ -28,9 +28,9 @@ limitations under the License.
 //     maxConcurrentFailovers (catches plans that appear valid but would fail
 //     at execution time when they cannot be chunked into DRGroups)
 //
-// Per-object field validation (vmSelector syntax, waveLabel, maxConcurrentFailovers)
-// is handled by the aggregated API server's strategy layer and is also checked
-// here as defense-in-depth.
+// Per-object field validation (waveLabel, maxConcurrentFailovers) is handled by
+// the aggregated API server's strategy layer and is also checked here as
+// defense-in-depth.
 
 package admission
 
@@ -43,7 +43,6 @@ import (
 	"strings"
 
 	admissionv1 "k8s.io/api/admission/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
@@ -88,18 +87,12 @@ func (v *DRPlanValidator) Handle(ctx context.Context, req admission.Request) adm
 		}
 	}
 
-	sel, err := metav1.LabelSelectorAsSelector(&plan.Spec.VMSelector)
-	if err != nil {
-		allDenials = append(allDenials, fmt.Sprintf("spec.vmSelector: %s", err.Error()))
-	}
-	_ = sel
-
 	if len(allDenials) > 0 {
 		logger.Info("Admission denied", "reasons", len(allDenials))
 		return admission.Denied(strings.Join(allDenials, "; "))
 	}
 
-	discoveredVMs, err := v.ExclusivityChecker.VMDiscoverer.DiscoverVMs(ctx, plan.Spec.VMSelector)
+	discoveredVMs, err := v.ExclusivityChecker.VMDiscoverer.DiscoverVMs(ctx, plan.Name)
 	if err != nil {
 		return admission.Errored(http.StatusInternalServerError,
 			fmt.Errorf("discovering VMs: %w", err))

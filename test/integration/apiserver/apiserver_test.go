@@ -115,7 +115,6 @@ func TestAPIServer_DRPlan_CRUD(t *testing.T) {
 				"namespace": ns,
 			},
 			"spec": map[string]any{
-				"vmSelector":             map[string]any{"matchLabels": map[string]any{"app": "test"}},
 				"waveLabel":              "wave",
 				"maxConcurrentFailovers": int64(2),
 			},
@@ -194,7 +193,6 @@ func TestAPIServer_DRPlan_StatusSubresource(t *testing.T) {
 				"namespace": ns,
 			},
 			"spec": map[string]any{
-				"vmSelector":             map[string]any{"matchLabels": map[string]any{"app": "test"}},
 				"waveLabel":              "wave",
 				"maxConcurrentFailovers": int64(1),
 			},
@@ -241,7 +239,6 @@ func TestAPIServer_DRPlan_Validation_MissingWaveLabel(t *testing.T) {
 				"namespace": ns,
 			},
 			"spec": map[string]any{
-				"vmSelector":             map[string]any{},
 				"waveLabel":              "",
 				"maxConcurrentFailovers": int64(1),
 			},
@@ -530,7 +527,6 @@ func TestAPIServer_DRPlan_Watch(t *testing.T) {
 				"namespace": ns,
 			},
 			"spec": map[string]any{
-				"vmSelector":             map[string]any{"matchLabels": map[string]any{"app": "test"}},
 				"waveLabel":              "wave",
 				"maxConcurrentFailovers": int64(1),
 			},
