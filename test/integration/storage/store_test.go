@@ -1567,3 +1567,244 @@ func TestStore_LabelIndex_DRGroupStatus(t *testing.T) {
 		t.Fatal("expected gs-label-test in wave=0 results")
 	}
 }
+
+// ---- Scan cap integration tests (Story 2b.4) ----
+
+// TestStore_ScanCap_BaseTable_PartialList verifies the bounded re-fetch loop
+// in getListBaseTable (Path B) returns a partial list with a continue token
+// when the scan cap is reached before enough matches are found.
+func TestStore_ScanCap_BaseTable_PartialList(t *testing.T) {
+	store := setupStoreTest(t)
+	ctx := context.Background()
+
+	const totalObjects = 110
+	standbyIndices := map[int]bool{20: true, 40: true, 60: true, 80: true, 100: true}
+
+	for i := 0; i < totalObjects; i++ {
+		name := fmt.Sprintf("sc-base-%03d", i)
+		key := "/soteria.io/drplans/" + name
+		var lbls map[string]string
+		if standbyIndices[i] {
+			lbls = map[string]string{"status": "standby"}
+		} else {
+			lbls = map[string]string{"status": "active"}
+		}
+		k, l := key, lbls
+		t.Cleanup(func() { cleanupKey(t, k); cleanupObjectLabels(t, k, l) })
+		if err := store.Create(ctx, key, newDRPlanWithLabels(name, lbls), &v1alpha1.DRPlan{}, 0); err != nil {
+			t.Fatalf("Create %s failed: %v", name, err)
+		}
+	}
+
+	// status!=active is a NotEquals selector — non-pushable, routes through base table scan (Path B).
+	// With limit=10, scan cap = 10 * 10 = 100 rows.
+	// First 100 rows (sc-base-000..sc-base-099) contain 4 matches (020, 040, 060, 080).
+	selector, err := labels.Parse("status!=active")
+	if err != nil {
+		t.Fatalf("Parse selector failed: %v", err)
+	}
+
+	list := &v1alpha1.DRPlanList{}
+	err = store.GetList(ctx, "/soteria.io/drplans", storage.ListOptions{
+		Recursive: true,
+		Predicate: storage.SelectionPredicate{
+			Label:    selector,
+			Field:    fields.Everything(),
+			GetAttrs: storage.DefaultClusterScopedAttr,
+			Limit:    10,
+		},
+	}, list)
+	if err != nil {
+		t.Fatalf("GetList scan cap (base table) failed: %v", err)
+	}
+
+	if len(list.Items) >= 10 {
+		t.Fatalf("expected fewer than 10 items (scan cap partial list), got %d", len(list.Items))
+	}
+	if len(list.Items) != 4 {
+		t.Fatalf("expected exactly 4 matches within scan cap window, got %d", len(list.Items))
+	}
+	if list.Continue == "" {
+		t.Fatal("expected non-empty continue token (scan cap reached, more rows exist)")
+	}
+	for _, item := range list.Items {
+		if item.Labels["status"] != "standby" {
+			t.Fatalf("expected all returned items to have status=standby, got %v", item.Labels)
+		}
+	}
+
+	// Follow-up request with continue token
+	list2 := &v1alpha1.DRPlanList{}
+	err = store.GetList(ctx, "/soteria.io/drplans", storage.ListOptions{
+		Recursive: true,
+		Predicate: storage.SelectionPredicate{
+			Label:    selector,
+			Field:    fields.Everything(),
+			GetAttrs: storage.DefaultClusterScopedAttr,
+			Limit:    10,
+			Continue: list.Continue,
+		},
+	}, list2)
+	if err != nil {
+		t.Fatalf("GetList follow-up (base table) failed: %v", err)
+	}
+
+	if len(list2.Items) == 0 {
+		t.Fatal("expected at least 1 item in follow-up page")
+	}
+	for _, item := range list2.Items {
+		if item.Labels["status"] != "standby" {
+			t.Fatalf("expected follow-up items to have status=standby, got %v", item.Labels)
+		}
+	}
+
+	// Verify no overlap between pages
+	page1Names := make(map[string]bool)
+	for _, item := range list.Items {
+		page1Names[item.Name] = true
+	}
+	for _, item := range list2.Items {
+		if page1Names[item.Name] {
+			t.Fatalf("item %q appears on both pages — continue token replayed rows", item.Name)
+		}
+	}
+
+	// Combined results should cover all 5 standby objects
+	allNames := make(map[string]bool)
+	for k := range page1Names {
+		allNames[k] = true
+	}
+	for _, item := range list2.Items {
+		allNames[item.Name] = true
+	}
+	expectedStandby := []string{"sc-base-020", "sc-base-040", "sc-base-060", "sc-base-080", "sc-base-100"}
+	for _, name := range expectedStandby {
+		if !allNames[name] {
+			t.Fatalf("expected %s in combined results, missing", name)
+		}
+	}
+	if len(allNames) != 5 {
+		t.Fatalf("expected exactly 5 unique standby items across both pages, got %d", len(allNames))
+	}
+}
+
+// TestStore_ScanCap_LabelIndex_PartialList verifies the bounded re-fetch loop
+// in getListViaLabelIndex (Path A) returns a partial list with a continue token
+// when the scan cap is reached before enough matches are found.
+//
+// Label key naming: classifySelector picks the first (alphabetically sorted)
+// Equals requirement as primary. "app" < "zone" ensures "app=alpha" is
+// primary (all 110 index rows) while "zone=staging" is residual (5 matches).
+func TestStore_ScanCap_LabelIndex_PartialList(t *testing.T) {
+	store := setupStoreTest(t)
+	ctx := context.Background()
+
+	const totalObjects = 110
+	stagingIndices := map[int]bool{20: true, 40: true, 60: true, 80: true, 100: true}
+
+	for i := 0; i < totalObjects; i++ {
+		name := fmt.Sprintf("sc-idx-%03d", i)
+		key := "/soteria.io/drplans/" + name
+		var lbls map[string]string
+		if stagingIndices[i] {
+			lbls = map[string]string{"app": "alpha", "zone": "staging"}
+		} else {
+			lbls = map[string]string{"app": "alpha", "zone": "prod"}
+		}
+		k, l := key, lbls
+		t.Cleanup(func() { cleanupKey(t, k); cleanupObjectLabels(t, k, l) })
+		if err := store.Create(ctx, key, newDRPlanWithLabels(name, lbls), &v1alpha1.DRPlan{}, 0); err != nil {
+			t.Fatalf("Create %s failed: %v", name, err)
+		}
+	}
+
+	// app=alpha,zone=staging — both are Equals selectors (pushable, priority 3).
+	// labels.Parse sorts by key: "app" < "zone", so app=alpha is at index 0.
+	// classifySelector picks the first highest-priority requirement as primary.
+	// Primary: app=alpha (all 110 index rows). Residual: zone=staging (5 matches).
+	// With limit=10, scan cap = 10 * 10 = 100 index candidates.
+	selector, err := labels.Parse("app=alpha,zone=staging")
+	if err != nil {
+		t.Fatalf("Parse selector failed: %v", err)
+	}
+
+	list := &v1alpha1.DRPlanList{}
+	err = store.GetList(ctx, "/soteria.io/drplans", storage.ListOptions{
+		Recursive: true,
+		Predicate: storage.SelectionPredicate{
+			Label:    selector,
+			Field:    fields.Everything(),
+			GetAttrs: storage.DefaultClusterScopedAttr,
+			Limit:    10,
+		},
+	}, list)
+	if err != nil {
+		t.Fatalf("GetList scan cap (label index) failed: %v", err)
+	}
+
+	if len(list.Items) >= 10 {
+		t.Fatalf("expected fewer than 10 items (scan cap partial list), got %d", len(list.Items))
+	}
+	if list.Continue == "" {
+		t.Fatal("expected non-empty continue token (scan cap reached, more index candidates exist)")
+	}
+	for _, item := range list.Items {
+		if item.Labels["app"] != "alpha" || item.Labels["zone"] != "staging" {
+			t.Fatalf("expected app=alpha,zone=staging, got %v", item.Labels)
+		}
+	}
+
+	// Follow-up request with continue token
+	list2 := &v1alpha1.DRPlanList{}
+	err = store.GetList(ctx, "/soteria.io/drplans", storage.ListOptions{
+		Recursive: true,
+		Predicate: storage.SelectionPredicate{
+			Label:    selector,
+			Field:    fields.Everything(),
+			GetAttrs: storage.DefaultClusterScopedAttr,
+			Limit:    10,
+			Continue: list.Continue,
+		},
+	}, list2)
+	if err != nil {
+		t.Fatalf("GetList follow-up (label index) failed: %v", err)
+	}
+
+	if len(list2.Items) == 0 {
+		t.Fatal("expected at least 1 item in follow-up page")
+	}
+	for _, item := range list2.Items {
+		if item.Labels["app"] != "alpha" || item.Labels["zone"] != "staging" {
+			t.Fatalf("expected follow-up items to have app=alpha,zone=staging, got %v", item.Labels)
+		}
+	}
+
+	// Verify no overlap between pages
+	page1Names := make(map[string]bool)
+	for _, item := range list.Items {
+		page1Names[item.Name] = true
+	}
+	for _, item := range list2.Items {
+		if page1Names[item.Name] {
+			t.Fatalf("item %q appears on both pages — continue token replayed rows", item.Name)
+		}
+	}
+
+	// Combined results should cover all 5 staging objects
+	allNames := make(map[string]bool)
+	for k := range page1Names {
+		allNames[k] = true
+	}
+	for _, item := range list2.Items {
+		allNames[item.Name] = true
+	}
+	expectedStaging := []string{"sc-idx-020", "sc-idx-040", "sc-idx-060", "sc-idx-080", "sc-idx-100"}
+	for _, name := range expectedStaging {
+		if !allNames[name] {
+			t.Fatalf("expected %s in combined results, missing", name)
+		}
+	}
+	if len(allNames) != 5 {
+		t.Fatalf("expected exactly 5 unique staging items across both pages, got %d", len(allNames))
+	}
+}

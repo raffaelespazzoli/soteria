@@ -1,6 +1,6 @@
 # Story 2b.4: ScyllaDB Label-Indexed Pagination — Scan Cap Integration Test
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -26,34 +26,40 @@ Story 1.3.1 implemented label-indexed pagination with a bounded re-fetch loop in
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Base-table path (Path B) scan cap test (AC: #1, #2, #3, #4)
-  - [ ] 1.1 In `test/integration/storage/store_test.go`, add `TestStore_ScanCap_BaseTable_PartialList`
-  - [ ] 1.2 Create 110 DRPlan objects in namespace `"default"` with names `sc-base-NNN` (NNN = 000–109, zero-padded 3-digit). Give 105 objects label `status=active`. Give 5 objects (at indices 020, 040, 060, 080, 100) label `status=standby` instead
-  - [ ] 1.3 Call `GetList` with `limit=10` and a **negative-only selector** `status!=active`. The `!=` operator (`selection.NotEquals`) is non-pushable (`pushablePriority` returns -1), so `classifySelector` returns `hasPushable: false`, routing through `getListBaseTable` (Path B). The predicate filters each scanned row in-memory. With `maxScanMultiplier=10`, the scan cap = `10 * 10 = 100` rows. Only 4 of the 5 `status=standby` objects fall within the first 100 rows scanned (NNN 020, 040, 060, 080) — NNN 100 is beyond row 100
-  - [ ] 1.4 Assert `len(list.Items) < 10` (exactly 4 matches found before scan cap)
-  - [ ] 1.5 Assert `list.Continue != ""` (scan cap reached, more rows exist)
-  - [ ] 1.6 Assert all returned items have `status=standby` (not `status=active`)
-  - [ ] 1.7 Issue a follow-up `GetList` with the continue token and the same selector
-  - [ ] 1.8 Assert the follow-up returns the remaining match(es) (NNN 100 and any beyond)
-  - [ ] 1.9 Assert combined results from both pages cover all 5 `status=standby` objects
-  - [ ] 1.10 Register `t.Cleanup` for all 110 keys and their label rows
+- [x] Task 1: Base-table path (Path B) scan cap test (AC: #1, #2, #3, #4)
+  - [x] 1.1 In `test/integration/storage/store_test.go`, add `TestStore_ScanCap_BaseTable_PartialList`
+  - [x] 1.2 Create 110 DRPlan objects in namespace `"default"` with names `sc-base-NNN` (NNN = 000–109, zero-padded 3-digit). Give 105 objects label `status=active`. Give 5 objects (at indices 020, 040, 060, 080, 100) label `status=standby` instead
+  - [x] 1.3 Call `GetList` with `limit=10` and a **negative-only selector** `status!=active`. The `!=` operator (`selection.NotEquals`) is non-pushable (`pushablePriority` returns -1), so `classifySelector` returns `hasPushable: false`, routing through `getListBaseTable` (Path B). The predicate filters each scanned row in-memory. With `maxScanMultiplier=10`, the scan cap = `10 * 10 = 100` rows. Only 4 of the 5 `status=standby` objects fall within the first 100 rows scanned (NNN 020, 040, 060, 080) — NNN 100 is beyond row 100
+  - [x] 1.4 Assert `len(list.Items) < 10` (exactly 4 matches found before scan cap)
+  - [x] 1.5 Assert `list.Continue != ""` (scan cap reached, more rows exist)
+  - [x] 1.6 Assert all returned items have `status=standby` (not `status=active`)
+  - [x] 1.7 Issue a follow-up `GetList` with the continue token and the same selector
+  - [x] 1.8 Assert the follow-up returns the remaining match(es) (NNN 100 and any beyond)
+  - [x] 1.9 Assert combined results from both pages cover all 5 `status=standby` objects
+  - [x] 1.10 Register `t.Cleanup` for all 110 keys and their label rows
 
-- [ ] Task 2: Label-index path (Path A) scan cap test (AC: #1, #2, #3, #4)
-  - [ ] 2.1 Add `TestStore_ScanCap_LabelIndex_PartialList`
-  - [ ] 2.2 Create 110 DRPlan objects in namespace `"default"` with names `sc-idx-NNN` (NNN = 000–109, zero-padded 3-digit). Give all 110 objects `group=alpha` (pushable primary label). Give 5 objects (at indices 020, 040, 060, 080, 100) an additional `env=staging` label; give the remaining 105 objects `env=prod`
-  - [ ] 2.3 Call `GetList` with `limit=10` and selector `group=alpha,env=staging`. Both are equality (`=`) selectors; `classifySelector` picks the first as primary (both have priority 3 — `Equals`). The primary requirement (`group=alpha` or `env=staging`, depending on iteration order) drives the label-index query; the other is the residual. Either way, all 110 objects match the primary, and only 5 pass the residual. Scan cap = `10 * 10 = 100` index rows scanned
-  - [ ] 2.4 Assert `len(list.Items) < 10` (only the matches found within the scan window)
-  - [ ] 2.5 Assert `list.Continue != ""` (scan cap reached, more index candidates exist)
-  - [ ] 2.6 Assert all returned items have both `group=alpha` and `env=staging`
-  - [ ] 2.7 Issue a follow-up `GetList` with continue token and same selector
-  - [ ] 2.8 Assert combined results cover all 5 `env=staging` objects
-  - [ ] 2.9 Register `t.Cleanup` for all 110 keys and their label rows
+- [x] Task 2: Label-index path (Path A) scan cap test (AC: #1, #2, #3, #4)
+  - [x] 2.1 Add `TestStore_ScanCap_LabelIndex_PartialList`
+  - [x] 2.2 Create 110 DRPlan objects in namespace `"default"` with names `sc-idx-NNN` (NNN = 000–109, zero-padded 3-digit). Give all 110 objects `group=alpha` (pushable primary label). Give 5 objects (at indices 020, 040, 060, 080, 100) an additional `env=staging` label; give the remaining 105 objects `env=prod`
+  - [x] 2.3 Call `GetList` with `limit=10` and selector `group=alpha,env=staging`. Both are equality (`=`) selectors; `classifySelector` picks the first as primary (both have priority 3 — `Equals`). The primary requirement (`group=alpha` or `env=staging`, depending on iteration order) drives the label-index query; the other is the residual. Either way, all 110 objects match the primary, and only 5 pass the residual. Scan cap = `10 * 10 = 100` index rows scanned
+  - [x] 2.4 Assert `len(list.Items) < 10` (only the matches found within the scan window)
+  - [x] 2.5 Assert `list.Continue != ""` (scan cap reached, more index candidates exist)
+  - [x] 2.6 Assert all returned items have both `group=alpha` and `env=staging`
+  - [x] 2.7 Issue a follow-up `GetList` with continue token and same selector
+  - [x] 2.8 Assert combined results cover all 5 `env=staging` objects
+  - [x] 2.9 Register `t.Cleanup` for all 110 keys and their label rows
 
-- [ ] Task 3: Verify coexistence and run (AC: #4)
-  - [ ] 3.1 Run `go test -tags=integration ./test/integration/storage/ -v -count=1 -run TestStore_ScanCap` — new tests pass
-  - [ ] 3.2 Run `make integration` — all integration tests pass (including existing Story 1.3.1 label-indexed pagination tests)
-  - [ ] 3.3 Run `make test` — no regressions in unit tests
-  - [ ] 3.4 Run `make lint-fix` followed by `make lint`
+- [x] Task 3: Verify coexistence and run (AC: #4)
+  - [x] 3.1 Run `go test -tags=integration ./test/integration/storage/ -v -count=1 -run TestStore_ScanCap` — new tests pass
+  - [x] 3.2 Run `make integration` — all integration tests pass (including existing Story 1.3.1 label-indexed pagination tests)
+  - [x] 3.3 Run `make test` — no regressions in unit tests
+  - [x] 3.4 Run `make lint-fix` followed by `make lint`
+
+### Review Findings
+
+- [x] [Review][Patch] Add explicit no-overlap assertions between page 1 and page 2 in both scan-cap tests [`test/integration/storage/store_test.go`:1636]
+- [x] [Review][Patch] Restore Task 2 and Task 3 wording to checkbox-only updates; implementation-specific deviations belong in allowed record sections, not rewritten task text [`_bmad-output/implementation-artifacts/2b-4-scylladb-scan-cap-integration-test.md`:41]
+- [x] [Review][Patch] Update the story `File List` to include every modified file, including the story file itself and `sprint-status.yaml` [`_bmad-output/implementation-artifacts/2b-4-scylladb-scan-cap-integration-test.md`:223]
 
 ## Dev Notes
 
@@ -206,8 +212,28 @@ make lint                                                           # Verify lin
 
 ### Agent Model Used
 
+Cursor (Claude Opus 4.6)
+
 ### Debug Log References
+
+- Label-index test initially failed because `labels.Parse` sorts requirements alphabetically by key. Selector `group=alpha,env=staging` placed `env=staging` (key "env") as primary (index 0), yielding only 5 index rows — not enough to trigger the scan cap. Fixed by renaming labels to `app=alpha,zone=staging` so the broad requirement key ("app") sorts before the narrow one ("zone"), ensuring all 110 index rows are scanned.
 
 ### Completion Notes List
 
+- Added `TestStore_ScanCap_BaseTable_PartialList`: 110 objects with 5 `status=standby` targets, negative-only selector `status!=active` routes through base-table scan (Path B). Verifies 4 matches in first page (scan cap at 100 rows), non-empty continue token, and follow-up retrieves the 5th match.
+- Added `TestStore_ScanCap_LabelIndex_PartialList`: 110 objects all with `app=alpha`, 5 also with `zone=staging`. Selector `app=alpha,zone=staging` routes through label-index (Path A). Verifies partial list with continue token when scan cap fires, and follow-up completes the result set.
+- Both tests use zero-padded 3-digit names (e.g., `sc-base-000`) to guarantee alphabetical sort order matches numeric order in ScyllaDB's UTF-8 clustering.
+- Both tests register `t.Cleanup` for all 110 keys and their label rows.
+- All integration tests pass (new + existing Story 1.3.1 tests), all unit tests pass, no new lint errors.
+
 ### File List
+
+| Action | File |
+|--------|------|
+| Modified | `test/integration/storage/store_test.go` |
+| Modified | `_bmad-output/implementation-artifacts/2b-4-scylladb-scan-cap-integration-test.md` |
+| Modified | `_bmad-output/implementation-artifacts/sprint-status.yaml` |
+
+### Change Log
+
+- 2026-04-15: Implemented Story 2b.4 — added `TestStore_ScanCap_BaseTable_PartialList` and `TestStore_ScanCap_LabelIndex_PartialList` integration tests verifying bounded re-fetch loop scan cap behavior with partial lists and continue tokens
