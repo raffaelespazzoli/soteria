@@ -19,15 +19,12 @@ package admission
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"net/http"
 	"strings"
 	"testing"
 
 	admissionv1 "k8s.io/api/admission/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
@@ -69,7 +66,7 @@ func buildScheme() *runtime.Scheme {
 
 func makeRequest(plan *soteriav1alpha1.DRPlan, op admissionv1.Operation) admission.Request {
 	raw, _ := json.Marshal(plan)
-	return admission.Request{
+	req := admission.Request{
 		AdmissionRequest: admissionv1.AdmissionRequest{
 			Operation: op,
 			Name:      plan.Name,
@@ -77,181 +74,75 @@ func makeRequest(plan *soteriav1alpha1.DRPlan, op admissionv1.Operation) admissi
 			Object:    runtime.RawExtension{Raw: raw},
 		},
 	}
+	if op == admissionv1.Update {
+		req.OldObject = runtime.RawExtension{Raw: raw}
+	}
+	return req
 }
 
-func TestDRPlanValidator_VMExclusivity(t *testing.T) {
-	planALabels := map[string]string{soteriav1alpha1.DRPlanLabel: "plan-a", "wave": "1"}
-	erpVMsPlanA := []engine.VMReference{
-		{Name: "erp-db", Namespace: "default", Labels: planALabels},
-		{Name: "erp-app", Namespace: "default", Labels: planALabels},
-	}
-	crmVMs := []engine.VMReference{
-		{Name: "crm-db", Namespace: "default", Labels: map[string]string{soteriav1alpha1.DRPlanLabel: "plan-b", "wave": "1"}},
-	}
-	tests := []struct {
-		name          string
-		plan          *soteriav1alpha1.DRPlan
-		existingPlans []*soteriav1alpha1.DRPlan
-		op            admissionv1.Operation
-		discovererVMs map[string][]engine.VMReference
-		wantAllowed   bool
-		wantMessage   string
-	}{
-		{
-			name: "no existing plans — allowed",
-			plan: &soteriav1alpha1.DRPlan{
-				ObjectMeta: metav1.ObjectMeta{Name: "plan-a"},
-				Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
-			},
-			op: admissionv1.Create,
-			discovererVMs: map[string][]engine.VMReference{
-				"plan-a": erpVMsPlanA,
-			},
-			wantAllowed: true,
-		},
-		{
-			name: "non-overlapping selector — allowed",
-			plan: &soteriav1alpha1.DRPlan{
-				ObjectMeta: metav1.ObjectMeta{Name: "plan-b"},
-				Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
-			},
-			existingPlans: []*soteriav1alpha1.DRPlan{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "plan-a"},
-					Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
-				},
-			},
-			op: admissionv1.Create,
-			discovererVMs: map[string][]engine.VMReference{
-				"plan-b": crmVMs,
-			},
-			wantAllowed: true,
-		},
-		{
-			name: "overlapping selector — denied",
-			plan: &soteriav1alpha1.DRPlan{
-				ObjectMeta: metav1.ObjectMeta{Name: "plan-b"},
-				Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
-			},
-			existingPlans: []*soteriav1alpha1.DRPlan{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "plan-a"},
-					Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
-				},
-			},
-			op: admissionv1.Create,
-			discovererVMs: map[string][]engine.VMReference{
-				// Candidate plan-b still discovers VMs that are already labeled for plan-a.
-				"plan-b": erpVMsPlanA,
-			},
-			wantAllowed: false,
-			wantMessage: "already belongs to DRPlan",
-		},
-		{
-			name: "update same plan (self) — allowed",
-			plan: &soteriav1alpha1.DRPlan{
-				ObjectMeta: metav1.ObjectMeta{Name: "plan-a"},
-				Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
-			},
-			existingPlans: []*soteriav1alpha1.DRPlan{
-				{
-					ObjectMeta: metav1.ObjectMeta{Name: "plan-a"},
-					Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
-				},
-			},
-			op: admissionv1.Update,
-			discovererVMs: map[string][]engine.VMReference{
-				"plan-a": erpVMsPlanA,
-			},
-			wantAllowed: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			scheme := buildScheme()
-			builder := fake.NewClientBuilder().WithScheme(scheme)
-			for _, p := range tt.existingPlans {
-				builder.WithObjects(p.DeepCopy())
-			}
-			fakeClient := builder.Build()
-
-			discoverer := &mockVMDiscoverer{vms: tt.discovererVMs}
-
-			v := &DRPlanValidator{
-				ExclusivityChecker: &ExclusivityChecker{Client: fakeClient, VMDiscoverer: discoverer},
-				NSLookup:           &mockNSLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{}},
-				decoder:            admission.NewDecoder(scheme),
-			}
-
-			resp := v.Handle(context.Background(), makeRequest(tt.plan, tt.op))
-			if resp.Allowed != tt.wantAllowed {
-				t.Errorf("Allowed = %v, want %v; result: %s", resp.Allowed, tt.wantAllowed, resp.Result)
-			}
-			if tt.wantMessage != "" && (resp.Result == nil || !strings.Contains(resp.Result.Message, tt.wantMessage)) {
-				msg := ""
-				if resp.Result != nil {
-					msg = resp.Result.Message
-				}
-				t.Errorf("expected message containing %q, got %q", tt.wantMessage, msg)
-			}
-		})
-	}
-}
-
-func TestDRPlanValidator_NamespaceConsistency(t *testing.T) {
+func TestDRPlanValidator_FieldValidation(t *testing.T) {
 	tests := []struct {
 		name        string
-		vms         []engine.VMReference
-		nsLevels    map[string]soteriav1alpha1.ConsistencyLevel
+		plan        *soteriav1alpha1.DRPlan
+		op          admissionv1.Operation
 		wantAllowed bool
 		wantMessage string
 	}{
 		{
-			name: "no namespace-level annotation — allowed",
-			vms: []engine.VMReference{
-				{Name: "vm-1", Namespace: "ns-a", Labels: map[string]string{"app": "erp", "wave": "1"}},
-				{Name: "vm-2", Namespace: "ns-a", Labels: map[string]string{"app": "erp", "wave": "2"}},
+			name: "valid plan CREATE — allowed",
+			plan: &soteriav1alpha1.DRPlan{
+				ObjectMeta: metav1.ObjectMeta{Name: "plan-ok"},
+				Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
 			},
-			nsLevels:    map[string]soteriav1alpha1.ConsistencyLevel{},
+			op:          admissionv1.Create,
 			wantAllowed: true,
 		},
 		{
-			name: "namespace-level, all same wave — allowed",
-			vms: []engine.VMReference{
-				{Name: "vm-1", Namespace: "erp-db", Labels: map[string]string{"app": "erp", "wave": "1"}},
-				{Name: "vm-2", Namespace: "erp-db", Labels: map[string]string{"app": "erp", "wave": "1"}},
+			name: "missing waveLabel — denied",
+			plan: &soteriav1alpha1.DRPlan{
+				ObjectMeta: metav1.ObjectMeta{Name: "plan-no-wave"},
+				Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "", MaxConcurrentFailovers: 4},
 			},
-			nsLevels:    map[string]soteriav1alpha1.ConsistencyLevel{"erp-db": soteriav1alpha1.ConsistencyLevelNamespace},
+			op:          admissionv1.Create,
+			wantAllowed: false,
+			wantMessage: "waveLabel",
+		},
+		{
+			name: "invalid maxConcurrentFailovers — denied",
+			plan: &soteriav1alpha1.DRPlan{
+				ObjectMeta: metav1.ObjectMeta{Name: "plan-bad-max"},
+				Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 0},
+			},
+			op:          admissionv1.Create,
+			wantAllowed: false,
+			wantMessage: "maxConcurrentFailovers",
+		},
+		{
+			name: "valid plan UPDATE — allowed",
+			plan: &soteriav1alpha1.DRPlan{
+				ObjectMeta: metav1.ObjectMeta{Name: "plan-update"},
+				Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 8},
+			},
+			op:          admissionv1.Update,
 			wantAllowed: true,
 		},
 		{
-			name: "namespace-level, different wave — denied",
-			vms: []engine.VMReference{
-				{Name: "erp-db-1", Namespace: "erp-database", Labels: map[string]string{"app": "erp", "wave": "1"}},
-				{Name: "erp-db-2", Namespace: "erp-database", Labels: map[string]string{"app": "erp", "wave": "2"}},
+			name: "invalid UPDATE (zero maxConcurrent) — denied",
+			plan: &soteriav1alpha1.DRPlan{
+				ObjectMeta: metav1.ObjectMeta{Name: "plan-bad-update"},
+				Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: -1},
 			},
-			nsLevels:    map[string]soteriav1alpha1.ConsistencyLevel{"erp-database": soteriav1alpha1.ConsistencyLevelNamespace},
+			op:          admissionv1.Update,
 			wantAllowed: false,
-			wantMessage: "conflicting wave labels",
+			wantMessage: "maxConcurrentFailovers",
 		},
 		{
-			name: "mixed: namespace-level conflict + VM-level no conflict — denied",
-			vms: []engine.VMReference{
-				{Name: "vm-1", Namespace: "ns-level", Labels: map[string]string{"app": "erp", "wave": "1"}},
-				{Name: "vm-2", Namespace: "ns-level", Labels: map[string]string{"app": "erp", "wave": "2"}},
-				{Name: "vm-3", Namespace: "vm-level", Labels: map[string]string{"app": "erp", "wave": "1"}},
+			name: "DELETE operation — allowed",
+			plan: &soteriav1alpha1.DRPlan{
+				ObjectMeta: metav1.ObjectMeta{Name: "plan-del"},
+				Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
 			},
-			nsLevels:    map[string]soteriav1alpha1.ConsistencyLevel{"ns-level": soteriav1alpha1.ConsistencyLevelNamespace},
-			wantAllowed: false,
-			wantMessage: "conflicting wave labels",
-		},
-		{
-			name: "single VM in namespace-level namespace — allowed",
-			vms: []engine.VMReference{
-				{Name: "vm-solo", Namespace: "erp-db", Labels: map[string]string{"app": "erp", "wave": "1"}},
-			},
-			nsLevels:    map[string]soteriav1alpha1.ConsistencyLevel{"erp-db": soteriav1alpha1.ConsistencyLevelNamespace},
+			op:          admissionv1.Delete,
 			wantAllowed: true,
 		},
 	}
@@ -259,24 +150,11 @@ func TestDRPlanValidator_NamespaceConsistency(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			scheme := buildScheme()
-			fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
-
-			discoverer := &mockVMDiscoverer{vms: map[string][]engine.VMReference{
-				"test-plan": tt.vms,
-			}}
-
 			v := &DRPlanValidator{
-				ExclusivityChecker: &ExclusivityChecker{Client: fakeClient, VMDiscoverer: discoverer},
-				NSLookup:           &mockNSLookup{levels: tt.nsLevels},
-				decoder:            admission.NewDecoder(scheme),
+				decoder: admission.NewDecoder(scheme),
 			}
 
-			plan := &soteriav1alpha1.DRPlan{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-plan"},
-				Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 10},
-			}
-
-			resp := v.Handle(context.Background(), makeRequest(plan, admissionv1.Create))
+			resp := v.Handle(context.Background(), makeRequest(tt.plan, tt.op))
 			if resp.Allowed != tt.wantAllowed {
 				t.Errorf("Allowed = %v, want %v; result: %v", resp.Allowed, tt.wantAllowed, resp.Result)
 			}
@@ -289,297 +167,4 @@ func TestDRPlanValidator_NamespaceConsistency(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestDRPlanValidator_MaxConcurrentCapacity(t *testing.T) {
-	tests := []struct {
-		name          string
-		vms           []engine.VMReference
-		nsLevels      map[string]soteriav1alpha1.ConsistencyLevel
-		maxConcurrent int
-		wantAllowed   bool
-		wantMessage   string
-	}{
-		{
-			name: "group size under limit — allowed",
-			vms: []engine.VMReference{
-				{Name: "vm-1", Namespace: "erp-db", Labels: map[string]string{"app": "erp", "wave": "1"}},
-				{Name: "vm-2", Namespace: "erp-db", Labels: map[string]string{"app": "erp", "wave": "1"}},
-				{Name: "vm-3", Namespace: "erp-db", Labels: map[string]string{"app": "erp", "wave": "1"}},
-			},
-			nsLevels:      map[string]soteriav1alpha1.ConsistencyLevel{"erp-db": soteriav1alpha1.ConsistencyLevelNamespace},
-			maxConcurrent: 4,
-			wantAllowed:   true,
-		},
-		{
-			name: "group size exceeds limit — denied",
-			vms: []engine.VMReference{
-				{Name: "vm-1", Namespace: "erp-db", Labels: map[string]string{"app": "erp", "wave": "1"}},
-				{Name: "vm-2", Namespace: "erp-db", Labels: map[string]string{"app": "erp", "wave": "1"}},
-				{Name: "vm-3", Namespace: "erp-db", Labels: map[string]string{"app": "erp", "wave": "1"}},
-				{Name: "vm-4", Namespace: "erp-db", Labels: map[string]string{"app": "erp", "wave": "1"}},
-				{Name: "vm-5", Namespace: "erp-db", Labels: map[string]string{"app": "erp", "wave": "1"}},
-				{Name: "vm-6", Namespace: "erp-db", Labels: map[string]string{"app": "erp", "wave": "1"}},
-			},
-			nsLevels:      map[string]soteriav1alpha1.ConsistencyLevel{"erp-db": soteriav1alpha1.ConsistencyLevelNamespace},
-			maxConcurrent: 4,
-			wantAllowed:   false,
-			wantMessage:   "maxConcurrentFailovers (4) is less than namespace+wave group size (6)",
-		},
-		{
-			name: "group size exactly equals limit — allowed (boundary)",
-			vms: []engine.VMReference{
-				{Name: "vm-1", Namespace: "erp-db", Labels: map[string]string{"app": "erp", "wave": "1"}},
-				{Name: "vm-2", Namespace: "erp-db", Labels: map[string]string{"app": "erp", "wave": "1"}},
-				{Name: "vm-3", Namespace: "erp-db", Labels: map[string]string{"app": "erp", "wave": "1"}},
-				{Name: "vm-4", Namespace: "erp-db", Labels: map[string]string{"app": "erp", "wave": "1"}},
-			},
-			nsLevels:      map[string]soteriav1alpha1.ConsistencyLevel{"erp-db": soteriav1alpha1.ConsistencyLevelNamespace},
-			maxConcurrent: 4,
-			wantAllowed:   true,
-		},
-		{
-			name: "multiple groups, one exceeds — denied",
-			vms: []engine.VMReference{
-				{Name: "vm-1", Namespace: "ns-a", Labels: map[string]string{"app": "erp", "wave": "1"}},
-				{Name: "vm-2", Namespace: "ns-a", Labels: map[string]string{"app": "erp", "wave": "1"}},
-				{Name: "vm-3", Namespace: "ns-b", Labels: map[string]string{"app": "erp", "wave": "1"}},
-				{Name: "vm-4", Namespace: "ns-b", Labels: map[string]string{"app": "erp", "wave": "1"}},
-				{Name: "vm-5", Namespace: "ns-b", Labels: map[string]string{"app": "erp", "wave": "1"}},
-			},
-			nsLevels: map[string]soteriav1alpha1.ConsistencyLevel{
-				"ns-a": soteriav1alpha1.ConsistencyLevelNamespace,
-				"ns-b": soteriav1alpha1.ConsistencyLevelNamespace,
-			},
-			maxConcurrent: 2,
-			wantAllowed:   false,
-			wantMessage:   "namespace+wave group size (3) for namespace ns-b",
-		},
-		{
-			name: "all VM-level — allowed (individual VMs always fit)",
-			vms: []engine.VMReference{
-				{Name: "vm-1", Namespace: "ns-a", Labels: map[string]string{"app": "erp", "wave": "1"}},
-				{Name: "vm-2", Namespace: "ns-a", Labels: map[string]string{"app": "erp", "wave": "1"}},
-				{Name: "vm-3", Namespace: "ns-a", Labels: map[string]string{"app": "erp", "wave": "1"}},
-			},
-			nsLevels:      map[string]soteriav1alpha1.ConsistencyLevel{},
-			maxConcurrent: 1,
-			wantAllowed:   true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			scheme := buildScheme()
-			fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
-
-			discoverer := &mockVMDiscoverer{vms: map[string][]engine.VMReference{
-				"test-plan": tt.vms,
-			}}
-
-			v := &DRPlanValidator{
-				ExclusivityChecker: &ExclusivityChecker{Client: fakeClient, VMDiscoverer: discoverer},
-				NSLookup:           &mockNSLookup{levels: tt.nsLevels},
-				decoder:            admission.NewDecoder(scheme),
-			}
-
-			plan := &soteriav1alpha1.DRPlan{
-				ObjectMeta: metav1.ObjectMeta{Name: "test-plan"},
-				Spec: soteriav1alpha1.DRPlanSpec{
-					WaveLabel:              "wave",
-					MaxConcurrentFailovers: tt.maxConcurrent,
-				},
-			}
-
-			resp := v.Handle(context.Background(), makeRequest(plan, admissionv1.Create))
-			if resp.Allowed != tt.wantAllowed {
-				t.Errorf("Allowed = %v, want %v; result: %v", resp.Allowed, tt.wantAllowed, resp.Result)
-			}
-			if tt.wantMessage != "" && (resp.Result == nil || !strings.Contains(resp.Result.Message, tt.wantMessage)) {
-				msg := ""
-				if resp.Result != nil {
-					msg = resp.Result.Message
-				}
-				t.Errorf("expected message containing %q, got %q", tt.wantMessage, msg)
-			}
-		})
-	}
-}
-
-func TestDRPlanValidator_AllowedAndEdgeCases(t *testing.T) {
-	t.Run("valid plan, no existing plans, no namespace-level — allowed", func(t *testing.T) {
-		scheme := buildScheme()
-		fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
-
-		vms := []engine.VMReference{
-			{Name: "vm-1", Namespace: "default", Labels: map[string]string{soteriav1alpha1.DRPlanLabel: "plan-a", "wave": "1"}},
-		}
-		discoverer := &mockVMDiscoverer{vms: map[string][]engine.VMReference{
-			"plan-a": vms,
-		}}
-
-		v := &DRPlanValidator{
-			ExclusivityChecker: &ExclusivityChecker{Client: fakeClient, VMDiscoverer: discoverer},
-			NSLookup:           &mockNSLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{}},
-			decoder:            admission.NewDecoder(scheme),
-		}
-
-		plan := &soteriav1alpha1.DRPlan{
-			ObjectMeta: metav1.ObjectMeta{Name: "plan-a"},
-			Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
-		}
-
-		resp := v.Handle(context.Background(), makeRequest(plan, admissionv1.Create))
-		if !resp.Allowed {
-			t.Errorf("expected allowed, got denied: %v", resp.Result)
-		}
-	})
-
-	t.Run("DELETE operation — allowed", func(t *testing.T) {
-		scheme := buildScheme()
-		fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
-
-		v := &DRPlanValidator{
-			ExclusivityChecker: &ExclusivityChecker{Client: fakeClient, VMDiscoverer: &mockVMDiscoverer{}},
-			NSLookup:           &mockNSLookup{},
-			decoder:            admission.NewDecoder(scheme),
-		}
-
-		plan := &soteriav1alpha1.DRPlan{
-			ObjectMeta: metav1.ObjectMeta{Name: "plan-a"},
-			Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
-		}
-
-		resp := v.Handle(context.Background(), makeRequest(plan, admissionv1.Delete))
-		if !resp.Allowed {
-			t.Errorf("expected allowed for DELETE, got denied: %v", resp.Result)
-		}
-	})
-
-	t.Run("no discovered VMs — allowed", func(t *testing.T) {
-		scheme := buildScheme()
-		fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
-
-		discoverer := &mockVMDiscoverer{vms: map[string][]engine.VMReference{
-			"plan-a": {},
-		}}
-
-		v := &DRPlanValidator{
-			ExclusivityChecker: &ExclusivityChecker{Client: fakeClient, VMDiscoverer: discoverer},
-			NSLookup:           &mockNSLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{}},
-			decoder:            admission.NewDecoder(scheme),
-		}
-
-		plan := &soteriav1alpha1.DRPlan{
-			ObjectMeta: metav1.ObjectMeta{Name: "plan-a"},
-			Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
-		}
-
-		resp := v.Handle(context.Background(), makeRequest(plan, admissionv1.Create))
-		if !resp.Allowed {
-			t.Errorf("expected allowed for empty VM discovery, got denied: %v", resp.Result)
-		}
-	})
-}
-
-func TestDRPlanValidator_ErrorPaths(t *testing.T) {
-	erpVMs := []engine.VMReference{
-		{Name: "erp-db", Namespace: "ns-a", Labels: map[string]string{soteriav1alpha1.DRPlanLabel: "plan-a", "wave": "1"}},
-	}
-
-	t.Run("VM discovery error returns 500", func(t *testing.T) {
-		scheme := buildScheme()
-		fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
-
-		errDiscoverer := &mockVMDiscoverer{err: fmt.Errorf("connection refused")}
-		v := &DRPlanValidator{
-			ExclusivityChecker: &ExclusivityChecker{
-				Client: fakeClient, VMDiscoverer: errDiscoverer,
-			},
-			NSLookup: &mockNSLookup{},
-			decoder:  admission.NewDecoder(scheme),
-		}
-
-		plan := &soteriav1alpha1.DRPlan{
-			ObjectMeta: metav1.ObjectMeta{Name: "plan-a"},
-			Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
-		}
-
-		resp := v.Handle(context.Background(), makeRequest(plan, admissionv1.Create))
-		if resp.Allowed {
-			t.Fatal("expected denied on VM discovery error")
-		}
-		if resp.Result == nil || resp.Result.Code != http.StatusInternalServerError {
-			t.Errorf("expected 500, got %v", resp.Result)
-		}
-	})
-
-	t.Run("exclusivity check detects overlap with existing plan", func(t *testing.T) {
-		scheme := buildScheme()
-		existingPlan := &soteriav1alpha1.DRPlan{
-			ObjectMeta: metav1.ObjectMeta{Name: "plan-existing"},
-			Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
-		}
-		fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithObjects(existingPlan).Build()
-
-		discoverer := &mockVMDiscoverer{vms: map[string][]engine.VMReference{
-			"plan-new": {
-				{
-					Name: "erp-db", Namespace: "ns-a",
-					Labels: map[string]string{soteriav1alpha1.DRPlanLabel: "plan-existing", "wave": "1"},
-				},
-			},
-		}}
-
-		v := &DRPlanValidator{
-			ExclusivityChecker: &ExclusivityChecker{Client: fakeClient, VMDiscoverer: discoverer},
-			NSLookup:           &mockNSLookup{},
-			decoder:            admission.NewDecoder(scheme),
-		}
-
-		plan := &soteriav1alpha1.DRPlan{
-			ObjectMeta: metav1.ObjectMeta{Name: "plan-new"},
-			Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
-		}
-
-		resp := v.Handle(context.Background(), makeRequest(plan, admissionv1.Create))
-		if resp.Allowed {
-			t.Fatal("expected denied when existing plan selects the same VMs")
-		}
-		if resp.Result == nil || !strings.Contains(resp.Result.Message, "already belongs to DRPlan") {
-			msg := ""
-			if resp.Result != nil {
-				msg = resp.Result.Message
-			}
-			t.Errorf("expected exclusivity error, got: %s", msg)
-		}
-	})
-
-	t.Run("namespace lookup error returns 500", func(t *testing.T) {
-		scheme := buildScheme()
-		fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
-
-		discoverer := &mockVMDiscoverer{vms: map[string][]engine.VMReference{
-			"plan-a": erpVMs,
-		}}
-
-		v := &DRPlanValidator{
-			ExclusivityChecker: &ExclusivityChecker{Client: fakeClient, VMDiscoverer: discoverer},
-			NSLookup:           &mockNSLookup{err: fmt.Errorf("namespace not found")},
-			decoder:            admission.NewDecoder(scheme),
-		}
-
-		plan := &soteriav1alpha1.DRPlan{
-			ObjectMeta: metav1.ObjectMeta{Name: "plan-a"},
-			Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
-		}
-
-		resp := v.Handle(context.Background(), makeRequest(plan, admissionv1.Create))
-		if resp.Allowed {
-			t.Fatal("expected denied on namespace lookup error")
-		}
-		if resp.Result == nil || resp.Result.Code != http.StatusInternalServerError {
-			t.Errorf("expected 500, got %v", resp.Result)
-		}
-	})
 }

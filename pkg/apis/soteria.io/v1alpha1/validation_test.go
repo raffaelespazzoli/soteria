@@ -82,7 +82,7 @@ func TestValidateDRPlan(t *testing.T) {
 			wantFields: []string{"spec.waveLabel", "spec.maxConcurrentFailovers"},
 		},
 		{
-			name: "plan without vmSelector is valid",
+			name: "minimal valid plan",
 			plan: &DRPlan{
 				Spec: DRPlanSpec{
 					WaveLabel:              "soteria.io/wave",

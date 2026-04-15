@@ -31,15 +31,9 @@ const ValidateDRPlanPath = "/validate-soteria-io-v1alpha1-drplan"
 const ValidateVMPath = "/validate-kubevirt-io-v1-virtualmachine"
 
 // SetupDRPlanWebhook registers the DRPlan validating webhook with the manager.
-func SetupDRPlanWebhook(
-	mgr ctrl.Manager,
-	exclusivityChecker *ExclusivityChecker,
-	nsLookup engine.NamespaceLookup,
-) error {
+func SetupDRPlanWebhook(mgr ctrl.Manager) error {
 	validator := &DRPlanValidator{
-		ExclusivityChecker: exclusivityChecker,
-		NSLookup:           nsLookup,
-		decoder:            admission.NewDecoder(mgr.GetScheme()),
+		decoder: admission.NewDecoder(mgr.GetScheme()),
 	}
 
 	mgr.GetWebhookServer().Register(ValidateDRPlanPath,
@@ -51,16 +45,14 @@ func SetupDRPlanWebhook(
 // SetupVMWebhook registers the VirtualMachine validating webhook with the manager.
 func SetupVMWebhook(
 	mgr ctrl.Manager,
-	exclusivityChecker *ExclusivityChecker,
 	nsLookup engine.NamespaceLookup,
 	vmDiscoverer engine.VMDiscoverer,
 ) error {
 	validator := &VMValidator{
-		ExclusivityChecker: exclusivityChecker,
-		NSLookup:           nsLookup,
-		Client:             mgr.GetClient(),
-		VMDiscoverer:       vmDiscoverer,
-		decoder:            admission.NewDecoder(mgr.GetScheme()),
+		NSLookup:     nsLookup,
+		Client:       mgr.GetClient(),
+		VMDiscoverer: vmDiscoverer,
+		decoder:      admission.NewDecoder(mgr.GetScheme()),
 	}
 
 	mgr.GetWebhookServer().Register(ValidateVMPath,

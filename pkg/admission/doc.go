@@ -15,14 +15,15 @@ limitations under the License.
 */
 
 // Package admission implements validating admission webhooks for Soteria
-// resources. The DRPlan webhook enforces cross-resource constraints that the
-// aggregated API server's per-object strategy validation cannot check: VM
-// exclusivity across plans, namespace-level wave consistency, and
-// maxConcurrentFailovers capacity. The VirtualMachine webhook enforces the
-// same exclusivity and wave-consistency constraints from the VM mutation side,
-// catching violations when VM labels change rather than when DRPlans change.
-// Together, the two webhooks ensure constraints hold regardless of which
-// resource is mutated. Per-object field validation is handled by the strategy
-// layer (pkg/registry) and is also invoked by the DRPlan webhook as
-// defense-in-depth.
+// resources. The DRPlan webhook validates field-level constraints (waveLabel,
+// maxConcurrentFailovers) as defense-in-depth alongside the aggregated API
+// server's strategy layer. The VirtualMachine webhook validates plan existence
+// (issuing a warning when the referenced DRPlan is missing, to support GitOps
+// ordering) and namespace-level wave consistency (rejecting VMs whose wave
+// label conflicts with siblings in the same namespace-level namespace).
+// VM exclusivity is structurally guaranteed by the soteria.io/drplan label
+// convention — a label key can have only one value, so a VM belongs to at most
+// one plan. Throttle capacity (maxConcurrentFailovers vs group size) is
+// enforced by the controller's reconciliation loop via Ready=False status
+// conditions, not at admission time.
 package admission

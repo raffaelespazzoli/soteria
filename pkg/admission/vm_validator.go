@@ -16,16 +16,21 @@ limitations under the License.
 
 // Tier 2 – Architecture:
 // VMValidator is a validating admission webhook that intercepts VirtualMachine
-// CREATE and UPDATE requests. It validates VM mutations against DRPlan constraints
-// from the VM side, complementing the DRPlan webhook (Story 2.3) which validates
-// from the DRPlan side. Together they enforce VM exclusivity (FR4) and namespace
-// wave consistency (FR7) regardless of which resource is mutated.
+// CREATE and UPDATE requests. It validates two concerns:
 //
-// DRPlan-side validation only catches conflicts when a DRPlan is created/updated.
-// VM label changes can bypass that check — e.g., adding a label to a VM after two
-// non-overlapping DRPlans exist can create a new overlap. Only the controller would
-// catch this asynchronously on the next reconcile. This webhook provides synchronous
-// rejection at admission time.
+//  1. Plan existence: if a VM carries a soteria.io/drplan label, the referenced
+//     DRPlan must exist. A missing plan produces a warning (not a rejection) to
+//     avoid ordering issues during GitOps apply where VMs may land before their
+//     DRPlan.
+//
+//  2. Namespace-level wave consistency: in namespaces annotated with
+//     soteria.io/consistency-level=namespace, all VMs belonging to the same
+//     plan must share a single wave label value (required for crash-consistent
+//     snapshots).
+//
+// VM exclusivity is structurally guaranteed by Kubernetes label semantics — a
+// label key can have only one value, so a VM belongs to at most one DRPlan.
+// The ExclusivityChecker is no longer needed.
 
 package admission
 
@@ -37,7 +42,7 @@ import (
 	"strings"
 
 	admissionv1 "k8s.io/api/admission/v1"
-	"k8s.io/apimachinery/pkg/labels"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -48,7 +53,7 @@ import (
 	"github.com/soteria-project/soteria/pkg/engine"
 )
 
-// +kubebuilder:rbac:groups=soteria.io,resources=drplans,verbs=get;list;watch
+// +kubebuilder:rbac:groups=soteria.io,resources=drplans,verbs=get
 // +kubebuilder:rbac:groups=kubevirt.io,resources=virtualmachines,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 
@@ -57,11 +62,10 @@ import (
 // VMValidator validates VirtualMachine CREATE and UPDATE operations against
 // DRPlan constraints.
 type VMValidator struct {
-	ExclusivityChecker *ExclusivityChecker
-	NSLookup           engine.NamespaceLookup
-	Client             client.Reader
-	VMDiscoverer       engine.VMDiscoverer
-	decoder            admission.Decoder
+	NSLookup     engine.NamespaceLookup
+	Client       client.Reader
+	VMDiscoverer engine.VMDiscoverer
+	decoder      admission.Decoder
 }
 
 // Handle processes an admission request for a VirtualMachine resource.
@@ -79,52 +83,49 @@ func (v *VMValidator) Handle(ctx context.Context, req admission.Request) admissi
 		return admission.Errored(http.StatusBadRequest, fmt.Errorf("decoding VirtualMachine: %w", err))
 	}
 
-	vmName := vm.Name
-	vmNamespace := vm.Namespace
-	vmLabels := labels.Set(vm.Labels)
-
-	if len(vmLabels) == 0 {
+	planName := vm.Labels[soteriav1alpha1.DRPlanLabel]
+	if planName == "" {
 		logger.Info("VM admission allowed")
 		return admission.Allowed("")
 	}
 
-	var allDenials []string
-
-	exclusivityErrors, err := v.ExclusivityChecker.CheckVMExclusivity(ctx, vmName, vmNamespace, vmLabels)
+	// Check that the referenced DRPlan exists. Issue a warning (not rejection)
+	// when it doesn't — during GitOps apply the DRPlan CR may not exist yet.
+	plan := &soteriav1alpha1.DRPlan{}
+	err := v.Client.Get(ctx, types.NamespacedName{Name: planName}, plan)
+	if apierrors.IsNotFound(err) {
+		logger.Info("Referenced DRPlan not found, issuing warning",
+			"plan", planName, "vm", vm.Name, "namespace", vm.Namespace)
+		return admission.Allowed("").WithWarnings(
+			fmt.Sprintf("referenced DRPlan %q does not exist", planName))
+	}
 	if err != nil {
 		return admission.Errored(http.StatusInternalServerError,
-			fmt.Errorf("checking VM exclusivity: %w", err))
-	}
-	allDenials = append(allDenials, exclusivityErrors...)
-
-	if len(exclusivityErrors) > 0 {
-		logger.Info("VM exclusivity check completed", "matchingPlans", len(exclusivityErrors))
+			fmt.Errorf("getting DRPlan %q: %w", planName, err))
 	}
 
-	// When a VM's wave label changes in a namespace-level namespace, it can
-	// break the same-wave constraint required for crash-consistent snapshots.
-	// The DRPlan webhook only checks this when the DRPlan is mutated, not when
-	// individual VMs change their wave labels.
-	waveConflicts, err := v.checkWaveConflict(ctx, vmName, vmNamespace, vmLabels)
+	// Wave consistency: in namespace-level namespaces, all VMs under the same
+	// plan must share a single wave value for crash-consistent snapshots.
+	waveConflicts, err := v.checkWaveConflictForPlan(ctx, vm.Name, vm.Namespace, vm.Labels, plan)
 	if err != nil {
 		return admission.Errored(http.StatusInternalServerError,
 			fmt.Errorf("checking wave conflict: %w", err))
 	}
-	allDenials = append(allDenials, waveConflicts...)
 
-	if len(allDenials) > 0 {
-		logger.Info("VM admission denied", "reasons", len(allDenials))
-		return admission.Denied(strings.Join(allDenials, "; "))
+	if len(waveConflicts) > 0 {
+		logger.Info("VM admission denied", "reasons", len(waveConflicts))
+		return admission.Denied(strings.Join(waveConflicts, "; "))
 	}
 
 	logger.Info("VM admission allowed")
 	return admission.Allowed("")
 }
 
-func (v *VMValidator) checkWaveConflict(
+func (v *VMValidator) checkWaveConflictForPlan(
 	ctx context.Context,
 	vmName, vmNamespace string,
-	vmLabels labels.Set,
+	vmLabels map[string]string,
+	plan *soteriav1alpha1.DRPlan,
 ) ([]string, error) {
 	level, err := v.NSLookup.GetConsistencyLevel(ctx, vmNamespace)
 	if err != nil {
@@ -135,44 +136,12 @@ func (v *VMValidator) checkWaveConflict(
 		return nil, nil
 	}
 
-	matchingPlans, err := v.ExclusivityChecker.FindMatchingPlans(ctx, vmLabels, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	if len(matchingPlans) == 0 {
-		return nil, nil
-	}
-
-	var conflicts []string
-	for _, planRef := range matchingPlans {
-		planConflicts, err := v.checkWaveConflictForPlan(ctx, vmName, vmNamespace, vmLabels, planRef)
-		if err != nil {
-			return nil, err
-		}
-		conflicts = append(conflicts, planConflicts...)
-	}
-
-	return conflicts, nil
-}
-
-func (v *VMValidator) checkWaveConflictForPlan(
-	ctx context.Context,
-	vmName, vmNamespace string,
-	vmLabels labels.Set,
-	planRef types.NamespacedName,
-) ([]string, error) {
-	var plan soteriav1alpha1.DRPlan
-	if err := v.Client.Get(ctx, planRef, &plan); err != nil {
-		return nil, fmt.Errorf("getting DRPlan %s: %w", planRef, err)
-	}
-
 	waveLabel := plan.Spec.WaveLabel
 	thisVMWave := vmLabels[waveLabel]
 
 	siblingVMs, err := v.VMDiscoverer.DiscoverVMs(ctx, plan.Name)
 	if err != nil {
-		return nil, fmt.Errorf("discovering sibling VMs for plan %s: %w", planRef, err)
+		return nil, fmt.Errorf("discovering sibling VMs for plan %s: %w", plan.Name, err)
 	}
 
 	var conflicts []string
@@ -190,7 +159,7 @@ func (v *VMValidator) checkWaveConflictForPlan(
 				"VM %s/%s wave label '%s' conflicts with existing VMs in "+
 					"namespace-level namespace %s under DRPlan %s (expected wave '%s')",
 				vmNamespace, vmName, thisVMWave, vmNamespace,
-				planRef.Name, siblingWave))
+				plan.Name, siblingWave))
 			break
 		}
 	}

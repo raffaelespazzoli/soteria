@@ -52,7 +52,7 @@ func makeVMRequest(vm *kubevirtv1.VirtualMachine, op admissionv1.Operation) admi
 	}
 }
 
-func TestVMValidator_Exclusivity(t *testing.T) {
+func TestVMValidator_PlanExistence(t *testing.T) {
 	planERP := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "plan-erp"},
 		Spec: soteriav1alpha1.DRPlanSpec{
@@ -60,63 +60,57 @@ func TestVMValidator_Exclusivity(t *testing.T) {
 			MaxConcurrentFailovers: 4,
 		},
 	}
-	planDB := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-db"},
-		Spec: soteriav1alpha1.DRPlanSpec{
-			WaveLabel:              "wave",
-			MaxConcurrentFailovers: 4,
-		},
-	}
 
 	tests := []struct {
-		name        string
-		vm          *kubevirtv1.VirtualMachine
-		plans       []*soteriav1alpha1.DRPlan
-		op          admissionv1.Operation
-		wantAllowed bool
-		wantMessage string
+		name         string
+		vm           *kubevirtv1.VirtualMachine
+		plans        []*soteriav1alpha1.DRPlan
+		op           admissionv1.Operation
+		wantAllowed  bool
+		wantWarnings bool
 	}{
 		{
-			name: "VM CREATE matching 0 DRPlans — allowed",
-			vm: &kubevirtv1.VirtualMachine{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "vm-1", Namespace: "default",
-					Labels: map[string]string{"app": "crm"},
-				},
-			},
-			plans:       []*soteriav1alpha1.DRPlan{planERP, planDB},
-			op:          admissionv1.Create,
-			wantAllowed: true,
-		},
-		{
-			name: "VM CREATE matching 1 DRPlan — allowed",
+			name: "VM with valid soteria.io/drplan label — allowed",
 			vm: &kubevirtv1.VirtualMachine{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: "vm-1", Namespace: "default",
 					Labels: map[string]string{soteriav1alpha1.DRPlanLabel: "plan-erp"},
 				},
 			},
-			plans:       []*soteriav1alpha1.DRPlan{planERP, planDB},
+			plans:       []*soteriav1alpha1.DRPlan{planERP},
 			op:          admissionv1.Create,
 			wantAllowed: true,
 		},
 		{
-			name: "VM UPDATE removing labels — matches 0 plans — allowed",
+			name: "VM with nonexistent plan — allowed with warning",
 			vm: &kubevirtv1.VirtualMachine{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "vm-1", Namespace: "default",
-					Labels: map[string]string{"unrelated": "true"},
+					Name: "vm-2", Namespace: "default",
+					Labels: map[string]string{soteriav1alpha1.DRPlanLabel: "plan-nonexistent"},
 				},
 			},
-			plans:       []*soteriav1alpha1.DRPlan{planERP, planDB},
-			op:          admissionv1.Update,
-			wantAllowed: true,
+			plans:        []*soteriav1alpha1.DRPlan{planERP},
+			op:           admissionv1.Create,
+			wantAllowed:  true,
+			wantWarnings: true,
 		},
 		{
 			name: "VM with no labels — allowed",
 			vm: &kubevirtv1.VirtualMachine{
 				ObjectMeta: metav1.ObjectMeta{
-					Name: "vm-1", Namespace: "default",
+					Name: "vm-3", Namespace: "default",
+				},
+			},
+			plans:       []*soteriav1alpha1.DRPlan{planERP},
+			op:          admissionv1.Create,
+			wantAllowed: true,
+		},
+		{
+			name: "VM with no drplan label — allowed",
+			vm: &kubevirtv1.VirtualMachine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "vm-4", Namespace: "default",
+					Labels: map[string]string{"app": "crm"},
 				},
 			},
 			plans:       []*soteriav1alpha1.DRPlan{planERP},
@@ -134,25 +128,22 @@ func TestVMValidator_Exclusivity(t *testing.T) {
 			}
 			fakeClient := builder.Build()
 
-			checker := &ExclusivityChecker{Client: fakeClient}
 			v := &VMValidator{
-				ExclusivityChecker: checker,
-				NSLookup:           &mockNSLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{}},
-				Client:             fakeClient,
-				VMDiscoverer:       &mockVMDiscoverer{},
-				decoder:            admission.NewDecoder(scheme),
+				NSLookup:     &mockNSLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{}},
+				Client:       fakeClient,
+				VMDiscoverer: &mockVMDiscoverer{},
+				decoder:      admission.NewDecoder(scheme),
 			}
 
 			resp := v.Handle(context.Background(), makeVMRequest(tt.vm, tt.op))
 			if resp.Allowed != tt.wantAllowed {
 				t.Errorf("Allowed = %v, want %v; result: %v", resp.Allowed, tt.wantAllowed, resp.Result)
 			}
-			if tt.wantMessage != "" && (resp.Result == nil || !strings.Contains(resp.Result.Message, tt.wantMessage)) {
-				msg := ""
-				if resp.Result != nil {
-					msg = resp.Result.Message
-				}
-				t.Errorf("expected message containing %q, got %q", tt.wantMessage, msg)
+			if tt.wantWarnings && len(resp.Warnings) == 0 {
+				t.Error("expected warnings but got none")
+			}
+			if !tt.wantWarnings && len(resp.Warnings) > 0 {
+				t.Errorf("expected no warnings but got: %v", resp.Warnings)
 			}
 		})
 	}
@@ -262,18 +253,6 @@ func TestVMValidator_WaveConflict(t *testing.T) {
 			wantMessage: "wave label '2' conflicts",
 		},
 		{
-			name: "VM in namespace-level namespace not matching any DRPlan — allowed",
-			vm: &kubevirtv1.VirtualMachine{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "vm-unrelated", Namespace: "erp-db",
-					Labels: map[string]string{"app": "crm", "wave": "2"},
-				},
-			},
-			plans:       []*soteriav1alpha1.DRPlan{planERP},
-			nsLevels:    map[string]soteriav1alpha1.ConsistencyLevel{"erp-db": soteriav1alpha1.ConsistencyLevelNamespace},
-			wantAllowed: true,
-		},
-		{
 			name: "only VM in namespace-level namespace under a plan — allowed",
 			vm: &kubevirtv1.VirtualMachine{
 				ObjectMeta: metav1.ObjectMeta{
@@ -305,7 +284,6 @@ func TestVMValidator_WaveConflict(t *testing.T) {
 			fakeClient := builder.Build()
 
 			discoverer := &mockVMDiscoverer{vms: tt.siblingVMs}
-			checker := &ExclusivityChecker{Client: fakeClient}
 
 			op := tt.op
 			if op == "" {
@@ -313,11 +291,10 @@ func TestVMValidator_WaveConflict(t *testing.T) {
 			}
 
 			v := &VMValidator{
-				ExclusivityChecker: checker,
-				NSLookup:           &mockNSLookup{levels: tt.nsLevels},
-				Client:             fakeClient,
-				VMDiscoverer:       discoverer,
-				decoder:            admission.NewDecoder(scheme),
+				NSLookup:     &mockNSLookup{levels: tt.nsLevels},
+				Client:       fakeClient,
+				VMDiscoverer: discoverer,
+				decoder:      admission.NewDecoder(scheme),
 			}
 
 			resp := v.Handle(context.Background(), makeVMRequest(tt.vm, op))
@@ -340,11 +317,10 @@ func TestVMValidator_DeleteAllowed(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).Build()
 
 	v := &VMValidator{
-		ExclusivityChecker: &ExclusivityChecker{Client: fakeClient},
-		NSLookup:           &mockNSLookup{},
-		Client:             fakeClient,
-		VMDiscoverer:       &mockVMDiscoverer{},
-		decoder:            admission.NewDecoder(scheme),
+		NSLookup:     &mockNSLookup{},
+		Client:       fakeClient,
+		VMDiscoverer: &mockVMDiscoverer{},
+		decoder:      admission.NewDecoder(scheme),
 	}
 
 	vm := &kubevirtv1.VirtualMachine{
@@ -357,55 +333,5 @@ func TestVMValidator_DeleteAllowed(t *testing.T) {
 	resp := v.Handle(context.Background(), makeVMRequest(vm, admissionv1.Delete))
 	if !resp.Allowed {
 		t.Errorf("expected DELETE to be allowed, got denied: %v", resp.Result)
-	}
-}
-
-func TestVMValidator_WaveConflict_OnlyViolation(t *testing.T) {
-	erpW1Labels := map[string]string{soteriav1alpha1.DRPlanLabel: "plan-erp", "wave": "1"}
-	erpW2Labels := map[string]string{soteriav1alpha1.DRPlanLabel: "plan-erp", "wave": "2"}
-
-	planERP := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-erp"},
-		Spec: soteriav1alpha1.DRPlanSpec{
-			WaveLabel:              "wave",
-			MaxConcurrentFailovers: 4,
-		},
-	}
-
-	scheme := buildVMScheme()
-	fakeClient := fake.NewClientBuilder().WithScheme(scheme).
-		WithObjects(planERP.DeepCopy()).Build()
-
-	discoverer := &mockVMDiscoverer{vms: map[string][]engine.VMReference{
-		"plan-erp": {
-			{Name: "vm-conflict", Namespace: "erp-db", Labels: erpW2Labels},
-			{Name: "vm-sibling", Namespace: "erp-db", Labels: erpW1Labels},
-		},
-	}}
-
-	v := &VMValidator{
-		ExclusivityChecker: &ExclusivityChecker{Client: fakeClient},
-		NSLookup: &mockNSLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{
-			"erp-db": soteriav1alpha1.ConsistencyLevelNamespace,
-		}},
-		Client:       fakeClient,
-		VMDiscoverer: discoverer,
-		decoder:      admission.NewDecoder(scheme),
-	}
-
-	vm := &kubevirtv1.VirtualMachine{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "vm-conflict", Namespace: "erp-db",
-			Labels: map[string]string{soteriav1alpha1.DRPlanLabel: "plan-erp", "wave": "2"},
-		},
-	}
-
-	resp := v.Handle(context.Background(), makeVMRequest(vm, admissionv1.Create))
-	if resp.Allowed {
-		t.Fatal("expected denied for wave conflict")
-	}
-	msg := resp.Result.Message
-	if !strings.Contains(msg, "wave label") {
-		t.Errorf("expected wave conflict error in message, got: %s", msg)
 	}
 }

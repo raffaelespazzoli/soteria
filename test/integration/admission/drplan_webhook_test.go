@@ -28,7 +28,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	kubevirtv1 "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
@@ -47,20 +46,6 @@ func createTestNamespace(t *testing.T, ctx context.Context, name string, annotat
 	}
 }
 
-func createTestVM(t *testing.T, ctx context.Context, name, namespace string, labels map[string]string) {
-	t.Helper()
-	vm := &kubevirtv1.VirtualMachine{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      name,
-			Namespace: namespace,
-			Labels:    labels,
-		},
-	}
-	if err := testClient.Create(ctx, vm); err != nil {
-		t.Fatalf("Failed to create VM %s/%s: %v", namespace, name, err)
-	}
-}
-
 func cleanupDRPlan(t *testing.T, ctx context.Context, name string) {
 	t.Helper()
 	plan := &soteriav1alpha1.DRPlan{
@@ -70,195 +55,21 @@ func cleanupDRPlan(t *testing.T, ctx context.Context, name string) {
 }
 
 // waitForObject polls the cache until the object is found or the timeout is reached.
-// This handles the delay between API server acceptance and cache sync.
 func waitForObject(ctx context.Context, key client.ObjectKey, obj client.Object) error {
-	timeout := time.After(5 * time.Second)
-	tick := time.NewTicker(50 * time.Millisecond)
-	defer tick.Stop()
+	timeout := 5 * time.Second
+	tick := 50 * time.Millisecond
+	deadline := time.After(timeout)
+	ticker := time.NewTicker(tick)
+	defer ticker.Stop()
 	for {
 		select {
-		case <-timeout:
+		case <-deadline:
 			return testClient.Get(ctx, key, obj)
-		case <-tick.C:
+		case <-ticker.C:
 			if err := testClient.Get(ctx, key, obj); err == nil {
 				return nil
 			}
 		}
-	}
-}
-
-func TestDRPlanWebhook_VMExclusivity_Rejected(t *testing.T) {
-	ctx := context.Background()
-	id := uniqueCounter()
-	nsA := fmt.Sprintf("ns-a-%d", id)
-	createTestNamespace(t, ctx, nsA, nil)
-
-	labels := map[string]string{
-		soteriav1alpha1.DRPlanLabel: "plan-excl",
-		"soteria.io/wave":           "1",
-	}
-	createTestVM(t, ctx, "erp-vm-1", nsA, labels)
-	createTestVM(t, ctx, "erp-vm-2", nsA, labels)
-	createTestVM(t, ctx, "erp-vm-3", nsA, labels)
-
-	planA := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-excl"},
-		Spec: soteriav1alpha1.DRPlanSpec{
-			WaveLabel:              "soteria.io/wave",
-			MaxConcurrentFailovers: 10,
-		},
-	}
-	if err := testClient.Create(ctx, planA); err != nil {
-		t.Fatalf("Failed to create plan-excl in ns-a: %v", err)
-	}
-	defer cleanupDRPlan(t, ctx, "plan-excl")
-
-	planB := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-excl"},
-		Spec: soteriav1alpha1.DRPlanSpec{
-			WaveLabel:              "soteria.io/wave",
-			MaxConcurrentFailovers: 10,
-		},
-	}
-	err := testClient.Create(ctx, planB)
-	if err == nil {
-		t.Fatal("Expected duplicate plan-excl creation to be denied, but it succeeded")
-	}
-	if !errors.IsAlreadyExists(err) {
-		t.Errorf("Expected AlreadyExists for duplicate DRPlan name, got: %v", err)
-	}
-}
-
-func TestDRPlanWebhook_VMExclusivity_NonOverlapping_Allowed(t *testing.T) {
-	ctx := context.Background()
-	ns := fmt.Sprintf("excl-allow-%d", uniqueCounter())
-	createTestNamespace(t, ctx, ns, nil)
-
-	createTestVM(t, ctx, "erp-vm-1", ns, map[string]string{
-		soteriav1alpha1.DRPlanLabel: "plan-erp",
-		"soteria.io/wave":           "1",
-	})
-	createTestVM(t, ctx, "crm-vm-1", ns, map[string]string{
-		soteriav1alpha1.DRPlanLabel: "plan-crm",
-		"soteria.io/wave":           "1",
-	})
-
-	planA := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-erp"},
-		Spec: soteriav1alpha1.DRPlanSpec{
-			WaveLabel:              "soteria.io/wave",
-			MaxConcurrentFailovers: 10,
-		},
-	}
-	if err := testClient.Create(ctx, planA); err != nil {
-		t.Fatalf("Failed to create plan-erp: %v", err)
-	}
-	defer cleanupDRPlan(t, ctx, "plan-erp")
-
-	planB := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-crm"},
-		Spec: soteriav1alpha1.DRPlanSpec{
-			WaveLabel:              "soteria.io/wave",
-			MaxConcurrentFailovers: 10,
-		},
-	}
-	if err := testClient.Create(ctx, planB); err != nil {
-		t.Fatalf("Expected plan-crm creation to succeed, but failed: %v", err)
-	}
-	defer cleanupDRPlan(t, ctx, "plan-crm")
-}
-
-func TestDRPlanWebhook_WaveConflict_Rejected(t *testing.T) {
-	ctx := context.Background()
-	ns := fmt.Sprintf("wave-reject-%d", uniqueCounter())
-	createTestNamespace(t, ctx, ns, map[string]string{
-		soteriav1alpha1.ConsistencyAnnotation: "namespace",
-	})
-
-	createTestVM(t, ctx, "db-1", ns, map[string]string{
-		soteriav1alpha1.DRPlanLabel: "wave-conflict",
-		"soteria.io/wave":           "1",
-	})
-	createTestVM(t, ctx, "db-2", ns, map[string]string{
-		soteriav1alpha1.DRPlanLabel: "wave-conflict",
-		"soteria.io/wave":           "2",
-	})
-
-	plan := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "wave-conflict"},
-		Spec: soteriav1alpha1.DRPlanSpec{
-			WaveLabel:              "soteria.io/wave",
-			MaxConcurrentFailovers: 10,
-		},
-	}
-	err := testClient.Create(ctx, plan)
-	if err == nil {
-		defer cleanupDRPlan(t, ctx, "wave-conflict")
-		t.Fatal("Expected creation to be denied for wave conflict, but it succeeded")
-	}
-	if !strings.Contains(err.Error(), "conflicting wave labels") {
-		t.Errorf("Expected wave conflict error, got: %v", err)
-	}
-}
-
-func TestDRPlanWebhook_WaveConflict_SameWave_Allowed(t *testing.T) {
-	ctx := context.Background()
-	ns := fmt.Sprintf("wave-allow-%d", uniqueCounter())
-	createTestNamespace(t, ctx, ns, map[string]string{
-		soteriav1alpha1.ConsistencyAnnotation: "namespace",
-	})
-
-	createTestVM(t, ctx, "db-1", ns, map[string]string{
-		soteriav1alpha1.DRPlanLabel: "wave-ok",
-		"soteria.io/wave":           "1",
-	})
-	createTestVM(t, ctx, "db-2", ns, map[string]string{
-		soteriav1alpha1.DRPlanLabel: "wave-ok",
-		"soteria.io/wave":           "1",
-	})
-
-	plan := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "wave-ok"},
-		Spec: soteriav1alpha1.DRPlanSpec{
-			WaveLabel:              "soteria.io/wave",
-			MaxConcurrentFailovers: 10,
-		},
-	}
-	if err := testClient.Create(ctx, plan); err != nil {
-		t.Fatalf("Expected creation to succeed for same-wave VMs, but failed: %v", err)
-	}
-	defer cleanupDRPlan(t, ctx, "wave-ok")
-}
-
-func TestDRPlanWebhook_MaxConcurrentExceeded_Rejected(t *testing.T) {
-	ctx := context.Background()
-	ns := fmt.Sprintf("maxconc-reject-%d", uniqueCounter())
-	createTestNamespace(t, ctx, ns, map[string]string{
-		soteriav1alpha1.ConsistencyAnnotation: "namespace",
-	})
-
-	for i := 1; i <= 6; i++ {
-		createTestVM(t, ctx, fmt.Sprintf("vm-%d", i), ns,
-			map[string]string{
-				soteriav1alpha1.DRPlanLabel: "max-exceeded",
-				"soteria.io/wave":           "1",
-			})
-	}
-
-	plan := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "max-exceeded"},
-		Spec: soteriav1alpha1.DRPlanSpec{
-			WaveLabel:              "soteria.io/wave",
-			MaxConcurrentFailovers: 4,
-		},
-	}
-	err := testClient.Create(ctx, plan)
-	if err == nil {
-		defer cleanupDRPlan(t, ctx, "max-exceeded")
-		t.Fatal("Expected creation to be denied for maxConcurrentFailovers exceeded, but it succeeded")
-	}
-	if !strings.Contains(err.Error(), "maxConcurrentFailovers") {
-		t.Errorf("Expected maxConcurrentFailovers error, got: %v", err)
 	}
 }
 
@@ -267,17 +78,8 @@ func TestDRPlanWebhook_ValidPlan_Allowed(t *testing.T) {
 	ns := fmt.Sprintf("valid-plan-%d", uniqueCounter())
 	createTestNamespace(t, ctx, ns, nil)
 
-	createTestVM(t, ctx, "vm-1", ns, map[string]string{
-		soteriav1alpha1.DRPlanLabel: "valid-plan",
-		"soteria.io/wave":           "1",
-	})
-	createTestVM(t, ctx, "vm-2", ns, map[string]string{
-		soteriav1alpha1.DRPlanLabel: "valid-plan",
-		"soteria.io/wave":           "1",
-	})
-
 	plan := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "valid-plan"},
+		ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("valid-plan-%d", uniqueCounter())},
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 10,
@@ -286,39 +88,93 @@ func TestDRPlanWebhook_ValidPlan_Allowed(t *testing.T) {
 	if err := testClient.Create(ctx, plan); err != nil {
 		t.Fatalf("Expected valid plan creation to succeed, but failed: %v", err)
 	}
-	defer cleanupDRPlan(t, ctx, "valid-plan")
+	defer cleanupDRPlan(t, ctx, plan.Name)
 }
 
-func TestDRPlanWebhook_Update_ExclusivityExcludesSelf(t *testing.T) {
+func TestDRPlanWebhook_InvalidWaveLabel_Rejected(t *testing.T) {
 	ctx := context.Background()
-	ns := fmt.Sprintf("update-self-%d", uniqueCounter())
-	createTestNamespace(t, ctx, ns, nil)
-
-	createTestVM(t, ctx, "vm-1", ns, map[string]string{
-		soteriav1alpha1.DRPlanLabel: "plan-self",
-		"soteria.io/wave":           "1",
-	})
 
 	plan := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-self"},
+		ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("no-wave-%d", uniqueCounter())},
+		Spec: soteriav1alpha1.DRPlanSpec{
+			WaveLabel:              "",
+			MaxConcurrentFailovers: 10,
+		},
+	}
+	err := testClient.Create(ctx, plan)
+	if err == nil {
+		defer cleanupDRPlan(t, ctx, plan.Name)
+		t.Fatal("Expected creation to be denied for missing waveLabel, but it succeeded")
+	}
+	if !strings.Contains(err.Error(), "waveLabel") {
+		t.Errorf("Expected waveLabel error, got: %v", err)
+	}
+}
+
+func TestDRPlanWebhook_InvalidMaxConcurrent_Rejected(t *testing.T) {
+	ctx := context.Background()
+
+	plan := &soteriav1alpha1.DRPlan{
+		ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("bad-max-%d", uniqueCounter())},
+		Spec: soteriav1alpha1.DRPlanSpec{
+			WaveLabel:              "soteria.io/wave",
+			MaxConcurrentFailovers: 0,
+		},
+	}
+	err := testClient.Create(ctx, plan)
+	if err == nil {
+		defer cleanupDRPlan(t, ctx, plan.Name)
+		t.Fatal("Expected creation to be denied for invalid maxConcurrentFailovers, but it succeeded")
+	}
+	if !strings.Contains(err.Error(), "maxConcurrentFailovers") {
+		t.Errorf("Expected maxConcurrentFailovers error, got: %v", err)
+	}
+}
+
+func TestDRPlanWebhook_DELETE_Allowed(t *testing.T) {
+	ctx := context.Background()
+
+	planName := fmt.Sprintf("plan-del-%d", uniqueCounter())
+	plan := &soteriav1alpha1.DRPlan{
+		ObjectMeta: metav1.ObjectMeta{Name: planName},
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 10,
 		},
 	}
 	if err := testClient.Create(ctx, plan); err != nil {
-		t.Fatalf("Failed to create initial plan: %v", err)
+		t.Fatalf("Failed to create plan for deletion test: %v", err)
 	}
-	defer cleanupDRPlan(t, ctx, "plan-self")
+
+	if err := testClient.Delete(ctx, plan); err != nil {
+		t.Fatalf("Expected DELETE to succeed, but failed: %v", err)
+	}
+}
+
+func TestDRPlanWebhook_UPDATE_Validation(t *testing.T) {
+	ctx := context.Background()
+
+	planName := fmt.Sprintf("plan-upd-%d", uniqueCounter())
+	plan := &soteriav1alpha1.DRPlan{
+		ObjectMeta: metav1.ObjectMeta{Name: planName},
+		Spec: soteriav1alpha1.DRPlanSpec{
+			WaveLabel:              "soteria.io/wave",
+			MaxConcurrentFailovers: 10,
+		},
+	}
+	if err := testClient.Create(ctx, plan); err != nil {
+		t.Fatalf("Failed to create plan: %v", err)
+	}
+	defer cleanupDRPlan(t, ctx, planName)
 
 	var existing soteriav1alpha1.DRPlan
-	if err := waitForObject(ctx, client.ObjectKey{Name: "plan-self"}, &existing); err != nil {
+	if err := waitForObject(ctx, client.ObjectKey{Name: planName}, &existing); err != nil {
 		t.Fatalf("Failed to get plan: %v", err)
 	}
 
 	existing.Spec.MaxConcurrentFailovers = 8
 	if err := testClient.Update(ctx, &existing); err != nil {
-		t.Fatalf("Expected self-update to succeed, but failed: %v", err)
+		t.Fatalf("Expected valid update to succeed, but failed: %v", err)
 	}
 }
 

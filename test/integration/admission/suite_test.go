@@ -35,6 +35,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -50,6 +51,7 @@ import (
 
 var (
 	testClient client.Client
+	testCfg    *rest.Config
 	testScheme *runtime.Scheme
 	testEnv    *envtest.Environment
 	cancelFunc context.CancelFunc
@@ -145,6 +147,7 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(fmt.Sprintf("starting envtest: %v", err))
 	}
+	testCfg = cfg
 
 	webhookInstallOpts := &testEnv.WebhookInstallOptions
 	webhookOpts := webhook.Options{
@@ -172,16 +175,11 @@ func TestMain(m *testing.M) {
 	}
 	nsLookup := &engine.DefaultNamespaceLookup{Client: clientset.CoreV1()}
 
-	exclusivityChecker := &soteriaadmission.ExclusivityChecker{
-		Client:       mgr.GetClient(),
-		VMDiscoverer: vmDiscoverer,
-	}
-
-	if err := soteriaadmission.SetupDRPlanWebhook(mgr, exclusivityChecker, nsLookup); err != nil {
+	if err := soteriaadmission.SetupDRPlanWebhook(mgr); err != nil {
 		panic(fmt.Sprintf("setting up DRPlan webhook: %v", err))
 	}
 
-	if err := soteriaadmission.SetupVMWebhook(mgr, exclusivityChecker, nsLookup, vmDiscoverer); err != nil {
+	if err := soteriaadmission.SetupVMWebhook(mgr, nsLookup, vmDiscoverer); err != nil {
 		panic(fmt.Sprintf("setting up VM webhook: %v", err))
 	}
 

@@ -251,17 +251,12 @@ func main() {
 
 	// ---- Webhooks ----
 
-	exclusivityChecker := &admission.ExclusivityChecker{
-		Client:       mgr.GetClient(),
-		VMDiscoverer: vmDiscoverer,
-	}
-
-	if err := admission.SetupDRPlanWebhook(mgr, exclusivityChecker, nsLookup); err != nil {
+	if err := admission.SetupDRPlanWebhook(mgr); err != nil {
 		setupLog.Error(err, "Failed to create webhook", "webhook", "DRPlan")
 		os.Exit(1)
 	}
 
-	if err := admission.SetupVMWebhook(mgr, exclusivityChecker, nsLookup, vmDiscoverer); err != nil {
+	if err := admission.SetupVMWebhook(mgr, nsLookup, vmDiscoverer); err != nil {
 		setupLog.Error(err, "Failed to create webhook", "webhook", "VirtualMachine")
 		os.Exit(1)
 	}
