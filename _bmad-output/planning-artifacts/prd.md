@@ -73,19 +73,18 @@ The vendor-specific surface is narrow — six storage operations modeled on CSI-
 
 **Opening Scene:** Maya has three storage backends in her environment — ODF for most workloads, Dell PowerStore for the ERP database tier. She's been manually documenting a DR runbook in Confluence, but she knows it's untested and probably wrong. She installs Soteria on both clusters.
 
-**Rising Action:** Maya starts with the ERP system. She labels the 12 ERP VMs with `app.kubernetes.io/part-of: erp-system` and assigns wave labels: `dr.orchestrator/wave: "1"` for the database VMs, `"2"` for the application servers, `"3"` for the web frontends. She creates a DRPlan CRD:
+**Rising Action:** Maya starts with the ERP system. She labels the 12 ERP VMs with `app.kubernetes.io/part-of: erp-system` and assigns wave labels: `soteria.io/wave: "1"` for the database VMs, `"2"` for the application servers, `"3"` for the web frontends. She creates a DRPlan CRD:
 
 ```yaml
-apiVersion: dr.orchestrator/v1alpha1
+apiVersion: soteria.io/v1alpha1
 kind: DRPlan
 metadata:
   name: erp-full-stack
 spec:
-  vmSelector:
-    matchLabels:
-      app.kubernetes.io/part-of: erp-system
-  waveLabel: dr.orchestrator/wave
+  waveLabel: soteria.io/wave
   maxConcurrentFailovers: 4
+# VMs are associated to this plan via the label:
+#   soteria.io/drplan: erp-full-stack
 ```
 
 She applies it and opens the OCP Console. The DR Dashboard shows `erp-full-stack` with replication status for every volume group. Two volumes show `Degraded` — a replication link she didn't know was broken. She fixes it before it matters.
@@ -205,7 +204,7 @@ She applies it and opens the OCP Console. The DR Dashboard shows `erp-full-stack
 
 **CSI-Addons-inspired internal interface, decoupled from the wire protocol.** Soteria defines its own Go interface modeled on CSI-Addons semantics (volume groups, replication enable/disable, promote/demote, resync) but not bound to CSI-Addons' gRPC transport. This is a pragmatic bet on an emerging standard: ODF already implements CSI-Addons natively, Dell and Pure are moving toward adoption, and NetApp is not interested. The interface design means that as vendors adopt CSI-Addons, their driver implementations collapse to thin pass-throughs. NetApp's permanent shim is isolated behind the same interface. The orchestrator core never changes when storage vendors are added or when vendors' CSI-Addons maturity evolves.
 
-**Label-driven wave auto-formation.** DR plans and wave membership are determined entirely by Kubernetes labels on VMs. Adding a VM to DR protection requires adding two labels — a selector label for plan membership and a wave label for execution ordering. No plan editing, no protection group management UI, no manual wave construction. VMs self-organize. This is a departure from SRM's explicit protection group model and leverages Kubernetes' native label-selection machinery as the DR organization primitive.
+**Label-driven wave auto-formation.** DR plans and wave membership are determined entirely by Kubernetes labels on VMs. Adding a VM to DR protection requires adding two labels — `soteria.io/drplan: <planName>` for plan membership and a wave label for execution ordering. No plan editing, no protection group management UI, no manual wave construction. VMs self-organize. This is a departure from SRM's explicit protection group model and leverages Kubernetes' native label semantics as the DR organization primitive.
 
 ### Validation Approach
 
@@ -283,7 +282,7 @@ Metrics are exposed via standard `/metrics` endpoint and scraped by Prometheus. 
 |---|---|
 | StorageProvider Go interface | 9-method interface modeled on CSI-Addons semantics |
 | No-op driver | Full interface implementation for dev/test/CI |
-| DRPlan CRD | Label-driven wave formation, vmSelector, waveLabel, maxConcurrentFailovers. No `type` field — execution mode chosen at runtime |
+| DRPlan CRD | Label-driven wave formation, waveLabel, maxConcurrentFailovers. VMs associated via `soteria.io/drplan` label. No `type` field — execution mode chosen at runtime |
 | DRExecution CRD | Immutable audit record. Execution mode (planned_migration, disaster) is a field on DRExecution, not DRPlan |
 | Planned migration workflow | Graceful stop → final sync → promote → start VMs wave by wave. RPO=0 |
 | Disaster recovery workflow | Force-promote → start VMs wave by wave. RPO>0. Origin errors ignored |
@@ -326,7 +325,7 @@ Metrics are exposed via standard `/metrics` endpoint and scraped by Prometheus. 
 
 ### Execution Mode Model (Design Decision)
 
-**DRPlan has no `type` field.** A DRPlan describes what to protect and how — VM selector, waves, throttling. Execution mode is chosen at runtime and recorded on DRExecution.
+**DRPlan has no `type` field.** A DRPlan describes what to protect and how — wave grouping and throttling. VMs declare plan membership via the `soteria.io/drplan` label. Execution mode is chosen at runtime and recorded on DRExecution.
 
 **Three execution modes (v1 ships two, third is post-v1):**
 
@@ -340,11 +339,11 @@ Metrics are exposed via standard `/metrics` endpoint and scraped by Prometheus. 
 
 ### DR Plan Management
 
-- **FR1:** Platform engineer can create a DRPlan by defining a VM label selector, a wave label key, and a max concurrent failovers parameter
+- **FR1:** Platform engineer can create a DRPlan by defining a wave label key and a max concurrent failovers parameter. VMs are associated to the plan by setting the `soteria.io/drplan: <planName>` label
 - **FR2:** Platform engineer can view all DRPlans and their current state via `kubectl` or the OCP Console
-- **FR3:** Orchestrator automatically discovers VMs matching a DRPlan's label selector and groups them into waves based on the wave label value
-- **FR4:** Orchestrator enforces VM exclusivity — a VM can belong to at most one DRPlan (validated by admission webhook)
-- **FR5:** Platform engineer can add a VM to an existing DRPlan by adding the appropriate labels to the VM — no plan editing required
+- **FR3:** Orchestrator automatically discovers VMs with the `soteria.io/drplan` label matching the plan name and groups them into waves based on the wave label value
+- **FR4:** VM exclusivity is structurally enforced — a Kubernetes label key can have only one value, so a VM can belong to at most one DRPlan
+- **FR5:** Platform engineer can add a VM to an existing DRPlan by setting `soteria.io/drplan: <planName>` on the VM — no plan editing required
 - **FR6:** Platform engineer can configure namespace-level volume consistency for a namespace via annotation, causing all VM disks in that namespace to form a single VolumeGroup
 - **FR7:** Orchestrator enforces that all VMs belonging to a DRPlan in a namespace with namespace-level consistency are in the same wave (validated by admission webhook)
 - **FR8:** Platform engineer can view the composition of a DRPlan (VMs, waves, volume groups) before execution via pre-flight check
@@ -435,7 +434,7 @@ Metrics are exposed via standard `/metrics` endpoint and scraped by Prometheus. 
 - **NFR12:** All cross-site ScyllaDB replication traffic must be encrypted via TLS. TLS certificates are generated and managed by the cert-manager operator.
 - **NFR13:** All communication between the extension API server and ScyllaDB must be encrypted via TLS.
 - **NFR14:** The orchestrator must not log or expose storage credentials in any output — logs, events, metrics, or DRExecution records.
-- **NFR15:** Admission webhooks must validate all DRPlan mutations to prevent misconfiguration (VM exclusivity violations, namespace-level consistency conflicts, invalid label selectors).
+- **NFR15:** Admission webhooks validate DRPlan field constraints (waveLabel, maxConcurrentFailovers) and warn when a VM references a nonexistent DRPlan. VM exclusivity is structurally enforced by label semantics.
 
 ### Integration
 

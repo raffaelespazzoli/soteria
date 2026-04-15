@@ -76,8 +76,8 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 - Reconcile returns: success `ctrl.Result{}, nil` | poll `ctrl.Result{RequeueAfter: d}, nil` | error `ctrl.Result{}, err`
 - No in-memory state across reconcile calls — use CRD status or ScyllaDB
 - CRD status conditions: always `metav1.Condition` — no custom condition types
-- CRD JSON fields: camelCase — `vmSelector`, `waveLabel`, `maxConcurrentFailovers`
-- Labels/annotations: `soteria.io/<key>` kebab-case — `soteria.io/wave`, `soteria.io/plan-name`
+- CRD JSON fields: camelCase — `waveLabel`, `maxConcurrentFailovers`
+- Labels/annotations: `soteria.io/<key>` kebab-case — `soteria.io/drplan`, `soteria.io/wave`
 - Event reasons: PascalCase past-tense — `FailoverStarted`, `WaveCompleted`, `GroupFailed`
 - RBAC: Kubernetes-native only — no custom authorization logic
 
@@ -157,8 +157,8 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 | Exported types | PascalCase | `DRPlan`, `StorageProvider` |
 | Unexported | camelCase | `waveExecutor`, `groupChunker` |
 | Interfaces | `-er` suffix where natural | `StorageProvider`, `WaveExecutor` |
-| CRD JSON fields | camelCase | `vmSelector`, `maxConcurrentFailovers` |
-| Labels/annotations | `soteria.io/<kebab-case>` | `soteria.io/wave`, `soteria.io/plan-name` |
+| CRD JSON fields | camelCase | `waveLabel`, `maxConcurrentFailovers` |
+| Labels/annotations | `soteria.io/<kebab-case>` | `soteria.io/drplan`, `soteria.io/wave` |
 | ScyllaDB tables/columns | snake_case | `kv_store`, `api_group` |
 | Prometheus metrics | `soteria_` prefix, snake_case with unit | `soteria_drplan_vms_total`, `soteria_failover_duration_seconds` |
 | Event reasons | PascalCase past-tense | `FailoverStarted`, `WaveCompleted` |

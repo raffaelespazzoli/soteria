@@ -30,7 +30,6 @@ limitations under the License.
 //
 // VM exclusivity is structurally guaranteed by Kubernetes label semantics — a
 // label key can have only one value, so a VM belongs to at most one DRPlan.
-// The ExclusivityChecker is no longer needed.
 
 package admission
 

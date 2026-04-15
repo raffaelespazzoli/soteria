@@ -26,7 +26,7 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 
 | Category | FRs | Architectural Implication |
 |---|---|---|
-| DR Plan Management | FR1–FR8 | CRD design, label-driven discovery, admission webhooks for exclusivity and consistency validation |
+| DR Plan Management | FR1–FR8 | CRD design, label-driven discovery, admission webhooks for field validation and wave consistency |
 | DR Execution & Workflow | FR9–FR19 | Purpose-built wave executor, DRGroup chunking engine, 4-state machine with 3 execution modes, fail-forward error model |
 | Storage Abstraction | FR20–FR25 | Pluggable driver interface (9 methods), implicit driver selection from PVC storage classes, heterogeneous storage within a single plan |
 | Cross-Site Shared State | FR26–FR30 | ScyllaDB-backed Aggregated API Server, LOCAL_ONE consistency, LWW conflict resolution, lightweight transactions for state transitions |
@@ -75,7 +75,7 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 | Kubernetes RBAC | All CRDs, Console plugin, CLI | No custom auth — standard verb-based RBAC |
 | Fail-forward error handling | Workflow engine, DRExecution, Console | Partial success is a first-class state; rollback not supported |
 | Audit trail persistence | DRExecution, ScyllaDB, cross-site replication | Immutable records must survive DC failure |
-| Admission validation | DRPlan mutations, VM exclusivity, namespace consistency | Webhooks prevent misconfiguration before execution |
+| Admission validation | DRPlan field constraints, VM plan existence warning, wave consistency | Webhooks prevent misconfiguration before execution |
 | Leader election | DR Orchestrator Controller | Active/passive via Kubernetes Leases (NFR2) |
 | Observability | All runtime components | Prometheus metrics, /metrics endpoint, OpenShift monitoring conventions |
 | Checkpoint & resume | Workflow engine, DRExecution | Pod restart must resume from last checkpoint (NFR1) |
@@ -260,8 +260,8 @@ kubebuilder init --domain dr.orchestrator --repo github.com/soteria-project/sote
 
 | Area | Convention | Example |
 |---|---|---|
-| CRD JSON fields | camelCase (Kubernetes convention) | `vmSelector`, `waveLabel`, `maxConcurrentFailovers` |
-| Labels | `soteria.io/<key>` with kebab-case keys | `soteria.io/wave`, `soteria.io/plan-name` |
+| CRD JSON fields | camelCase (Kubernetes convention) | `waveLabel`, `maxConcurrentFailovers` |
+| Labels | `soteria.io/<key>` with kebab-case keys | `soteria.io/drplan`, `soteria.io/wave` |
 | Annotations | `soteria.io/<key>` with kebab-case keys | `soteria.io/consistency-level` |
 | Event reasons | PascalCase verb-past-tense | `FailoverStarted`, `WaveCompleted`, `GroupFailed` |
 | Event messages | Human-readable sentence | `"Failover started for plan erp-full-stack in disaster mode"` |
@@ -434,7 +434,7 @@ soteria/
 │   │   ├── chunker.go                       # DRGroup chunking per maxConcurrentFailovers
 │   │   ├── statemachine.go                  # 4-state DR cycle: transitions + validation
 │   │   ├── checkpoint.go                    # Per-DRGroup checkpoint: write status after each group
-│   │   ├── discovery.go                     # VM discovery via label selector + wave grouping
+│   │   ├── discovery.go                     # VM discovery via `soteria.io/drplan=<planName>` label + wave grouping
 │   │   ├── planned.go                       # Planned migration workflow
 │   │   └── disaster.go                      # Disaster recovery workflow
 │   │
@@ -445,7 +445,8 @@ soteria/
 │   │       └── reconciler.go               # DRExecution reconciler: triggers engine, updates status
 │   │
 │   ├── admission/                           # Admission webhooks
-│   │   ├── drplan_validator.go              # VM exclusivity, namespace consistency, label validation
+│   │   ├── drplan_validator.go              # DRPlan field validation (waveLabel, maxConcurrentFailovers)
+│   │   ├── vm_validator.go                  # VM plan existence warning, namespace-level wave consistency
 │   │   └── drexecution_validator.go         # State transition validation, pre-flight checks
 │   │
 │   └── metrics/                             # Prometheus metrics
@@ -609,7 +610,7 @@ Only `pkg/storage/scylladb/` touches ScyllaDB directly. The controller and Conso
 | NFR5 (Writes during disaster) | ✅ | LOCAL_ONE — no cross-site dependency |
 | NFR6 (API < 2s) | ✅ | k8s cacher serves from memory |
 | NFR7 (Updates < 5s) | ✅ | CDC → cacher → Console watch |
-| NFR8–NFR11 (Scale) | ✅ | Generic KV, concurrent plans, label selector |
+| NFR8–NFR11 (Scale) | ✅ | Generic KV, concurrent plans, plan-label discovery |
 | NFR12–NFR13 (TLS) | ✅ | cert-manager, `config/certmanager/` |
 | NFR14 (No credential leak) | ✅ | Anti-pattern rule; mTLS |
 | NFR15 (Admission) | ✅ | `pkg/admission/` |

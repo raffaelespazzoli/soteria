@@ -1,6 +1,6 @@
 # Story 2b.3: Test Suite, Documentation & Requirement Updates
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -28,62 +28,62 @@ So that the codebase is consistent and future contributors understand the new de
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Update integration test fixtures — apiserver (AC: #1, #3)
-  - [ ] 1.1 In `test/integration/apiserver/apiserver_test.go`, remove `"vmSelector"` from all `DRPlanSpec` JSON map literals (lines ~118, ~197, ~244, ~533). The spec should only have `"waveLabel"` and `"maxConcurrentFailovers"`
-  - [ ] 1.2 Where tests create VMs associated with plans, add `soteria.io/drplan: <planName>` to VM labels
+- [x] Task 1: Update integration test fixtures — apiserver (AC: #1, #3)
+  - [x] 1.1 In `test/integration/apiserver/apiserver_test.go`, remove `"vmSelector"` from all `DRPlanSpec` JSON map literals (lines ~118, ~197, ~244, ~533). The spec should only have `"waveLabel"` and `"maxConcurrentFailovers"`
+  - [x] 1.2 Where tests create VMs associated with plans, add `soteria.io/drplan: <planName>` to VM labels
 
-- [ ] Task 2: Update integration test fixtures — rbac (AC: #1, #3)
-  - [ ] 2.1 In `test/integration/rbac/rbac_test.go`, remove `"vmSelector"` from the DRPlanSpec map (line ~47). Keep `"waveLabel"` and `"maxConcurrentFailovers"` only
+- [x] Task 2: Update integration test fixtures — rbac (AC: #1, #3)
+  - [x] 2.1 In `test/integration/rbac/rbac_test.go`, remove `"vmSelector"` from the DRPlanSpec map (line ~47). Keep `"waveLabel"` and `"maxConcurrentFailovers"` only
 
-- [ ] Task 3: Update integration test fixtures — controller (AC: #2, #3)
-  - [ ] 3.1 In `test/integration/controller/drplan_test.go`, remove `VMSelector: metav1.LabelSelector{...}` from the DRPlanSpec literal (line ~73). Instead, ensure test VMs carry `soteria.io/drplan: <planName>` labels — the DRPlan controller discovers VMs via label, not via selector
-  - [ ] 3.2 In `test/integration/controller/drplan_consistency_test.go`, same change — remove `VMSelector` from DRPlanSpec (line ~54), ensure VMs have the `soteria.io/drplan` label
-  - [ ] 3.3 Verify test logic still exercises discovery, wave grouping, and namespace consistency correctly with the new label-based association
+- [x] Task 3: Update integration test fixtures — controller (AC: #2, #3)
+  - [x] 3.1 In `test/integration/controller/drplan_test.go`, remove `VMSelector: metav1.LabelSelector{...}` from the DRPlanSpec literal (line ~73). Instead, ensure test VMs carry `soteria.io/drplan: <planName>` labels — the DRPlan controller discovers VMs via label, not via selector
+  - [x] 3.2 In `test/integration/controller/drplan_consistency_test.go`, same change — remove `VMSelector` from DRPlanSpec (line ~54), ensure VMs have the `soteria.io/drplan` label
+  - [x] 3.3 Verify test logic still exercises discovery, wave grouping, and namespace consistency correctly with the new label-based association
 
-- [ ] Task 4: Update integration test fixtures — storage (AC: #1, #3)
-  - [ ] 4.1 In `test/integration/storage/store_test.go`, remove `VMSelector` from `DRPlanSpec` literal (line ~149)
-  - [ ] 4.2 In `test/integration/storage/watch_test.go`, remove `VMSelector` from `DRPlanSpec` literal (line ~127)
+- [x] Task 4: Update integration test fixtures — storage (AC: #1, #3)
+  - [x] 4.1 In `test/integration/storage/store_test.go`, remove `VMSelector` from `DRPlanSpec` literal (line ~149)
+  - [x] 4.2 In `test/integration/storage/watch_test.go`, remove `VMSelector` from `DRPlanSpec` literal (line ~127)
 
-- [ ] Task 5: Update integration test fixtures — replication (AC: #1, #3)
-  - [ ] 5.1 In `test/integration/replication/replication_test.go`, remove `VMSelector` from `DRPlanSpec` literal (line ~540). Ensure VMs in the test carry the `soteria.io/drplan` label
+- [x] Task 5: Update integration test fixtures — replication (AC: #1, #3)
+  - [x] 5.1 In `test/integration/replication/replication_test.go`, remove `VMSelector` from `DRPlanSpec` literal (line ~540). Ensure VMs in the test carry the `soteria.io/drplan` label
 
-- [ ] Task 6: Update PRD (AC: #4)
-  - [ ] 6.1 In `_bmad-output/planning-artifacts/prd.md`, update the YAML example (lines ~78–89): remove the `vmSelector` block from the DRPlan spec, add a comment showing that VMs are associated via the `soteria.io/drplan: erp-full-stack` label
-  - [ ] 6.2 Update the DRPlan CRD description (line ~286): change "vmSelector, waveLabel, maxConcurrentFailovers" to "waveLabel, maxConcurrentFailovers. VMs associated via `soteria.io/drplan` label"
-  - [ ] 6.3 Update FR1 (line ~343): "Platform engineer can create a DRPlan by defining a wave label key and a max concurrent failovers parameter. VMs are associated to the plan by setting the `soteria.io/drplan: <planName>` label"
-  - [ ] 6.4 Update FR3 (line ~345): "Orchestrator automatically discovers VMs with the `soteria.io/drplan` label matching the plan name and groups them into waves based on the wave label value"
-  - [ ] 6.5 Update FR4 (line ~346): "VM exclusivity is structurally enforced — a Kubernetes label key can have only one value, so a VM can belong to at most one DRPlan"
-  - [ ] 6.6 Update FR5 (line ~347): "Platform engineer can add a VM to an existing DRPlan by setting `soteria.io/drplan: <planName>` on the VM — no plan editing required"
-  - [ ] 6.7 Update NFR15 (line ~438): "Admission webhooks validate DRPlan field constraints (waveLabel, maxConcurrentFailovers) and warn when a VM references a nonexistent DRPlan. VM exclusivity is structurally enforced by label semantics"
-  - [ ] 6.8 Search for any remaining `vmSelector`, `label selector`, or `VM label selector` references in the PRD and update
+- [x] Task 6: Update PRD (AC: #4)
+  - [x] 6.1 In `_bmad-output/planning-artifacts/prd.md`, update the YAML example (lines ~78–89): remove the `vmSelector` block from the DRPlan spec, add a comment showing that VMs are associated via the `soteria.io/drplan: erp-full-stack` label
+  - [x] 6.2 Update the DRPlan CRD description (line ~286): change "vmSelector, waveLabel, maxConcurrentFailovers" to "waveLabel, maxConcurrentFailovers. VMs associated via `soteria.io/drplan` label"
+  - [x] 6.3 Update FR1 (line ~343): "Platform engineer can create a DRPlan by defining a wave label key and a max concurrent failovers parameter. VMs are associated to the plan by setting the `soteria.io/drplan: <planName>` label"
+  - [x] 6.4 Update FR3 (line ~345): "Orchestrator automatically discovers VMs with the `soteria.io/drplan` label matching the plan name and groups them into waves based on the wave label value"
+  - [x] 6.5 Update FR4 (line ~346): "VM exclusivity is structurally enforced — a Kubernetes label key can have only one value, so a VM can belong to at most one DRPlan"
+  - [x] 6.6 Update FR5 (line ~347): "Platform engineer can add a VM to an existing DRPlan by setting `soteria.io/drplan: <planName>` on the VM — no plan editing required"
+  - [x] 6.7 Update NFR15 (line ~438): "Admission webhooks validate DRPlan field constraints (waveLabel, maxConcurrentFailovers) and warn when a VM references a nonexistent DRPlan. VM exclusivity is structurally enforced by label semantics"
+  - [x] 6.8 Search for any remaining `vmSelector`, `label selector`, or `VM label selector` references in the PRD and update
 
-- [ ] Task 7: Update architecture doc (AC: #5)
-  - [ ] 7.1 In `_bmad-output/planning-artifacts/architecture.md`, update the CRD JSON fields naming convention row (line ~263): remove `vmSelector` example, replace with `waveLabel` or another current field
-  - [ ] 7.2 Update the `discovery.go` description (line ~437): change "VM discovery via label selector" to "VM discovery via `soteria.io/drplan` plan-name label"
-  - [ ] 7.3 Update the `pkg/admission/` package description (lines ~448–449): change "VM exclusivity, namespace consistency, label validation" to "DRPlan field validation (waveLabel, maxConcurrentFailovers). VM plan existence warning, namespace-level wave consistency"
-  - [ ] 7.4 Update admission validation row in constraints table (line ~78): reflect simplified design
-  - [ ] 7.5 Update the FR/NFR architectural implication table (line ~29): change "admission webhooks for exclusivity and consistency validation" to "admission webhooks for field validation and wave consistency"
-  - [ ] 7.6 Search for any remaining `vmSelector` or `ExclusivityChecker` references in the architecture doc and update
+- [x] Task 7: Update architecture doc (AC: #5)
+  - [x] 7.1 In `_bmad-output/planning-artifacts/architecture.md`, update the CRD JSON fields naming convention row (line ~263): remove `vmSelector` example, replace with `waveLabel` or another current field
+  - [x] 7.2 Update the `discovery.go` description (line ~437): change "VM discovery via label selector" to "VM discovery via `soteria.io/drplan` plan-name label"
+  - [x] 7.3 Update the `pkg/admission/` package description (lines ~448–449): change "VM exclusivity, namespace consistency, label validation" to "DRPlan field validation (waveLabel, maxConcurrentFailovers). VM plan existence warning, namespace-level wave consistency"
+  - [x] 7.4 Update admission validation row in constraints table (line ~78): reflect simplified design
+  - [x] 7.5 Update the FR/NFR architectural implication table (line ~29): change "admission webhooks for exclusivity and consistency validation" to "admission webhooks for field validation and wave consistency"
+  - [x] 7.6 Search for any remaining `vmSelector` or `ExclusivityChecker` references in the architecture doc and update
 
-- [ ] Task 8: Update project context (AC: #6)
-  - [ ] 8.1 In `_bmad-output/project-context.md`, update the CRD JSON fields row (line ~79): remove `vmSelector` from the examples, replace with current fields (e.g., `waveLabel`, `maxConcurrentFailovers`)
-  - [ ] 8.2 Update the Labels/annotations row (line ~80): add `soteria.io/drplan` to the examples alongside `soteria.io/wave`
-  - [ ] 8.3 Update the naming conventions table CRD JSON fields row (line ~160): remove `vmSelector`, replace with `waveLabel`
-  - [ ] 8.4 Update the Labels/annotations naming convention row (line ~161): add `soteria.io/drplan` to examples
-  - [ ] 8.5 Search for any remaining `vmSelector` or `label selector` references and update
+- [x] Task 8: Update project context (AC: #6)
+  - [x] 8.1 In `_bmad-output/project-context.md`, update the CRD JSON fields row (line ~79): remove `vmSelector` from the examples, replace with current fields (e.g., `waveLabel`, `maxConcurrentFailovers`)
+  - [x] 8.2 Update the Labels/annotations row (line ~80): add `soteria.io/drplan` to the examples alongside `soteria.io/wave`
+  - [x] 8.3 Update the naming conventions table CRD JSON fields row (line ~160): remove `vmSelector`, replace with `waveLabel`
+  - [x] 8.4 Update the Labels/annotations naming convention row (line ~161): add `soteria.io/drplan` to examples
+  - [x] 8.5 Search for any remaining `vmSelector` or `label selector` references and update
 
-- [ ] Task 9: Create/update config/samples/ (AC: #7)
-  - [ ] 9.1 If `config/samples/` does not exist, create the directory
-  - [ ] 9.2 Create `config/samples/soteria_v1alpha1_drplan.yaml` — a DRPlan sample with only `waveLabel` and `maxConcurrentFailovers` in spec (no `vmSelector`). Add a comment explaining that VMs are associated via the `soteria.io/drplan` label
-  - [ ] 9.3 Create `config/samples/vm_with_drplan_label.yaml` — a VirtualMachine sample with `soteria.io/drplan: erp-full-stack` and `soteria.io/wave: "1"` labels
-  - [ ] 9.4 Create `config/samples/kustomization.yaml` listing the sample resources
+- [x] Task 9: Create/update config/samples/ (AC: #7)
+  - [x] 9.1 If `config/samples/` does not exist, create the directory
+  - [x] 9.2 Create `config/samples/soteria_v1alpha1_drplan.yaml` — a DRPlan sample with only `waveLabel` and `maxConcurrentFailovers` in spec (no `vmSelector`). Add a comment explaining that VMs are associated via the `soteria.io/drplan` label
+  - [x] 9.3 Create `config/samples/vm_with_drplan_label.yaml` — a VirtualMachine sample with `soteria.io/drplan: erp-full-stack` and `soteria.io/wave: "1"` labels
+  - [x] 9.4 Create `config/samples/kustomization.yaml` listing the sample resources
 
-- [ ] Task 10: Full codebase scan and verification (AC: #3, #8)
-  - [ ] 10.1 Run `rg 'vmSelector|VMSelector' pkg/ test/ cmd/ config/` — must return zero hits (excluding `_bmad-output/` and generated files)
-  - [ ] 10.2 Run `rg 'ExclusivityChecker|FindMatchingPlans|CheckVMExclusivity|CheckDRPlanExclusivity' pkg/ test/ cmd/` — must return zero hits
-  - [ ] 10.3 Run `make test` — all tests pass
-  - [ ] 10.4 Run `make lint-fix` followed by `make lint`
-  - [ ] 10.5 Run `make manifests && make generate` — should be no-ops but verify
+- [x] Task 10: Full codebase scan and verification (AC: #3, #8)
+  - [x] 10.1 Run `rg 'vmSelector|VMSelector' pkg/ test/ cmd/ config/` — must return zero hits (excluding `_bmad-output/` and generated files)
+  - [x] 10.2 Run `rg 'ExclusivityChecker|FindMatchingPlans|CheckVMExclusivity|CheckDRPlanExclusivity' pkg/ test/ cmd/` — must return zero hits
+  - [x] 10.3 Run `make test` — all tests pass
+  - [x] 10.4 Run `make lint-fix` followed by `make lint` — 6 pre-existing lint issues (none in files modified by this story)
+  - [x] 10.5 Run `make manifests && make generate` — confirmed no-ops (no changes to generated files)
 
 ## Dev Notes
 
@@ -298,8 +298,42 @@ make generate     # Should be a no-op — run for safety
 
 ### Agent Model Used
 
+Cursor Agent (Opus 4.6)
+
 ### Debug Log References
+
+None — no debug issues encountered.
 
 ### Completion Notes List
 
+- Tasks 1–5 (integration test fixtures): Already clean. Stories 2b.1 and 2b.2 removed all `VMSelector`/`vmSelector` references from Go source and test code. Verified via codebase grep — zero hits in `pkg/`, `test/`, `cmd/`, `config/`.
+- Task 6 (PRD): Updated YAML example to remove `vmSelector` block and show `soteria.io/drplan` label convention. Updated FR1, FR3, FR4, FR5, NFR15, and DRPlan CRD description table row. Verified zero remaining `vmSelector` references.
+- Task 7 (Architecture): Updated CRD JSON fields naming convention, discovery.go description, pkg/admission/ package description, admission validation cross-cutting concern, and FR/NFR architectural implication table. Verified zero remaining `vmSelector`/`ExclusivityChecker` references.
+- Task 8 (Project context): Updated CRD JSON fields examples, Labels/annotations examples (added `soteria.io/drplan`), and both naming convention table rows. Verified zero remaining `vmSelector` references.
+- Task 9 (Samples): Created `config/samples/` directory with DRPlan sample, VM sample with `soteria.io/drplan` label, and kustomization.yaml.
+- Task 10 (Verification): Zero hits for `vmSelector`/`VMSelector` in `pkg/`, `test/`, `cmd/`, `config/`. Zero hits for `ExclusivityChecker`/`FindMatchingPlans`/`CheckVMExclusivity`/`CheckDRPlanExclusivity` (removed one stale comment in `vm_validator.go`). `make test` passes. `make manifests && make generate` are no-ops. 6 pre-existing lint issues (none in files modified by this story).
+
+### Change Log
+
+- 2026-04-15: Story 2b.3 implemented — updated PRD (YAML example, FR1/FR3/FR4/FR5/NFR15, CRD table), architecture doc (naming conventions, discovery desc, admission desc, FR table, cross-cutting concerns), project context (CRD fields, labels, naming conventions), created config/samples/ with DRPlan and VM examples, removed stale ExclusivityChecker comment from vm_validator.go
+
 ### File List
+
+- `_bmad-output/planning-artifacts/prd.md` — Updated YAML example, FR1, FR3, FR4, FR5, NFR15, DRPlan CRD description
+- `_bmad-output/planning-artifacts/architecture.md` — Updated naming conventions, discovery.go desc, admission desc, FR/NFR table, cross-cutting concerns
+- `_bmad-output/project-context.md` — Updated CRD JSON fields, Labels/annotations, naming conventions
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — Story status: ready-for-dev → in-progress → review
+- `_bmad-output/implementation-artifacts/2b-3-test-suite-documentation-requirement-updates.md` — Task checkboxes, Dev Agent Record, File List, Change Log, Status
+- `pkg/admission/vm_validator.go` — Removed stale "ExclusivityChecker is no longer needed" comment
+- `config/samples/soteria_v1alpha1_drplan.yaml` — NEW: DRPlan sample without vmSelector
+- `config/samples/vm_with_drplan_label.yaml` — NEW: VM sample with soteria.io/drplan label
+- `config/samples/kustomization.yaml` — NEW: Kustomization listing sample resources
+
+### Review Findings
+
+- [x] [Review][Patch] Update the PRD Journey 1 narrative to use `soteria.io/wave` instead of the stale `dr.orchestrator/wave` label so the prose matches the YAML example and current label convention [`_bmad-output/planning-artifacts/prd.md:76`]
+- [x] [Review][Patch] Replace the PRD phrase "a selector label for plan membership" with explicit `soteria.io/drplan: <planName>` wording to avoid reviving the removed selector-based model [`_bmad-output/planning-artifacts/prd.md:207`]
+- [x] [Review][Patch] Remove the stale "VM selector" wording from the PRD execution-mode section because DRPlan no longer carries selector-based membership [`_bmad-output/planning-artifacts/prd.md:328`]
+- [x] [Review][Patch] Update the architecture label naming example from `soteria.io/plan-name` to `soteria.io/drplan` so the architecture doc matches the project context and implementation [`_bmad-output/planning-artifacts/architecture.md:264`]
+- [x] [Review][Patch] Clarify the architecture `discovery.go` description to say membership is discovered via the `soteria.io/drplan` label value matching the plan name, rather than the ambiguous phrase "plan-name label" [`_bmad-output/planning-artifacts/architecture.md:437`]
+- [x] [Review][Patch] Replace the remaining "label selector" wording in the architecture NFR scale coverage row with plan-label-based discovery language to stay aligned with the post-`vmSelector` design [`_bmad-output/planning-artifacts/architecture.md:613`]

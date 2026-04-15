@@ -1,0 +1,32 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: erp-db-01
+  namespace: erp-system
+  labels:
+    # Associates this VM with the "erp-full-stack" DRPlan.
+    # A VM can belong to at most one DRPlan (enforced by label semantics).
+    soteria.io/drplan: erp-full-stack
+    # Wave assignment — database VMs fail over first (wave 1).
+    soteria.io/wave: "1"
+spec:
+  runStrategy: Manual
+  template:
+    metadata:
+      labels:
+        soteria.io/drplan: erp-full-stack
+        soteria.io/wave: "1"
+    spec:
+      domain:
+        resources:
+          requests:
+            memory: 4Gi
+        devices:
+          disks:
+            - name: rootdisk
+              disk:
+                bus: virtio
+      volumes:
+        - name: rootdisk
+          persistentVolumeClaim:
+            claimName: erp-db-01-rootdisk
