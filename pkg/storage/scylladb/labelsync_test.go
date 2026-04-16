@@ -21,9 +21,11 @@ import (
 	"testing"
 )
 
+const testLabelValueWeb = "web"
+
 func TestLabelDiff_AddLabels(t *testing.T) {
-	added, removed := labelDiff(nil, map[string]string{"app": "web", "tier": "frontend"})
-	if len(added) != 2 || added["app"] != "web" || added["tier"] != "frontend" {
+	added, removed := labelDiff(nil, map[string]string{"app": testLabelValueWeb, "tier": "frontend"})
+	if len(added) != 2 || added["app"] != testLabelValueWeb || added["tier"] != "frontend" {
 		t.Fatalf("expected 2 additions, got %v", added)
 	}
 	if len(removed) != 0 {
@@ -32,18 +34,18 @@ func TestLabelDiff_AddLabels(t *testing.T) {
 }
 
 func TestLabelDiff_RemoveLabels(t *testing.T) {
-	added, removed := labelDiff(map[string]string{"app": "web", "tier": "frontend"}, nil)
+	added, removed := labelDiff(map[string]string{"app": testLabelValueWeb, "tier": "frontend"}, nil)
 	if len(added) != 0 {
 		t.Fatalf("expected 0 additions, got %v", added)
 	}
-	if len(removed) != 2 || removed["app"] != "web" || removed["tier"] != "frontend" {
+	if len(removed) != 2 || removed["app"] != testLabelValueWeb || removed["tier"] != "frontend" {
 		t.Fatalf("expected 2 removals, got %v", removed)
 	}
 }
 
 func TestLabelDiff_ChangeValue(t *testing.T) {
-	old := map[string]string{"app": "web", "tier": "frontend"}
-	new := map[string]string{"app": "web", "tier": "backend"}
+	old := map[string]string{"app": testLabelValueWeb, "tier": "frontend"}
+	new := map[string]string{"app": testLabelValueWeb, "tier": "backend"}
 
 	added, removed := labelDiff(old, new)
 	if !reflect.DeepEqual(added, map[string]string{"tier": "backend"}) {
@@ -55,7 +57,7 @@ func TestLabelDiff_ChangeValue(t *testing.T) {
 }
 
 func TestLabelDiff_NoChange(t *testing.T) {
-	labels := map[string]string{"app": "web", "tier": "frontend"}
+	labels := map[string]string{"app": testLabelValueWeb, "tier": "frontend"}
 	added, removed := labelDiff(labels, labels)
 	if len(added) != 0 || len(removed) != 0 {
 		t.Fatalf("expected no diff, got added=%v removed=%v", added, removed)
@@ -63,8 +65,8 @@ func TestLabelDiff_NoChange(t *testing.T) {
 }
 
 func TestLabelDiff_MixedOperations(t *testing.T) {
-	old := map[string]string{"app": "web", "tier": "frontend", "version": "v1"}
-	new := map[string]string{"app": "web", "tier": "backend", "env": "prod"}
+	old := map[string]string{"app": testLabelValueWeb, "tier": "frontend", "version": "v1"}
+	new := map[string]string{"app": testLabelValueWeb, "tier": "backend", "env": "prod"}
 
 	added, removed := labelDiff(old, new)
 	expectedAdded := map[string]string{"tier": "backend", "env": "prod"}
@@ -87,10 +89,10 @@ func TestLabelDiff_BothNil(t *testing.T) {
 
 func TestExtractLabels_WithLabels(t *testing.T) {
 	obj := &fakeObject{}
-	obj.Labels = map[string]string{"app": "web"}
+	obj.Labels = map[string]string{"app": testLabelValueWeb}
 	labels := extractLabels(obj)
-	if labels["app"] != "web" {
-		t.Fatalf("expected labels {app: web}, got %v", labels)
+	if labels["app"] != testLabelValueWeb {
+		t.Fatalf("expected labels {app: %s}, got %v", testLabelValueWeb, labels)
 	}
 }
 

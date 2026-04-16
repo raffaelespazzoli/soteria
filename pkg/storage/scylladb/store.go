@@ -925,7 +925,7 @@ func (s *Store) casUpdateWithConsistency(
 		MapScanCAS(result)
 
 	if err != nil && crossDC && shouldFallbackToLocal(err) {
-		klog.V(0).InfoS("Cross-DC Serial CAS unavailable, falling back to unconditional LOCAL_ONE write",
+		klog.InfoS("Cross-DC Serial CAS unavailable, falling back to unconditional LOCAL_ONE write",
 			"apiGroup", kc.APIGroup, "resourceType", kc.ResourceType,
 			"namespace", kc.Namespace, "name", kc.Name, "error", err)
 		err = s.unconditionalUpdate(ctx, kc, data, newRV)

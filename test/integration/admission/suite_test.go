@@ -71,7 +71,7 @@ func TestMain(m *testing.M) {
 	vmWebhookPath := soteriaadmission.ValidateVMPath
 	fail := admissionregistrationv1.Fail
 	sideEffects := admissionregistrationv1.SideEffectClassNone
-	equivalent := admissionregistrationv1.Equivalent
+	exact := admissionregistrationv1.Exact
 
 	testEnv = &envtest.Environment{
 		Scheme: testScheme,
@@ -91,7 +91,7 @@ func TestMain(m *testing.M) {
 							Name:                    "vdrplan.kb.io",
 							AdmissionReviewVersions: []string{"v1"},
 							FailurePolicy:           &fail,
-							MatchPolicy:             &equivalent,
+							MatchPolicy:             &exact,
 							SideEffects:             &sideEffects,
 							ClientConfig: admissionregistrationv1.WebhookClientConfig{
 								Service: &admissionregistrationv1.ServiceReference{
@@ -116,7 +116,7 @@ func TestMain(m *testing.M) {
 							Name:                    "vvm.kb.io",
 							AdmissionReviewVersions: []string{"v1"},
 							FailurePolicy:           &fail,
-							MatchPolicy:             &equivalent,
+							MatchPolicy:             &exact,
 							SideEffects:             &sideEffects,
 							ClientConfig: admissionregistrationv1.WebhookClientConfig{
 								Service: &admissionregistrationv1.ServiceReference{

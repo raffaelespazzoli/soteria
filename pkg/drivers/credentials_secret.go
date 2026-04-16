@@ -31,9 +31,11 @@ import (
 var (
 	ErrVaultNotImplemented = errors.New("vault credential resolver is not yet implemented")
 	ErrNoCredentialSource  = errors.New("credential source has neither SecretRef nor VaultRef set")
-	ErrAmbiguousSource     = errors.New("credential source has both SecretRef and VaultRef set, exactly one must be specified")
-	ErrSecretNotFound      = errors.New("referenced secret not found")
-	ErrSecretKeyNotFound   = errors.New("key not found in referenced secret")
+	ErrAmbiguousSource     = errors.New(
+		"credential source has both SecretRef and VaultRef set, exactly one must be specified",
+	)
+	ErrSecretNotFound    = errors.New("referenced secret not found")
+	ErrSecretKeyNotFound = errors.New("key not found in referenced secret")
 )
 
 // SecretCredentialResolver resolves credentials from Kubernetes Secrets.

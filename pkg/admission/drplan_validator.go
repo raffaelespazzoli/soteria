@@ -44,7 +44,7 @@ import (
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
 )
 
-// +kubebuilder:webhook:path=/validate-soteria-io-v1alpha1-drplan,mutating=false,failurePolicy=fail,sideEffects=None,groups=soteria.io,resources=drplans,verbs=create;update,versions=v1alpha1,name=vdrplan.kb.io,admissionReviewVersions=v1,matchPolicy=Equivalent
+// +kubebuilder:webhook:path=/validate-soteria-io-v1alpha1-drplan,mutating=false,failurePolicy=fail,sideEffects=None,groups=soteria.io,resources=drplans,verbs=create;update,versions=v1alpha1,name=vdrplan.kb.io,admissionReviewVersions=v1,matchPolicy=Exact
 
 // DRPlanValidator validates DRPlan CREATE and UPDATE operations.
 type DRPlanValidator struct {

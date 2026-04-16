@@ -56,7 +56,7 @@ import (
 // +kubebuilder:rbac:groups=kubevirt.io,resources=virtualmachines,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 
-// +kubebuilder:webhook:path=/validate-kubevirt-io-v1-virtualmachine,mutating=false,failurePolicy=fail,sideEffects=None,groups=kubevirt.io,resources=virtualmachines,verbs=create;update,versions=v1,name=vvm.kb.io,admissionReviewVersions=v1,matchPolicy=Equivalent
+// +kubebuilder:webhook:path=/validate-kubevirt-io-v1-virtualmachine,mutating=false,failurePolicy=fail,sideEffects=None,groups=kubevirt.io,resources=virtualmachines,verbs=create;update,versions=v1,name=vvm.kb.io,admissionReviewVersions=v1,matchPolicy=Exact
 
 // VMValidator validates VirtualMachine CREATE and UPDATE operations against
 // DRPlan constraints.

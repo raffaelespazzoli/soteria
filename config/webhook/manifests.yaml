@@ -12,7 +12,7 @@ webhooks:
       namespace: system
       path: /validate-soteria-io-v1alpha1-drplan
   failurePolicy: Fail
-  matchPolicy: Equivalent
+  matchPolicy: Exact
   name: vdrplan.kb.io
   rules:
   - apiGroups:
@@ -33,7 +33,7 @@ webhooks:
       namespace: system
       path: /validate-kubevirt-io-v1-virtualmachine
   failurePolicy: Fail
-  matchPolicy: Equivalent
+  matchPolicy: Exact
   name: vvm.kb.io
   rules:
   - apiGroups:

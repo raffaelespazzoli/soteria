@@ -73,10 +73,10 @@ func newTestScheme() *runtime.Scheme {
 	return s
 }
 
-func newTestPlan(name string) *soteriav1alpha1.DRPlan {
+func newTestPlan() *soteriav1alpha1.DRPlan {
 	return &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:       name,
+			Name:       "plan-1",
 			Generation: 1,
 		},
 		Spec: soteriav1alpha1.DRPlanSpec{
@@ -120,7 +120,7 @@ func newReconcilerWithNSLookup(
 }
 
 func TestReconcile_VMsDiscovered_StatusPopulated(t *testing.T) {
-	plan := newTestPlan("plan-1")
+	plan := newTestPlan()
 	vms := []engine.VMReference{
 		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
 		{Name: "vm-2", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
@@ -158,7 +158,7 @@ func TestReconcile_VMsDiscovered_StatusPopulated(t *testing.T) {
 		t.Errorf("Wave 1 VM count = %d, want 2", len(updated.Status.Waves[0].VMs))
 	}
 
-	readyCond := findCondition(updated.Status.Conditions, conditionTypeReady)
+	readyCond := findReadyCondition(updated.Status.Conditions)
 	if readyCond == nil {
 		t.Fatal("Ready condition not found")
 	}
@@ -171,7 +171,7 @@ func TestReconcile_VMsDiscovered_StatusPopulated(t *testing.T) {
 }
 
 func TestReconcile_NoVMs_ReadyFalse(t *testing.T) {
-	plan := newTestPlan("plan-1")
+	plan := newTestPlan()
 	r, c := newReconciler([]client.Object{plan}, &mockVMDiscoverer{vms: nil})
 
 	_, err := r.Reconcile(context.Background(), ctrl.Request{
@@ -193,7 +193,7 @@ func TestReconcile_NoVMs_ReadyFalse(t *testing.T) {
 		t.Errorf("len(Waves) = %d, want 0", len(updated.Status.Waves))
 	}
 
-	readyCond := findCondition(updated.Status.Conditions, conditionTypeReady)
+	readyCond := findReadyCondition(updated.Status.Conditions)
 	if readyCond == nil {
 		t.Fatal("Ready condition not found")
 	}
@@ -216,7 +216,7 @@ func TestReconcile_NoVMs_ReadyFalse(t *testing.T) {
 }
 
 func TestReconcile_VMAdded_StatusUpdated(t *testing.T) {
-	plan := newTestPlan("plan-1")
+	plan := newTestPlan()
 	initialVMs := []engine.VMReference{
 		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
 	}
@@ -256,7 +256,7 @@ func TestReconcile_VMAdded_StatusUpdated(t *testing.T) {
 }
 
 func TestReconcile_WaveLabelChanged_VMMoved(t *testing.T) {
-	plan := newTestPlan("plan-1")
+	plan := newTestPlan()
 	vms := []engine.VMReference{
 		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
 		{Name: "vm-2", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
@@ -306,7 +306,7 @@ func TestReconcile_PlanNotFound_NoError(t *testing.T) {
 }
 
 func TestReconcile_DiscoveryError_ReadyFalseWithBackoff(t *testing.T) {
-	plan := newTestPlan("plan-1")
+	plan := newTestPlan()
 	r, c := newReconciler([]client.Object{plan}, &mockVMDiscoverer{err: fmt.Errorf("connection refused")})
 
 	result, err := r.Reconcile(context.Background(), ctrl.Request{
@@ -324,7 +324,7 @@ func TestReconcile_DiscoveryError_ReadyFalseWithBackoff(t *testing.T) {
 		t.Fatalf("Failed to get plan: %v", err)
 	}
 
-	readyCond := findCondition(updated.Status.Conditions, conditionTypeReady)
+	readyCond := findReadyCondition(updated.Status.Conditions)
 	if readyCond == nil {
 		t.Fatal("Ready condition not found")
 	}
@@ -470,7 +470,7 @@ func TestVMRelevantChangePredicate_Generic(t *testing.T) {
 }
 
 func TestReconcile_VMLevel_IndividualVolumeGroups(t *testing.T) {
-	plan := newTestPlan("plan-1")
+	plan := newTestPlan()
 	vms := []engine.VMReference{
 		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
 		{Name: "vm-2", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
@@ -491,7 +491,7 @@ func TestReconcile_VMLevel_IndividualVolumeGroups(t *testing.T) {
 		t.Fatalf("Failed to get plan: %v", err)
 	}
 
-	readyCond := findCondition(updated.Status.Conditions, conditionTypeReady)
+	readyCond := findReadyCondition(updated.Status.Conditions)
 	if readyCond == nil || readyCond.Status != metav1.ConditionTrue {
 		t.Fatal("Expected Ready=True")
 	}
@@ -510,7 +510,7 @@ func TestReconcile_VMLevel_IndividualVolumeGroups(t *testing.T) {
 }
 
 func TestReconcile_NamespaceLevel_SingleVolumeGroup(t *testing.T) {
-	plan := newTestPlan("plan-1")
+	plan := newTestPlan()
 	vms := []engine.VMReference{
 		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
 		{Name: "vm-2", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
@@ -534,7 +534,7 @@ func TestReconcile_NamespaceLevel_SingleVolumeGroup(t *testing.T) {
 		t.Fatalf("Failed to get plan: %v", err)
 	}
 
-	readyCond := findCondition(updated.Status.Conditions, conditionTypeReady)
+	readyCond := findReadyCondition(updated.Status.Conditions)
 	if readyCond == nil || readyCond.Status != metav1.ConditionTrue {
 		t.Fatal("Expected Ready=True")
 	}
@@ -551,7 +551,7 @@ func TestReconcile_NamespaceLevel_SingleVolumeGroup(t *testing.T) {
 }
 
 func TestReconcile_WaveConflict_ReadyFalse(t *testing.T) {
-	plan := newTestPlan("plan-1")
+	plan := newTestPlan()
 	vms := []engine.VMReference{
 		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
 		{Name: "vm-2", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "2"}},
@@ -574,7 +574,7 @@ func TestReconcile_WaveConflict_ReadyFalse(t *testing.T) {
 		t.Fatalf("Failed to get plan: %v", err)
 	}
 
-	readyCond := findCondition(updated.Status.Conditions, conditionTypeReady)
+	readyCond := findReadyCondition(updated.Status.Conditions)
 	if readyCond == nil {
 		t.Fatal("Ready condition not found")
 	}
@@ -611,7 +611,7 @@ func TestReconcile_WaveConflict_ReadyFalse(t *testing.T) {
 }
 
 func TestReconcile_NamespaceGroupExceedsThrottle_ReadyFalse(t *testing.T) {
-	plan := newTestPlan("plan-1")
+	plan := newTestPlan()
 	plan.Spec.MaxConcurrentFailovers = 2
 	vms := []engine.VMReference{
 		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
@@ -636,7 +636,7 @@ func TestReconcile_NamespaceGroupExceedsThrottle_ReadyFalse(t *testing.T) {
 		t.Fatalf("Failed to get plan: %v", err)
 	}
 
-	readyCond := findCondition(updated.Status.Conditions, conditionTypeReady)
+	readyCond := findReadyCondition(updated.Status.Conditions)
 	if readyCond == nil {
 		t.Fatal("Ready condition not found")
 	}
@@ -667,7 +667,7 @@ func TestReconcile_NamespaceGroupExceedsThrottle_ReadyFalse(t *testing.T) {
 }
 
 func TestReconcile_WaveConflictResolved_ReadyTrue(t *testing.T) {
-	plan := newTestPlan("plan-1")
+	plan := newTestPlan()
 	vms := []engine.VMReference{
 		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
 		{Name: "vm-2", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "2"}},
@@ -696,14 +696,14 @@ func TestReconcile_WaveConflictResolved_ReadyTrue(t *testing.T) {
 		t.Fatalf("Failed to get plan: %v", err)
 	}
 
-	readyCond := findCondition(updated.Status.Conditions, conditionTypeReady)
+	readyCond := findReadyCondition(updated.Status.Conditions)
 	if readyCond == nil || readyCond.Status != metav1.ConditionTrue {
 		t.Errorf("Expected Ready=True after conflict resolved, got %v", readyCond)
 	}
 }
 
 func TestReconcile_MixedConsistency_CorrectGrouping(t *testing.T) {
-	plan := newTestPlan("plan-1")
+	plan := newTestPlan()
 	vms := []engine.VMReference{
 		{Name: "vm-ns-1", Namespace: "ns-level", Labels: map[string]string{"soteria.io/wave": "1"}},
 		{Name: "vm-ns-2", Namespace: "ns-level", Labels: map[string]string{"soteria.io/wave": "1"}},
@@ -728,7 +728,7 @@ func TestReconcile_MixedConsistency_CorrectGrouping(t *testing.T) {
 		t.Fatalf("Failed to get plan: %v", err)
 	}
 
-	readyCond := findCondition(updated.Status.Conditions, conditionTypeReady)
+	readyCond := findReadyCondition(updated.Status.Conditions)
 	if readyCond == nil || readyCond.Status != metav1.ConditionTrue {
 		t.Fatal("Expected Ready=True")
 	}
@@ -827,7 +827,7 @@ func TestNsConsistencyAnnotationChangePredicate_Generic(t *testing.T) {
 }
 
 func TestMapNamespaceToDRPlans_MatchesOne(t *testing.T) {
-	plan := newTestPlan("plan-1")
+	plan := newTestPlan()
 	vms := []engine.VMReference{
 		{Name: "vm-1", Namespace: "target-ns",
 			Labels: map[string]string{"soteria.io/wave": "1"}},
@@ -855,7 +855,7 @@ func TestMapNamespaceToDRPlans_MatchesOne(t *testing.T) {
 }
 
 func TestMapNamespaceToDRPlans_MatchesNone(t *testing.T) {
-	plan := newTestPlan("plan-1")
+	plan := newTestPlan()
 	vms := []engine.VMReference{
 		{Name: "vm-1", Namespace: "other-ns",
 			Labels: map[string]string{"soteria.io/wave": "1"}},
@@ -879,10 +879,10 @@ func TestMapNamespaceToDRPlans_MatchesNone(t *testing.T) {
 	}
 }
 
-// findCondition returns the condition with the given type, or nil.
-func findCondition(conditions []metav1.Condition, condType string) *metav1.Condition {
+// findReadyCondition returns the Ready condition, or nil.
+func findReadyCondition(conditions []metav1.Condition) *metav1.Condition {
 	for i := range conditions {
-		if conditions[i].Type == condType {
+		if conditions[i].Type == conditionTypeReady {
 			return &conditions[i]
 		}
 	}
@@ -943,7 +943,7 @@ func newReconcilerWithStorage(
 }
 
 func TestReconcile_Preflight_PopulatedOnSuccess(t *testing.T) {
-	plan := newTestPlan("plan-1")
+	plan := newTestPlan()
 	vms := []engine.VMReference{
 		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
 		{Name: "vm-2", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
@@ -999,7 +999,7 @@ func TestReconcile_Preflight_PopulatedOnSuccess(t *testing.T) {
 }
 
 func TestReconcile_Preflight_StorageResolutionFailure_StillPopulated(t *testing.T) {
-	plan := newTestPlan("plan-1")
+	plan := newTestPlan()
 	vms := []engine.VMReference{
 		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
 	}
@@ -1038,14 +1038,14 @@ func TestReconcile_Preflight_StorageResolutionFailure_StillPopulated(t *testing.
 		t.Error("Expected warning about storage resolution failure")
 	}
 
-	readyCond := findCondition(updated.Status.Conditions, conditionTypeReady)
+	readyCond := findReadyCondition(updated.Status.Conditions)
 	if readyCond == nil || readyCond.Status != metav1.ConditionTrue {
 		t.Error("Ready should be True even when storage resolution fails")
 	}
 }
 
 func TestReconcile_Preflight_UnknownStorageBackends_WarningsAdded(t *testing.T) {
-	plan := newTestPlan("plan-1")
+	plan := newTestPlan()
 	vms := []engine.VMReference{
 		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
 	}
@@ -1079,7 +1079,7 @@ func TestReconcile_Preflight_UnknownStorageBackends_WarningsAdded(t *testing.T) 
 }
 
 func TestReconcile_Preflight_UpdatesEveryReconcileCycle(t *testing.T) {
-	plan := newTestPlan("plan-1")
+	plan := newTestPlan()
 	initialVMs := []engine.VMReference{
 		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
 	}
