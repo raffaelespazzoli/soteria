@@ -35,7 +35,11 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-06
-last_updated: 2026-04-15
+last_updated: 2026-04-16
+# 3.4 created: Conformance Test Suite story file
+# 3.3 created: Fake Driver for Unit Testing story file
+# 3.2 created: No-Op Driver story file
+# 3.1 created: StorageProvider Interface & Driver Registry story file
 # epic-2b done: all stories complete, retrospective done, prep tasks identified (RBAC fix, lint cleanup, matchPolicy: Exact)
 # epic-2b-retrospective done: retrospective completed, design decisions captured (matchPolicy: Exact, drivers/all pattern), Epic 3 prep tasks assigned
 # 2b.4 done: ScyllaDB Scan Cap Integration Test — code review fixes applied (no-overlap page assertions, task text restored, file list completed)
@@ -107,11 +111,11 @@ development_status:
   epic-2b-retrospective: done
 
   # Epic 3: Storage Driver Framework & Reference Implementations
-  epic-3: backlog
-  3-1-storageprovider-interface-driver-registry: backlog
-  3-2-no-op-driver: backlog
-  3-3-fake-driver-for-unit-testing: backlog
-  3-4-conformance-test-suite: backlog
+  epic-3: in-progress
+  3-1-storageprovider-interface-driver-registry: ready-for-dev
+  3-2-no-op-driver: ready-for-dev
+  3-3-fake-driver-for-unit-testing: ready-for-dev
+  3-4-conformance-test-suite: ready-for-dev
   epic-3-retrospective: optional
 
   # Epic 4: DR Workflow Engine — Full Lifecycle

@@ -312,7 +312,8 @@ if [[ -n "${ETL6_POD}" ]]; then
   for i in $(seq 1 60); do
     node_count=$(kctl --context="${CTX_ETL6}" -n "${NAMESPACE}" \
       exec "${ETL6_POD}" -c scylla -- nodetool status 2>/dev/null \
-      | grep -c "^UN" || echo "0")
+      | grep -c "^UN" || true)
+    node_count="${node_count:-0}"
     if [[ "${node_count}" -ge 4 ]]; then
       echo "  Cluster converged — ${node_count} UN nodes across DCs"
       echo ""
@@ -368,10 +369,6 @@ metadata:
   name: finance-dr
   namespace: default
 spec:
-  vmSelector:
-    matchLabels:
-      department: finance
-      tier: critical
   waveLabel: dr-wave
   maxConcurrentFailovers: 5
 EOF
@@ -384,10 +381,6 @@ metadata:
   name: payments-dr
   namespace: default
 spec:
-  vmSelector:
-    matchLabels:
-      app: payments
-      env: prod
   waveLabel: failover-wave
   maxConcurrentFailovers: 2
 EOF
