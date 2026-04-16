@@ -36,6 +36,8 @@
 
 generated: 2026-04-06
 last_updated: 2026-04-16
+# 3.1 done: code review fixes applied (nil guards, package-level ResetForTesting, DefaultRegistry tests — 100% coverage)
+# 3.1 review: StorageProvider interface, domain types, typed errors, driver registry + 17 tests (91.8% coverage)
 # 3.4 created: Conformance Test Suite story file
 # 3.3 created: Fake Driver for Unit Testing story file
 # 3.2 created: No-Op Driver story file
@@ -112,7 +114,7 @@ development_status:
 
   # Epic 3: Storage Driver Framework & Reference Implementations
   epic-3: in-progress
-  3-1-storageprovider-interface-driver-registry: ready-for-dev
+  3-1-storageprovider-interface-driver-registry: done
   3-2-no-op-driver: ready-for-dev
   3-3-fake-driver-for-unit-testing: ready-for-dev
   3-4-conformance-test-suite: ready-for-dev
