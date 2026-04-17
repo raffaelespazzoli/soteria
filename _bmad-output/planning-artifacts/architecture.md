@@ -28,9 +28,9 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 |---|---|---|
 | DR Plan Management | FR1–FR8 | CRD design, label-driven discovery, admission webhooks for field validation and wave consistency |
 | DR Execution & Workflow | FR9–FR19 | Purpose-built wave executor, DRGroup chunking engine, 4-state machine with 3 execution modes, fail-forward error model |
-| Storage Abstraction | FR20–FR25 | Pluggable driver interface (9 methods), implicit driver selection from PVC storage classes, heterogeneous storage within a single plan |
+| Storage Abstraction | FR20–FR25 | Pluggable driver interface (7 methods), role-based replication model (NonReplicated/Source/Target), implicit driver selection from PVC storage classes, heterogeneous storage within a single plan |
 | Cross-Site Shared State | FR26–FR30 | ScyllaDB-backed Aggregated API Server, LOCAL_ONE consistency, LWW conflict resolution, lightweight transactions for state transitions |
-| Monitoring & Observability | FR31–FR34 | Prometheus metrics endpoint, replication health polling via GetReplicationInfo, unprotected VM detection |
+| Monitoring & Observability | FR31–FR34 | Prometheus metrics endpoint, replication health polling via GetReplicationStatus, unprotected VM detection |
 | OCP Console Plugin | FR35–FR40 | PatternFly plugin, dual-mode UX (planning/disaster), cross-cluster awareness via shared ScyllaDB, live Gantt-chart execution monitor |
 | Audit & Compliance | FR41–FR43 | Immutable DRExecution records, cross-site persistence, execution history |
 | Access Control & Security | FR44–FR45 | Kubernetes-native RBAC on CRDs, external secrets references (K8s Secrets / Vault) |
@@ -57,7 +57,7 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 |---|---|---|
 | Two datacenters only | Product Brief (explicit exclusion) | No quorum-based consensus; must use eventual consistency |
 | Human-triggered failover only | Product Brief, PRD (FR18) | No failure detection subsystem; eliminates split-brain by design |
-| VMs pre-exist on both clusters | PRD (Architectural Constraints) | Orchestrator does not create VMs or manage PVC bindings — only promotes volumes and starts VMs |
+| VMs pre-exist on both clusters | PRD (Architectural Constraints) | Orchestrator does not create VMs or manage PVC bindings — only transitions volumes to Source role and starts VMs |
 | Homogeneous storage replication | PRD (Architectural Constraints) | Dell-to-Dell, ODF-to-ODF only; cross-vendor replication not supported |
 | Driver selection is implicit | PRD (Architectural Constraints) | No StorageProviderConfig CRD; driver determined from PVC storage class |
 | Golang | PRD, Brainstorming | Kubernetes API ecosystem alignment |
@@ -294,7 +294,7 @@ kubebuilder init --domain dr.orchestrator --repo github.com/soteria-project/sote
 | Console plugin | `console-plugin/` at repo root | Separate build, image, and concerns |
 | Driver packages | `pkg/drivers/<vendor>/` | `pkg/drivers/noop/` |
 | Driver mocks | `pkg/drivers/fake/` | k8s `<package>fake` convention |
-| Conformance tests | `pkg/drivers/conformance/` | All drivers must pass; validates 9-method contract |
+| Conformance tests | `pkg/drivers/conformance/` | All drivers must pass; validates 7-method contract |
 
 ### CRD Status Patterns
 
@@ -322,9 +322,9 @@ kubebuilder init --domain dr.orchestrator --repo github.com/soteria-project/sote
 | Area | Convention | Rationale |
 |---|---|---|
 | Registration | `init()` + registry pattern | Discovered at startup, selected at runtime by storage class |
-| Error types | Typed errors from `pkg/drivers/errors.go` | `ErrVolumeNotFound`, `ErrReplicationNotReady`, `ErrPromotionFailed` |
+| Error types | Typed errors from `pkg/drivers/errors.go` | `ErrVolumeNotFound`, `ErrReplicationNotReady`, `ErrInvalidTransition` |
 | Timeouts | Accept `context.Context`; respect cancellation | Caller controls timeout via context deadline |
-| Idempotency | All 9 methods must be idempotent | Safe to retry after crash/restart |
+| Idempotency | All 7 methods must be idempotent | Safe to retry after crash/restart |
 
 ### Testing Patterns
 
@@ -419,8 +419,8 @@ soteria/
 │   │       └── schema.go                    # Generic KV table DDL and CDC enablement
 │   │
 │   ├── drivers/                             # StorageProvider abstraction
-│   │   ├── interface.go                     # StorageProvider interface (9 methods)
-│   │   ├── errors.go                        # ErrVolumeNotFound, ErrPromotionFailed, etc.
+│   │   ├── interface.go                     # StorageProvider interface (7 methods)
+│   │   ├── errors.go                        # ErrVolumeNotFound, ErrInvalidTransition, etc.
 │   │   ├── registry.go                      # Driver registration + discovery from PVC storage class
 │   │   ├── noop/
 │   │   │   └── driver.go                    # No-op driver (dev/test/CI)
@@ -532,7 +532,7 @@ ScyllaDB (generic KV store)
 Only `pkg/storage/scylladb/` touches ScyllaDB directly. The controller and Console go through the Kubernetes API. Enforced by `internal/` convention and anti-pattern rules.
 
 **Driver Boundary:**
-`pkg/drivers/interface.go` defines the 9-method contract. Everything above (`pkg/engine/`, `pkg/controller/`) is driver-agnostic. Everything below (`pkg/drivers/noop/`) is vendor-specific. External driver authors import `pkg/drivers/`.
+`pkg/drivers/interface.go` defines the 7-method contract. Everything above (`pkg/engine/`, `pkg/controller/`) is driver-agnostic. Everything below (`pkg/drivers/noop/`) is vendor-specific. External driver authors import `pkg/drivers/`.
 
 **Engine Boundary:**
 `pkg/engine/` owns workflow execution. Receives a plan and a driver, executes waves, writes checkpoints via the Kubernetes API. Does not know about ScyllaDB, CDC, or API server internals.
@@ -564,12 +564,12 @@ Only `pkg/storage/scylladb/` touches ScyllaDB directly. The controller and Conso
    → Creates DRExecution → Extension API Server → ScyllaDB
    → CDC → cacher → DRExecution controller informer
    → Engine: discover VMs → chunk DRGroups → execute waves
-   → Per-DRGroup: driver.PromoteVolume() → StartVMs()
+   → Per-DRGroup: driver.SetSource() → StartVMs()
    → Update DRExecution status (checkpoint) → ScyllaDB
    → CDC → cacher → Console watch → live Gantt chart
 
 3. Replication health monitoring (background)
-   → DRPlan controller polls driver.GetReplicationInfo()
+   → DRPlan controller polls driver.GetReplicationStatus()
    → Updates DRPlan status conditions → ScyllaDB
    → CDC → cacher → Console dashboard
 ```

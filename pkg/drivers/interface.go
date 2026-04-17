@@ -19,10 +19,25 @@ package drivers
 import "context"
 
 // StorageProvider is the contract between the DR orchestrator and vendor-specific
-// storage backends (FR20). Every method must be idempotent — safe to retry after
-// a crash or restart without side effects. All methods accept context.Context for
-// cancellation and timeout propagation from the workflow engine. Implementations
-// must return typed errors from pkg/drivers/errors.go, never raw error strings.
+// storage backends (FR20). The interface uses a role-based replication model with
+// three volume roles (NonReplicated, Source, Target) and four valid transitions,
+// all routed through the NonReplicated state:
+//
+//	NonReplicated → Source   (SetSource)
+//	NonReplicated → Target   (SetTarget)
+//	Source        → NonReplicated (StopReplication)
+//	Target        → NonReplicated (StopReplication)
+//
+// Volume pairing is an admin precondition — the driver assumes that paired
+// volumes are correctly configured on both storage instances before any
+// replication method is called.
+//
+// Every method must be idempotent — safe to retry after a crash or restart
+// without side effects. Drivers act as reconcilers: they check the actual
+// storage state before applying changes, flipping roles only if necessary.
+// All methods accept context.Context for cancellation and timeout propagation
+// from the workflow engine. Implementations must return typed errors from
+// pkg/drivers/errors.go, never raw error strings.
 //
 // External storage vendor engineers implement this interface in their own driver
 // packages under pkg/drivers/<vendor>/ and register via init() + RegisterDriver.
@@ -42,41 +57,32 @@ type StorageProvider interface {
 	// Returns ErrVolumeGroupNotFound if the group does not exist.
 	GetVolumeGroup(ctx context.Context, id VolumeGroupID) (VolumeGroupInfo, error)
 
-	// EnableReplication starts asynchronous replication for a volume group to
-	// its configured peer. Idempotency: returns nil if replication is already
-	// active or resyncing. Returns ErrVolumeGroupNotFound if the group does
-	// not exist.
-	EnableReplication(ctx context.Context, id VolumeGroupID) error
+	// SetSource transitions a volume group to the Source role (replication
+	// origin, read-write). Valid from NonReplicated; returns ErrInvalidTransition
+	// if the current role is Target. When opts.Force is true the driver proceeds
+	// even if the paired target is unreachable — required for disaster failover
+	// when the remote site is down. Idempotency: returns nil if the volume group
+	// is already Source. Returns ErrVolumeGroupNotFound if the group does not exist.
+	SetSource(ctx context.Context, id VolumeGroupID, opts SetSourceOptions) error
 
-	// DisableReplication stops replication for a volume group. Idempotency:
-	// returns nil if replication is already stopped or was never enabled.
-	// Returns ErrVolumeGroupNotFound if the group does not exist.
-	DisableReplication(ctx context.Context, id VolumeGroupID) error
+	// SetTarget transitions a volume group to the Target role (replication
+	// destination, read-only). Valid from NonReplicated; returns ErrInvalidTransition
+	// if the current role is Source. When opts.Force is true the driver proceeds
+	// even if the paired source is unreachable. Idempotency: returns nil if the
+	// volume group is already Target. Returns ErrVolumeGroupNotFound if the group
+	// does not exist.
+	SetTarget(ctx context.Context, id VolumeGroupID, opts SetTargetOptions) error
 
-	// PromoteVolume promotes a secondary volume group to primary, making it
-	// writable. When opts.Force is true the driver skips waiting for a
-	// graceful peer demote — required for disaster failover when the source
-	// site is unreachable. Idempotency: returns nil if the volume group is
-	// already promoted. Returns ErrPromotionFailed on unrecoverable errors.
-	PromoteVolume(ctx context.Context, id VolumeGroupID, opts PromoteOptions) error
+	// StopReplication transitions a volume group from Source or Target back to
+	// NonReplicated. When opts.Force is true the driver stops replication even
+	// if there are outstanding writes or the peer is unreachable. Idempotency:
+	// returns nil if the volume group is already NonReplicated. Returns
+	// ErrVolumeGroupNotFound if the group does not exist.
+	StopReplication(ctx context.Context, id VolumeGroupID, opts StopReplicationOptions) error
 
-	// DemoteVolume demotes a primary volume group to secondary, making it
-	// read-only and eligible for replication. When opts.Force is true the
-	// driver forces demotion even with outstanding writes. Idempotency:
-	// returns nil if the volume group is already demoted. Returns
-	// ErrDemotionFailed on unrecoverable errors.
-	DemoteVolume(ctx context.Context, id VolumeGroupID, opts DemoteOptions) error
-
-	// ResyncVolume triggers a resynchronisation of a demoted volume group from
-	// its promoted peer. Used during re-protect after failover to re-establish
-	// replication in the reverse direction. Idempotency: returns nil if a
-	// resync is already in progress. Returns ErrResyncFailed on unrecoverable
-	// errors, ErrVolumeGroupNotFound if the group does not exist.
-	ResyncVolume(ctx context.Context, id VolumeGroupID) error
-
-	// GetReplicationInfo returns the current replication state and estimated
-	// RPO for a volume group. The workflow engine polls this method to assess
-	// readiness before failover. Returns ErrVolumeGroupNotFound if the group
-	// does not exist, ErrReplicationNotReady if replication was never enabled.
-	GetReplicationInfo(ctx context.Context, id VolumeGroupID) (ReplicationInfo, error)
+	// GetReplicationStatus returns the current replication role, health, and
+	// estimated RPO for a volume group. The workflow engine polls this method
+	// to assess readiness before failover. Returns ErrVolumeGroupNotFound if
+	// the group does not exist.
+	GetReplicationStatus(ctx context.Context, id VolumeGroupID) (ReplicationStatus, error)
 }

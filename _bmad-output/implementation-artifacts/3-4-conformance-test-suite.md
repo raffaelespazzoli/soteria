@@ -12,13 +12,13 @@ So that I can prove my driver implementation is correct before submitting it.
 
 ## Acceptance Criteria
 
-1. **AC1 — Full DR lifecycle validation:** `pkg/drivers/conformance/suite.go` exercises the complete DR lifecycle in sequence against any `StorageProvider` implementation: CreateVolumeGroup → EnableReplication → GetReplicationInfo (verify active) → PromoteVolume (planned) → DemoteVolume → ResyncVolume → GetReplicationInfo (verify re-established) → PromoteVolume (disaster, force) → ResyncVolume → DisableReplication → DeleteVolumeGroup (FR24).
+1. **AC1 — Full DR lifecycle validation:** `pkg/drivers/conformance/suite.go` exercises the complete DR lifecycle in sequence against any `StorageProvider` implementation: CreateVolumeGroup → SetSource → GetReplicationStatus → StopReplication → SetTarget → GetReplicationStatus → StopReplication → DeleteVolumeGroup (FR24).
 
 2. **AC2 — Clear failure messages:** When any method returns an unexpected error, the test fails with a clear message identifying which lifecycle step failed, the method name, the volume group ID, and the error returned.
 
 3. **AC3 — No-op driver passes:** Running the conformance suite against the no-op driver (Story 3.2) results in all tests passing — confirming the no-op driver is a valid reference implementation.
 
-4. **AC4 — Idempotency verification:** Each of the 9 methods is called twice in succession during the test and the second call succeeds without error, verifying all methods are idempotent as architecturally required.
+4. **AC4 — Idempotency verification:** Each of the 7 methods is called twice in succession during the test and the second call succeeds without error, verifying all methods are idempotent as architecturally required.
 
 5. **AC5 — Context cancellation:** Each method respects `context.Context` cancellation and returns promptly (or with a context error) when the context is cancelled before invocation.
 
@@ -36,36 +36,31 @@ So that I can prove my driver implementation is correct before submitting it.
 
 - [ ] Task 2: Implement full DR lifecycle test (AC: #1, #2)
   - [ ] 2.1 **Step 1 — CreateVolumeGroup:** Call `CreateVolumeGroup(ctx, spec)` with a test `VolumeGroupSpec`. Verify a non-empty `VolumeGroupID` is returned. Store the ID for subsequent steps
-  - [ ] 2.2 **Step 2 — EnableReplication:** Call `EnableReplication(ctx, vgID)`. Verify nil error
-  - [ ] 2.3 **Step 3 — GetReplicationInfo (active):** Call `GetReplicationInfo(ctx, vgID)`. Verify nil error and `State == ReplicationActive`
-  - [ ] 2.4 **Step 4 — PromoteVolume (planned):** Call `PromoteVolume(ctx, vgID, PromoteOptions{Force: false})`. Verify nil error
-  - [ ] 2.5 **Step 5 — DemoteVolume:** Call `DemoteVolume(ctx, vgID, DemoteOptions{Force: false})`. Verify nil error
-  - [ ] 2.6 **Step 6 — ResyncVolume:** Call `ResyncVolume(ctx, vgID)`. Verify nil error
-  - [ ] 2.7 **Step 7 — GetReplicationInfo (re-established):** Call `GetReplicationInfo(ctx, vgID)`. Verify nil error (state depends on driver implementation — no-op returns `ReplicationActive` immediately, real drivers may return `ReplicationResyncing`)
-  - [ ] 2.8 **Step 8 — PromoteVolume (disaster, force):** Call `PromoteVolume(ctx, vgID, PromoteOptions{Force: true})`. Verify nil error
-  - [ ] 2.9 **Step 9 — ResyncVolume (after disaster):** Call `ResyncVolume(ctx, vgID)`. Verify nil error
-  - [ ] 2.10 **Step 10 — DisableReplication:** Call `DisableReplication(ctx, vgID)`. Verify nil error
-  - [ ] 2.11 **Step 11 — DeleteVolumeGroup:** Call `DeleteVolumeGroup(ctx, vgID)`. Verify nil error
-  - [ ] 2.12 **Step 12 — GetVolumeGroup (deleted):** Call `GetVolumeGroup(ctx, vgID)`. Verify `drivers.ErrVolumeGroupNotFound` is returned (confirms cleanup)
+  - [ ] 2.2 **Step 2 — SetSource:** Call `SetSource(ctx, vgID, SetSourceOptions{Force: false})`. Verify nil error (establishes or confirms source role for replication)
+  - [ ] 2.3 **Step 3 — GetReplicationStatus (source):** Call `GetReplicationStatus(ctx, vgID)`. Verify nil error and `Role == RoleSource` (and `Health == HealthHealthy` when applicable)
+  - [ ] 2.4 **Step 4 — StopReplication:** Call `StopReplication(ctx, vgID, StopReplicationOptions{Force: false})`. Verify nil error
+  - [ ] 2.5 **Step 5 — SetTarget:** Call `SetTarget(ctx, vgID, SetTargetOptions{Force: false})`. Verify nil error (demotes to target / establishes target role)
+  - [ ] 2.6 **Step 6 — GetReplicationStatus (target):** Call `GetReplicationStatus(ctx, vgID)`. Verify nil error and `Role == RoleTarget` (health may be `HealthDegraded` or `HealthSyncing` depending on driver)
+  - [ ] 2.7 **Step 7 — StopReplication (again):** Call `StopReplication(ctx, vgID, StopReplicationOptions{Force: false})`. Verify nil error (idempotent stop; replaces the old resync/disable split for conformance)
+  - [ ] 2.8 **Step 8 — DeleteVolumeGroup:** Call `DeleteVolumeGroup(ctx, vgID)`. Verify nil error
+  - [ ] 2.9 **Step 9 — GetVolumeGroup (deleted):** Call `GetVolumeGroup(ctx, vgID)`. Verify `drivers.ErrVolumeGroupNotFound` is returned (confirms cleanup)
 
 - [ ] Task 3: Implement idempotency test (AC: #4)
   - [ ] 3.1 In `suite.go`, define a subtest `Idempotency` within `RunConformance` (runs after the lifecycle test)
   - [ ] 3.2 Create a fresh volume group for idempotency testing
-  - [ ] 3.3 For each of the 9 methods, call it twice in succession with the same arguments:
+  - [ ] 3.3 For each of the 7 methods, call it twice in succession with the same arguments:
     - `CreateVolumeGroup` — two calls, both succeed (may return different IDs)
     - `GetVolumeGroup` — two calls with the same ID, both return same result
-    - `EnableReplication` — two calls, second is a no-op
-    - `GetReplicationInfo` — two calls, both succeed
-    - `PromoteVolume` — two calls (Force: false), second is a no-op
-    - `DemoteVolume` — two calls, second is a no-op
-    - `ResyncVolume` — two calls, second is a no-op
-    - `DisableReplication` — two calls, second is a no-op
+    - `SetSource` — two calls (`SetSourceOptions{Force: false}`), second is a no-op
+    - `SetTarget` — two calls (`SetTargetOptions{Force: false}`), second is a no-op
+    - `StopReplication` — two calls (`StopReplicationOptions{Force: false}`), second is a no-op
+    - `GetReplicationStatus` — two calls, both succeed
     - `DeleteVolumeGroup` — two calls, second returns nil (idempotent delete)
   - [ ] 3.4 Each double-call is a named `t.Run` subtest: `"Idempotency/CreateVolumeGroup"`, etc.
 
 - [ ] Task 4: Implement context cancellation test (AC: #5)
   - [ ] 4.1 In `suite.go`, define a subtest `ContextCancellation` within `RunConformance`
-  - [ ] 4.2 For each of the 9 methods, create a pre-cancelled context (`context.WithCancel` + immediate `cancel()`) and call the method
+  - [ ] 4.2 For each of the 7 methods, create a pre-cancelled context (`context.WithCancel` + immediate `cancel()`) and call the method
   - [ ] 4.3 Verify the method returns an error (either `context.Canceled` or a wrapped context error) — the method must not hang or succeed when the context is already cancelled
   - [ ] 4.4 Each method test is a named `t.Run` subtest: `"ContextCancellation/CreateVolumeGroup"`, etc.
   - [ ] 4.5 Use a separate volume group (created with a valid context before the cancellation subtests) for methods that require an existing volume group
@@ -73,12 +68,10 @@ So that I can prove my driver implementation is correct before submitting it.
 - [ ] Task 5: Implement error condition tests (AC: #2)
   - [ ] 5.1 In `suite.go`, define a subtest `ErrorConditions` within `RunConformance`
   - [ ] 5.2 Test `GetVolumeGroup` with a nonexistent ID — verify `drivers.ErrVolumeGroupNotFound`
-  - [ ] 5.3 Test `EnableReplication` with a nonexistent ID — verify `drivers.ErrVolumeGroupNotFound`
-  - [ ] 5.4 Test `DisableReplication` with a nonexistent ID — verify `drivers.ErrVolumeGroupNotFound`
-  - [ ] 5.5 Test `PromoteVolume` with a nonexistent ID — verify `drivers.ErrVolumeGroupNotFound`
-  - [ ] 5.6 Test `DemoteVolume` with a nonexistent ID — verify `drivers.ErrVolumeGroupNotFound`
-  - [ ] 5.7 Test `ResyncVolume` with a nonexistent ID — verify `drivers.ErrVolumeGroupNotFound`
-  - [ ] 5.8 Test `GetReplicationInfo` with a nonexistent ID — verify `drivers.ErrVolumeGroupNotFound`
+  - [ ] 5.3 Test `SetSource` with a nonexistent ID — verify `drivers.ErrVolumeGroupNotFound`
+  - [ ] 5.4 Test `SetTarget` with a nonexistent ID — verify `drivers.ErrVolumeGroupNotFound`
+  - [ ] 5.5 Test `StopReplication` with a nonexistent ID — verify `drivers.ErrVolumeGroupNotFound`
+  - [ ] 5.6 Test `GetReplicationStatus` with a nonexistent ID — verify `drivers.ErrVolumeGroupNotFound`
 
 - [ ] Task 6: Create no-op driver conformance test (AC: #3)
   - [ ] 6.1 In `pkg/drivers/conformance/noop_test.go`, create `TestConformance_NoopDriver`
@@ -99,13 +92,13 @@ So that I can prove my driver implementation is correct before submitting it.
 
 ### Architecture Context
 
-This is Story 4 of Epic 3 (Storage Driver Framework & Reference Implementations). It is the capstone story that validates the entire driver framework built in Stories 3.1–3.3. The conformance suite lives at `pkg/drivers/conformance/suite.go` as specified in the architecture document and is the primary validation tool for FR24: "Storage vendor engineer can implement a new StorageProvider driver by implementing the 9-method Go interface and running the conformance test suite."
+This is Story 4 of Epic 3 (Storage Driver Framework & Reference Implementations). It is the capstone story that validates the entire driver framework built in Stories 3.1–3.3. The conformance suite lives at `pkg/drivers/conformance/suite.go` as specified in the architecture document and is the primary validation tool for FR24: "Storage vendor engineer can implement a new StorageProvider driver by implementing the 7-method Go interface and running the conformance test suite."
 
 **Epic 3 story chain:**
 
 | Story | Deliverable | Relationship |
 |---|---|---|
-| 3.1 | Interface, types, errors, registry | Foundation — defines the 9-method contract |
+| 3.1 | Interface, types, errors, registry | Foundation — defines the 7-method contract |
 | 3.2 | No-op driver | Reference implementation — passes conformance |
 | 3.3 | Fake driver | Unit test utility — does NOT pass conformance (programmable, not simulating real behavior) |
 | **3.4** | **Conformance suite** | **Validates drivers implement the contract correctly** |
@@ -117,8 +110,8 @@ The conformance suite depends on the StorageProvider interface and no-op driver 
 | From Story | File | Used By |
 |---|---|---|
 | 3.1 | `pkg/drivers/interface.go` — `StorageProvider` interface | `RunConformance` accepts any `StorageProvider` |
-| 3.1 | `pkg/drivers/types.go` — `VolumeGroupID`, `VolumeGroupSpec`, `VolumeGroupInfo`, `ReplicationInfo`, `ReplicationState`, `PromoteOptions`, `DemoteOptions` | Test assertions on return values and state |
-| 3.1 | `pkg/drivers/errors.go` — `ErrVolumeGroupNotFound` | Error condition tests |
+| 3.1 | `pkg/drivers/types.go` — `VolumeGroupID`, `VolumeGroupSpec`, `VolumeGroupInfo`, `ReplicationStatus`, `VolumeRole`, `ReplicationHealth`, `SetSourceOptions`, `SetTargetOptions`, `StopReplicationOptions` | Test assertions on return values, replication roles, and health |
+| 3.1 | `pkg/drivers/errors.go` — `ErrVolumeGroupNotFound`, `ErrInvalidTransition` | Error condition tests |
 | 3.2 | `pkg/drivers/noop/driver.go` — `New() *Driver` | `noop_test.go` instantiates no-op driver for conformance validation |
 
 ### Suite Design — Why `RunConformance(t, provider)` Not Ginkgo
@@ -133,10 +126,10 @@ The no-op conformance test file (`noop_test.go`) also uses standard `testing.T` 
 
 ### Lifecycle Test State Management
 
-The lifecycle test creates ONE volume group and threads its ID through all 11 steps. Steps are sequential subtests sharing state via closure variables. This is intentional:
-- The DR lifecycle is inherently sequential (you can't promote before enabling replication).
+The lifecycle test creates ONE volume group and threads its ID through all lifecycle steps. Steps are sequential subtests sharing state via closure variables. This is intentional:
+- The DR lifecycle is inherently sequential (for example, you cannot set target before establishing source when the contract requires that ordering).
 - Each step depends on the state left by the previous step.
-- If any step fails, subsequent steps are skipped via `t.FailNow()` (no point testing promote if create failed).
+- If any step fails, subsequent steps are skipped via `t.FailNow()` (no point testing `SetSource` if create failed).
 
 The idempotency test creates a SEPARATE volume group to avoid interference with the lifecycle test.
 
@@ -152,7 +145,7 @@ For methods that need an existing volume group (all except `CreateVolumeGroup`),
 
 ### Error Condition Test Strategy
 
-Tests that a driver correctly returns `drivers.ErrVolumeGroupNotFound` for operations on nonexistent volume group IDs. Uses `errors.Is()` for assertion, following the established pattern from `pkg/drivers/credentials_test.go`. The nonexistent ID uses a synthetic value: `drivers.VolumeGroupID("conformance-nonexistent-vgid")`.
+Tests that a driver correctly returns `drivers.ErrVolumeGroupNotFound` for operations on nonexistent volume group IDs. Uses `errors.Is()` for assertion, following the established pattern from `pkg/drivers/credentials_test.go`. The nonexistent ID uses a synthetic value: `drivers.VolumeGroupID("conformance-nonexistent-vgid")`. Where the contract forbids a transition (for example, `SetTarget` before `SetSource`), drivers should return `drivers.ErrInvalidTransition` — assert with `errors.Is` when adding those scenarios.
 
 `DeleteVolumeGroup` with a nonexistent ID is NOT tested in error conditions because the idempotency contract requires it to return nil (not an error) for missing IDs.
 
@@ -210,7 +203,7 @@ spec := drivers.VolumeGroupSpec{
 t.Run("Lifecycle/CreateVolumeGroup", func(t *testing.T) {
     // ...
 })
-t.Run("Idempotency/EnableReplication", func(t *testing.T) {
+t.Run("Idempotency/SetSource", func(t *testing.T) {
     // ...
 })
 ```
@@ -246,7 +239,7 @@ Licensed under the Apache License, Version 2.0 ...
 
 ### Fake Driver Does NOT Pass Conformance
 
-The fake driver (Story 3.3) is intentionally excluded from conformance testing. It is a programmable test utility that returns pre-configured responses — it does not simulate real storage behavior. The conformance suite validates that a driver correctly implements the full DR lifecycle with state tracking, which the fake driver does not do (it's stateless by design).
+The fake driver (Story 3.3) is intentionally excluded from conformance testing. It is a programmable test utility that returns pre-configured responses — it does not simulate real storage behavior. The conformance suite validates that a driver correctly implements the full DR lifecycle with role and health tracking, which the fake driver does not do (it's stateless by design).
 
 ### Build Commands
 
@@ -262,16 +255,18 @@ make build                              # Verify compilation
 
 **From Story 3.1 (Interface & Registry):**
 - Domain types use strong typing (`drivers.VolumeGroupID`, not `string`) — the conformance suite must use these types
-- Error returns use sentinel errors from `pkg/drivers/errors.go` — test with `errors.Is`
-- `ReplicationState` constants: `ReplicationActive`, `ReplicationDegraded`, `ReplicationStopped`, `ReplicationPromoted`, `ReplicationDemoted`, `ReplicationResyncing`
-- `PromoteOptions` and `DemoteOptions` both have a `Force bool` field
+- Error returns use sentinel errors from `pkg/drivers/errors.go` — test with `errors.Is` (including `ErrInvalidTransition` where invalid role transitions are expected)
+- `VolumeRole` constants: `RoleNonReplicated`, `RoleSource`, `RoleTarget`
+- `ReplicationHealth` constants: `HealthHealthy`, `HealthDegraded`, `HealthSyncing`, `HealthUnknown`
+- `ReplicationStatus` struct holds `Role`, `Health`, `LastSyncTime`, `EstimatedRPO`
+- `SetSourceOptions`, `SetTargetOptions`, and `StopReplicationOptions` each include a `Force bool` field
 - `VolumeGroupSpec` struct for `CreateVolumeGroup` input
 
 **From Story 3.2 (No-Op Driver):**
-- The no-op driver is STATEFUL (tracks volume groups, replication states in-memory)
+- The no-op driver is STATEFUL (tracks volume groups, replication roles and health in-memory)
 - `New() *Driver` constructor creates a fresh instance — use this in `noop_test.go`
 - The no-op driver returns `drivers.ErrVolumeGroupNotFound` for unknown volume group IDs
-- After `ResyncVolume`, the no-op driver sets state to `ReplicationActive` immediately (no async)
+- After `StopReplication` followed by `SetTarget`, the no-op driver reflects `RoleTarget` (and may report `HealthSyncing` then settle to `HealthHealthy`) immediately (no async) — align assertions with the no-op contract
 - Idempotency is built-in: repeated calls to the same operation succeed without error
 - The no-op driver does NOT register via `init()` in test context — instantiate directly with `noop.New()`
 

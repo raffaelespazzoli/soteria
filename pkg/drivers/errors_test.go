@@ -30,9 +30,7 @@ func TestSentinelErrors_AreDistinct(t *testing.T) {
 		{"ErrVolumeNotFound", ErrVolumeNotFound},
 		{"ErrVolumeGroupNotFound", ErrVolumeGroupNotFound},
 		{"ErrReplicationNotReady", ErrReplicationNotReady},
-		{"ErrPromotionFailed", ErrPromotionFailed},
-		{"ErrDemotionFailed", ErrDemotionFailed},
-		{"ErrResyncFailed", ErrResyncFailed},
+		{"ErrInvalidTransition", ErrInvalidTransition},
 		{"ErrDriverNotFound", ErrDriverNotFound},
 	}
 
@@ -64,9 +62,7 @@ func TestSentinelErrors_WrappedWithErrorsIs(t *testing.T) {
 		{"ErrVolumeNotFound", ErrVolumeNotFound},
 		{"ErrVolumeGroupNotFound", ErrVolumeGroupNotFound},
 		{"ErrReplicationNotReady", ErrReplicationNotReady},
-		{"ErrPromotionFailed", ErrPromotionFailed},
-		{"ErrDemotionFailed", ErrDemotionFailed},
-		{"ErrResyncFailed", ErrResyncFailed},
+		{"ErrInvalidTransition", ErrInvalidTransition},
 		{"ErrDriverNotFound", ErrDriverNotFound},
 	}
 

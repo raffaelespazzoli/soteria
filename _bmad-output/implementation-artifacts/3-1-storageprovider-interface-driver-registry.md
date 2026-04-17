@@ -7,14 +7,14 @@ Status: done
 ## Story
 
 As a storage vendor engineer,
-I want a clearly defined 9-method Go interface with typed errors and an automatic driver registry,
+I want a clearly defined 7-method Go interface with typed errors and an automatic driver registry,
 So that I know exactly what to implement and how drivers are discovered at runtime.
 
 ## Acceptance Criteria
 
-1. **AC1 — StorageProvider interface:** `pkg/drivers/interface.go` declares the `StorageProvider` interface with exactly 9 methods: `CreateVolumeGroup`, `DeleteVolumeGroup`, `GetVolumeGroup`, `EnableReplication`, `DisableReplication`, `PromoteVolume`, `DemoteVolume`, `ResyncVolume`, `GetReplicationInfo` (FR20). Every method accepts `context.Context` as its first parameter. Method signatures use domain types (not raw strings) for volume group IDs, replication states, etc. The interface has godoc comments explaining each method's contract, idempotency guarantee, and expected error conditions.
+1. **AC1 — StorageProvider interface:** `pkg/drivers/interface.go` declares the `StorageProvider` interface with exactly 7 methods: `CreateVolumeGroup`, `DeleteVolumeGroup`, `GetVolumeGroup`, `SetSource`, `SetTarget`, `StopReplication`, `GetReplicationStatus` (FR20). The replication model uses three volume roles (NonReplicated, Source, Target) with all transitions routed through NonReplicated. Every method accepts `context.Context` as its first parameter. Method signatures use domain types (not raw strings) for volume group IDs, replication roles, etc. The interface has godoc comments explaining each method's contract, idempotency guarantee, and expected error conditions.
 
-2. **AC2 — Typed errors:** `pkg/drivers/errors.go` defines sentinel errors: `ErrVolumeNotFound`, `ErrVolumeGroupNotFound`, `ErrReplicationNotReady`, `ErrPromotionFailed`, `ErrDemotionFailed`, `ErrResyncFailed`, `ErrDriverNotFound`. All use the `Err` prefix per Go convention. Driver implementations must return these typed errors — never raw errors.
+2. **AC2 — Typed errors:** `pkg/drivers/errors.go` defines sentinel errors: `ErrVolumeNotFound`, `ErrVolumeGroupNotFound`, `ErrReplicationNotReady`, `ErrInvalidTransition`, `ErrDriverNotFound`. All use the `Err` prefix per Go convention. Driver implementations must return these typed errors — never raw errors.
 
 3. **AC3 — Driver registry:** `pkg/drivers/registry.go` implements a global registry keyed by storage class provisioner name. `RegisterDriver(provisionerName string, factory DriverFactory)` is the registration API. Drivers register via `init()` functions.
 
@@ -27,19 +27,19 @@ So that I know exactly what to implement and how drivers are discovered at runti
 ## Tasks / Subtasks
 
 - [x] Task 1: Define domain types for interface method parameters and return values (AC: #1)
-  - [x] 1.1 In `pkg/drivers/types.go`, define `VolumeGroupID` (string alias or newtype), `VolumeGroupInfo`, `ReplicationInfo` (with fields: `State ReplicationState`, `LastSyncTime *time.Time`, `EstimatedRPO *time.Duration`), and `ReplicationState` enum (string constants: `ReplicationActive`, `ReplicationDegraded`, `ReplicationStopped`, `ReplicationPromoted`, `ReplicationDemoted`, `ReplicationResyncing`)
-  - [x] 1.2 Define `PromoteOptions` and `DemoteOptions` structs with a `Force bool` field (needed for disaster failover vs planned migration)
+  - [x] 1.1 In `pkg/drivers/types.go`, define `VolumeGroupID` (string alias or newtype), `VolumeGroupInfo`, `VolumeRole` enum (string constants: `RoleNonReplicated`, `RoleSource`, `RoleTarget`), `ReplicationHealth` enum (string constants: `HealthHealthy`, `HealthDegraded`, `HealthSyncing`, `HealthUnknown`), and `ReplicationStatus` struct (Role, Health, LastSyncTime, EstimatedRPO)
+  - [x] 1.2 Define `SetSourceOptions`, `SetTargetOptions`, and `StopReplicationOptions` structs each with a `Force bool` field (needed for disaster failover vs planned migration)
   - [x] 1.3 Define `VolumeGroupSpec` struct for `CreateVolumeGroup` input (PVC references, namespace, labels)
   - [x] 1.4 Add godoc on every exported type explaining its purpose and relationship to the DR lifecycle
 
 - [x] Task 2: Define the StorageProvider interface (AC: #1)
-  - [x] 2.1 In `pkg/drivers/interface.go`, define the `StorageProvider` interface with the 9 methods using the domain types from Task 1
+  - [x] 2.1 In `pkg/drivers/interface.go`, define the `StorageProvider` interface with the 7 methods using the domain types from Task 1
   - [x] 2.2 Each method signature: `MethodName(ctx context.Context, <domain-typed params>) (<return types>, error)`
   - [x] 2.3 Add comprehensive godoc on the interface itself explaining the contract: all methods must be idempotent, all accept context for cancellation/timeout, all return typed errors from `errors.go`
   - [x] 2.4 Add godoc on each method explaining: purpose, idempotency guarantee, expected error conditions, relationship to DR lifecycle
 
 - [x] Task 3: Define typed errors (AC: #2)
-  - [x] 3.1 In `pkg/drivers/errors.go`, add new sentinel errors: `ErrVolumeNotFound`, `ErrVolumeGroupNotFound`, `ErrReplicationNotReady`, `ErrPromotionFailed`, `ErrDemotionFailed`, `ErrResyncFailed`, `ErrDriverNotFound`
+  - [x] 3.1 In `pkg/drivers/errors.go`, add new sentinel errors: `ErrVolumeNotFound`, `ErrVolumeGroupNotFound`, `ErrReplicationNotReady`, `ErrInvalidTransition`, `ErrDriverNotFound`
   - [x] 3.2 Use `errors.New()` for sentinel errors, following the existing pattern in `credentials_secret.go`
   - [x] 3.3 Do NOT remove or modify existing credential-related errors (`ErrVaultNotImplemented`, `ErrNoCredentialSource`, `ErrAmbiguousSource`, `ErrSecretNotFound`, `ErrSecretKeyNotFound`) — they remain in `credentials_secret.go`
 
@@ -65,10 +65,10 @@ So that I know exactly what to implement and how drivers are discovered at runti
     - [x] 5.3.6 `TestRegistry_ListRegistered` — register multiple drivers, verify sorted list
     - [x] 5.3.7 `TestRegistry_ConcurrentAccess` — concurrent register + get from multiple goroutines with `sync.WaitGroup`
     - [x] 5.3.8 `TestRegistry_ResetForTesting` — register, reset, verify empty
-  - [x] 5.4 In `pkg/drivers/types_test.go`, verify `ReplicationState` string constants have expected values
+  - [x] 5.4 In `pkg/drivers/types_test.go`, verify `VolumeRole` and `ReplicationHealth` string constants have expected values
 
 - [x] Task 6: Update `pkg/drivers/doc.go` (AC: #1)
-  - [x] 6.1 Update the package doc comment to describe: StorageProvider interface (9 methods), driver registry (init-based registration), typed errors, credential resolution, and how external vendors import `pkg/drivers/`
+  - [x] 6.1 Update the package doc comment to describe: StorageProvider interface (7 methods), driver registry (init-based registration), typed errors, credential resolution, and how external vendors import `pkg/drivers/`
 
 - [x] Task 7: Verify build and tests (AC: #6)
   - [x] 7.1 Run `make test` — all unit tests pass (new + existing)
@@ -86,7 +86,7 @@ So that I know exactly what to implement and how drivers are discovered at runti
 
 ### Architecture Context
 
-This is Story 1 of Epic 3 (Storage Driver Framework & Reference Implementations). It establishes the foundational types, interface, and registry that all subsequent stories (3.2 no-op driver, 3.3 fake driver, 3.4 conformance suite) build upon. The `StorageProvider` interface is one of the most architecturally significant contracts in the project — it's the boundary between the orchestrator engine and vendor-specific storage backends (FR20). External storage vendor engineers will import `pkg/drivers/` to implement this interface (NFR19: interface stability).
+This is Story 1 of Epic 3 (Storage Driver Framework & Reference Implementations). It establishes the foundational types, interface, and registry that all subsequent stories (3.2 no-op driver, 3.3 fake driver, 3.4 conformance suite) build upon. The `StorageProvider` interface is one of the most architecturally significant contracts in the project — it's the boundary between the orchestrator engine and vendor-specific storage backends (FR20). The replication model uses three volume roles (NonReplicated, Source, Target) with all transitions routed through NonReplicated. External storage vendor engineers will import `pkg/drivers/` to implement this interface (NFR19: interface stability).
 
 ### Existing Code to Preserve
 
@@ -107,12 +107,12 @@ The `pkg/drivers/` package already contains production code that MUST NOT be mod
 
 ### Interface Design Constraints
 
-- **9 methods exactly** — defined in FR20, epics, and architecture. Do not add extra methods.
+- **7 methods exactly** — defined in FR20, epics, and architecture. Do not add extra methods.
 - **All methods idempotent** — safe to retry after crash/restart. Document idempotency in godoc.
 - **`context.Context` first parameter** — enables timeout/cancellation from the workflow engine.
-- **Domain types, not raw strings** — use `VolumeGroupID`, `ReplicationInfo`, etc.
+- **Domain types, not raw strings** — use `VolumeGroupID`, `ReplicationStatus`, etc.
 - **Return typed errors** — from `pkg/drivers/errors.go`, never raw error strings.
-- **Force flag** for `PromoteVolume` — disaster failover skips graceful demote; planned migration does not.
+- **Force flag** for `SetSource`, `SetTarget`, `StopReplication` — disaster failover proceeds even if the peer is unreachable; planned migration does not.
 - **NFR19** — this interface must be stable enough for external driver development. Breaking changes require a new API version with a deprecation period.
 
 ### Registry Design Constraints
@@ -167,8 +167,8 @@ log.V(1).Info("Looking up driver for provisioner", "provisioner", name)
 
 | File | Purpose | New/Modified |
 |------|---------|-------------|
-| `pkg/drivers/types.go` | Domain types: `VolumeGroupID`, `VolumeGroupInfo`, `ReplicationInfo`, `ReplicationState`, `PromoteOptions`, `DemoteOptions`, `VolumeGroupSpec` | **New** |
-| `pkg/drivers/interface.go` | `StorageProvider` interface (9 methods) | **New** (replaces stub doc) |
+| `pkg/drivers/types.go` | Domain types: `VolumeGroupID`, `VolumeGroupInfo`, `VolumeRole`, `ReplicationHealth`, `ReplicationStatus`, `SetSourceOptions`, `SetTargetOptions`, `StopReplicationOptions`, `VolumeGroupSpec` | **New** |
+| `pkg/drivers/interface.go` | `StorageProvider` interface (7 methods) | **New** (replaces stub doc) |
 | `pkg/drivers/errors.go` | Storage driver sentinel errors | **New** |
 | `pkg/drivers/registry.go` | `Registry` struct, `DefaultRegistry`, `RegisterDriver`, `GetDriver`, `GetDriverForPVC`, `StorageClassLister` interface | **New** |
 | `pkg/drivers/doc.go` | Updated package documentation | **Modified** |
@@ -219,9 +219,9 @@ go test ./pkg/drivers/...   # Driver package tests only
 - [Source: _bmad-output/planning-artifacts/architecture.md#Project Structure] — `pkg/drivers/` directory layout with `interface.go`, `errors.go`, `registry.go`
 - [Source: _bmad-output/planning-artifacts/architecture.md#Architectural Boundaries] — Driver boundary: `interface.go` = contract, above is driver-agnostic, below is vendor-specific
 - [Source: _bmad-output/planning-artifacts/architecture.md#Naming Patterns] — Interface naming, error naming, package naming
-- [Source: _bmad-output/planning-artifacts/prd.md#Storage Abstraction FR20-FR25] — Functional requirements for 9-method interface, implicit selection, conformance
+- [Source: _bmad-output/planning-artifacts/prd.md#Storage Abstraction FR20-FR25] — Functional requirements for 7-method interface, implicit selection, conformance
 - [Source: _bmad-output/planning-artifacts/prd.md#NFR19] — Interface stability for external driver development
-- [Source: _bmad-output/project-context.md#StorageProvider Driver Framework] — 9 methods, idempotency, context, registry, conformance
+- [Source: _bmad-output/project-context.md#StorageProvider Driver Framework] — 7 methods, idempotency, context, registry, conformance
 - [Source: _bmad-output/project-context.md#Critical Don't-Miss Rules] — Anti-patterns and architectural boundaries
 - [Source: pkg/drivers/credentials.go] — Existing credential types and `CredentialResolver` interface (pattern reference)
 - [Source: pkg/drivers/credentials_secret.go] — Existing `SecretCredentialResolver` and credential error sentinels (pattern reference)
@@ -240,9 +240,9 @@ None — implementation completed without errors or retries.
 
 ### Completion Notes List
 
-- Implemented all 7 domain types in `types.go`: `VolumeGroupID`, `ReplicationState` (6 constants), `VolumeGroupSpec`, `VolumeGroupInfo`, `ReplicationInfo`, `PromoteOptions`, `DemoteOptions`
-- Defined 9-method `StorageProvider` interface in `interface.go` with comprehensive godoc covering idempotency guarantees, error conditions, and DR lifecycle context per method
-- Created 7 sentinel errors in `errors.go` — kept separate from existing credential errors in `credentials_secret.go`
+- Implemented domain types in `types.go`: `VolumeGroupID`, `VolumeRole` (3 constants), `ReplicationHealth` (4 constants), `VolumeGroupSpec`, `VolumeGroupInfo`, `ReplicationStatus`, `SetSourceOptions`, `SetTargetOptions`, `StopReplicationOptions`
+- Defined 7-method `StorageProvider` interface in `interface.go` with role-based replication model (NonReplicated/Source/Target), comprehensive godoc covering idempotency guarantees, error conditions, and DR lifecycle context per method
+- Created 5 sentinel errors in `errors.go` — kept separate from existing credential errors in `credentials_secret.go`
 - Implemented thread-safe `Registry` with `sync.RWMutex`, panic-on-duplicate registration, `GetDriverForPVC` resolution chain, `StorageClassLister` abstraction, `DefaultRegistry` singleton with package-level convenience functions
 - Fixed 2 lint issues (line length >120 chars on `GetDriverForPVC` signatures) by wrapping parameters
 - 17 new tests across 4 test files; existing 10 credential tests unaffected
@@ -252,17 +252,18 @@ None — implementation completed without errors or retries.
 ### Change Log
 
 - 2026-04-16: Implemented Story 3.1 — StorageProvider interface, domain types, typed errors, driver registry, and unit tests
+- 2026-04-16: Reworked in place — 9-method interface redesigned to 7-method role-based model (NonReplicated/Source/Target), replaced ReplicationState/PromoteOptions/DemoteOptions with VolumeRole/ReplicationHealth/ReplicationStatus/SetSourceOptions/SetTargetOptions/StopReplicationOptions, replaced ErrPromotionFailed/ErrDemotionFailed/ErrResyncFailed with ErrInvalidTransition
 
 ### File List
 
 | File | Action |
 |------|--------|
-| `pkg/drivers/types.go` | **New** — Domain types (VolumeGroupID, ReplicationState, VolumeGroupSpec, VolumeGroupInfo, ReplicationInfo, PromoteOptions, DemoteOptions) |
-| `pkg/drivers/interface.go` | **New** — StorageProvider 9-method interface |
-| `pkg/drivers/errors.go` | **New** — 7 sentinel errors for storage driver operations |
+| `pkg/drivers/types.go` | **New** — Domain types (VolumeGroupID, VolumeRole, ReplicationHealth, VolumeGroupSpec, VolumeGroupInfo, ReplicationStatus, SetSourceOptions, SetTargetOptions, StopReplicationOptions) |
+| `pkg/drivers/interface.go` | **New** — StorageProvider 7-method interface with role-based replication model |
+| `pkg/drivers/errors.go` | **New** — 5 sentinel errors for storage driver operations |
 | `pkg/drivers/registry.go` | **New** — Registry, DriverFactory, StorageClassLister, DefaultRegistry, package-level functions |
 | `pkg/drivers/doc.go` | **Modified** — Updated package godoc to cover interface, registry, errors, credentials |
-| `pkg/drivers/types_test.go` | **New** — ReplicationState string constant tests |
+| `pkg/drivers/types_test.go` | **New** — VolumeRole and ReplicationHealth string constant tests |
 | `pkg/drivers/interface_test.go` | **New** — Compile-time interface check with mockProvider |
 | `pkg/drivers/errors_test.go` | **New** — Sentinel error distinctness and errors.Is wrapping tests |
 | `pkg/drivers/registry_test.go` | **New** — Registry tests (register/get, not-found, duplicate panic, PVC resolution, concurrent access, reset) |

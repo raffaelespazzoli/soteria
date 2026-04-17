@@ -18,23 +18,40 @@ package drivers
 
 import "testing"
 
-func TestReplicationState_StringConstants(t *testing.T) {
+func TestVolumeRole_StringConstants(t *testing.T) {
 	tests := []struct {
-		state ReplicationState
-		want  string
+		role VolumeRole
+		want string
 	}{
-		{ReplicationActive, "Active"},
-		{ReplicationDegraded, "Degraded"},
-		{ReplicationStopped, "Stopped"},
-		{ReplicationPromoted, "Promoted"},
-		{ReplicationDemoted, "Demoted"},
-		{ReplicationResyncing, "Resyncing"},
+		{RoleNonReplicated, "NonReplicated"},
+		{RoleSource, "Source"},
+		{RoleTarget, "Target"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {
-			if got := string(tt.state); got != tt.want {
-				t.Fatalf("ReplicationState = %q, want %q", got, tt.want)
+			if got := string(tt.role); got != tt.want {
+				t.Fatalf("VolumeRole = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestReplicationHealth_StringConstants(t *testing.T) {
+	tests := []struct {
+		health ReplicationHealth
+		want   string
+	}{
+		{HealthHealthy, "Healthy"},
+		{HealthDegraded, "Degraded"},
+		{HealthSyncing, "Syncing"},
+		{HealthUnknown, "Unknown"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.want, func(t *testing.T) {
+			if got := string(tt.health); got != tt.want {
+				t.Fatalf("ReplicationHealth = %q, want %q", got, tt.want)
 			}
 		})
 	}

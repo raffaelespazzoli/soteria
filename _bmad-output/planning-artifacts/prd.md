@@ -33,7 +33,7 @@ No existing project combines storage-agnostic DR, VM-aware orchestration, Kubern
 
 The core design philosophy separates careful planning from simple execution. DRPlans are designed deliberately — waves, throttling, hooks, consistency levels — and validated through test executions. When the moment arrives, whether a planned migration or a 3 AM disaster, the operator presses one button. The orchestrator executes the plan exactly as designed, with wave-by-wave progress, partial success reporting, and an immutable audit trail. The product delivers confidence: not "I hope this works" but "I know this works because I've tested it and the orchestrator does exactly what it showed me it would do."
 
-The vendor-specific surface is narrow — six storage operations modeled on CSI-Addons semantics. The real value is in the orchestration layer above: waves, throttling, fail-forward error handling, cross-site state, and the audit trail that proves compliance.
+The vendor-specific surface is narrow — four replication operations (SetSource, SetTarget, StopReplication, GetReplicationStatus) plus volume group CRUD, modeled on CSI-Addons semantics. The real value is in the orchestration layer above: waves, throttling, fail-forward error handling, cross-site state, and the audit trail that proves compliance.
 
 ## Project Classification
 
@@ -135,13 +135,13 @@ She applies it and opens the OCP Console. The DR Dashboard shows `erp-full-stack
 
 **Opening Scene:** Priya clones the Soteria repo and runs `make dev-cluster`. A local OpenShift dev environment spins up with the orchestrator running against the no-op driver. She creates a test DRPlan, triggers a failover, and watches it succeed — all without any real storage. She reads the no-op driver source to understand the StorageProvider interface contract.
 
-**Rising Action:** Priya creates a new `dell-powerstore` driver package. The interface is 9 methods — `CreateVolumeGroup`, `DeleteVolumeGroup`, `GetVolumeGroup`, `EnableReplication`, `DisableReplication`, `PromoteVolume`, `DemoteVolume`, `ResyncVolume`, `GetReplicationInfo`. She maps each to Dell CSM's `repctl` commands and the `DellCSIReplicationGroup` CRD. The translation layer is straightforward because Soteria's interface mirrors CSI-Addons semantics, which Dell is already moving toward.
+**Rising Action:** Priya creates a new `dell-powerstore` driver package. The interface is 7 methods — `CreateVolumeGroup`, `DeleteVolumeGroup`, `GetVolumeGroup`, `SetSource`, `SetTarget`, `StopReplication`, `GetReplicationStatus`. The replication model uses three volume roles (NonReplicated, Source, Target) and the driver acts as a reconciler — checking actual storage state before flipping roles. She maps each to Dell CSM's `repctl` commands and the `DellCSIReplicationGroup` CRD. The translation layer is straightforward because Soteria's interface mirrors CSI-Addons semantics, which Dell is already moving toward.
 
 **Climax:** Priya runs the conformance test suite against a real two-cluster environment with PowerStore arrays. The suite exercises the full DR lifecycle — create volume groups, enable replication, planned failover, re-protect, disaster failover with force, failback. Three tests fail because Dell's volume promotion is asynchronous where Soteria expects synchronous completion. She adds a polling loop with timeout. All tests pass.
 
 **Resolution:** Priya submits a PR with the driver, conformance test results, and a failure-mode document describing known edge cases (async promotion, replication group size limits). The driver is reviewed by Soteria maintainers and merged. PowerStore appears as a supported storage backend in the next release. Her team anticipates the driver will thin out significantly once Dell's native CSI-Addons support ships.
 
-**Capabilities revealed:** No-op driver as development reference, `make dev-cluster` contributor onboarding, StorageProvider interface (9 methods), conformance test suite, driver contribution workflow, transitional shim architecture.
+**Capabilities revealed:** No-op driver as development reference, `make dev-cluster` contributor onboarding, StorageProvider interface (7 methods), conformance test suite, driver contribution workflow, transitional shim architecture.
 
 ---
 
@@ -202,7 +202,7 @@ She applies it and opens the OCP Console. The DR Dashboard shows `erp-full-stack
 
 **ScyllaDB + Kubernetes API Aggregation Layer for cross-site DR state.** Rather than building a bespoke CRD-sync protocol between two Kubernetes clusters, Soteria stores DR resources (DRPlan, DRExecution, DRGroupStatus) in ScyllaDB via a Kubernetes Aggregated API Server. ScyllaDB's `NetworkTopologyStrategy` with async replication handles cross-site data distribution. `LOCAL_ONE` consistency means all operations are served locally. When a datacenter fails, the surviving instance operates normally against its local replica. When the failed site recovers, ScyllaDB's anti-entropy repair auto-synchronizes — no custom reconciliation logic needed. The database's built-in consistency mechanisms replace what would otherwise be a complex distributed systems problem.
 
-**CSI-Addons-inspired internal interface, decoupled from the wire protocol.** Soteria defines its own Go interface modeled on CSI-Addons semantics (volume groups, replication enable/disable, promote/demote, resync) but not bound to CSI-Addons' gRPC transport. This is a pragmatic bet on an emerging standard: ODF already implements CSI-Addons natively, Dell and Pure are moving toward adoption, and NetApp is not interested. The interface design means that as vendors adopt CSI-Addons, their driver implementations collapse to thin pass-throughs. NetApp's permanent shim is isolated behind the same interface. The orchestrator core never changes when storage vendors are added or when vendors' CSI-Addons maturity evolves.
+**CSI-Addons-inspired internal interface, decoupled from the wire protocol.** Soteria defines its own Go interface modeled on CSI-Addons semantics (volume groups, role-based replication — SetSource/SetTarget/StopReplication) but not bound to CSI-Addons' gRPC transport. This is a pragmatic bet on an emerging standard: ODF already implements CSI-Addons natively, Dell and Pure are moving toward adoption, and NetApp is not interested. The interface design means that as vendors adopt CSI-Addons, their driver implementations collapse to thin pass-throughs. NetApp's permanent shim is isolated behind the same interface. The orchestrator core never changes when storage vendors are added or when vendors' CSI-Addons maturity evolves.
 
 **Label-driven wave auto-formation.** DR plans and wave membership are determined entirely by Kubernetes labels on VMs. Adding a VM to DR protection requires adding two labels — `soteria.io/drplan: <planName>` for plan membership and a wave label for execution ordering. No plan editing, no protection group management UI, no manual wave construction. VMs self-organize. This is a departure from SRM's explicit protection group model and leverages Kubernetes' native label semantics as the DR organization primitive.
 
@@ -230,7 +230,7 @@ Soteria is a Kubernetes operator / infrastructure orchestrator deployed via OLM 
 
 **Driver selection is implicit:** The orchestrator determines which StorageProvider driver to use by inspecting the storage class of the VMs' PVCs. If a VM's volumes use a Dell CSI storage class, the orchestrator uses the Dell driver. No explicit storage provider configuration resource is needed — the mapping is derived from existing cluster state.
 
-**VM pre-existence:** VMs already exist on both clusters with correct PVC bindings. The target cluster's VMs are in a stopped state with `runStrategy: Manual` or equivalent. The orchestrator's role is to promote replicated volumes to read-write and start VMs — not to create VMs or rebind PVCs.
+**VM pre-existence:** VMs already exist on both clusters with correct PVC bindings. The target cluster's VMs are in a stopped state with `runStrategy: Manual` or equivalent. The orchestrator's role is to transition replicated volumes to the Source role (read-write) and start VMs — not to create VMs or rebind PVCs.
 
 ### Technical Architecture Considerations
 
@@ -249,7 +249,7 @@ Soteria is a Kubernetes operator / infrastructure orchestrator deployed via OLM 
 **Prometheus metrics (v1):**
 - VMs under DR plan (gauge per plan, total)
 - Failover execution duration (histogram per plan type)
-- RPO / replication lag per volume group (gauge, sourced from `GetReplicationInfo`)
+- RPO / replication lag per volume group (gauge, sourced from `GetReplicationStatus`)
 - Execution success/failure counts (counter per plan type and outcome)
 
 Metrics are exposed via standard `/metrics` endpoint and scraped by Prometheus. No OpenTelemetry tracing in v1.
@@ -280,13 +280,13 @@ Metrics are exposed via standard `/metrics` endpoint and scraped by Prometheus. 
 
 | Component | Description |
 |---|---|
-| StorageProvider Go interface | 9-method interface modeled on CSI-Addons semantics |
+| StorageProvider Go interface | 7-method interface with role-based replication model (NonReplicated/Source/Target) |
 | No-op driver | Full interface implementation for dev/test/CI |
 | DRPlan CRD | Label-driven wave formation, waveLabel, maxConcurrentFailovers. VMs associated via `soteria.io/drplan` label. No `type` field — execution mode chosen at runtime |
 | DRExecution CRD | Immutable audit record. Execution mode (planned_migration, disaster) is a field on DRExecution, not DRPlan |
-| Planned migration workflow | Graceful stop → final sync → promote → start VMs wave by wave. RPO=0 |
-| Disaster recovery workflow | Force-promote → start VMs wave by wave. RPO>0. Origin errors ignored |
-| Re-protect workflow | DemoteVolume on old active → ResyncVolume → monitor until healthy |
+| Planned migration workflow | Graceful stop → StopReplication on source → SetSource on target site → start VMs wave by wave. RPO=0 |
+| Disaster recovery workflow | SetSource(force=true) on target site → start VMs wave by wave. RPO>0. Origin errors ignored |
+| Re-protect workflow | StopReplication on old active → SetTarget on old active / SetSource on new active → monitor until healthy |
 | Failback | Mirror of failover (re-uses the same engine, reversed direction) |
 | ScyllaDB + Aggregated API Server | Custom `storage.Interface` for k8s.io/apiserver. Shared resources: DRPlan, DRExecution, DRGroupStatus |
 | OCP Console plugin (core) | DR Dashboard, plan detail views, failover trigger with pre-flight checks, live execution monitor |
@@ -331,8 +331,8 @@ Metrics are exposed via standard `/metrics` endpoint and scraped by Prometheus. 
 
 | Mode | Origin Site | Target Site | RPO | v1 | Lasting Effects |
 |---|---|---|---|---|---|
-| **Planned Migration** | Both DCs up. Graceful VM shutdown → final sync | Promote volumes → start VMs wave by wave | 0 | Yes | Yes |
-| **Disaster Recovery** | May be down. Errors ignored | Force-promote volumes → start VMs wave by wave | >0 | Yes | Yes |
+| **Planned Migration** | Both DCs up. Graceful VM shutdown → StopReplication → final sync | SetSource on target volumes → start VMs wave by wave | 0 | Yes | Yes |
+| **Disaster Recovery** | May be down. Errors ignored | SetSource(force=true) on target volumes → start VMs wave by wave | >0 | Yes | Yes |
 | **Test** *(post-v1)* | VMs keep running, untouched | Clone/snapshot volumes → start VMs in isolated network → validate → cleanup | N/A | No | None |
 
 ## Functional Requirements
@@ -350,24 +350,24 @@ Metrics are exposed via standard `/metrics` endpoint and scraped by Prometheus. 
 
 ### DR Execution & Workflow
 
-- **FR9:** Operator can trigger a planned migration execution for a DRPlan when both datacenters are available — orchestrator gracefully stops origin VMs, waits for final replication sync, promotes target volumes, and starts target VMs wave by wave
-- **FR10:** Operator can trigger a disaster recovery execution for a DRPlan — orchestrator force-promotes target volumes and starts target VMs wave by wave, ignoring errors from the origin site
+- **FR9:** Operator can trigger a planned migration execution for a DRPlan when both datacenters are available — orchestrator gracefully stops origin VMs, stops replication, transitions target volumes to Source role, and starts target VMs wave by wave
+- **FR10:** Operator can trigger a disaster recovery execution for a DRPlan — orchestrator transitions target volumes to Source role (force=true), and starts target VMs wave by wave, ignoring errors from the origin site
 - **FR11:** Orchestrator executes waves sequentially and operations within a wave concurrently, respecting `maxConcurrentFailovers` by chunking waves into DRGroups
 - **FR12:** `maxConcurrentFailovers` always counts individual VMs regardless of consistency level. When namespace-level consistency is configured, the orchestrator creates DRGroup chunks such that all VMs in the same namespace and same wave are always fully contained in a single chunk. If remaining chunk capacity cannot fit the next namespace group, a new chunk is created (current chunk capacity may be underutilized). A pre-flight check validates that `maxConcurrentFailovers` is greater than or equal to the largest namespace+wave group — if not, execution is rejected
 - **FR13:** Orchestrator uses fail-forward error handling — if a DRGroup fails, it is marked `Failed`, the engine continues with remaining groups, and the execution is reported as `PartiallySucceeded`
 - **FR14:** Operator can manually retry a failed DRGroup if the VM is still in a healthy, known state on the original site
 - **FR15:** Orchestrator rejects retry attempts when the starting state is non-standard or unpredictable, requiring manual intervention
-- **FR16:** Operator can trigger re-protect after a failover — orchestrator demotes volumes on the old active site (if reachable), initiates resync, and monitors until replication is healthy
+- **FR16:** Operator can trigger re-protect after a failover — orchestrator stops replication on the old active site (if reachable), transitions old active volumes to Target and new active volumes to Source, and monitors until replication is healthy
 - **FR17:** Operator can trigger failback — orchestrator executes the reverse of failover using the same wave-based engine
 - **FR18:** All failover operations require explicit human initiation — no automatic failure detection or auto-failover
 - **FR19:** Execution mode (planned_migration or disaster) is specified at execution time, not on the DRPlan definition
 
 ### Storage Abstraction
 
-- **FR20:** Orchestrator interacts with storage backends exclusively through a StorageProvider Go interface with 9 methods: CreateVolumeGroup, DeleteVolumeGroup, GetVolumeGroup, EnableReplication, DisableReplication, PromoteVolume, DemoteVolume, ResyncVolume, GetReplicationInfo
+- **FR20:** Orchestrator interacts with storage backends exclusively through a StorageProvider Go interface with 7 methods: CreateVolumeGroup, DeleteVolumeGroup, GetVolumeGroup, SetSource, SetTarget, StopReplication, GetReplicationStatus. The replication model uses three volume roles (NonReplicated, Source, Target) with all transitions routed through NonReplicated. Drivers act as reconcilers — checking actual storage state before applying changes
 - **FR21:** Orchestrator determines which StorageProvider driver to use by inspecting the storage class of the VMs' PVCs — no explicit storage configuration resource required
 - **FR23:** No-op driver implements the full StorageProvider interface but performs no actual storage operations, enabling development, testing, and CI without storage infrastructure
-- **FR24:** Storage vendor engineer can implement a new StorageProvider driver by implementing the 9-method Go interface and running the conformance test suite
+- **FR24:** Storage vendor engineer can implement a new StorageProvider driver by implementing the 7-method Go interface and running the conformance test suite
 - **FR25:** Orchestrator supports heterogeneous storage within a single DRPlan — different VMs can use different storage backends, each handled by the appropriate driver
 
 ### Cross-Site Shared State

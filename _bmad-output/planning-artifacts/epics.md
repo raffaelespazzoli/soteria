@@ -51,10 +51,10 @@ FR18: All failover operations require explicit human initiation — no automatic
 FR19: Execution mode (planned_migration or disaster) is specified at execution time, not on the DRPlan definition
 
 **Storage Abstraction:**
-FR20: Orchestrator interacts with storage backends exclusively through a StorageProvider Go interface with 9 methods: CreateVolumeGroup, DeleteVolumeGroup, GetVolumeGroup, EnableReplication, DisableReplication, PromoteVolume, DemoteVolume, ResyncVolume, GetReplicationInfo
+FR20: Orchestrator interacts with storage backends exclusively through a StorageProvider Go interface with 7 methods: CreateVolumeGroup, DeleteVolumeGroup, GetVolumeGroup, SetSource, SetTarget, StopReplication, GetReplicationStatus. The replication model uses three volume roles (NonReplicated, Source, Target) with all transitions routed through NonReplicated
 FR21: Orchestrator determines which StorageProvider driver to use by inspecting the storage class of the VMs' PVCs — no explicit storage configuration resource required
 FR23: No-op driver implements the full StorageProvider interface but performs no actual storage operations, enabling development, testing, and CI without storage infrastructure
-FR24: Storage vendor engineer can implement a new StorageProvider driver by implementing the 9-method Go interface and running the conformance test suite
+FR24: Storage vendor engineer can implement a new StorageProvider driver by implementing the 7-method Go interface and running the conformance test suite
 FR25: Orchestrator supports heterogeneous storage within a single DRPlan — different VMs can use different storage backends, each handled by the appropriate driver
 
 **Cross-Site Shared State:**
@@ -141,8 +141,8 @@ NFR19: The StorageProvider interface must be stable enough for external driver d
 
 **Driver Framework (from Architecture):**
 - Driver registration via init() + registry pattern, discovered at startup, selected at runtime by PVC storage class
-- Typed errors from pkg/drivers/errors.go (ErrVolumeNotFound, ErrReplicationNotReady, ErrPromotionFailed)
-- All 9 methods must be idempotent — safe to retry after crash/restart
+- Typed errors from pkg/drivers/errors.go (ErrVolumeNotFound, ErrReplicationNotReady, ErrInvalidTransition)
+- All 7 methods must be idempotent — safe to retry after crash/restart
 - Conformance test suite at pkg/drivers/conformance/suite.go — all drivers must pass full DR lifecycle battery
 - Fake driver at pkg/drivers/fake/ for unit testing (k8s <package>fake convention)
 
@@ -151,7 +151,7 @@ NFR19: The StorageProvider interface must be stable enough for external driver d
 - Pod restart resumes from last checkpoint — at most one in-flight DRGroup lost
 - State machine: 4-state DR cycle with validated transitions (SteadyState, FailingOver, FailedOver, Reprotecting, DRedSteadyState, FailingBack)
 - Controller communicates via standard client-go through kube-apiserver proxy — never touches ScyllaDB directly
-- Re-protect workflow: DemoteVolume on old active → ResyncVolume → monitor until healthy (storage-only, no waves)
+- Re-protect workflow: StopReplication on old active → SetTarget on old active / SetSource on new active → monitor until healthy (storage-only, no waves)
 
 **CI/CD & Packaging (from Architecture):**
 - GitHub Actions reusing redhat-cop/github-workflows-operators
@@ -249,7 +249,7 @@ FR16: Epic 4 — Re-protect workflow (demote → resync → monitor until health
 FR17: Epic 4 — Failback as reverse failover using same wave-based engine
 FR18: Epic 4 — Human-triggered only — no auto-failover
 FR19: Epic 4 — Execution mode specified at runtime, not on DRPlan
-FR20: Epic 3 — StorageProvider Go interface with 9 methods
+FR20: Epic 3 — StorageProvider Go interface with 7 methods (role-based replication model)
 FR21: Epic 3 — Implicit driver selection from PVC storage class
 FR23: Epic 3 — No-op driver for dev/test/CI
 FR24: Epic 3 — Driver contribution path via interface + conformance suite
@@ -290,7 +290,7 @@ Replace the `vmSelector` label-selector approach with a convention-based `soteri
 **FRs refined:** FR1, FR3, FR4, FR5
 
 ### Epic 3: Storage Driver Framework & Reference Implementations
-Storage vendor engineers can implement and validate new drivers using the 9-method Go interface and conformance test suite. The no-op driver enables full dev/CI without real storage. Driver selection is automatic from PVC storage classes.
+Storage vendor engineers can implement and validate new drivers using the 7-method Go interface and conformance test suite. The replication model uses three volume roles (NonReplicated, Source, Target) with all transitions routed through NonReplicated. The no-op driver enables full dev/CI without real storage. Driver selection is automatic from PVC storage classes.
 **FRs covered:** FR20, FR21, FR23, FR24, FR25
 
 ### Epic 4: DR Workflow Engine — Full Lifecycle
@@ -915,26 +915,26 @@ So that I am confident the bounded scan and partial-list continue-token logic wo
 
 ## Epic 3: Storage Driver Framework & Reference Implementations
 
-Storage vendor engineers can implement and validate new drivers using the 9-method Go interface and conformance test suite. The no-op driver enables full dev/CI without real storage. Driver selection is automatic from PVC storage classes.
+Storage vendor engineers can implement and validate new drivers using the 7-method Go interface and conformance test suite. The replication model uses three volume roles (NonReplicated, Source, Target) with all transitions routed through NonReplicated. The no-op driver enables full dev/CI without real storage. Driver selection is automatic from PVC storage classes.
 
 ### Story 3.1: StorageProvider Interface & Driver Registry
 
 As a storage vendor engineer,
-I want a clearly defined 9-method Go interface with typed errors and an automatic driver registry,
+I want a clearly defined 7-method Go interface with typed errors and an automatic driver registry,
 So that I know exactly what to implement and how drivers are discovered at runtime.
 
 **Acceptance Criteria:**
 
 **Given** the file `pkg/drivers/interface.go`
 **When** the StorageProvider interface is defined
-**Then** it declares exactly 9 methods: CreateVolumeGroup, DeleteVolumeGroup, GetVolumeGroup, EnableReplication, DisableReplication, PromoteVolume, DemoteVolume, ResyncVolume, GetReplicationInfo (FR20)
+**Then** it declares exactly 7 methods: CreateVolumeGroup, DeleteVolumeGroup, GetVolumeGroup, SetSource, SetTarget, StopReplication, GetReplicationStatus (FR20)
 **And** every method accepts `context.Context` as its first parameter for timeout and cancellation support
-**And** method signatures use domain types (not raw strings) for volume group IDs, replication states, etc.
+**And** method signatures use domain types (not raw strings) for volume group IDs, replication roles, etc.
 **And** the interface is documented with godoc comments explaining each method's contract, idempotency guarantee, and expected error conditions
 
 **Given** the file `pkg/drivers/errors.go`
 **When** typed error variables are defined
-**Then** sentinel errors exist for: `ErrVolumeNotFound`, `ErrVolumeGroupNotFound`, `ErrReplicationNotReady`, `ErrPromotionFailed`, `ErrDemotionFailed`, `ErrResyncFailed`, `ErrDriverNotFound`
+**Then** sentinel errors exist for: `ErrVolumeNotFound`, `ErrVolumeGroupNotFound`, `ErrReplicationNotReady`, `ErrInvalidTransition`, `ErrDriverNotFound`
 **And** all error variables use the `Err` prefix per Go convention
 **And** driver implementations return these typed errors — never raw errors
 
@@ -962,9 +962,9 @@ So that I can develop, test, and run CI without storage infrastructure from Day 
 **Acceptance Criteria:**
 
 **Given** the no-op driver in `pkg/drivers/noop/driver.go`
-**When** any of the 9 StorageProvider methods is called
+**When** any of the 7 StorageProvider methods is called
 **Then** the method returns success without performing any actual storage operations (FR23)
-**And** the driver logs the operation at V(1) level with structured logging: `log.FromContext(ctx).V(1).Info("noop: promoting volume", "volumeGroup", vgID)`
+**And** the driver logs the operation at V(1) level with structured logging: `log.FromContext(ctx).V(1).Info("No-op: Set volume group to Source", "volumeGroupID", vgID)`
 
 **Given** the no-op driver
 **When** `CreateVolumeGroup` is called
@@ -972,12 +972,12 @@ So that I can develop, test, and run CI without storage infrastructure from Day 
 **And** subsequent `GetVolumeGroup` calls with that ID return the synthetic group
 
 **Given** the no-op driver
-**When** `GetReplicationInfo` is called
-**Then** it returns a healthy replication status with a synthetic RPO (e.g., last sync = now)
-**And** the replication state reflects the last operation (e.g., after PromoteVolume, replication shows promoted)
+**When** `GetReplicationStatus` is called
+**Then** it returns the current role and health with a synthetic RPO (e.g., last sync = now)
+**And** the role reflects the last operation (e.g., after SetSource, role is Source with HealthHealthy)
 
 **Given** the no-op driver
-**When** all 9 methods are called repeatedly
+**When** all 7 methods are called repeatedly
 **Then** every method is idempotent — calling the same operation twice produces the same result without error
 
 **Given** the no-op driver
@@ -995,7 +995,7 @@ So that I can test workflow engine behavior with controlled storage responses in
 
 **Given** the fake driver in `pkg/drivers/fake/driver.go`
 **When** instantiated in a test
-**Then** the caller can program responses for each method: `fake.OnPromoteVolume(vgID).Return(nil)` or `fake.OnPromoteVolume(vgID).Return(drivers.ErrPromotionFailed)`
+**Then** the caller can program responses for each method: `fake.OnSetSource(vgID).Return(nil)` or `fake.OnSetSource(vgID).Return(drivers.ErrInvalidTransition)`
 **And** the fake records all method calls with arguments for assertion
 
 **Given** a programmed fake driver
@@ -1027,16 +1027,13 @@ So that I can prove my driver implementation is correct before submitting it.
 **When** run against any StorageProvider implementation
 **Then** it exercises the full DR lifecycle in sequence:
 1. CreateVolumeGroup — creates a volume group
-2. EnableReplication — enables replication for the group
-3. GetReplicationInfo — verifies replication is healthy
-4. PromoteVolume (planned) — promotes with graceful demote first
-5. DemoteVolume — demotes the old active
-6. ResyncVolume — resyncs in the new direction
-7. GetReplicationInfo — verifies replication is re-established
-8. PromoteVolume (disaster, force) — force-promotes without demote
-9. ResyncVolume — resyncs after disaster failover
-10. DisableReplication — disables replication
-11. DeleteVolumeGroup — cleans up (FR24)
+2. SetSource — transitions to Source role (replication origin)
+3. GetReplicationStatus — verifies role is Source, health is Healthy
+4. StopReplication — transitions back to NonReplicated
+5. SetTarget — transitions to Target role (replication destination)
+6. GetReplicationStatus — verifies role is Target, health is Healthy
+7. StopReplication — transitions back to NonReplicated
+8. DeleteVolumeGroup — cleans up (FR24)
 
 **Given** the conformance suite
 **When** any method returns an unexpected error
@@ -1049,7 +1046,7 @@ So that I can prove my driver implementation is correct before submitting it.
 **Given** the conformance suite
 **When** testing idempotency
 **Then** each method is called twice in succession and the second call succeeds without error
-**And** this verifies all 9 methods are idempotent as required
+**And** this verifies all 7 methods are idempotent as required
 
 **Given** the conformance suite
 **When** testing context cancellation
@@ -1145,13 +1142,13 @@ So that I can migrate workloads during maintenance windows.
 
 **Given** a DRExecution with mode `planned_migration` and both DCs available
 **When** the planned migration workflow in `pkg/engine/planned.go` executes
-**Then** Step 0 executes first: origin VMs are gracefully stopped, DemoteVolume is called on origin, and the workflow waits for the final replication sync to complete — guaranteeing RPO=0 (FR9)
-**And** after sync completes, PromoteVolume (force=false) is called on the target site
+**Then** Step 0 executes first: origin VMs are gracefully stopped, StopReplication is called on origin volumes, and the workflow waits for the final replication sync to complete — guaranteeing RPO=0 (FR9)
+**And** after sync completes, SetSource (force=false) is called on the target site volumes
 **And** target VMs are started wave by wave in sequence
 
 **Given** a wave with multiple DRGroups
 **When** the planned migration processes the wave
-**Then** for each DRGroup: PromoteVolume is called for all VMs in the group, then VMs are started
+**Then** for each DRGroup: SetSource is called for all volume groups in the group, then VMs are started
 **And** DRGroups within the wave execute concurrently per Story 4.2
 
 **Given** a planned migration execution
@@ -1176,7 +1173,7 @@ So that workloads recover quickly when the primary DC is down.
 **Given** a DRExecution with mode `disaster`
 **When** the disaster workflow in `pkg/engine/disaster.go` executes
 **Then** no Step 0 occurs — the origin site is assumed unreachable (FR10)
-**And** PromoteVolume is called with `force: true` on the target site for each DRGroup
+**And** SetSource is called with `force: true` on the target site for each DRGroup
 **And** errors from the origin site are logged but do not block execution (FR10)
 **And** target VMs are started wave by wave in sequence
 
@@ -1204,7 +1201,7 @@ So that partial recovery is better than no recovery during a disaster.
 **Acceptance Criteria:**
 
 **Given** a wave with 3 DRGroup chunks executing concurrently
-**When** DRGroup-2 fails (e.g., PromoteVolume returns ErrPromotionFailed)
+**When** DRGroup-2 fails (e.g., SetSource returns ErrInvalidTransition)
 **Then** DRGroup-2 is marked `Failed` with the error message recorded in DRExecution status (FR13)
 **And** DRGroup-1 and DRGroup-3 continue executing unaffected
 **And** the wave completes when all non-failed DRGroups finish
@@ -1307,14 +1304,14 @@ So that the system returns to full DR protection.
 
 **Given** a DRPlan in `FailedOver` phase after a successful failover
 **When** the operator triggers re-protect by creating a DRExecution with the appropriate action
-**Then** the orchestrator calls DemoteVolume on the old active site (if reachable) for each volume group (FR16)
-**And** calls ResyncVolume to initiate replication in the new direction
-**And** monitors replication health via GetReplicationInfo until all volume groups report Healthy
+**Then** the orchestrator calls StopReplication on the old active site (if reachable) for each volume group (FR16)
+**And** transitions old active volumes to Target and new active volumes to Source to establish replication in the new direction
+**And** monitors replication health via GetReplicationStatus until all volume groups report Healthy
 **And** DRPlan phase transitions from `FailedOver` → `Reprotecting` → `DRedSteadyState`
 
 **Given** re-protect when the old active site is unreachable
-**When** DemoteVolume fails for the origin
-**Then** the orchestrator logs the error and proceeds with ResyncVolume
+**When** StopReplication fails for the origin
+**Then** the orchestrator logs the error and proceeds with role transitions
 **And** replication may take longer to establish but the workflow continues
 
 **Given** a DRPlan in `DRedSteadyState` phase with healthy replication
@@ -1326,7 +1323,7 @@ So that the system returns to full DR protection.
 **Given** the re-protect workflow
 **When** replication health monitoring is in progress
 **Then** DRPlan status conditions report the resync progress (percentage or state)
-**And** the controller polls GetReplicationInfo at regular intervals until healthy
+**And** the controller polls GetReplicationStatus at regular intervals until healthy
 
 **Given** the full DR lifecycle
 **When** executed end-to-end: SteadyState → failover → FailedOver → re-protect → DRedSteadyState → failback → SteadyState
@@ -1348,7 +1345,7 @@ So that I know whether my DR plans are actually protected.
 **Acceptance Criteria:**
 
 **Given** a DRPlan with discovered VMs and active volume groups
-**When** the DRPlan controller polls `GetReplicationInfo` from the appropriate StorageProvider driver for each volume group
+**When** the DRPlan controller polls `GetReplicationStatus` from the appropriate StorageProvider driver for each volume group
 **Then** DRPlan `.status.replicationHealth` is updated with per-volume-group health: Healthy, Degraded, or Error (FR31)
 **And** each volume group entry includes the last successful replication sync timestamp
 **And** estimated RPO is calculated as time-since-last-sync for each volume group (FR32)

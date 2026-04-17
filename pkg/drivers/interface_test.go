@@ -35,28 +35,20 @@ func (m *mockProvider) GetVolumeGroup(_ context.Context, _ VolumeGroupID) (Volum
 	return VolumeGroupInfo{}, nil
 }
 
-func (m *mockProvider) EnableReplication(_ context.Context, _ VolumeGroupID) error {
+func (m *mockProvider) SetSource(_ context.Context, _ VolumeGroupID, _ SetSourceOptions) error {
 	return nil
 }
 
-func (m *mockProvider) DisableReplication(_ context.Context, _ VolumeGroupID) error {
+func (m *mockProvider) SetTarget(_ context.Context, _ VolumeGroupID, _ SetTargetOptions) error {
 	return nil
 }
 
-func (m *mockProvider) PromoteVolume(_ context.Context, _ VolumeGroupID, _ PromoteOptions) error {
+func (m *mockProvider) StopReplication(_ context.Context, _ VolumeGroupID, _ StopReplicationOptions) error {
 	return nil
 }
 
-func (m *mockProvider) DemoteVolume(_ context.Context, _ VolumeGroupID, _ DemoteOptions) error {
-	return nil
-}
-
-func (m *mockProvider) ResyncVolume(_ context.Context, _ VolumeGroupID) error {
-	return nil
-}
-
-func (m *mockProvider) GetReplicationInfo(_ context.Context, _ VolumeGroupID) (ReplicationInfo, error) {
-	return ReplicationInfo{}, nil
+func (m *mockProvider) GetReplicationStatus(_ context.Context, _ VolumeGroupID) (ReplicationStatus, error) {
+	return ReplicationStatus{}, nil
 }
 
 // Compile-time interface satisfaction check.

@@ -23,29 +23,49 @@ import "time"
 // (e.g., a CSI volume group handle, a Dell PowerStore volume group UUID).
 type VolumeGroupID string
 
-// ReplicationState describes the current replication status of a volume group.
-// Drivers report this state through GetReplicationInfo; the workflow engine
-// uses it to decide which DR operations are valid at each lifecycle stage.
-type ReplicationState string
+// VolumeRole describes the replication role of a volume group. The role
+// determines how the storage backend treats the volumes: NonReplicated means
+// no replication is configured, Source means the volumes are the replication
+// origin (read-write), and Target means the volumes are the replication
+// destination (read-only). Transitions between roles always pass through
+// NonReplicated — there is no direct Source-to-Target or Target-to-Source path.
+type VolumeRole string
 
 const (
-	// ReplicationActive indicates replication is healthy and synchronising.
-	ReplicationActive ReplicationState = "Active"
+	// RoleNonReplicated indicates the volume group has no active replication.
+	// This is the initial state after creation and the intermediate state
+	// during role changes (e.g., re-protect always goes Source → NonReplicated → Target).
+	RoleNonReplicated VolumeRole = "NonReplicated"
 
-	// ReplicationDegraded indicates replication is running but behind target RPO.
-	ReplicationDegraded ReplicationState = "Degraded"
+	// RoleSource indicates the volume group is the replication source (primary).
+	// Volumes are read-write and data is replicated to the paired target.
+	RoleSource VolumeRole = "Source"
 
-	// ReplicationStopped indicates replication has been explicitly disabled.
-	ReplicationStopped ReplicationState = "Stopped"
+	// RoleTarget indicates the volume group is the replication target (secondary).
+	// Volumes are read-only and receive replicated data from the paired source.
+	RoleTarget VolumeRole = "Target"
+)
 
-	// ReplicationPromoted indicates the volume group has been promoted to primary.
-	ReplicationPromoted ReplicationState = "Promoted"
+// ReplicationHealth qualifies the health of an active replication link.
+// Health is orthogonal to VolumeRole — a Source volume can be Healthy,
+// Degraded, or Syncing depending on the state of the replication link.
+type ReplicationHealth string
 
-	// ReplicationDemoted indicates the volume group has been demoted to secondary.
-	ReplicationDemoted ReplicationState = "Demoted"
+const (
+	// HealthHealthy indicates replication is running and within target RPO.
+	HealthHealthy ReplicationHealth = "Healthy"
 
-	// ReplicationResyncing indicates a resync operation is in progress.
-	ReplicationResyncing ReplicationState = "Resyncing"
+	// HealthDegraded indicates replication is running but behind target RPO.
+	HealthDegraded ReplicationHealth = "Degraded"
+
+	// HealthSyncing indicates a sync operation is in progress (initial sync
+	// after SetSource/SetTarget, or catch-up after a temporary disruption).
+	HealthSyncing ReplicationHealth = "Syncing"
+
+	// HealthUnknown indicates the driver cannot determine replication health.
+	// Returned when the volume is NonReplicated or when the storage backend
+	// is unreachable.
+	HealthUnknown ReplicationHealth = "Unknown"
 )
 
 // VolumeGroupSpec describes the desired volume group to create. The orchestrator
@@ -77,12 +97,16 @@ type VolumeGroupInfo struct {
 	PVCNames []string
 }
 
-// ReplicationInfo reports the current replication state for a volume group.
-// The workflow engine reads these fields to assess readiness before failover
-// and to report estimated RPO in DRExecution status.
-type ReplicationInfo struct {
-	// State is the current replication lifecycle state.
-	State ReplicationState
+// ReplicationStatus reports the current replication role and health for a
+// volume group. The workflow engine reads these fields to assess readiness
+// before failover and to report estimated RPO in DRExecution status.
+type ReplicationStatus struct {
+	// Role is the current replication role of the volume group.
+	Role VolumeRole
+
+	// Health qualifies the replication link health. Meaningful only when
+	// Role is Source or Target; set to HealthUnknown for NonReplicated.
+	Health ReplicationHealth
 
 	// LastSyncTime is the timestamp of the most recent successful data sync.
 	// Nil if the driver has never completed a sync or cannot report it.
@@ -93,18 +117,27 @@ type ReplicationInfo struct {
 	EstimatedRPO *time.Duration
 }
 
-// PromoteOptions configures a volume promotion operation.
-type PromoteOptions struct {
-	// Force skips graceful demote of the peer and forces promotion. Required
-	// for disaster failover when the source site is unreachable; must not be
-	// set for planned migration where both sites are healthy.
+// SetSourceOptions configures a SetSource operation.
+type SetSourceOptions struct {
+	// Force tells the driver to proceed even if the paired target is
+	// unreachable. Required for disaster failover when the remote site is
+	// down; must not be set for planned migration where both sites are healthy.
 	Force bool
 }
 
-// DemoteOptions configures a volume demotion operation.
-type DemoteOptions struct {
-	// Force forces demotion even if the volume group has outstanding writes.
-	// Used during re-protect when the previously-promoted site must become
-	// secondary regardless of in-flight I/O.
+// SetTargetOptions configures a SetTarget operation.
+type SetTargetOptions struct {
+	// Force tells the driver to proceed even if the paired source is
+	// unreachable. Used during re-protect when the old source site may
+	// still be down after a disaster failover.
+	Force bool
+}
+
+// StopReplicationOptions configures a StopReplication operation.
+type StopReplicationOptions struct {
+	// Force tells the driver to stop replication even if there are
+	// outstanding writes or the peer is unreachable. Used during re-protect
+	// when the previously active site must transition to NonReplicated
+	// regardless of in-flight I/O.
 	Force bool
 }

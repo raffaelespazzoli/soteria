@@ -37,17 +37,17 @@ func (s *stubProvider) DeleteVolumeGroup(_ context.Context, _ VolumeGroupID) err
 func (s *stubProvider) GetVolumeGroup(_ context.Context, _ VolumeGroupID) (VolumeGroupInfo, error) {
 	return VolumeGroupInfo{}, nil
 }
-func (s *stubProvider) EnableReplication(_ context.Context, _ VolumeGroupID) error  { return nil }
-func (s *stubProvider) DisableReplication(_ context.Context, _ VolumeGroupID) error { return nil }
-func (s *stubProvider) PromoteVolume(_ context.Context, _ VolumeGroupID, _ PromoteOptions) error {
+func (s *stubProvider) SetSource(_ context.Context, _ VolumeGroupID, _ SetSourceOptions) error {
 	return nil
 }
-func (s *stubProvider) DemoteVolume(_ context.Context, _ VolumeGroupID, _ DemoteOptions) error {
+func (s *stubProvider) SetTarget(_ context.Context, _ VolumeGroupID, _ SetTargetOptions) error {
 	return nil
 }
-func (s *stubProvider) ResyncVolume(_ context.Context, _ VolumeGroupID) error { return nil }
-func (s *stubProvider) GetReplicationInfo(_ context.Context, _ VolumeGroupID) (ReplicationInfo, error) {
-	return ReplicationInfo{}, nil
+func (s *stubProvider) StopReplication(_ context.Context, _ VolumeGroupID, _ StopReplicationOptions) error {
+	return nil
+}
+func (s *stubProvider) GetReplicationStatus(_ context.Context, _ VolumeGroupID) (ReplicationStatus, error) {
+	return ReplicationStatus{}, nil
 }
 
 func newStubFactory(id string) DriverFactory {

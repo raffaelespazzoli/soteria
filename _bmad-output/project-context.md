@@ -47,7 +47,7 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 
 **Go:**
 
-- Error wrapping: lowercase, no punctuation, wrap with `%w` — `fmt.Errorf("promoting volume %s: %w", name, err)`
+- Error wrapping: lowercase, no punctuation, wrap with `%w` — `fmt.Errorf("setting volume %s to source: %w", name, err)`
 - Sentinel errors use `Err` prefix — `ErrPlanNotFound`, `ErrInvalidState`
 - Driver implementations return typed errors from `pkg/drivers/errors.go` — never raw errors
 - Always pass `ctx` from reconcile handler — never create `context.Background()` inside reconcile or library code
@@ -94,8 +94,10 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 
 **StorageProvider Driver Framework:**
 
-- 9-method interface: CreateVolumeGroup, DeleteVolumeGroup, GetVolumeGroup, EnableReplication, DisableReplication, PromoteVolume, DemoteVolume, ResyncVolume, GetReplicationInfo
-- All 9 methods must be idempotent — safe to retry after crash/restart
+- 7-method interface: CreateVolumeGroup, DeleteVolumeGroup, GetVolumeGroup, SetSource, SetTarget, StopReplication, GetReplicationStatus
+- Replication model uses three volume roles (NonReplicated, Source, Target) with all transitions routed through NonReplicated
+- Drivers act as reconcilers — check actual storage state before applying changes
+- All 7 methods must be idempotent — safe to retry after crash/restart
 - Driver selection is implicit from PVC storage class — no StorageProviderConfig CRD
 - Registration: `init()` + registry pattern, discovered at startup
 - Timeouts: accept `context.Context`, respect cancellation
@@ -130,7 +132,7 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 - Integration tests: `test/integration/` with envtest — isolated from unit tests
 - E2E tests: `test/e2e/` using Ginkgo/Gomega — full cluster
 - Mock drivers: `pkg/drivers/fake/` follows k8s `<package>fake` convention
-- All drivers must pass conformance suite covering full DR lifecycle (create volume groups, enable replication, failover, re-protect, disaster failover with force, failback)
+- All drivers must pass conformance suite covering full DR lifecycle (create volume groups, set source/target roles, stop replication, re-protect, disaster failover with force, failback)
 - Write `_test.go` for all new exported functions — no untested public API
 - No-op driver enables full dev/test/CI without storage infrastructure from Day 1
 
@@ -263,7 +265,7 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 - Fail-forward: rollback impossible when active DC is down. Failed DRGroups marked `Failed`, engine continues, execution reports `PartiallySucceeded`
 - Reject retry if VM is in non-standard state — never attempt failover from unpredictable starting point
 - RPO is storage-determined: orchestrator reports estimated RPO but does not enforce targets
-- VM pre-existence: VMs exist on both clusters with PVC bindings. Orchestrator promotes volumes and starts VMs — does not create VMs or rebind PVCs
+- VM pre-existence: VMs exist on both clusters with PVC bindings. Orchestrator transitions volumes to Source role and starts VMs — does not create VMs or rebind PVCs
 - Homogeneous storage only: Dell-to-Dell, ODF-to-ODF — no cross-vendor replication
 
 **Architectural Boundaries:**
