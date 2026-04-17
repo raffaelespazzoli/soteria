@@ -36,6 +36,9 @@
 
 generated: 2026-04-06
 last_updated: 2026-04-17
+# 3.4 done: code review fixes applied (lifecycle fail-fast, vgID in all messages, ctx-cancel cleanup, full GetVG idempotency check, health assertion)
+# 3.4 review: Conformance Test Suite — RunConformance entry point, lifecycle/idempotency/ctx-cancel/error tests, 32 subtests all pass against no-op driver
+# 3.4 in-progress: Conformance Test Suite — development started
 # 3.3 done: code review fix applied (Calls/CallsTo Args deep-copy, 2 new aliasing tests)
 # 3.3 review: Fake Driver — programmable fake with On*/Return/ReturnResult API, FIFO reactions, arg matching, call recording; 23 tests, 98.4% coverage, race-safe
 # 3.2 done: code review fixes applied (Name+Namespace idempotency, PVCNames copy-on-read, ctx.Err() checks, error-path logging, force-flag logging test)
@@ -123,7 +126,7 @@ development_status:
   3-1-storageprovider-interface-driver-registry: done
   3-2-no-op-driver: done
   3-3-fake-driver-for-unit-testing: done
-  3-4-conformance-test-suite: ready-for-dev
+  3-4-conformance-test-suite: done
   epic-3-retrospective: optional
 
   # Epic 4: DR Workflow Engine — Full Lifecycle
