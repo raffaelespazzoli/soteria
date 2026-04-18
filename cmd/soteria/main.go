@@ -32,6 +32,9 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	// Register all built-in StorageProvider drivers.
+	_ "github.com/soteria-project/soteria/pkg/drivers/all"
+
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes"
@@ -50,6 +53,7 @@ import (
 	soteriainstall "github.com/soteria-project/soteria/pkg/apis/soteria.io/install"
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
 	"github.com/soteria-project/soteria/pkg/apiserver"
+	"github.com/soteria-project/soteria/pkg/controller/drexecution"
 	"github.com/soteria-project/soteria/pkg/controller/drplan"
 	"github.com/soteria-project/soteria/pkg/engine"
 	scylladb "github.com/soteria-project/soteria/pkg/storage/scylladb"
@@ -242,11 +246,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	// TODO(story-3.x): Wire DRExecution controller once the reconciler is implemented.
-	// if err := (&drexecution.DRExecutionReconciler{...}).SetupWithManager(mgr); err != nil {
-	//     setupLog.Error(err, "Failed to create controller", "controller", "DRExecution")
-	//     os.Exit(1)
-	// }
+	if err := (&drexecution.DRExecutionReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "Failed to create controller", "controller", "DRExecution")
+		os.Exit(1)
+	}
 	// +kubebuilder:scaffold:builder
 
 	// ---- Webhooks ----
