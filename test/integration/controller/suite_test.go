@@ -108,6 +108,7 @@ func TestMain(m *testing.M) {
 
 	testRegistry := drivers.NewRegistry()
 	testRegistry.RegisterDriver(noop.ProvisionerName, func() drivers.StorageProvider { return noop.New() })
+	testRegistry.SetFallbackDriver(func() drivers.StorageProvider { return noop.New() })
 	scLister := &preflight.KubeStorageClassLister{Client: clientset.StorageV1()}
 	storageResolver := &preflight.TypedStorageBackendResolver{
 		Client:     mgr.GetClient(),
@@ -134,10 +135,20 @@ func TestMain(m *testing.M) {
 	}
 
 	drexecRecorder := eventBroadcaster.NewRecorder("drexecution-controller")
+	waveExecutor := &engine.WaveExecutor{
+		Client:          mgr.GetClient(),
+		CoreClient:      clientset.CoreV1(),
+		VMDiscoverer:    vmDiscoverer,
+		NamespaceLookup: nsLookup,
+		Registry:        testRegistry,
+		SCLister:        scLister,
+	}
 	if err := (&drexecution.DRExecutionReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Recorder: drexecRecorder,
+		Client:       mgr.GetClient(),
+		Scheme:       mgr.GetScheme(),
+		Recorder:     drexecRecorder,
+		WaveExecutor: waveExecutor,
+		Handler:      &engine.NoOpHandler{},
 	}).SetupWithManager(mgr); err != nil {
 		panic(fmt.Sprintf("setting up DRExecution controller: %v", err))
 	}
@@ -375,13 +386,14 @@ func waitForVMCount(ctx context.Context, name, namespace string, count int, time
 }
 
 // setPlanPhase sets the DRPlan's status.phase with a retry loop to handle
-// conflicts from concurrent DRPlan controller reconciliation.
+// conflicts from concurrent DRPlan controller reconciliation and cache lag.
 func setPlanPhase(ctx context.Context, name, phase string) error {
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		var plan soteriav1alpha1.DRPlan
 		if err := testClient.Get(ctx, client.ObjectKey{Name: name}, &plan); err != nil {
-			return err
+			time.Sleep(200 * time.Millisecond)
+			continue
 		}
 		plan.Status.Phase = phase
 		if err := testClient.Status().Update(ctx, &plan); err != nil {

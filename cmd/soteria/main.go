@@ -262,10 +262,21 @@ func main() {
 
 	drexecRecorder := eventBroadcaster.NewRecorder("drexecution-controller")
 
+	waveExecutor := &engine.WaveExecutor{
+		Client:          mgr.GetClient(),
+		CoreClient:      clientset.CoreV1(),
+		VMDiscoverer:    vmDiscoverer,
+		NamespaceLookup: nsLookup,
+		Registry:        drivers.DefaultRegistry,
+		SCLister:        scLister,
+	}
+
 	if err := (&drexecution.DRExecutionReconciler{
-		Client:   mgr.GetClient(),
-		Scheme:   mgr.GetScheme(),
-		Recorder: drexecRecorder,
+		Client:       mgr.GetClient(),
+		Scheme:       mgr.GetScheme(),
+		Recorder:     drexecRecorder,
+		WaveExecutor: waveExecutor,
+		Handler:      &engine.NoOpHandler{},
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "DRExecution")
 		os.Exit(1)

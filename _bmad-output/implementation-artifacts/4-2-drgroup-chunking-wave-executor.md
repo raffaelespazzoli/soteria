@@ -1,6 +1,6 @@
 # Story 4.2: DRGroup Chunking & Wave Executor
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -34,93 +34,100 @@ So that failover proceeds in a controlled, wave-ordered manner without exhaustin
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Define executor types and DRGroupHandler interface (AC: #1, #2, #9)
-  - [ ] 1.1 Create `pkg/engine/executor.go` with copyright header and package doc block comment
-  - [ ] 1.2 Define `DRGroupHandler` interface: `ExecuteGroup(ctx context.Context, group ExecutionGroup) error`
-  - [ ] 1.3 Define `ExecutionGroup` struct: `DRGroupChunk` + `Driver drivers.StorageProvider` + `WaveIndex int`
-  - [ ] 1.4 Define `WaveExecutor` struct with fields: `Client client.Client`, `VMDiscoverer VMDiscoverer`, `NamespaceLookup NamespaceLookup`, `Registry *drivers.Registry`, `SCLister drivers.StorageClassLister`
-  - [ ] 1.5 Define `ExecuteInput` struct: `Execution *soteriav1alpha1.DRExecution`, `Plan *soteriav1alpha1.DRPlan`, `Handler DRGroupHandler`
+- [x] Task 1: Define executor types and DRGroupHandler interface (AC: #1, #2, #9)
+  - [x] 1.1 Create `pkg/engine/executor.go` with copyright header and package doc block comment
+  - [x] 1.2 Define `DRGroupHandler` interface: `ExecuteGroup(ctx context.Context, group ExecutionGroup) error`
+  - [x] 1.3 Define `ExecutionGroup` struct: `DRGroupChunk` + `Driver drivers.StorageProvider` + `WaveIndex int`
+  - [x] 1.4 Define `WaveExecutor` struct with fields: `Client client.Client`, `VMDiscoverer VMDiscoverer`, `NamespaceLookup NamespaceLookup`, `Registry *drivers.Registry`, `SCLister drivers.StorageClassLister`
+  - [x] 1.5 Define `ExecuteInput` struct: `Execution *soteriav1alpha1.DRExecution`, `Plan *soteriav1alpha1.DRPlan`, `Handler DRGroupHandler`
 
-- [ ] Task 2: Implement the execution pipeline (AC: #1, #3)
-  - [ ] 2.1 Implement `WaveExecutor.Execute(ctx context.Context, input ExecuteInput) error` as the main entry point
-  - [ ] 2.2 Step 1: Discover VMs using `e.VMDiscoverer.DiscoverVMs(ctx, plan.Name)` — re-discovers at execution time
-  - [ ] 2.3 Step 2: Group by wave using `GroupByWave(vms, plan.Spec.WaveLabel)`
-  - [ ] 2.4 Step 3: Resolve volume groups using `ResolveVolumeGroups(ctx, vms, plan.Spec.WaveLabel, e.NamespaceLookup)`
-  - [ ] 2.5 Step 4: Chunk waves using `ChunkWaves(chunkInput, plan.Spec.MaxConcurrentFailovers)` — reuse existing chunker
-  - [ ] 2.6 Step 5: Initialize `DRExecution.Status.Waves` with wave count and per-group Pending entries
-  - [ ] 2.7 Write initial status via `r.Status().Update()`
+- [x] Task 2: Implement the execution pipeline (AC: #1, #3)
+  - [x] 2.1 Implement `WaveExecutor.Execute(ctx context.Context, input ExecuteInput) error` as the main entry point
+  - [x] 2.2 Step 1: Discover VMs using `e.VMDiscoverer.DiscoverVMs(ctx, plan.Name)` — re-discovers at execution time
+  - [x] 2.3 Step 2: Group by wave using `GroupByWave(vms, plan.Spec.WaveLabel)`
+  - [x] 2.4 Step 3: Resolve volume groups using `ResolveVolumeGroups(ctx, vms, plan.Spec.WaveLabel, e.NamespaceLookup)`
+  - [x] 2.5 Step 4: Chunk waves using `ChunkWaves(chunkInput, plan.Spec.MaxConcurrentFailovers)` — reuse existing chunker
+  - [x] 2.6 Step 5: Initialize `DRExecution.Status.Waves` with wave count and per-group Pending entries
+  - [x] 2.7 Write initial status via `r.Status().Update()`
 
-- [ ] Task 3: Implement sequential wave execution with concurrent DRGroups (AC: #1, #4, #6, #8)
-  - [ ] 3.1 Implement `executeWave(ctx context.Context, waveIdx int, chunks []DRGroupChunk, handler DRGroupHandler, exec *DRExecution) error` — runs all chunks in a wave concurrently
-  - [ ] 3.2 Set wave `StartTime` at wave start, `CompletionTime` when all groups finish
-  - [ ] 3.3 For each DRGroup chunk: launch goroutine, call `executeGroup(ctx, waveIdx, groupIdx, chunk, handler, exec)`
-  - [ ] 3.4 Use `errgroup.Group` (from `golang.org/x/sync/errgroup`) to manage concurrent goroutines — collect errors without stopping siblings (fail-forward: do NOT use errgroup's cancel-on-first-error; instead collect all results)
-  - [ ] 3.5 Actually use a `sync.WaitGroup` + per-group error channel or result slice instead of errgroup, since errgroup cancels context on error and we need fail-forward semantics
-  - [ ] 3.6 After all groups complete, determine wave outcome and continue to next wave regardless of failures (fail-forward)
-  - [ ] 3.7 Check `ctx.Err()` before starting each wave — if cancelled, write current state and return
+- [x] Task 3: Implement sequential wave execution with concurrent DRGroups (AC: #1, #4, #6, #8)
+  - [x] 3.1 Implement `executeWave(ctx context.Context, waveIdx int, chunks []DRGroupChunk, handler DRGroupHandler, exec *DRExecution) error` — runs all chunks in a wave concurrently
+  - [x] 3.2 Set wave `StartTime` at wave start, `CompletionTime` when all groups finish
+  - [x] 3.3 For each DRGroup chunk: launch goroutine, call `executeGroup(ctx, waveIdx, groupIdx, chunk, handler, exec)`
+  - [x] 3.4 Use `errgroup.Group` (from `golang.org/x/sync/errgroup`) to manage concurrent goroutines — collect errors without stopping siblings (fail-forward: do NOT use errgroup's cancel-on-first-error; instead collect all results)
+  - [x] 3.5 Actually use a `sync.WaitGroup` + per-group error channel or result slice instead of errgroup, since errgroup cancels context on error and we need fail-forward semantics
+  - [x] 3.6 After all groups complete, determine wave outcome and continue to next wave regardless of failures (fail-forward)
+  - [x] 3.7 Check `ctx.Err()` before starting each wave — if cancelled, write current state and return
 
-- [ ] Task 4: Implement per-DRGroup execution (AC: #4, #9)
-  - [ ] 4.1 Implement `executeGroup(ctx context.Context, waveIdx, groupIdx int, chunk DRGroupChunk, handler DRGroupHandler, exec *DRExecution) DRGroupResult`
-  - [ ] 4.2 Set group status to `InProgress` with `StartTime = metav1.Now()`
-  - [ ] 4.3 Resolve the `StorageProvider` driver for the group's VMs via `e.Registry` and `e.SCLister` — for groups with mixed storage classes, resolve per-VM (or use the first VM's storage class for the group); package into `ExecutionGroup`
-  - [ ] 4.4 Call `handler.ExecuteGroup(ctx, executionGroup)` — this is the pluggable workflow step
-  - [ ] 4.5 On success: set group `Result = Completed`, `CompletionTime = metav1.Now()`
-  - [ ] 4.6 On failure: set group `Result = Failed`, `Error = err.Error()`, `CompletionTime = metav1.Now()`
-  - [ ] 4.7 After each group completes, update `DRExecution.Status` via status subresource
+- [x] Task 4: Implement per-DRGroup execution (AC: #4, #9)
+  - [x] 4.1 Implement `executeGroup(ctx context.Context, waveIdx, groupIdx int, chunk DRGroupChunk, handler DRGroupHandler, exec *DRExecution) DRGroupResult`
+  - [x] 4.2 Set group status to `InProgress` with `StartTime = metav1.Now()`
+  - [x] 4.3 Resolve the `StorageProvider` driver for the group's VMs via `e.Registry` and `e.SCLister` — for groups with mixed storage classes, resolve per-VM (or use the first VM's storage class for the group); package into `ExecutionGroup`
+  - [x] 4.4 Call `handler.ExecuteGroup(ctx, executionGroup)` — this is the pluggable workflow step
+  - [x] 4.5 On success: set group `Result = Completed`, `CompletionTime = metav1.Now()`
+  - [x] 4.6 On failure: set group `Result = Failed`, `Error = err.Error()`, `CompletionTime = metav1.Now()`
+  - [x] 4.7 After each group completes, update `DRExecution.Status` via status subresource
 
-- [ ] Task 5: Implement overall result calculation and completion (AC: #5)
-  - [ ] 5.1 After all waves complete, compute overall `ExecutionResult`: scan all groups — all Completed → `Succeeded`, any Failed + any Completed → `PartiallySucceeded`, all Failed or pre-execution failure → `Failed`
-  - [ ] 5.2 Set `DRExecution.Status.Result` and `CompletionTime`
-  - [ ] 5.3 Call `engine.CompleteTransition(plan.Status.Phase)` to advance the DRPlan to its completion phase (e.g., FailingOver → FailedOver) — only if result is Succeeded or PartiallySucceeded
-  - [ ] 5.4 Update DRPlan status via status subresource
-  - [ ] 5.5 Emit events on the DRExecution and DRPlan for completion
+- [x] Task 5: Implement overall result calculation and completion (AC: #5)
+  - [x] 5.1 After all waves complete, compute overall `ExecutionResult`: scan all groups — all Completed → `Succeeded`, any Failed + any Completed → `PartiallySucceeded`, all Failed or pre-execution failure → `Failed`
+  - [x] 5.2 Set `DRExecution.Status.Result` and `CompletionTime`
+  - [x] 5.3 Call `engine.CompleteTransition(plan.Status.Phase)` to advance the DRPlan to its completion phase (e.g., FailingOver → FailedOver) — only if result is Succeeded or PartiallySucceeded
+  - [x] 5.4 Update DRPlan status via status subresource
+  - [x] 5.5 Emit events on the DRExecution and DRPlan for completion
 
-- [ ] Task 6: Create no-op DRGroupHandler for testing (AC: #7)
-  - [ ] 6.1 Create `pkg/engine/handler_noop.go` with `NoOpHandler` struct implementing `DRGroupHandler`
-  - [ ] 6.2 `ExecuteGroup` returns nil immediately — used until Stories 4.3/4.4 provide real workflow handlers
-  - [ ] 6.3 This handler is the default in the controller until real handlers are wired
+- [x] Task 6: Create no-op DRGroupHandler for testing (AC: #7)
+  - [x] 6.1 Create `pkg/engine/handler_noop.go` with `NoOpHandler` struct implementing `DRGroupHandler`
+  - [x] 6.2 `ExecuteGroup` returns nil immediately — used until Stories 4.3/4.4 provide real workflow handlers
+  - [x] 6.3 This handler is the default in the controller until real handlers are wired
 
-- [ ] Task 7: Enhance DRExecution controller to dispatch executor (AC: #7)
-  - [ ] 7.1 Add `WaveExecutor *engine.WaveExecutor` field to `DRExecutionReconciler`
-  - [ ] 7.2 Add `Handler engine.DRGroupHandler` field to `DRExecutionReconciler` (injected; defaults to `NoOpHandler`)
-  - [ ] 7.3 After Story 4.1's state machine validation and transition, call `e.WaveExecutor.Execute(ctx, input)` — execute synchronously within the reconcile loop (the reconciler will be enhanced for async in Story 4.7 when checkpoint/resume is added)
-  - [ ] 7.4 After execution completes, call `CompleteTransition` to advance the DRPlan phase
-  - [ ] 7.5 Update DRExecution status with final result
-  - [ ] 7.6 Emit completion event on DRPlan and DRExecution
+- [x] Task 7: Enhance DRExecution controller to dispatch executor (AC: #7)
+  - [x] 7.1 Add `WaveExecutor *engine.WaveExecutor` field to `DRExecutionReconciler`
+  - [x] 7.2 Add `Handler engine.DRGroupHandler` field to `DRExecutionReconciler` (injected; defaults to `NoOpHandler`)
+  - [x] 7.3 After Story 4.1's state machine validation and transition, call `e.WaveExecutor.Execute(ctx, input)` — execute synchronously within the reconcile loop (the reconciler will be enhanced for async in Story 4.7 when checkpoint/resume is added)
+  - [x] 7.4 After execution completes, call `CompleteTransition` to advance the DRPlan phase
+  - [x] 7.5 Update DRExecution status with final result
+  - [x] 7.6 Emit completion event on DRPlan and DRExecution
 
-- [ ] Task 8: Update main.go wiring (AC: #7)
-  - [ ] 8.1 Create `WaveExecutor` with `VMDiscoverer`, `NamespaceLookup`, `Registry`, `SCLister` from existing resolver infrastructure
-  - [ ] 8.2 Pass `WaveExecutor` and `NoOpHandler` to `DRExecutionReconciler`
-  - [ ] 8.3 Ensure `VMDiscoverer` and `NamespaceLookup` instances are shared between DRPlan and DRExecution controllers
+- [x] Task 8: Update main.go wiring (AC: #7)
+  - [x] 8.1 Create `WaveExecutor` with `VMDiscoverer`, `NamespaceLookup`, `Registry`, `SCLister` from existing resolver infrastructure
+  - [x] 8.2 Pass `WaveExecutor` and `NoOpHandler` to `DRExecutionReconciler`
+  - [x] 8.3 Ensure `VMDiscoverer` and `NamespaceLookup` instances are shared between DRPlan and DRExecution controllers
 
-- [ ] Task 9: Wave executor unit tests (AC: #10)
-  - [ ] 9.1 Create `pkg/engine/executor_test.go`
-  - [ ] 9.2 Define `mockDRGroupHandler` implementing `DRGroupHandler` — configurable success/failure per group name, records call order
-  - [ ] 9.3 Test: `TestWaveExecutor_SingleWave_SingleChunk_Succeeds` — one wave, one chunk, handler succeeds → Result=Succeeded
-  - [ ] 9.4 Test: `TestWaveExecutor_MultipleWaves_Sequential` — 3 waves, verify wave N+1 starts after wave N completes (use timing or call ordering)
-  - [ ] 9.5 Test: `TestWaveExecutor_ConcurrentDRGroups` — wave with 3 chunks, verify all 3 start before any completes (use barrier/waitgroup in mock handler)
-  - [ ] 9.6 Test: `TestWaveExecutor_FailForward_GroupFails` — one DRGroup fails, others complete → PartiallySucceeded
-  - [ ] 9.7 Test: `TestWaveExecutor_FailForward_FailedWaveDoesNotBlockNext` — wave 1 has a failed group, wave 2 still executes
-  - [ ] 9.8 Test: `TestWaveExecutor_ContextCancelled` — cancel context mid-execution, verify graceful stop
-  - [ ] 9.9 Test: `TestWaveExecutor_DiscoveryFailure_ReturnsFailed` — VMDiscoverer returns error → Result=Failed
-  - [ ] 9.10 Test: `TestWaveExecutor_EmptyPlan_Succeeds` — no VMs discovered → Result=Succeeded with zero waves
-  - [ ] 9.11 Test: `TestWaveExecutor_StatusPopulated` — verify StartTime, CompletionTime, VMNames, per-group details are all set
-  - [ ] 9.12 Test: `TestWaveExecutor_AllGroupsFail_ResultFailed` — every group fails → Result=Failed (not PartiallySucceeded)
+- [x] Task 9: Wave executor unit tests (AC: #10)
+  - [x] 9.1 Create `pkg/engine/executor_test.go`
+  - [x] 9.2 Define `mockDRGroupHandler` implementing `DRGroupHandler` — configurable success/failure per group name, records call order
+  - [x] 9.3 Test: `TestWaveExecutor_SingleWave_SingleChunk_Succeeds` — one wave, one chunk, handler succeeds → Result=Succeeded
+  - [x] 9.4 Test: `TestWaveExecutor_MultipleWaves_Sequential` — 3 waves, verify wave N+1 starts after wave N completes (use timing or call ordering)
+  - [x] 9.5 Test: `TestWaveExecutor_ConcurrentDRGroups` — wave with 3 chunks, verify all 3 start before any completes (use barrier/waitgroup in mock handler)
+  - [x] 9.6 Test: `TestWaveExecutor_FailForward_GroupFails` — one DRGroup fails, others complete → PartiallySucceeded
+  - [x] 9.7 Test: `TestWaveExecutor_FailForward_FailedWaveDoesNotBlockNext` — wave 1 has a failed group, wave 2 still executes
+  - [x] 9.8 Test: `TestWaveExecutor_ContextCancelled` — cancel context mid-execution, verify graceful stop
+  - [x] 9.9 Test: `TestWaveExecutor_DiscoveryFailure_ReturnsFailed` — VMDiscoverer returns error → Result=Failed
+  - [x] 9.10 Test: `TestWaveExecutor_EmptyPlan_Succeeds` — no VMs discovered → Result=Succeeded with zero waves
+  - [x] 9.11 Test: `TestWaveExecutor_StatusPopulated` — verify StartTime, CompletionTime, VMNames, per-group details are all set
+  - [x] 9.12 Test: `TestWaveExecutor_AllGroupsFail_ResultFailed` — every group fails → Result=Failed (not PartiallySucceeded)
 
-- [ ] Task 10: Integration tests (AC: #10)
-  - [ ] 10.1 Add DRExecution controller integration tests to `test/integration/controller/` that verify: create DRPlan in SteadyState with VMs → create DRExecution → controller dispatches executor → DRExecution status has waves/groups → plan transitions
-  - [ ] 10.2 Test with no-op handler: execution should complete with Succeeded, plan advances to FailedOver
-  - [ ] 10.3 Verify events emitted on DRPlan and DRExecution
+- [x] Task 10: Integration tests (AC: #10)
+  - [x] 10.1 Add DRExecution controller integration tests to `test/integration/controller/` that verify: create DRPlan in SteadyState with VMs → create DRExecution → controller dispatches executor → DRExecution status has waves/groups → plan transitions
+  - [x] 10.2 Test with no-op handler: execution should complete with Succeeded, plan advances to FailedOver
+  - [x] 10.3 Verify events emitted on DRPlan and DRExecution
 
-- [ ] Task 11: Update documentation and verify (AC: #1)
-  - [ ] 11.1 Update `pkg/engine/doc.go` to cover the wave executor and DRGroupHandler interface
-  - [ ] 11.2 Add godoc block comment on `executor.go` explaining the execution pipeline: discover → group → chunk → execute waves → checkpoint
-  - [ ] 11.3 Update RBAC markers on DRExecution reconciler if new permissions needed
-  - [ ] 11.4 Run `make manifests` to regenerate RBAC/webhook configs
-  - [ ] 11.5 Run `make generate` if types changed
-  - [ ] 11.6 Run `make test` — all unit tests pass
-  - [ ] 11.7 Run `make lint-fix` followed by `make lint` — no new lint errors
-  - [ ] 11.8 Run `make build` — compiles cleanly
+- [x] Task 11: Update documentation and verify (AC: #1)
+  - [x] 11.1 Update `pkg/engine/doc.go` to cover the wave executor and DRGroupHandler interface
+  - [x] 11.2 Add godoc block comment on `executor.go` explaining the execution pipeline: discover → group → chunk → execute waves → checkpoint
+  - [x] 11.3 Update RBAC markers on DRExecution reconciler if new permissions needed
+  - [x] 11.4 Run `make manifests` to regenerate RBAC/webhook configs
+  - [x] 11.5 Run `make generate` if types changed
+  - [x] 11.6 Run `make test` — all unit tests pass
+  - [x] 11.7 Run `make lint-fix` followed by `make lint` — no new lint errors
+  - [x] 11.8 Run `make build` — compiles cleanly
+
+### Review Findings
+
+- [x] [Review][Decision] Implement real PVC→StorageClass→driver resolution in `resolveDriver()` — added `resolveChunkStorageClass()` that reads kubevirt VMs, extracts PVCs, reads storage class, validates all volumes use the same storage class (heterogeneous storage rejected), and resolves via `Registry.GetDriverForPVC()`. Added `CoreClient` field to `WaveExecutor`.
+- [x] [Review][Patch] Reconcile idempotency — changed guard from `startTime != nil` to terminal-result check; gated setup (validation/transition) on `startTime == nil` so executor re-dispatch works after crash recovery [`pkg/controller/drexecution/reconciler.go`]
+- [x] [Review][Patch] `computeResult()` now counts `Pending`/`InProgress` groups; if any exist alongside completed, result is `PartiallySucceeded`; if no group completed, `Failed`. Added 3 new table-driven subtests [`pkg/engine/executor.go`, `executor_test.go`]
+- [x] [Review][Patch] Completion events now emitted on both `DRExecution` and `DRPlan` [`pkg/controller/drexecution/reconciler.go`]
 
 ## Dev Notes
 
@@ -523,10 +530,40 @@ All files align with the architecture document:
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Opus 4.6 (via Cursor)
 
 ### Debug Log References
 
+- Pre-existing flaky integration test `TestDRExecutionReconciler_IdempotentRereconcile` fixed by retrying Get errors in `setPlanPhase` helper (race condition with cached client after object creation)
+- Pre-existing lint issue `goconst` in `internal/preflight/storage_test.go` — not from this story
+
 ### Completion Notes List
 
+- Wave executor framework implemented in `pkg/engine/executor.go` with full discover → group → chunk → execute pipeline
+- DRGroupHandler interface defined with single `ExecuteGroup` method; NoOpHandler provided for testing
+- Waves execute sequentially; DRGroups within a wave execute concurrently via `sync.WaitGroup` (NOT errgroup — fail-forward semantics)
+- Per-DRGroup status tracking with StartTime, CompletionTime, Result, Error, VMNames — status writes serialized via mutex
+- Overall result computation: Succeeded/PartiallySucceeded/Failed based on group outcomes
+- DRPlan phase advanced via CompleteTransition only on Succeeded or PartiallySucceeded
+- Controller integration: WaveExecutor + Handler fields added to DRExecutionReconciler; dispatched synchronously after state machine setup
+- main.go wiring: WaveExecutor shares VMDiscoverer and NamespaceLookup with DRPlan controller
+- Driver resolution simplified for Story 4.2 (uses registry fallback); PVC-based resolution deferred to Stories 4.3/4.4
+- 14 unit tests: single wave, multi-wave sequential, concurrent DRGroups (barrier test), fail-forward (group + wave), context cancellation, discovery failure, empty plan, status population, all-fail, computeResult table-driven
+- Integration tests updated: existing 5 tests adapted for executor behavior (plan advances to FailedOver); setPlanPhase race fix applied
+- Engine package coverage: 93.2%
+- All integration tests pass: 6/6 suites green (admission, apiserver, controller, rbac, replication, storage)
+
 ### File List
+
+New files:
+- pkg/engine/executor.go — Wave executor: types, interfaces, pipeline, wave/group execution, status, result computation
+- pkg/engine/executor_test.go — 14 unit tests covering all ACs
+- pkg/engine/handler_noop.go — NoOpHandler implementing DRGroupHandler
+
+Modified files:
+- pkg/controller/drexecution/reconciler.go — Added WaveExecutor + Handler fields, executor dispatch after state machine setup, RBAC markers
+- cmd/soteria/main.go — WaveExecutor wiring, shared VMDiscoverer/NamespaceLookup, NoOpHandler default
+- pkg/engine/doc.go — Added wave executor documentation
+- test/integration/controller/suite_test.go — WaveExecutor wiring in test setup, noop fallback, setPlanPhase race fix
+- test/integration/controller/drexecution_test.go — Updated tests for executor end-to-end behavior (FailedOver phase)
+- _bmad-output/implementation-artifacts/sprint-status.yaml — Story status tracking

@@ -62,35 +62,26 @@ func TestDRExecutionReconciler_SuccessfulSetup(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = testClient.Delete(ctx, exec) })
 
-	// Wait for execution to be processed.
-	got, err := waitForExecStartTime(ctx, exec.Name, execTestTimeout)
+	// Wait for execution to complete (executor runs with NoOpHandler, 0 VMs → Succeeded).
+	got, err := waitForExecResult(ctx, exec.Name, soteriav1alpha1.ExecutionResultSucceeded, execTestTimeout)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if got.Status.StartTime == nil {
 		t.Error("expected startTime to be set")
 	}
+	if got.Status.CompletionTime == nil {
+		t.Error("expected completionTime to be set")
+	}
 
-	// Verify plan transitioned to FailingOver.
-	updatedPlan, err := waitForPlanPhase(ctx, plan.Name, soteriav1alpha1.PhaseFailingOver, execTestTimeout)
+	// Verify plan advanced to FailedOver (executor completes the transition).
+	updatedPlan, err := waitForPlanPhase(ctx, plan.Name, soteriav1alpha1.PhaseFailedOver, execTestTimeout)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updatedPlan.Status.Phase != soteriav1alpha1.PhaseFailingOver {
+	if updatedPlan.Status.Phase != soteriav1alpha1.PhaseFailedOver {
 		t.Errorf("expected plan phase %q, got %q",
-			soteriav1alpha1.PhaseFailingOver, updatedPlan.Status.Phase)
-	}
-
-	// Verify Progressing condition.
-	var foundProgressing bool
-	for _, c := range got.Status.Conditions {
-		if c.Type == "Progressing" && c.Status == metav1.ConditionTrue {
-			foundProgressing = true
-			break
-		}
-	}
-	if !foundProgressing {
-		t.Error("expected Progressing=True condition on DRExecution")
+			soteriav1alpha1.PhaseFailedOver, updatedPlan.Status.Phase)
 	}
 }
 
@@ -219,8 +210,8 @@ func TestDRExecutionReconciler_IdempotentRereconcile(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = testClient.Delete(ctx, exec) })
 
-	// Wait for first reconcile.
-	got, err := waitForExecStartTime(ctx, exec.Name, execTestTimeout)
+	// Wait for execution to complete.
+	got, err := waitForExecResult(ctx, exec.Name, soteriav1alpha1.ExecutionResultSucceeded, execTestTimeout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,14 +230,14 @@ func TestDRExecutionReconciler_IdempotentRereconcile(t *testing.T) {
 			firstStartTime, recheck.Status.StartTime.Time)
 	}
 
-	// Verify plan is still FailingOver (not double-transitioned).
+	// Verify plan advanced to FailedOver (not double-transitioned beyond).
 	var updatedPlan soteriav1alpha1.DRPlan
 	if err := testClient.Get(ctx, client.ObjectKey{Name: plan.Name}, &updatedPlan); err != nil {
 		t.Fatalf("getting DRPlan: %v", err)
 	}
-	if updatedPlan.Status.Phase != soteriav1alpha1.PhaseFailingOver {
+	if updatedPlan.Status.Phase != soteriav1alpha1.PhaseFailedOver {
 		t.Errorf("expected plan phase %q after re-reconcile, got %q",
-			soteriav1alpha1.PhaseFailingOver, updatedPlan.Status.Phase)
+			soteriav1alpha1.PhaseFailedOver, updatedPlan.Status.Phase)
 	}
 }
 
@@ -281,7 +272,8 @@ func TestDRExecutionReconciler_DisasterMode(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = testClient.Delete(ctx, exec) })
 
-	got, err := waitForExecStartTime(ctx, exec.Name, execTestTimeout)
+	// Wait for execution to complete (executor runs with NoOpHandler, 0 VMs → Succeeded).
+	got, err := waitForExecResult(ctx, exec.Name, soteriav1alpha1.ExecutionResultSucceeded, execTestTimeout)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -289,13 +281,13 @@ func TestDRExecutionReconciler_DisasterMode(t *testing.T) {
 		t.Error("expected startTime to be set")
 	}
 
-	// Verify plan transitioned to FailingOver.
-	updatedPlan, err := waitForPlanPhase(ctx, plan.Name, soteriav1alpha1.PhaseFailingOver, execTestTimeout)
+	// Verify plan advanced to FailedOver.
+	updatedPlan, err := waitForPlanPhase(ctx, plan.Name, soteriav1alpha1.PhaseFailedOver, execTestTimeout)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if updatedPlan.Status.Phase != soteriav1alpha1.PhaseFailingOver {
+	if updatedPlan.Status.Phase != soteriav1alpha1.PhaseFailedOver {
 		t.Errorf("expected plan phase %q, got %q",
-			soteriav1alpha1.PhaseFailingOver, updatedPlan.Status.Phase)
+			soteriav1alpha1.PhaseFailedOver, updatedPlan.Status.Phase)
 	}
 }

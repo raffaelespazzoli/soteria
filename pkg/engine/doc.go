@@ -40,6 +40,16 @@ limitations under the License.
 //     into DRGroup chunks respecting maxConcurrentFailovers. Namespace-level
 //     VolumeGroups are indivisible units that cannot be split across chunks.
 //
+//   - Wave executor (executor.go): orchestrates DR execution by running the full
+//     discover → group → chunk pipeline at execution time, then executing waves
+//     sequentially with concurrent DRGroups within each wave. The DRGroupHandler
+//     interface abstracts per-group workflow steps (planned migration, disaster
+//     failover); a NoOpHandler (handler_noop.go) enables testing the executor
+//     loop without real storage operations. The executor uses fail-forward
+//     semantics: a failed DRGroup does not block siblings or subsequent waves.
+//     Status updates are serialized via mutex and written to the DRExecution
+//     status subresource after each group completes.
+//
 // All engine functions are pure or accept interfaces for dependency injection,
-// keeping the DRPlan controller testable at every level.
+// keeping the DRPlan and DRExecution controllers testable at every level.
 package engine

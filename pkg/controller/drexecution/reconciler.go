@@ -16,11 +16,12 @@ limitations under the License.
 
 // Tier 2 – Architecture:
 // The DRExecution reconciler validates newly created DRExecution resources,
-// applies state machine transitions on the referenced DRPlan, and sets
-// initial execution status. Idempotency is enforced by checking
-// .status.startTime — once set, the reconciler skips setup to prevent
-// double transitions on re-reconcile. Engine dispatch (wave execution,
-// driver calls) is deferred to Story 4.2+.
+// applies state machine transitions on the referenced DRPlan, sets initial
+// execution status, and dispatches the wave executor to orchestrate DRGroup
+// execution across waves. Idempotency is two-layered: terminal results
+// (Succeeded/PartiallySucceeded/Failed) cause an immediate skip, while a
+// set startTime gates the setup phase so plan transitions are never repeated
+// on re-reconcile.
 
 package drexecution
 
@@ -49,15 +50,21 @@ import (
 // +kubebuilder:rbac:groups=soteria.io,resources=drplans,verbs=get;list;watch
 // +kubebuilder:rbac:groups=soteria.io,resources=drplans/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups=kubevirt.io,resources=virtualmachines,verbs=get;list;watch
+// +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list
+// +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list
+// +kubebuilder:rbac:groups=storage.k8s.io,resources=storageclasses,verbs=get;list
 
 // DRExecutionReconciler watches DRExecution resources and drives the DR
 // workflow engine. It validates execution requests against the state machine,
-// transitions the referenced DRPlan to an in-progress phase, and sets
-// initial execution status.
+// transitions the referenced DRPlan to an in-progress phase, dispatches the
+// wave executor, and records the final result.
 type DRExecutionReconciler struct {
 	client.Client
-	Scheme   *runtime.Scheme
-	Recorder events.EventRecorder
+	Scheme       *runtime.Scheme
+	Recorder     events.EventRecorder
+	WaveExecutor *engine.WaveExecutor
+	Handler      engine.DRGroupHandler
 }
 
 func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -69,20 +76,18 @@ func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// Idempotency: skip if already processed.
-	if exec.Status.StartTime != nil {
-		logger.V(1).Info("DRExecution already processed, skipping")
+	// Idempotency: skip if the execution has reached a terminal result.
+	// We check Result (not just StartTime) so that the reconciler can
+	// retry when the executor returned an infrastructure error after
+	// StartTime was set but before a terminal result was written.
+	if exec.Status.Result == soteriav1alpha1.ExecutionResultSucceeded ||
+		exec.Status.Result == soteriav1alpha1.ExecutionResultPartiallySucceeded ||
+		exec.Status.Result == soteriav1alpha1.ExecutionResultFailed {
+		logger.V(1).Info("DRExecution already completed, skipping", "result", exec.Status.Result)
 		return ctrl.Result{}, nil
 	}
 
-	// Validate execution mode.
-	if exec.Spec.Mode != soteriav1alpha1.ExecutionModePlannedMigration &&
-		exec.Spec.Mode != soteriav1alpha1.ExecutionModeDisaster {
-		return r.failExecution(ctx, &exec, "InvalidMode",
-			fmt.Sprintf("unsupported execution mode %q", exec.Spec.Mode))
-	}
-
-	// Fetch the referenced DRPlan.
+	// Fetch the referenced DRPlan (needed by both setup and executor paths).
 	var plan soteriav1alpha1.DRPlan
 	if err := r.Get(ctx, client.ObjectKey{Name: exec.Spec.PlanName}, &plan); err != nil {
 		if errors.IsNotFound(err) {
@@ -93,58 +98,86 @@ func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
-	// Validate phase transition via state machine.
-	previousPhase := plan.Status.Phase
-	targetPhase, err := engine.Transition(previousPhase, exec.Spec.Mode)
-	if err != nil {
-		validPhases := engine.ValidStartingPhases(exec.Spec.Mode)
-		sort.Strings(validPhases)
-		logger.Info("Invalid phase transition",
-			"plan", plan.Name, "currentPhase", previousPhase, "mode", exec.Spec.Mode)
-		return r.failExecution(ctx, &exec, "InvalidPhaseTransition",
-			fmt.Sprintf("cannot %s from phase %q on plan %q; valid starting phases: %s",
-				exec.Spec.Mode, previousPhase, plan.Name, strings.Join(validPhases, ", ")))
+	// Setup phase: validate, set startTime, transition the plan.
+	// Gated on startTime so these steps never repeat on re-reconcile.
+	if exec.Status.StartTime == nil {
+		if exec.Spec.Mode != soteriav1alpha1.ExecutionModePlannedMigration &&
+			exec.Spec.Mode != soteriav1alpha1.ExecutionModeDisaster {
+			return r.failExecution(ctx, &exec, "InvalidMode",
+				fmt.Sprintf("unsupported execution mode %q", exec.Spec.Mode))
+		}
+
+		previousPhase := plan.Status.Phase
+		targetPhase, err := engine.Transition(previousPhase, exec.Spec.Mode)
+		if err != nil {
+			validPhases := engine.ValidStartingPhases(exec.Spec.Mode)
+			sort.Strings(validPhases)
+			logger.Info("Invalid phase transition",
+				"plan", plan.Name, "currentPhase", previousPhase, "mode", exec.Spec.Mode)
+			return r.failExecution(ctx, &exec, "InvalidPhaseTransition",
+				fmt.Sprintf("cannot %s from phase %q on plan %q; valid starting phases: %s",
+					exec.Spec.Mode, previousPhase, plan.Name, strings.Join(validPhases, ", ")))
+		}
+
+		now := metav1.Now()
+		execPatch := client.MergeFrom(exec.DeepCopy())
+		exec.Status.StartTime = &now
+		meta.SetStatusCondition(&exec.Status.Conditions, metav1.Condition{
+			Type:               "Progressing",
+			Status:             metav1.ConditionTrue,
+			Reason:             "ExecutionStarted",
+			Message:            fmt.Sprintf("Execution started for plan %s in %s mode", plan.Name, exec.Spec.Mode),
+			ObservedGeneration: exec.Generation,
+		})
+
+		if err := r.Status().Patch(ctx, &exec, execPatch); err != nil {
+			logger.Error(err, "Failed to update DRExecution status")
+			return ctrl.Result{}, err
+		}
+
+		planPatch := client.MergeFrom(plan.DeepCopy())
+		plan.Status.Phase = targetPhase
+		if err := r.Status().Patch(ctx, &plan, planPatch); err != nil {
+			logger.Error(err, "Failed to update DRPlan phase", "plan", plan.Name, "targetPhase", targetPhase)
+			return ctrl.Result{}, err
+		}
+
+		logger.Info("Transitioned DRPlan phase",
+			"plan", plan.Name, "from", previousPhase, "to", targetPhase)
+
+		eventReason, eventAction, eventVerb := "FailoverStarted", "FailoverAction", "Failover"
+		if targetPhase == soteriav1alpha1.PhaseFailingBack {
+			eventReason, eventAction, eventVerb = "FailbackStarted", "FailbackAction", "Failback"
+		}
+		r.event(&plan, corev1.EventTypeNormal, eventReason, eventAction,
+			fmt.Sprintf("%s started for plan %s in %s mode via execution %s",
+				eventVerb, plan.Name, exec.Spec.Mode, exec.Name))
+
+		logger.Info("DRExecution setup complete",
+			"plan", plan.Name, "mode", exec.Spec.Mode, "targetPhase", targetPhase)
 	}
 
-	// Set execution status first so re-reconcile is idempotent even if
-	// the subsequent plan-phase patch fails.
-	now := metav1.Now()
-	execPatch := client.MergeFrom(exec.DeepCopy())
-	exec.Status.StartTime = &now
-	meta.SetStatusCondition(&exec.Status.Conditions, metav1.Condition{
-		Type:               "Progressing",
-		Status:             metav1.ConditionTrue,
-		Reason:             "ExecutionStarted",
-		Message:            fmt.Sprintf("Execution started for plan %s in %s mode", plan.Name, exec.Spec.Mode),
-		ObservedGeneration: exec.Generation,
-	})
+	// Dispatch (or re-dispatch) the wave executor.
+	if r.WaveExecutor != nil {
+		handler := r.Handler
+		if handler == nil {
+			handler = &engine.NoOpHandler{}
+		}
+		execInput := engine.ExecuteInput{
+			Execution: &exec,
+			Plan:      &plan,
+			Handler:   handler,
+		}
+		if err := r.WaveExecutor.Execute(ctx, execInput); err != nil {
+			logger.Error(err, "Wave execution failed", "plan", plan.Name, "execution", exec.Name)
+			return ctrl.Result{}, err
+		}
 
-	if err := r.Status().Patch(ctx, &exec, execPatch); err != nil {
-		logger.Error(err, "Failed to update DRExecution status")
-		return ctrl.Result{}, err
+		r.event(&exec, corev1.EventTypeNormal, "ExecutionCompleted", "WaveExecution",
+			fmt.Sprintf("Execution completed: %s", exec.Status.Result))
+		r.event(&plan, corev1.EventTypeNormal, "ExecutionCompleted", "WaveExecution",
+			fmt.Sprintf("Execution completed for plan %s: %s", plan.Name, exec.Status.Result))
 	}
-
-	// Transition the DRPlan to the in-progress phase.
-	planPatch := client.MergeFrom(plan.DeepCopy())
-	plan.Status.Phase = targetPhase
-	if err := r.Status().Patch(ctx, &plan, planPatch); err != nil {
-		logger.Error(err, "Failed to update DRPlan phase", "plan", plan.Name, "targetPhase", targetPhase)
-		return ctrl.Result{}, err
-	}
-
-	logger.Info("Transitioned DRPlan phase",
-		"plan", plan.Name, "from", previousPhase, "to", targetPhase)
-
-	eventReason, eventAction, eventVerb := "FailoverStarted", "FailoverAction", "Failover"
-	if targetPhase == soteriav1alpha1.PhaseFailingBack {
-		eventReason, eventAction, eventVerb = "FailbackStarted", "FailbackAction", "Failback"
-	}
-	r.event(&plan, corev1.EventTypeNormal, eventReason, eventAction,
-		fmt.Sprintf("%s started for plan %s in %s mode via execution %s",
-			eventVerb, plan.Name, exec.Spec.Mode, exec.Name))
-
-	logger.Info("DRExecution setup complete",
-		"plan", plan.Name, "mode", exec.Spec.Mode, "targetPhase", targetPhase)
 
 	return ctrl.Result{}, nil
 }
