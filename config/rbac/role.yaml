@@ -38,9 +38,12 @@ rules:
   - soteria.io
   resources:
   - drexecutions
+  - drplans
   verbs:
   - get
   - list
+  - patch
+  - update
   - watch
 - apiGroups:
   - soteria.io
@@ -59,16 +62,6 @@ rules:
   verbs:
   - create
   - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - soteria.io
-  resources:
-  - drplans
-  verbs:
   - get
   - list
   - patch

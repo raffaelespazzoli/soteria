@@ -16,6 +16,14 @@ limitations under the License.
 
 // Package engine implements the DR workflow execution engine. It provides:
 //
+//   - DR lifecycle state machine (statemachine.go): defines the 6 DRPlan phases
+//     (SteadyState, FailingOver, FailedOver, Reprotecting, DRedSteadyState,
+//     FailingBack) and validates transitions between them. Transition() maps
+//     (currentPhase, executionMode) to the target in-progress phase.
+//     CompleteTransition() advances in-progress phases to their completion
+//     targets. All functions are pure — no mutable state is held; the DRPlan's
+//     .status.phase field is the authoritative state.
+//
 //   - VM discovery and wave grouping (discovery.go): abstracts Kubernetes API
 //     access behind the VMDiscoverer interface, partitions VMs into ordered waves
 //     by label value. The production path uses controller-runtime's cached client;

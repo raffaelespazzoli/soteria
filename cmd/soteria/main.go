@@ -260,9 +260,12 @@ func main() {
 		os.Exit(1)
 	}
 
+	drexecRecorder := eventBroadcaster.NewRecorder("drexecution-controller")
+
 	if err := (&drexecution.DRExecutionReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: drexecRecorder,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "DRExecution")
 		os.Exit(1)
@@ -273,6 +276,11 @@ func main() {
 
 	if err := admission.SetupDRPlanWebhook(mgr); err != nil {
 		setupLog.Error(err, "Failed to create webhook", "webhook", "DRPlan")
+		os.Exit(1)
+	}
+
+	if err := admission.SetupDRExecutionWebhook(mgr); err != nil {
+		setupLog.Error(err, "Failed to create webhook", "webhook", "DRExecution")
 		os.Exit(1)
 	}
 

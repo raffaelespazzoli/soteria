@@ -27,6 +27,9 @@ import (
 // ValidateDRPlanPath is the webhook endpoint path for DRPlan validation.
 const ValidateDRPlanPath = "/validate-soteria-io-v1alpha1-drplan"
 
+// ValidateDRExecutionPath is the webhook endpoint path for DRExecution validation.
+const ValidateDRExecutionPath = "/validate-soteria-io-v1alpha1-drexecution"
+
 // ValidateVMPath is the webhook endpoint path for VirtualMachine validation.
 const ValidateVMPath = "/validate-kubevirt-io-v1-virtualmachine"
 
@@ -37,6 +40,20 @@ func SetupDRPlanWebhook(mgr ctrl.Manager) error {
 	}
 
 	mgr.GetWebhookServer().Register(ValidateDRPlanPath,
+		&webhook.Admission{Handler: validator})
+
+	return nil
+}
+
+// SetupDRExecutionWebhook registers the DRExecution validating webhook with the manager.
+// Uses mgr.GetAPIReader() (uncached) to ensure the webhook always reads the
+// latest DRPlan state, preventing stale-cache race conditions.
+func SetupDRExecutionWebhook(mgr ctrl.Manager) error {
+	validator := &DRExecutionValidator{
+		reader: mgr.GetAPIReader(),
+	}
+
+	mgr.GetWebhookServer().Register(ValidateDRExecutionPath,
 		&webhook.Admission{Handler: validator})
 
 	return nil

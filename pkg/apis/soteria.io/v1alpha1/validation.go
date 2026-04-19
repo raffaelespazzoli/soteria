@@ -48,8 +48,38 @@ func ValidateDRPlanUpdate(newPlan, _ *DRPlan) field.ErrorList {
 	return ValidateDRPlan(newPlan)
 }
 
-// ValidateDRExecution validates a DRExecution object.
+// ValidateDRExecution validates per-object field constraints on a DRExecution.
 func ValidateDRExecution(exec *DRExecution) field.ErrorList {
 	allErrs := field.ErrorList{}
+	specPath := field.NewPath("spec")
+
+	if exec.Spec.PlanName == "" {
+		allErrs = append(allErrs, field.Required(specPath.Child("planName"), ""))
+	}
+
+	if exec.Spec.Mode != ExecutionModePlannedMigration && exec.Spec.Mode != ExecutionModeDisaster {
+		allErrs = append(allErrs, field.NotSupported(
+			specPath.Child("mode"),
+			exec.Spec.Mode,
+			[]string{string(ExecutionModePlannedMigration), string(ExecutionModeDisaster)},
+		))
+	}
+
+	return allErrs
+}
+
+// ValidateDRExecutionUpdate validates an update to a DRExecution.
+// DRExecution spec is immutable once created.
+func ValidateDRExecutionUpdate(newExec, oldExec *DRExecution) field.ErrorList {
+	allErrs := field.ErrorList{}
+	specPath := field.NewPath("spec")
+
+	if newExec.Spec.PlanName != oldExec.Spec.PlanName {
+		allErrs = append(allErrs, field.Forbidden(specPath.Child("planName"), "field is immutable"))
+	}
+	if newExec.Spec.Mode != oldExec.Spec.Mode {
+		allErrs = append(allErrs, field.Forbidden(specPath.Child("mode"), "field is immutable"))
+	}
+
 	return allErrs
 }

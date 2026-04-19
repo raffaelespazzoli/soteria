@@ -113,6 +113,138 @@ func TestValidateDRPlan(t *testing.T) {
 	}
 }
 
+func TestValidateDRExecution(t *testing.T) {
+	tests := []struct {
+		name       string
+		exec       *DRExecution
+		wantErrors int
+		wantFields []string
+	}{
+		{
+			name: "valid planned_migration",
+			exec: &DRExecution{
+				Spec: DRExecutionSpec{
+					PlanName: "my-plan",
+					Mode:     ExecutionModePlannedMigration,
+				},
+			},
+			wantErrors: 0,
+		},
+		{
+			name: "valid disaster",
+			exec: &DRExecution{
+				Spec: DRExecutionSpec{
+					PlanName: "my-plan",
+					Mode:     ExecutionModeDisaster,
+				},
+			},
+			wantErrors: 0,
+		},
+		{
+			name: "empty planName",
+			exec: &DRExecution{
+				Spec: DRExecutionSpec{
+					PlanName: "",
+					Mode:     ExecutionModePlannedMigration,
+				},
+			},
+			wantErrors: 1,
+			wantFields: []string{"spec.planName"},
+		},
+		{
+			name: "invalid mode",
+			exec: &DRExecution{
+				Spec: DRExecutionSpec{
+					PlanName: "my-plan",
+					Mode:     "invalid",
+				},
+			},
+			wantErrors: 1,
+			wantFields: []string{"spec.mode"},
+		},
+		{
+			name: "multiple errors: empty planName + invalid mode",
+			exec: &DRExecution{
+				Spec: DRExecutionSpec{
+					PlanName: "",
+					Mode:     "bogus",
+				},
+			},
+			wantErrors: 2,
+			wantFields: []string{"spec.planName", "spec.mode"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			errs := ValidateDRExecution(tt.exec)
+			if len(errs) != tt.wantErrors {
+				t.Fatalf("ValidateDRExecution() returned %d errors, want %d: %v", len(errs), tt.wantErrors, errs)
+			}
+			for i, wantField := range tt.wantFields {
+				if i >= len(errs) {
+					break
+				}
+				if errs[i].Field != wantField {
+					t.Errorf("error[%d].Field = %q, want %q", i, errs[i].Field, wantField)
+				}
+			}
+		})
+	}
+}
+
+func TestValidateDRExecutionUpdate(t *testing.T) {
+	base := &DRExecution{
+		Spec: DRExecutionSpec{
+			PlanName: "my-plan",
+			Mode:     ExecutionModePlannedMigration,
+		},
+	}
+
+	t.Run("no spec changes", func(t *testing.T) {
+		errs := ValidateDRExecutionUpdate(base, base)
+		if len(errs) != 0 {
+			t.Errorf("expected 0 errors, got %d: %v", len(errs), errs)
+		}
+	})
+
+	t.Run("planName changed", func(t *testing.T) {
+		changed := &DRExecution{
+			Spec: DRExecutionSpec{PlanName: "other-plan", Mode: ExecutionModePlannedMigration},
+		}
+		errs := ValidateDRExecutionUpdate(changed, base)
+		if len(errs) != 1 {
+			t.Fatalf("expected 1 error, got %d: %v", len(errs), errs)
+		}
+		if errs[0].Field != "spec.planName" {
+			t.Errorf("error.Field = %q, want %q", errs[0].Field, "spec.planName")
+		}
+	})
+
+	t.Run("mode changed", func(t *testing.T) {
+		changed := &DRExecution{
+			Spec: DRExecutionSpec{PlanName: "my-plan", Mode: ExecutionModeDisaster},
+		}
+		errs := ValidateDRExecutionUpdate(changed, base)
+		if len(errs) != 1 {
+			t.Fatalf("expected 1 error, got %d: %v", len(errs), errs)
+		}
+		if errs[0].Field != "spec.mode" {
+			t.Errorf("error.Field = %q, want %q", errs[0].Field, "spec.mode")
+		}
+	})
+
+	t.Run("both changed", func(t *testing.T) {
+		changed := &DRExecution{
+			Spec: DRExecutionSpec{PlanName: "other", Mode: ExecutionModeDisaster},
+		}
+		errs := ValidateDRExecutionUpdate(changed, base)
+		if len(errs) != 2 {
+			t.Fatalf("expected 2 errors, got %d: %v", len(errs), errs)
+		}
+	})
+}
+
 func TestValidateDRPlanUpdate(t *testing.T) {
 	validPlan := &DRPlan{
 		Spec: DRPlanSpec{

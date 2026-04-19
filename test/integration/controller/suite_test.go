@@ -48,6 +48,7 @@ import (
 
 	"github.com/soteria-project/soteria/internal/preflight"
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
+	"github.com/soteria-project/soteria/pkg/controller/drexecution"
 	"github.com/soteria-project/soteria/pkg/controller/drplan"
 	"github.com/soteria-project/soteria/pkg/drivers"
 	"github.com/soteria-project/soteria/pkg/drivers/noop"
@@ -75,6 +76,7 @@ func TestMain(m *testing.M) {
 		CRDInstallOptions: envtest.CRDInstallOptions{
 			CRDs: []*apiextensionsv1.CustomResourceDefinition{
 				drplanCRD(),
+				drexecutionCRD(),
 				virtualMachineCRD(),
 			},
 		},
@@ -130,6 +132,15 @@ func TestMain(m *testing.M) {
 	}).SetupWithManager(mgr); err != nil {
 		panic(fmt.Sprintf("setting up DRPlan controller: %v", err))
 	}
+
+	drexecRecorder := eventBroadcaster.NewRecorder("drexecution-controller")
+	if err := (&drexecution.DRExecutionReconciler{
+		Client:   mgr.GetClient(),
+		Scheme:   mgr.GetScheme(),
+		Recorder: drexecRecorder,
+	}).SetupWithManager(mgr); err != nil {
+		panic(fmt.Sprintf("setting up DRExecution controller: %v", err))
+	}
 	cancelFunc = cancel
 
 	go func() {
@@ -182,6 +193,45 @@ func drplanCRD() *apiextensionsv1.CustomResourceDefinition {
 				Singular: "drplan",
 				Kind:     "DRPlan",
 				ListKind: "DRPlanList",
+			},
+			Scope: apiextensionsv1.ClusterScoped,
+			Versions: []apiextensionsv1.CustomResourceDefinitionVersion{{
+				Name:    "v1alpha1",
+				Served:  true,
+				Storage: true,
+				Subresources: &apiextensionsv1.CustomResourceSubresources{
+					Status: &apiextensionsv1.CustomResourceSubresourceStatus{},
+				},
+				Schema: &apiextensionsv1.CustomResourceValidation{
+					OpenAPIV3Schema: &apiextensionsv1.JSONSchemaProps{
+						Type: "object",
+						Properties: map[string]apiextensionsv1.JSONSchemaProps{
+							"spec": {
+								Type:                   "object",
+								XPreserveUnknownFields: boolPtr(true),
+							},
+							"status": {
+								Type:                   "object",
+								XPreserveUnknownFields: boolPtr(true),
+							},
+						},
+					},
+				},
+			}},
+		},
+	}
+}
+
+func drexecutionCRD() *apiextensionsv1.CustomResourceDefinition {
+	return &apiextensionsv1.CustomResourceDefinition{
+		ObjectMeta: metav1.ObjectMeta{Name: "drexecutions.soteria.io"},
+		Spec: apiextensionsv1.CustomResourceDefinitionSpec{
+			Group: "soteria.io",
+			Names: apiextensionsv1.CustomResourceDefinitionNames{
+				Plural:   "drexecutions",
+				Singular: "drexecution",
+				Kind:     "DRExecution",
+				ListKind: "DRExecutionList",
 			},
 			Scope: apiextensionsv1.ClusterScoped,
 			Versions: []apiextensionsv1.CustomResourceDefinitionVersion{{
@@ -322,6 +372,76 @@ func waitForVMCount(ctx context.Context, name, namespace string, count int, time
 		time.Sleep(200 * time.Millisecond)
 	}
 	return nil, fmt.Errorf("timed out waiting for DiscoveredVMCount=%d on %s/%s", count, namespace, name)
+}
+
+// setPlanPhase sets the DRPlan's status.phase with a retry loop to handle
+// conflicts from concurrent DRPlan controller reconciliation.
+func setPlanPhase(ctx context.Context, name, phase string) error {
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		var plan soteriav1alpha1.DRPlan
+		if err := testClient.Get(ctx, client.ObjectKey{Name: name}, &plan); err != nil {
+			return err
+		}
+		plan.Status.Phase = phase
+		if err := testClient.Status().Update(ctx, &plan); err != nil {
+			time.Sleep(200 * time.Millisecond)
+			continue
+		}
+		return nil
+	}
+	return fmt.Errorf("timed out retrying setPlanPhase(%s, %s)", name, phase)
+}
+
+// waitForExecStartTime polls until the DRExecution has a non-nil startTime.
+func waitForExecStartTime(ctx context.Context, name string, timeout time.Duration) (*soteriav1alpha1.DRExecution, error) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		var exec soteriav1alpha1.DRExecution
+		if err := testClient.Get(ctx, client.ObjectKey{Name: name}, &exec); err != nil {
+			time.Sleep(200 * time.Millisecond)
+			continue
+		}
+		if exec.Status.StartTime != nil {
+			return &exec, nil
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	return nil, fmt.Errorf("timed out waiting for startTime on DRExecution %q", name)
+}
+
+// waitForExecResult polls until the DRExecution has the given result.
+func waitForExecResult(ctx context.Context, name string, result soteriav1alpha1.ExecutionResult, timeout time.Duration) (*soteriav1alpha1.DRExecution, error) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		var exec soteriav1alpha1.DRExecution
+		if err := testClient.Get(ctx, client.ObjectKey{Name: name}, &exec); err != nil {
+			time.Sleep(200 * time.Millisecond)
+			continue
+		}
+		if exec.Status.Result == result {
+			return &exec, nil
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	return nil, fmt.Errorf("timed out waiting for result=%s on DRExecution %q", result, name)
+}
+
+// waitForPlanPhase polls until the DRPlan has the given phase.
+func waitForPlanPhase(ctx context.Context, name, phase string, timeout time.Duration) (*soteriav1alpha1.DRPlan, error) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		var plan soteriav1alpha1.DRPlan
+		if err := testClient.Get(ctx, client.ObjectKey{Name: name}, &plan); err != nil {
+			time.Sleep(200 * time.Millisecond)
+			continue
+		}
+		if plan.Status.Phase == phase {
+			return &plan, nil
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	return nil, fmt.Errorf("timed out waiting for phase=%s on DRPlan %q", phase, name)
 }
 
 // waitForPreflight polls until the DRPlan has a populated preflight report.

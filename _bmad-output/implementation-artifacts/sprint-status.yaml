@@ -36,6 +36,8 @@
 
 generated: 2026-04-06
 last_updated: 2026-04-19
+# 4.1 done: code review fixes applied (log "from" bug, patch ordering, AC6 valid-phases message, concurrent test, failback event, WithValues logging)
+# 4.1 review: DR State Machine & Execution Controller — state machine, controller, admission webhook, validation; 9+6+5+7 tests all pass
 # 4.05 done: code review fix applied (empty-provisioner guard in GetDriverForPVC + test)
 # 4.05 review: Driver Registry Fallback & Preflight Convergence — registry fallback, preflight convergence, static map deleted, all tests green
 # 4.8 created: Re-protect & Failback Workflows story file
@@ -145,7 +147,7 @@ development_status:
   # Epic 4: DR Workflow Engine — Full Lifecycle
   epic-4: in-progress
   4-05-driver-registry-fallback-preflight-convergence: done
-  4-1-dr-state-machine-execution-controller: ready-for-dev
+  4-1-dr-state-machine-execution-controller: done
   4-2-drgroup-chunking-wave-executor: ready-for-dev
   4-3-planned-migration-workflow: ready-for-dev
   4-4-disaster-failover-workflow: ready-for-dev
