@@ -18,6 +18,7 @@ package preflight
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
@@ -28,6 +29,8 @@ import (
 	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 	crfake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 
+	"github.com/soteria-project/soteria/pkg/drivers"
+	"github.com/soteria-project/soteria/pkg/drivers/noop"
 	"github.com/soteria-project/soteria/pkg/engine"
 )
 
@@ -40,18 +43,47 @@ func testScheme() *runtime.Scheme {
 
 func strPtr(s string) *string { return &s }
 
+// fakeSCLister implements drivers.StorageClassLister for unit tests.
+type fakeSCLister struct {
+	provisioners map[string]string // storageClassName → provisioner
+}
+
+func (f *fakeSCLister) GetProvisioner(_ context.Context, scName string) (string, error) {
+	p, ok := f.provisioners[scName]
+	if !ok {
+		return "", fmt.Errorf("storage class %q not found", scName)
+	}
+	return p, nil
+}
+
+// newTestRegistry creates a fresh Registry with the given provisioner→factory
+// mappings and optional fallback.
+func newTestRegistry(provisioners map[string]drivers.DriverFactory, fallback drivers.DriverFactory) *drivers.Registry {
+	reg := drivers.NewRegistry()
+	for name, factory := range provisioners {
+		reg.RegisterDriver(name, factory)
+	}
+	if fallback != nil {
+		reg.SetFallbackDriver(fallback)
+	}
+	return reg
+}
+
+func noopFactory() drivers.StorageProvider { return noop.New() }
+
 func TestResolveBackends(t *testing.T) {
 	tests := []struct {
 		name         string
 		vms          []engine.VMReference
 		vmObjects    []crclient.Object
 		pvcs         []runtime.Object
-		driverMap    StorageClassDriverMap
+		registry     *drivers.Registry
+		scLister     drivers.StorageClassLister
 		wantBackends map[string]string
 		wantWarnings int
 	}{
 		{
-			name: "VM with PVC using known storage class",
+			name: "VM with PVC using registered provisioner",
 			vms:  []engine.VMReference{{Name: "vm-1", Namespace: "ns1"}},
 			vmObjects: []crclient.Object{
 				&kubevirtv1.VirtualMachine{
@@ -80,12 +112,15 @@ func TestResolveBackends(t *testing.T) {
 					Spec:       corev1.PersistentVolumeClaimSpec{StorageClassName: strPtr("ocs-rbd")},
 				},
 			},
-			driverMap:    StorageClassDriverMap{"ocs-rbd": "odf"},
-			wantBackends: map[string]string{"ns1/vm-1": "odf"},
+			registry: newTestRegistry(map[string]drivers.DriverFactory{
+				noop.ProvisionerName: noopFactory,
+			}, nil),
+			scLister:     &fakeSCLister{provisioners: map[string]string{"ocs-rbd": noop.ProvisionerName}},
+			wantBackends: map[string]string{"ns1/vm-1": noop.ProvisionerName},
 			wantWarnings: 0,
 		},
 		{
-			name: "VM with PVC using unknown storage class",
+			name: "VM with PVC using unregistered provisioner",
 			vms:  []engine.VMReference{{Name: "vm-1", Namespace: "ns1"}},
 			vmObjects: []crclient.Object{
 				&kubevirtv1.VirtualMachine{
@@ -114,7 +149,8 @@ func TestResolveBackends(t *testing.T) {
 					Spec:       corev1.PersistentVolumeClaimSpec{StorageClassName: strPtr("some-unknown-class")},
 				},
 			},
-			driverMap:    StorageClassDriverMap{"ocs-rbd": "odf"},
+			registry:     newTestRegistry(nil, nil),
+			scLister:     &fakeSCLister{provisioners: map[string]string{"some-unknown-class": "unregistered.csi.com"}},
 			wantBackends: map[string]string{"ns1/vm-1": "unknown"},
 			wantWarnings: 1,
 		},
@@ -131,7 +167,8 @@ func TestResolveBackends(t *testing.T) {
 					},
 				},
 			},
-			driverMap:    StorageClassDriverMap{},
+			registry:     newTestRegistry(nil, nil),
+			scLister:     &fakeSCLister{},
 			wantBackends: map[string]string{"ns1/vm-1": "none"},
 			wantWarnings: 1,
 		},
@@ -159,7 +196,8 @@ func TestResolveBackends(t *testing.T) {
 					},
 				},
 			},
-			driverMap:    StorageClassDriverMap{},
+			registry:     newTestRegistry(nil, nil),
+			scLister:     &fakeSCLister{},
 			wantBackends: map[string]string{"ns1/vm-1": "unknown"},
 			wantWarnings: 1,
 		},
@@ -191,8 +229,11 @@ func TestResolveBackends(t *testing.T) {
 					Spec:       corev1.PersistentVolumeClaimSpec{StorageClassName: strPtr("ocs-rbd")},
 				},
 			},
-			driverMap:    StorageClassDriverMap{"ocs-rbd": "odf"},
-			wantBackends: map[string]string{"ns1/vm-1": "odf"},
+			registry: newTestRegistry(map[string]drivers.DriverFactory{
+				noop.ProvisionerName: noopFactory,
+			}, nil),
+			scLister:     &fakeSCLister{provisioners: map[string]string{"ocs-rbd": noop.ProvisionerName}},
+			wantBackends: map[string]string{"ns1/vm-1": noop.ProvisionerName},
 			wantWarnings: 0,
 		},
 		{
@@ -241,8 +282,15 @@ func TestResolveBackends(t *testing.T) {
 					Spec:       corev1.PersistentVolumeClaimSpec{StorageClassName: strPtr("other-class")},
 				},
 			},
-			driverMap:    StorageClassDriverMap{"ocs-rbd": "odf", "other-class": "dell"},
-			wantBackends: map[string]string{"ns1/vm-1": "odf"},
+			registry: newTestRegistry(map[string]drivers.DriverFactory{
+				noop.ProvisionerName:           noopFactory,
+				"dell-powerstore.csi.dell.com": noopFactory,
+			}, nil),
+			scLister: &fakeSCLister{provisioners: map[string]string{
+				"ocs-rbd":     noop.ProvisionerName,
+				"other-class": "dell-powerstore.csi.dell.com",
+			}},
+			wantBackends: map[string]string{"ns1/vm-1": noop.ProvisionerName},
 			wantWarnings: 1,
 		},
 		{
@@ -301,8 +349,15 @@ func TestResolveBackends(t *testing.T) {
 					Spec:       corev1.PersistentVolumeClaimSpec{StorageClassName: strPtr("dell-pstore")},
 				},
 			},
-			driverMap:    StorageClassDriverMap{"ocs-rbd": "odf", "dell-pstore": "dell-powerstore"},
-			wantBackends: map[string]string{"ns1/vm-1": "odf", "ns1/vm-2": "dell-powerstore"},
+			registry: newTestRegistry(map[string]drivers.DriverFactory{
+				noop.ProvisionerName:           noopFactory,
+				"dell-powerstore.csi.dell.com": noopFactory,
+			}, nil),
+			scLister: &fakeSCLister{provisioners: map[string]string{
+				"ocs-rbd":     noop.ProvisionerName,
+				"dell-pstore": "dell-powerstore.csi.dell.com",
+			}},
+			wantBackends: map[string]string{"ns1/vm-1": noop.ProvisionerName, "ns1/vm-2": "dell-powerstore.csi.dell.com"},
 			wantWarnings: 0,
 		},
 	}
@@ -320,7 +375,8 @@ func TestResolveBackends(t *testing.T) {
 			resolver := &TypedStorageBackendResolver{
 				Client:     crClient,
 				CoreClient: k8sClient.CoreV1(),
-				DriverMap:  tt.driverMap,
+				Registry:   tt.registry,
+				SCLister:   tt.scLister,
 			}
 
 			backends, warnings, err := resolver.ResolveBackends(context.Background(), tt.vms)
@@ -340,5 +396,216 @@ func TestResolveBackends(t *testing.T) {
 					len(warnings), tt.wantWarnings, warnings)
 			}
 		})
+	}
+}
+
+func TestResolveBackends_FallbackEnabled(t *testing.T) {
+	scheme := testScheme()
+	crClient := crfake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(&kubevirtv1.VirtualMachine{
+			ObjectMeta: metav1.ObjectMeta{Name: "vm-fb", Namespace: "ns1"},
+			Spec: kubevirtv1.VirtualMachineSpec{
+				Template: &kubevirtv1.VirtualMachineInstanceTemplateSpec{
+					Spec: kubevirtv1.VirtualMachineInstanceSpec{
+						Volumes: []kubevirtv1.Volume{{
+							Name: "rootdisk",
+							VolumeSource: kubevirtv1.VolumeSource{
+								PersistentVolumeClaim: &kubevirtv1.PersistentVolumeClaimVolumeSource{
+									PersistentVolumeClaimVolumeSource: corev1.PersistentVolumeClaimVolumeSource{
+										ClaimName: "vm-fb-root",
+									},
+								},
+							},
+						}},
+					},
+				},
+			},
+		}).
+		Build()
+
+	k8sClient := k8sfake.NewSimpleClientset( //nolint:staticcheck // NewClientset requires apply configurations not available for this project
+		&corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{Name: "vm-fb-root", Namespace: "ns1"},
+			Spec:       corev1.PersistentVolumeClaimSpec{StorageClassName: strPtr("fancy-sc")},
+		},
+	)
+
+	registry := newTestRegistry(nil, noopFactory)
+	scLister := &fakeSCLister{provisioners: map[string]string{"fancy-sc": "unregistered.csi.com"}}
+
+	resolver := &TypedStorageBackendResolver{
+		Client:     crClient,
+		CoreClient: k8sClient.CoreV1(),
+		Registry:   registry,
+		SCLister:   scLister,
+	}
+
+	backends, warnings, err := resolver.ResolveBackends(context.Background(), []engine.VMReference{{Name: "vm-fb", Namespace: "ns1"}})
+	if err != nil {
+		t.Fatalf("ResolveBackends() error: %v", err)
+	}
+
+	if got := backends["ns1/vm-fb"]; got != "unregistered.csi.com" {
+		t.Errorf("Backend = %q, want %q (provisioner name from fallback)", got, "unregistered.csi.com")
+	}
+	if len(warnings) != 0 {
+		t.Errorf("Expected no warnings with fallback enabled, got %d: %v", len(warnings), warnings)
+	}
+}
+
+func TestResolveBackends_NilRegistry(t *testing.T) {
+	scheme := testScheme()
+	crClient := crfake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(&kubevirtv1.VirtualMachine{
+			ObjectMeta: metav1.ObjectMeta{Name: "vm-noreg", Namespace: "ns1"},
+			Spec: kubevirtv1.VirtualMachineSpec{
+				Template: &kubevirtv1.VirtualMachineInstanceTemplateSpec{
+					Spec: kubevirtv1.VirtualMachineInstanceSpec{
+						Volumes: []kubevirtv1.Volume{{
+							Name: "rootdisk",
+							VolumeSource: kubevirtv1.VolumeSource{
+								PersistentVolumeClaim: &kubevirtv1.PersistentVolumeClaimVolumeSource{
+									PersistentVolumeClaimVolumeSource: corev1.PersistentVolumeClaimVolumeSource{
+										ClaimName: "vm-noreg-root",
+									},
+								},
+							},
+						}},
+					},
+				},
+			},
+		}).
+		Build()
+
+	k8sClient := k8sfake.NewSimpleClientset( //nolint:staticcheck // NewClientset requires apply configurations not available for this project
+		&corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{Name: "vm-noreg-root", Namespace: "ns1"},
+			Spec:       corev1.PersistentVolumeClaimSpec{StorageClassName: strPtr("some-sc")},
+		},
+	)
+
+	resolver := &TypedStorageBackendResolver{
+		Client:     crClient,
+		CoreClient: k8sClient.CoreV1(),
+		Registry:   nil,
+		SCLister:   &fakeSCLister{provisioners: map[string]string{"some-sc": "csi.example.com"}},
+	}
+
+	backends, warnings, err := resolver.ResolveBackends(context.Background(), []engine.VMReference{{Name: "vm-noreg", Namespace: "ns1"}})
+	if err != nil {
+		t.Fatalf("ResolveBackends() error: %v", err)
+	}
+
+	if got := backends["ns1/vm-noreg"]; got != "unknown" {
+		t.Errorf("Backend = %q, want %q", got, "unknown")
+	}
+	if len(warnings) != 1 {
+		t.Errorf("Expected 1 warning for nil Registry, got %d: %v", len(warnings), warnings)
+	}
+}
+
+func TestResolveBackends_EmptyProvisioner(t *testing.T) {
+	scheme := testScheme()
+	crClient := crfake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(&kubevirtv1.VirtualMachine{
+			ObjectMeta: metav1.ObjectMeta{Name: "vm-empty", Namespace: "ns1"},
+			Spec: kubevirtv1.VirtualMachineSpec{
+				Template: &kubevirtv1.VirtualMachineInstanceTemplateSpec{
+					Spec: kubevirtv1.VirtualMachineInstanceSpec{
+						Volumes: []kubevirtv1.Volume{{
+							Name: "rootdisk",
+							VolumeSource: kubevirtv1.VolumeSource{
+								PersistentVolumeClaim: &kubevirtv1.PersistentVolumeClaimVolumeSource{
+									PersistentVolumeClaimVolumeSource: corev1.PersistentVolumeClaimVolumeSource{
+										ClaimName: "vm-empty-root",
+									},
+								},
+							},
+						}},
+					},
+				},
+			},
+		}).
+		Build()
+
+	k8sClient := k8sfake.NewSimpleClientset( //nolint:staticcheck // NewClientset requires apply configurations not available for this project
+		&corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{Name: "vm-empty-root", Namespace: "ns1"},
+			Spec:       corev1.PersistentVolumeClaimSpec{StorageClassName: strPtr("misconfigured-sc")},
+		},
+	)
+
+	resolver := &TypedStorageBackendResolver{
+		Client:     crClient,
+		CoreClient: k8sClient.CoreV1(),
+		Registry:   newTestRegistry(nil, nil),
+		SCLister:   &fakeSCLister{provisioners: map[string]string{"misconfigured-sc": ""}},
+	}
+
+	backends, warnings, err := resolver.ResolveBackends(context.Background(), []engine.VMReference{{Name: "vm-empty", Namespace: "ns1"}})
+	if err != nil {
+		t.Fatalf("ResolveBackends() error: %v", err)
+	}
+
+	if got := backends["ns1/vm-empty"]; got != "unknown" {
+		t.Errorf("Backend = %q, want %q", got, "unknown")
+	}
+	if len(warnings) != 1 {
+		t.Errorf("Expected 1 warning for empty provisioner, got %d: %v", len(warnings), warnings)
+	}
+}
+
+func TestResolveBackends_NilSCLister(t *testing.T) {
+	scheme := testScheme()
+	crClient := crfake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(&kubevirtv1.VirtualMachine{
+			ObjectMeta: metav1.ObjectMeta{Name: "vm-nil", Namespace: "ns1"},
+			Spec: kubevirtv1.VirtualMachineSpec{
+				Template: &kubevirtv1.VirtualMachineInstanceTemplateSpec{
+					Spec: kubevirtv1.VirtualMachineInstanceSpec{
+						Volumes: []kubevirtv1.Volume{{
+							Name: "rootdisk",
+							VolumeSource: kubevirtv1.VolumeSource{
+								PersistentVolumeClaim: &kubevirtv1.PersistentVolumeClaimVolumeSource{
+									PersistentVolumeClaimVolumeSource: corev1.PersistentVolumeClaimVolumeSource{
+										ClaimName: "vm-nil-root",
+									},
+								},
+							},
+						}},
+					},
+				},
+			},
+		}).
+		Build()
+
+	k8sClient := k8sfake.NewSimpleClientset( //nolint:staticcheck // NewClientset requires apply configurations not available for this project
+		&corev1.PersistentVolumeClaim{
+			ObjectMeta: metav1.ObjectMeta{Name: "vm-nil-root", Namespace: "ns1"},
+			Spec:       corev1.PersistentVolumeClaimSpec{StorageClassName: strPtr("some-sc")},
+		},
+	)
+
+	resolver := &TypedStorageBackendResolver{
+		Client:     crClient,
+		CoreClient: k8sClient.CoreV1(),
+		Registry:   drivers.NewRegistry(),
+		SCLister:   nil,
+	}
+
+	backends, warnings, err := resolver.ResolveBackends(context.Background(), []engine.VMReference{{Name: "vm-nil", Namespace: "ns1"}})
+	if err != nil {
+		t.Fatalf("ResolveBackends() error: %v", err)
+	}
+
+	if got := backends["ns1/vm-nil"]; got != "unknown" {
+		t.Errorf("Backend = %q, want %q", got, "unknown")
+	}
+	if len(warnings) != 1 {
+		t.Errorf("Expected 1 warning for nil SCLister, got %d: %v", len(warnings), warnings)
 	}
 }

@@ -55,6 +55,8 @@ import (
 	"github.com/soteria-project/soteria/pkg/apiserver"
 	"github.com/soteria-project/soteria/pkg/controller/drexecution"
 	"github.com/soteria-project/soteria/pkg/controller/drplan"
+	"github.com/soteria-project/soteria/pkg/drivers"
+	"github.com/soteria-project/soteria/pkg/drivers/noop"
 	"github.com/soteria-project/soteria/pkg/engine"
 	scylladb "github.com/soteria-project/soteria/pkg/storage/scylladb"
 	// +kubebuilder:scaffold:imports
@@ -81,6 +83,7 @@ func main() {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
+	var noopFallback bool
 	var tlsOpts []func(*tls.Config)
 
 	// Aggregated API server + ScyllaDB flags are registered via SoteriaServerOptions.
@@ -106,6 +109,9 @@ func main() {
 	fs.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	fs.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	fs.BoolVar(&noopFallback, "noop-fallback", false,
+		"When enabled, unregistered CSI provisioners fall back to the noop driver instead of failing. "+
+			"Intended for dev/CI environments without real storage infrastructure.")
 
 	zapOpts := zap.Options{Development: true}
 	goFS := flag.NewFlagSet("", flag.ExitOnError)
@@ -221,12 +227,20 @@ func main() {
 		os.Exit(1)
 	}
 
+	if noopFallback {
+		drivers.SetFallbackDriver(func() drivers.StorageProvider { return noop.New() })
+		setupLog.Info("Noop fallback enabled for unregistered provisioners")
+	}
+	setupLog.Info("Registered storage drivers", "drivers", drivers.ListRegistered())
+
 	vmDiscoverer := engine.NewTypedVMDiscoverer(mgr.GetClient())
 	nsLookup := &engine.DefaultNamespaceLookup{Client: clientset.CoreV1()}
+	scLister := &preflight.KubeStorageClassLister{Client: clientset.StorageV1()}
 	storageResolver := &preflight.TypedStorageBackendResolver{
 		Client:     mgr.GetClient(),
 		CoreClient: clientset.CoreV1(),
-		DriverMap:  preflight.StorageClassDriverMap{},
+		Registry:   drivers.DefaultRegistry,
+		SCLister:   scLister,
 	}
 
 	eventBroadcaster := events.NewEventBroadcasterAdapterWithContext(ctx, clientset)

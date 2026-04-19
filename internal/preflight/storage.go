@@ -14,8 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// storage.go resolves storage backends for VMs by inspecting their PVC references
-// and mapping PVC storage classes to known driver names. The DRPlan reconciler
+// storage.go resolves storage backends for VMs by inspecting their PVC references,
+// mapping PVC storage classes to CSI provisioners via a StorageClassLister, and
+// verifying driver availability through the driver registry. The DRPlan reconciler
 // calls ResolveBackends during preflight composition to show which storage driver
 // handles each VM's volumes — giving platform engineers visibility into the
 // storage layer without triggering execution.
@@ -24,6 +25,7 @@ package preflight
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -31,7 +33,9 @@ import (
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	"github.com/soteria-project/soteria/pkg/drivers"
 	"github.com/soteria-project/soteria/pkg/engine"
 )
 
@@ -41,17 +45,16 @@ type StorageBackendResolver interface {
 	ResolveBackends(ctx context.Context, vms []engine.VMReference) (map[string]string, []string, error)
 }
 
-// StorageClassDriverMap maps storage class name → driver name (e.g.,
-// "ocs-storagecluster-ceph-rbd" → "odf").
-type StorageClassDriverMap map[string]string
-
 // TypedStorageBackendResolver resolves storage backends by reading typed
 // kubevirtv1.VirtualMachine objects for volume specs, then looking up PVCs
-// to determine storage class → driver mappings.
+// to determine storage class → CSI provisioner → driver mappings via the
+// driver registry. SCLister resolves a StorageClass name to its CSI
+// provisioner; Registry resolves the provisioner to a StorageProvider.
 type TypedStorageBackendResolver struct {
 	Client     client.Reader
 	CoreClient corev1client.CoreV1Interface
-	DriverMap  StorageClassDriverMap
+	Registry   *drivers.Registry
+	SCLister   drivers.StorageClassLister
 }
 
 // Compile-time interface check.
@@ -146,13 +149,10 @@ func (r *TypedStorageBackendResolver) resolveVM(
 			continue
 		}
 
-		if driver, ok := r.DriverMap[scName]; ok {
-			resolvedBackend = driver
-		} else {
-			resolvedBackend = backendUnknown
-			warnings = append(warnings, fmt.Sprintf(
-				"VM %s/%s: could not determine storage backend from PVC storage class %q",
-				vmRef.Namespace, vmRef.Name, scName))
+		backend, warn := r.resolveProvisioner(ctx, vmRef, scName)
+		resolvedBackend = backend
+		if warn != "" {
+			warnings = append(warnings, warn)
 		}
 	}
 
@@ -161,4 +161,52 @@ func (r *TypedStorageBackendResolver) resolveVM(
 	}
 
 	return resolvedBackend, warnings
+}
+
+// resolveProvisioner maps a storage class name to a CSI provisioner via the
+// SCLister and verifies a driver exists in the Registry. Returns the
+// provisioner name as the backend string or "unknown" with a warning.
+func (r *TypedStorageBackendResolver) resolveProvisioner(
+	ctx context.Context, vmRef engine.VMReference, scName string,
+) (string, string) {
+	logger := log.FromContext(ctx)
+
+	if r.SCLister == nil {
+		return backendUnknown, fmt.Sprintf(
+			"VM %s/%s: nil StorageClassLister, cannot resolve storage class %q",
+			vmRef.Namespace, vmRef.Name, scName)
+	}
+	if r.Registry == nil {
+		return backendUnknown, fmt.Sprintf(
+			"VM %s/%s: nil Registry, cannot resolve storage class %q",
+			vmRef.Namespace, vmRef.Name, scName)
+	}
+
+	provisioner, err := r.SCLister.GetProvisioner(ctx, scName)
+	if err != nil {
+		return backendUnknown, fmt.Sprintf(
+			"VM %s/%s: could not resolve provisioner for storage class %q: %v",
+			vmRef.Namespace, vmRef.Name, scName, err)
+	}
+	if provisioner == "" {
+		return backendUnknown, fmt.Sprintf(
+			"VM %s/%s: empty provisioner for storage class %q",
+			vmRef.Namespace, vmRef.Name, scName)
+	}
+
+	_, err = r.Registry.GetDriver(provisioner)
+	if err != nil {
+		if errors.Is(err, drivers.ErrDriverNotFound) {
+			return backendUnknown, fmt.Sprintf(
+				"VM %s/%s: no storage driver registered for provisioner %q (storage class %q)",
+				vmRef.Namespace, vmRef.Name, provisioner, scName)
+		}
+		return backendUnknown, fmt.Sprintf(
+			"VM %s/%s: error looking up driver for provisioner %q: %v",
+			vmRef.Namespace, vmRef.Name, provisioner, err)
+	}
+
+	logger.V(1).Info("Resolved storage backend via registry",
+		"storageClass", scName, "provisioner", provisioner)
+	return provisioner, ""
 }

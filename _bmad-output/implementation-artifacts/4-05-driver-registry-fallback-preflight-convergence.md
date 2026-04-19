@@ -1,6 +1,6 @@
 # Story 4.05: Driver Registry Fallback & Preflight Convergence
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -28,69 +28,69 @@ So that storage backends are resolved from a single source of truth at both pref
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Add fallback support to the driver registry (AC: #1, #5)
-  - [ ] 1.1 In `pkg/drivers/registry.go`, add a `fallbackFactory DriverFactory` field to `Registry`
-  - [ ] 1.2 Add `SetFallbackDriver(factory DriverFactory)` method on `Registry` — stores the factory; panics if called twice (same fail-fast pattern as `RegisterDriver`)
-  - [ ] 1.3 Update `GetDriver` to return `fallbackFactory()` when `!ok && fallbackFactory != nil` — preserving `ErrDriverNotFound` when fallback is nil
-  - [ ] 1.4 Update `GetDriverForPVC` to inherit the same fallback behavior (it delegates to `GetDriver`)
-  - [ ] 1.5 Ensure `ListRegistered` does NOT include the fallback driver — it is not a registered provisioner
-  - [ ] 1.6 Add package-level `SetFallbackDriver` convenience function delegating to `DefaultRegistry`
-  - [ ] 1.7 Update `ResetForTesting` to also clear the fallback factory
+- [x] Task 1: Add fallback support to the driver registry (AC: #1, #5)
+  - [x] 1.1 In `pkg/drivers/registry.go`, add a `fallbackFactory DriverFactory` field to `Registry`
+  - [x] 1.2 Add `SetFallbackDriver(factory DriverFactory)` method on `Registry` — stores the factory; panics if called twice (same fail-fast pattern as `RegisterDriver`)
+  - [x] 1.3 Update `GetDriver` to return `fallbackFactory()` when `!ok && fallbackFactory != nil` — preserving `ErrDriverNotFound` when fallback is nil
+  - [x] 1.4 Update `GetDriverForPVC` to inherit the same fallback behavior (it delegates to `GetDriver`)
+  - [x] 1.5 Ensure `ListRegistered` does NOT include the fallback driver — it is not a registered provisioner
+  - [x] 1.6 Add package-level `SetFallbackDriver` convenience function delegating to `DefaultRegistry`
+  - [x] 1.7 Update `ResetForTesting` to also clear the fallback factory
 
-- [ ] Task 2: Add registry fallback unit tests (AC: #1, #5, #6)
-  - [ ] 2.1 In `pkg/drivers/registry_test.go`, add test: `TestRegistry_GetDriver_FallbackEnabled_UnknownProvisioner` — returns noop driver, not error
-  - [ ] 2.2 Add test: `TestRegistry_GetDriver_FallbackDisabled_UnknownProvisioner` — returns `ErrDriverNotFound`
-  - [ ] 2.3 Add test: `TestRegistry_GetDriver_FallbackEnabled_RegisteredProvisioner` — returns the registered driver, not fallback
-  - [ ] 2.4 Add test: `TestRegistry_ListRegistered_ExcludesFallback` — fallback not in list
-  - [ ] 2.5 Add test: `TestRegistry_SetFallbackDriver_PanicOnDouble` — second call panics
-  - [ ] 2.6 Add test: `TestRegistry_ResetForTesting_ClearsFallback` — fallback cleared after reset
-  - [ ] 2.7 Add test for package-level `SetFallbackDriver` + `ResetForTesting` clearing fallback on `DefaultRegistry`
+- [x] Task 2: Add registry fallback unit tests (AC: #1, #5, #6)
+  - [x] 2.1 In `pkg/drivers/registry_test.go`, add test: `TestRegistry_GetDriver_FallbackEnabled_UnknownProvisioner` — returns noop driver, not error
+  - [x] 2.2 Add test: `TestRegistry_GetDriver_FallbackDisabled_UnknownProvisioner` — returns `ErrDriverNotFound`
+  - [x] 2.3 Add test: `TestRegistry_GetDriver_FallbackEnabled_RegisteredProvisioner` — returns the registered driver, not fallback
+  - [x] 2.4 Add test: `TestRegistry_ListRegistered_ExcludesFallback` — fallback not in list
+  - [x] 2.5 Add test: `TestRegistry_SetFallbackDriver_PanicOnDouble` — second call panics
+  - [x] 2.6 Add test: `TestRegistry_ResetForTesting_ClearsFallback` — fallback cleared after reset
+  - [x] 2.7 Add test for package-level `SetFallbackDriver` + `ResetForTesting` clearing fallback on `DefaultRegistry`
 
-- [ ] Task 3: Refactor `TypedStorageBackendResolver` to use the driver registry (AC: #2, #3)
-  - [ ] 3.1 In `internal/preflight/storage.go`, replace `DriverMap StorageClassDriverMap` field with `Registry *drivers.Registry` and `SCLister drivers.StorageClassLister`. **Preserve `Client client.Reader` and `CoreClient corev1client.CoreV1Interface`** — they are still required for VM reads and `PersistentVolumeClaims(...).Get(...)` and are independent of `StorageClassLister`
-  - [ ] 3.2 Delete the `StorageClassDriverMap` type entirely
-  - [ ] 3.3 Update `resolveVM` to: (1) read PVC via `r.CoreClient` (unchanged); (2) call `r.SCLister.GetProvisioner(ctx, storageClassName)` to obtain the CSI provisioner string; (3) call `r.Registry.GetDriver(provisionerName)` — if nil error, backend name is that provisioner string; if `errors.Is(err, drivers.ErrDriverNotFound)`, backend is `"unknown"` and emit a warning (unless noop fallback causes `GetDriver` to succeed — then use provisioner string, no warning). Other errors → `"unknown"` with a distinct warning. Do NOT use `GetDriverForPVC` here — keep provisioner resolution and driver lookup separate to get the provisioner name for display
-  - [ ] 3.4 Handle edge cases: `nil` SCLister (return "unknown" with warning), PVC without storage class, multiple storage classes across PVCs in the same VM
+- [x] Task 3: Refactor `TypedStorageBackendResolver` to use the driver registry (AC: #2, #3)
+  - [x] 3.1 In `internal/preflight/storage.go`, replace `DriverMap StorageClassDriverMap` field with `Registry *drivers.Registry` and `SCLister drivers.StorageClassLister`. **Preserve `Client client.Reader` and `CoreClient corev1client.CoreV1Interface`** — they are still required for VM reads and `PersistentVolumeClaims(...).Get(...)` and are independent of `StorageClassLister`
+  - [x] 3.2 Delete the `StorageClassDriverMap` type entirely
+  - [x] 3.3 Update `resolveVM` to: (1) read PVC via `r.CoreClient` (unchanged); (2) call `r.SCLister.GetProvisioner(ctx, storageClassName)` to obtain the CSI provisioner string; (3) call `r.Registry.GetDriver(provisionerName)` — if nil error, backend name is that provisioner string; if `errors.Is(err, drivers.ErrDriverNotFound)`, backend is `"unknown"` and emit a warning (unless noop fallback causes `GetDriver` to succeed — then use provisioner string, no warning). Other errors → `"unknown"` with a distinct warning. Do NOT use `GetDriverForPVC` here — keep provisioner resolution and driver lookup separate to get the provisioner name for display
+  - [x] 3.4 Handle edge cases: `nil` SCLister (return "unknown" with warning), PVC without storage class, multiple storage classes across PVCs in the same VM
 
-- [ ] Task 4: Create a real `StorageClassLister` implementation (AC: #4)
-  - [ ] 4.1 In `internal/preflight/storage.go` (or a new file `internal/preflight/sc_lister.go`), implement `KubeStorageClassLister` that satisfies `drivers.StorageClassLister`
-  - [ ] 4.2 `GetProvisioner(ctx, storageClassName)` calls `storageClient.StorageClasses().Get(ctx, name, metav1.GetOptions{})` and returns `sc.Provisioner`
-  - [ ] 4.3 Return a descriptive error wrapping the storage class name if the SC is not found
+- [x] Task 4: Create a real `StorageClassLister` implementation (AC: #4)
+  - [x] 4.1 In `internal/preflight/storage.go` (or a new file `internal/preflight/sc_lister.go`), implement `KubeStorageClassLister` that satisfies `drivers.StorageClassLister`
+  - [x] 4.2 `GetProvisioner(ctx, storageClassName)` calls `storageClient.StorageClasses().Get(ctx, name, metav1.GetOptions{})` and returns `sc.Provisioner`
+  - [x] 4.3 Return a descriptive error wrapping the storage class name if the SC is not found
 
-- [ ] Task 5: Update `main.go` wiring (AC: #4, #7)
-  - [ ] 5.1 Add `--noop-fallback` flag (`pflag.Bool`) with default `false` and description
-  - [ ] 5.2 When flag is true: call `drivers.DefaultRegistry.SetFallbackDriver(func() drivers.StorageProvider { return noop.New() })` — import `noop` explicitly for the factory
-  - [ ] 5.3 Log `"Noop fallback enabled for unregistered provisioners"` at Info level when flag is true
-  - [ ] 5.4 Log registered drivers at startup: `setupLog.Info("Registered storage drivers", "drivers", drivers.ListRegistered())`
-  - [ ] 5.5 Create `KubeStorageClassLister` with `clientset.StorageV1()` and pass it to `TypedStorageBackendResolver`
-  - [ ] 5.6 Replace `DriverMap: preflight.StorageClassDriverMap{}` with `Registry: drivers.DefaultRegistry, SCLister: scLister`
-  - [ ] 5.7 Remove the `preflight.StorageClassDriverMap{}` construction entirely
+- [x] Task 5: Update `main.go` wiring (AC: #4, #7)
+  - [x] 5.1 Add `--noop-fallback` flag (`pflag.Bool`) with default `false` and description
+  - [x] 5.2 When flag is true: call `drivers.DefaultRegistry.SetFallbackDriver(func() drivers.StorageProvider { return noop.New() })` — import `noop` explicitly for the factory
+  - [x] 5.3 Log `"Noop fallback enabled for unregistered provisioners"` at Info level when flag is true
+  - [x] 5.4 Log registered drivers at startup: `setupLog.Info("Registered storage drivers", "drivers", drivers.ListRegistered())`
+  - [x] 5.5 Create `KubeStorageClassLister` with `clientset.StorageV1()` and pass it to `TypedStorageBackendResolver`
+  - [x] 5.6 Replace `DriverMap: preflight.StorageClassDriverMap{}` with `Registry: drivers.DefaultRegistry, SCLister: scLister`
+  - [x] 5.7 Remove the `preflight.StorageClassDriverMap{}` construction entirely
 
-- [ ] Task 6: Update preflight unit tests (AC: #6)
-  - [ ] 6.1 In `internal/preflight/storage_test.go`, replace all `StorageClassDriverMap` usage with a mock/fake `StorageClassLister` and a test `Registry` with registered drivers
-  - [ ] 6.2 Add test: `TestResolveBackends_DriverRegistered` — provisioner in registry → backend is provisioner name
-  - [ ] 6.3 Add test: `TestResolveBackends_DriverNotRegistered` — provisioner not in registry → backend is `"unknown"`, warning emitted
-  - [ ] 6.4 Add test: `TestResolveBackends_FallbackEnabled` — unknown provisioner with fallback → backend is provisioner name (fallback resolves), no warning
-  - [ ] 6.5 Add test: `TestResolveBackends_NilSCLister` — returns `"unknown"` with warning
-  - [ ] 6.6 Update existing test scenarios to use the new field names
-  - [ ] 6.7 Confirm `internal/preflight/checks_test.go` has no `StorageClassDriverMap` / resolver fixtures — no change expected unless new references appear
+- [x] Task 6: Update preflight unit tests (AC: #6)
+  - [x] 6.1 In `internal/preflight/storage_test.go`, replace all `StorageClassDriverMap` usage with a mock/fake `StorageClassLister` and a test `Registry` with registered drivers
+  - [x] 6.2 Add test: `TestResolveBackends_DriverRegistered` — provisioner in registry → backend is provisioner name
+  - [x] 6.3 Add test: `TestResolveBackends_DriverNotRegistered` — provisioner not in registry → backend is `"unknown"`, warning emitted
+  - [x] 6.4 Add test: `TestResolveBackends_FallbackEnabled` — unknown provisioner with fallback → backend is provisioner name (fallback resolves), no warning
+  - [x] 6.5 Add test: `TestResolveBackends_NilSCLister` — returns `"unknown"` with warning
+  - [x] 6.6 Update existing test scenarios to use the new field names
+  - [x] 6.7 Confirm `internal/preflight/checks_test.go` has no `StorageClassDriverMap` / resolver fixtures — no change expected unless new references appear
 
-- [ ] Task 7: Update integration tests (AC: #6)
-  - [ ] 7.1 Update `test/integration/controller/suite_test.go` — replace `StorageClassDriverMap` / `DriverMap` wiring with `Registry` + `SCLister`. Ensure noop driver is registered (import `_ "github.com/soteria-project/soteria/pkg/drivers/all"` or register in test setup)
-  - [ ] 7.2 Create `storage.k8s.io/v1` `StorageClass` objects in the envtest environment for storage class names used by PVCs in test fixtures (e.g. `test-odf` with `provisioner: noop.soteria.io`)
-  - [ ] 7.3 Update `test/integration/controller/drplan_preflight_test.go` — change assertions from human-friendly names (e.g. `"odf"`) to CSI provisioner strings (e.g. `"noop.soteria.io"`)
-  - [ ] 7.4 Create `KubeStorageClassLister` with `clientset.StorageV1()` for integration test resolver wiring
+- [x] Task 7: Update integration tests (AC: #6)
+  - [x] 7.1 Update `test/integration/controller/suite_test.go` — replace `StorageClassDriverMap` / `DriverMap` wiring with `Registry` + `SCLister`. Ensure noop driver is registered (import `_ "github.com/soteria-project/soteria/pkg/drivers/all"` or register in test setup)
+  - [x] 7.2 Create `storage.k8s.io/v1` `StorageClass` objects in the envtest environment for storage class names used by PVCs in test fixtures (e.g. `test-odf` with `provisioner: noop.soteria.io`)
+  - [x] 7.3 Update `test/integration/controller/drplan_preflight_test.go` — change assertions from human-friendly names (e.g. `"odf"`) to CSI provisioner strings (e.g. `"noop.soteria.io"`)
+  - [x] 7.4 Create `KubeStorageClassLister` with `clientset.StorageV1()` for integration test resolver wiring
 
-- [ ] Task 8: Update package documentation (AC: #7)
-  - [ ] 8.1 Update `internal/preflight/doc.go` to mention registry-based resolution
-  - [ ] 8.2 Add/update godoc on `TypedStorageBackendResolver` explaining the registry + SCLister flow
-  - [ ] 8.3 Update godoc on `Registry.GetDriver` to document fallback behavior
+- [x] Task 8: Update package documentation (AC: #7)
+  - [x] 8.1 Update `internal/preflight/doc.go` to mention registry-based resolution
+  - [x] 8.2 Add/update godoc on `TypedStorageBackendResolver` explaining the registry + SCLister flow
+  - [x] 8.3 Update godoc on `Registry.GetDriver` to document fallback behavior
 
-- [ ] Task 9: Verify build and tests
-  - [ ] 9.1 Run `make test` — all unit tests pass (new + existing)
-  - [ ] 9.2 Run `make lint-fix` followed by `make lint` — no new lint errors
-  - [ ] 9.3 Run `make build` — compiles cleanly
-  - [ ] 9.4 Run `make integration` — integration tests pass
+- [x] Task 9: Verify build and tests
+  - [x] 9.1 Run `make test` — all unit tests pass (new + existing)
+  - [x] 9.2 Run `make lint-fix` followed by `make lint` — no new lint errors
+  - [x] 9.3 Run `make build` — compiles cleanly
+  - [x] 9.4 Run `make integration` — integration tests pass
 
 ## Dev Notes
 
@@ -349,14 +349,51 @@ make integration  # Integration tests (if applicable)
 - [Source: internal/preflight/storage.go] — Current TypedStorageBackendResolver with StorageClassDriverMap
 - [Source: cmd/soteria/main.go#L226-230] — Current wiring: empty StorageClassDriverMap
 
+### Review Findings
+
+- [x] [Review][Patch] Nil `Registry` pointer dereference — added `r.Registry == nil` guard in `resolveProvisioner` + `TestResolveBackends_NilRegistry` test [internal/preflight/storage.go]
+- [x] [Review][Patch] Nil `KubeStorageClassLister.Client` panic — added `l.Client == nil` guard + `TestKubeStorageClassLister_NilClient` test [internal/preflight/sc_lister.go]
+- [x] [Review][Patch] Empty provisioner string from StorageClassLister — added `provisioner == ""` guard in `resolveProvisioner` + `TestResolveBackends_EmptyProvisioner` test [internal/preflight/storage.go]
+- [x] [Review][Defer] CSI vs in-tree provisioner ambiguity — `sc.Provisioner` used verbatim; legacy/migrated clusters may have non-CSI provisioner strings that don't match registry keys [internal/preflight/sc_lister.go] — deferred, pre-existing
+- [x] [Review][Patch] Missing empty-provisioner guard in `GetDriverForPVC` — added `provisioner == ""` guard + `TestRegistry_GetDriverForPVC_EmptyProvisioner` test [pkg/drivers/registry.go]
+
 ## Dev Agent Record
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4.6 (Cursor Agent)
 
 ### Debug Log References
 
+No debug issues encountered. All tests passed on first run after implementation.
+
 ### Completion Notes List
 
+- Added `fallbackFactory` field to `Registry` struct with `SetFallbackDriver` method following fail-fast-at-startup pattern (panics on nil or double-call)
+- `GetDriver` returns fallback driver for unknown provisioners when fallback is set; `GetDriverForPVC` inherits this behavior via delegation
+- `ListRegistered` excludes fallback; `ResetForTesting` clears fallback
+- Added 10 new registry unit tests covering all fallback scenarios (100% coverage on `pkg/drivers`)
+- Deleted `StorageClassDriverMap` type entirely from `internal/preflight/storage.go`
+- Refactored `TypedStorageBackendResolver` to use `*drivers.Registry` + `drivers.StorageClassLister` instead of static map
+- Extracted provisioner resolution into `resolveProvisioner()` helper that maps SC → provisioner → registry lookup
+- Created `KubeStorageClassLister` in `internal/preflight/sc_lister.go` backed by `StorageV1Interface`
+- Added `--noop-fallback` flag to `cmd/soteria/main.go` (default false); wired `SetFallbackDriver` + startup logging
+- Rewrote all preflight unit tests to use `fakeSCLister` + test `Registry`; added `TestResolveBackends_FallbackEnabled` and `TestResolveBackends_NilSCLister`
+- Updated integration test suite: replaced `StorageClassDriverMap` with registry + `KubeStorageClassLister`; created `StorageClass` objects in envtest (`test-odf`, `noop-storage` → `noop.soteria.io`); updated assertions from `"odf"` to `noop.ProvisionerName`
+
+### Change Log
+
+- 2026-04-19: Implemented Story 4.05 — Driver Registry Fallback & Preflight Convergence
+
 ### File List
+
+- `pkg/drivers/registry.go` — Added fallbackFactory field, SetFallbackDriver, updated GetDriver/ResetForTesting, added package-level SetFallbackDriver
+- `pkg/drivers/registry_test.go` — Added 10 fallback tests (enabled/disabled, panic, reset, package-level, GetDriverForPVC)
+- `internal/preflight/storage.go` — Deleted StorageClassDriverMap; replaced DriverMap with Registry+SCLister; added resolveProvisioner helper
+- `internal/preflight/sc_lister.go` — New file: KubeStorageClassLister implementation
+- `internal/preflight/sc_lister_test.go` — New file: nil-Client guard test for KubeStorageClassLister
+- `internal/preflight/storage_test.go` — Rewrote all tests to use fakeSCLister + Registry; added fallback, nil-lister, nil-registry, and empty-provisioner tests
+- `internal/preflight/doc.go` — Updated package doc to mention registry-based resolution
+- `cmd/soteria/main.go` — Added --noop-fallback flag, SetFallbackDriver wiring, startup logging, KubeStorageClassLister creation
+- `test/integration/controller/suite_test.go` — Replaced StorageClassDriverMap with Registry+KubeStorageClassLister; created StorageClass fixtures
+- `test/integration/controller/drplan_preflight_test.go` — Updated assertions from "odf" to noop.ProvisionerName

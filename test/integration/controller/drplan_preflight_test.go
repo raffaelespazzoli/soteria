@@ -32,6 +32,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
+	"github.com/soteria-project/soteria/pkg/drivers/noop"
 )
 
 func createPVC(t *testing.T, ctx context.Context, name, namespace, storageClass string) {
@@ -112,8 +113,8 @@ func TestDRPlanReconciler_Preflight_BasicComposition(t *testing.T) {
 		t.Errorf("Wave VMCount = %d, want 2", pf.Waves[0].VMCount)
 	}
 	for _, vm := range pf.Waves[0].VMs {
-		if vm.StorageBackend != "odf" {
-			t.Errorf("VM %s StorageBackend = %q, want odf", vm.Name, vm.StorageBackend)
+		if vm.StorageBackend != noop.ProvisionerName {
+			t.Errorf("VM %s StorageBackend = %q, want %s", vm.Name, vm.StorageBackend, noop.ProvisionerName)
 		}
 	}
 	if len(pf.Waves[0].Chunks) == 0 {

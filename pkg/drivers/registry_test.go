@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -325,5 +326,189 @@ func TestRegistry_ResetForTesting(t *testing.T) {
 	_, err := r.GetDriver("csi.example.com")
 	if !errors.Is(err, ErrDriverNotFound) {
 		t.Fatalf("expected ErrDriverNotFound after reset, got: %v", err)
+	}
+}
+
+func TestRegistry_GetDriver_FallbackEnabled_UnknownProvisioner(t *testing.T) {
+	r := NewRegistry()
+	r.SetFallbackDriver(newStubFactory("fallback"))
+
+	provider, err := r.GetDriver("unknown-provisioner")
+	if err != nil {
+		t.Fatalf("expected fallback driver, got error: %v", err)
+	}
+	if provider == nil {
+		t.Fatal("expected non-nil provider from fallback")
+	}
+	stub, ok := provider.(*stubProvider)
+	if !ok {
+		t.Fatal("expected *stubProvider")
+	}
+	if stub.provisionerID != "fallback" {
+		t.Fatalf("got provisionerID %q, want %q", stub.provisionerID, "fallback")
+	}
+}
+
+func TestRegistry_GetDriver_FallbackDisabled_UnknownProvisioner(t *testing.T) {
+	r := NewRegistry()
+
+	_, err := r.GetDriver("unknown-provisioner")
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, ErrDriverNotFound) {
+		t.Fatalf("expected ErrDriverNotFound, got: %v", err)
+	}
+}
+
+func TestRegistry_GetDriver_FallbackEnabled_RegisteredProvisioner(t *testing.T) {
+	r := NewRegistry()
+	r.RegisterDriver("csi.example.com", newStubFactory("explicit"))
+	r.SetFallbackDriver(newStubFactory("fallback"))
+
+	provider, err := r.GetDriver("csi.example.com")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	stub, ok := provider.(*stubProvider)
+	if !ok {
+		t.Fatal("expected *stubProvider")
+	}
+	if stub.provisionerID != "explicit" {
+		t.Fatalf("got provisionerID %q, want %q — fallback should not override explicit registration",
+			stub.provisionerID, "explicit")
+	}
+}
+
+func TestRegistry_ListRegistered_ExcludesFallback(t *testing.T) {
+	r := NewRegistry()
+	r.RegisterDriver("csi.example.com", newStubFactory("explicit"))
+	r.SetFallbackDriver(newStubFactory("fallback"))
+
+	names := r.ListRegistered()
+	if len(names) != 1 {
+		t.Fatalf("expected 1 registered driver (fallback excluded), got %d: %v", len(names), names)
+	}
+	if names[0] != "csi.example.com" {
+		t.Fatalf("expected %q, got %q", "csi.example.com", names[0])
+	}
+}
+
+func TestRegistry_SetFallbackDriver_PanicOnDouble(t *testing.T) {
+	r := NewRegistry()
+	r.SetFallbackDriver(newStubFactory("first"))
+
+	defer func() {
+		rec := recover()
+		if rec == nil {
+			t.Fatal("expected panic on second SetFallbackDriver call")
+		}
+		msg, ok := rec.(string)
+		if !ok {
+			t.Fatalf("expected string panic, got %T: %v", rec, rec)
+		}
+		if msg == "" {
+			t.Fatal("panic message should not be empty")
+		}
+	}()
+
+	r.SetFallbackDriver(newStubFactory("second"))
+}
+
+func TestRegistry_SetFallbackDriver_PanicOnNil(t *testing.T) {
+	r := NewRegistry()
+
+	defer func() {
+		if recover() == nil {
+			t.Fatal("expected panic on nil factory")
+		}
+	}()
+
+	r.SetFallbackDriver(nil)
+}
+
+func TestRegistry_ResetForTesting_ClearsFallback(t *testing.T) {
+	r := NewRegistry()
+	r.SetFallbackDriver(newStubFactory("fallback"))
+
+	r.ResetForTesting()
+
+	_, err := r.GetDriver("unknown-provisioner")
+	if !errors.Is(err, ErrDriverNotFound) {
+		t.Fatalf("expected ErrDriverNotFound after reset (fallback should be cleared), got: %v", err)
+	}
+
+	// After reset, setting fallback again should not panic.
+	r.SetFallbackDriver(newStubFactory("new-fallback"))
+	provider, err := r.GetDriver("any-provisioner")
+	if err != nil {
+		t.Fatalf("expected fallback driver after re-set, got error: %v", err)
+	}
+	if provider == nil {
+		t.Fatal("expected non-nil provider")
+	}
+}
+
+func TestDefaultRegistry_SetFallbackDriver_PackageLevel(t *testing.T) {
+	ResetForTesting()
+	defer ResetForTesting()
+
+	SetFallbackDriver(newStubFactory("pkg-fallback"))
+
+	provider, err := GetDriver("unregistered-provisioner")
+	if err != nil {
+		t.Fatalf("expected fallback driver via package-level function, got error: %v", err)
+	}
+	stub, ok := provider.(*stubProvider)
+	if !ok {
+		t.Fatal("expected *stubProvider")
+	}
+	if stub.provisionerID != "pkg-fallback" {
+		t.Fatalf("got provisionerID %q, want %q", stub.provisionerID, "pkg-fallback")
+	}
+
+	ResetForTesting()
+
+	_, err = GetDriver("unregistered-provisioner")
+	if !errors.Is(err, ErrDriverNotFound) {
+		t.Fatalf("expected ErrDriverNotFound after reset, got: %v", err)
+	}
+}
+
+func TestRegistry_GetDriverForPVC_FallbackEnabled(t *testing.T) {
+	r := NewRegistry()
+	r.SetFallbackDriver(newStubFactory("fallback"))
+
+	scLister := &mockSCLister{
+		provisioners: map[string]string{
+			"some-sc": "unregistered.csi.com",
+		},
+	}
+
+	provider, err := r.GetDriverForPVC(context.Background(), "some-sc", scLister)
+	if err != nil {
+		t.Fatalf("expected fallback driver via GetDriverForPVC, got error: %v", err)
+	}
+	if provider == nil {
+		t.Fatal("expected non-nil provider from fallback")
+	}
+}
+
+func TestRegistry_GetDriverForPVC_EmptyProvisioner(t *testing.T) {
+	r := NewRegistry()
+	r.SetFallbackDriver(newStubFactory("fallback"))
+
+	scLister := &mockSCLister{
+		provisioners: map[string]string{
+			"misconfigured-sc": "",
+		},
+	}
+
+	_, err := r.GetDriverForPVC(context.Background(), "misconfigured-sc", scLister)
+	if err == nil {
+		t.Fatal("expected error for empty provisioner, got nil")
+	}
+	if !strings.Contains(err.Error(), "empty provisioner") {
+		t.Errorf("expected empty-provisioner error, got: %v", err)
 	}
 }

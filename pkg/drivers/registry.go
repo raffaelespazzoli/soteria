@@ -41,8 +41,9 @@ type StorageClassLister interface {
 // concurrent use by multiple goroutines — reads use an RWMutex so parallel
 // reconcile loops do not contend.
 type Registry struct {
-	mu      sync.RWMutex
-	drivers map[string]DriverFactory
+	mu              sync.RWMutex
+	drivers         map[string]DriverFactory
+	fallbackFactory DriverFactory
 }
 
 // NewRegistry creates an empty driver registry.
@@ -72,14 +73,36 @@ func (r *Registry) RegisterDriver(provisionerName string, factory DriverFactory)
 	r.drivers[provisionerName] = factory
 }
 
-// GetDriver returns a StorageProvider for the given provisioner name. Returns
-// ErrDriverNotFound if no driver is registered for the provisioner.
+// SetFallbackDriver sets a fallback factory that is used when GetDriver cannot
+// find an explicitly registered driver. This enables noop-driver fallback for
+// dev/CI environments. Panics if called twice or with a nil factory (same
+// fail-fast-at-startup pattern as RegisterDriver).
+func (r *Registry) SetFallbackDriver(factory DriverFactory) {
+	if factory == nil {
+		panic("SetFallbackDriver called with nil factory")
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.fallbackFactory != nil {
+		panic("fallback driver already set")
+	}
+	r.fallbackFactory = factory
+}
+
+// GetDriver returns a StorageProvider for the given provisioner name. When no
+// driver is explicitly registered for the provisioner and a fallback factory
+// has been set via SetFallbackDriver, the fallback driver is returned instead
+// of ErrDriverNotFound.
 func (r *Registry) GetDriver(provisionerName string) (StorageProvider, error) {
 	r.mu.RLock()
 	factory, ok := r.drivers[provisionerName]
+	fallback := r.fallbackFactory
 	r.mu.RUnlock()
 
 	if !ok {
+		if fallback != nil {
+			return fallback(), nil
+		}
 		return nil, fmt.Errorf("%w: %s", ErrDriverNotFound, provisionerName)
 	}
 	return factory(), nil
@@ -99,6 +122,9 @@ func (r *Registry) GetDriverForPVC(
 	if err != nil {
 		return nil, fmt.Errorf("resolving provisioner for storage class %q: %w", storageClassName, err)
 	}
+	if provisioner == "" {
+		return nil, fmt.Errorf("resolving provisioner for storage class %q: empty provisioner string", storageClassName)
+	}
 	return r.GetDriver(provisioner)
 }
 
@@ -116,19 +142,25 @@ func (r *Registry) ListRegistered() []string {
 	return names
 }
 
-// ResetForTesting clears all registered drivers. This must only be called from
-// tests to ensure isolation between test cases.
+// ResetForTesting clears all registered drivers and the fallback factory. This
+// must only be called from tests to ensure isolation between test cases.
 func (r *Registry) ResetForTesting() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	r.drivers = make(map[string]DriverFactory)
+	r.fallbackFactory = nil
 }
 
 // DefaultRegistry is the process-wide driver registry. Driver packages register
 // themselves via init() functions that call RegisterDriver. Mirrors the
 // http.DefaultServeMux and prometheus.DefaultRegisterer patterns.
 var DefaultRegistry = NewRegistry()
+
+// SetFallbackDriver sets a fallback factory on the DefaultRegistry.
+func SetFallbackDriver(factory DriverFactory) {
+	DefaultRegistry.SetFallbackDriver(factory)
+}
 
 // RegisterDriver registers a driver factory in the DefaultRegistry.
 func RegisterDriver(provisionerName string, factory DriverFactory) {

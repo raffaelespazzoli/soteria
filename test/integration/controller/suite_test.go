@@ -32,6 +32,7 @@ import (
 	"testing"
 	"time"
 
+	storagev1 "k8s.io/api/storage/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -48,6 +49,8 @@ import (
 	"github.com/soteria-project/soteria/internal/preflight"
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
 	"github.com/soteria-project/soteria/pkg/controller/drplan"
+	"github.com/soteria-project/soteria/pkg/drivers"
+	"github.com/soteria-project/soteria/pkg/drivers/noop"
 	"github.com/soteria-project/soteria/pkg/engine"
 )
 
@@ -101,14 +104,14 @@ func TestMain(m *testing.M) {
 	}
 	nsLookup := &engine.DefaultNamespaceLookup{Client: clientset.CoreV1()}
 
-	storageDriverMap := preflight.StorageClassDriverMap{
-		"noop-storage": "noop",
-		"test-odf":     "odf",
-	}
+	testRegistry := drivers.NewRegistry()
+	testRegistry.RegisterDriver(noop.ProvisionerName, func() drivers.StorageProvider { return noop.New() })
+	scLister := &preflight.KubeStorageClassLister{Client: clientset.StorageV1()}
 	storageResolver := &preflight.TypedStorageBackendResolver{
 		Client:     mgr.GetClient(),
 		CoreClient: clientset.CoreV1(),
-		DriverMap:  storageDriverMap,
+		Registry:   testRegistry,
+		SCLister:   scLister,
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -140,6 +143,23 @@ func TestMain(m *testing.M) {
 	// Wait for caches to sync
 	if !mgr.GetCache().WaitForCacheSync(ctx) {
 		panic("cache sync failed")
+	}
+
+	// Create StorageClass objects so KubeStorageClassLister can resolve
+	// storage class → CSI provisioner for integration test PVCs.
+	for _, sc := range []storagev1.StorageClass{
+		{
+			ObjectMeta:  metav1.ObjectMeta{Name: "test-odf"},
+			Provisioner: noop.ProvisionerName,
+		},
+		{
+			ObjectMeta:  metav1.ObjectMeta{Name: "noop-storage"},
+			Provisioner: noop.ProvisionerName,
+		},
+	} {
+		if _, err := clientset.StorageV1().StorageClasses().Create(ctx, &sc, metav1.CreateOptions{}); err != nil {
+			panic(fmt.Sprintf("creating StorageClass %q: %v", sc.Name, err))
+		}
 	}
 
 	exitCode := m.Run()
