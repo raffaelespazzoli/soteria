@@ -23,8 +23,8 @@ limitations under the License.
 // Behavior is controlled entirely by FailoverConfig, not the execution mode
 // string. The controller maps mode → config at dispatch time:
 //
-//   planned_migration → {GracefulShutdown: true,  Force: false, RecordRPO: false}
-//   disaster          → {GracefulShutdown: false, Force: true,  RecordRPO: true}
+//   planned_migration → {GracefulShutdown: true,  Force: false}
+//   disaster          → {GracefulShutdown: false, Force: true}
 //
 // When GracefulShutdown=true, the handler runs a global Step 0 pre-execution:
 //   1. Stop all origin VMs (graceful shutdown)
@@ -33,11 +33,6 @@ limitations under the License.
 //
 // When GracefulShutdown=false, PreExecute is a no-op and per-DRGroup skips
 // StopReplication — SetSource(force=true) handles promotion directly.
-//
-// When RecordRPO=true, after each SetSource the handler reads
-// GetReplicationStatus.LastSyncTime and includes the estimated RPO in the step
-// message. If GetReplicationStatus fails, RPO is recorded as "unknown" and the
-// group succeeds.
 
 package engine
 
@@ -71,9 +66,6 @@ type FailoverConfig struct {
 	// Force is passed to SetSourceOptions and StopReplicationOptions.
 	// True for disaster (origin may be unreachable).
 	Force bool
-	// RecordRPO reads GetReplicationStatus.LastSyncTime after SetSource to
-	// estimate data loss. True for disaster failover.
-	RecordRPO bool
 }
 
 // FailoverHandler implements DRGroupHandler for both planned migration and
@@ -286,7 +278,7 @@ func isSynced(status drivers.ReplicationStatus) bool {
 // ExecuteGroup implements DRGroupHandler for a single DRGroup within a wave.
 //
 // GracefulShutdown=true:  StopReplication → SetSource(force=false) → StartVM
-// GracefulShutdown=false: SetSource(force=true) → StartVM (+ optional RPO recording)
+// GracefulShutdown=false: SetSource(force=true) → StartVM
 func (h *FailoverHandler) ExecuteGroup(ctx context.Context, group ExecutionGroup) error {
 	logger := log.FromContext(ctx)
 	driver := group.Driver
@@ -324,21 +316,6 @@ func (h *FailoverHandler) ExecuteGroup(ctx context.Context, group ExecutionGroup
 			"volumeGroup", vg.Name, "wave", group.WaveIndex)
 		if err := driver.SetSource(ctx, vgID, drivers.SetSourceOptions{Force: h.Config.Force}); err != nil {
 			return fmt.Errorf("step %s failed for volume group %s: %w", StepSetSource, vg.Name, err)
-		}
-
-		if h.Config.RecordRPO {
-			status, err := driver.GetReplicationStatus(ctx, vgID)
-			if err != nil {
-				logger.V(1).Info("Could not read RPO after SetSource, recording as unknown",
-					"volumeGroup", vg.Name, "error", err)
-			} else if status.LastSyncTime != nil {
-				rpo := time.Since(*status.LastSyncTime)
-				logger.Info("Estimated RPO recorded",
-					"volumeGroup", vg.Name, "rpo", rpo.String(), "lastSync", *status.LastSyncTime)
-			} else {
-				logger.V(1).Info("Could not read RPO after SetSource, recording as unknown",
-					"volumeGroup", vg.Name)
-			}
 		}
 	}
 
@@ -412,20 +389,7 @@ func (h *FailoverHandler) ExecuteGroupWithSteps(
 			recordStep(StepSetSource, "Failed", fmt.Sprintf("Failed to set source for volume group %s: %v", vg.Name, err))
 			return steps, fmt.Errorf("step %s failed for volume group %s: %w", StepSetSource, vg.Name, err)
 		}
-
-		rpoMsg := fmt.Sprintf("Set source for volume group %s", vg.Name)
-		if h.Config.RecordRPO {
-			status, rpoErr := driver.GetReplicationStatus(ctx, vgID)
-			if rpoErr != nil {
-				rpoMsg = fmt.Sprintf("Set source for volume group %s (RPO: unknown)", vg.Name)
-			} else if status.LastSyncTime != nil {
-				rpo := time.Since(*status.LastSyncTime)
-				rpoMsg = fmt.Sprintf("Set source for volume group %s (RPO: %s)", vg.Name, rpo.Truncate(time.Second))
-			} else {
-				rpoMsg = fmt.Sprintf("Set source for volume group %s (RPO: unknown)", vg.Name)
-			}
-		}
-		recordStep(StepSetSource, "Succeeded", rpoMsg)
+		recordStep(StepSetSource, "Succeeded", fmt.Sprintf("Set source for volume group %s", vg.Name))
 	}
 
 	for _, vm := range group.Chunk.VMs {

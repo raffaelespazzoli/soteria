@@ -81,7 +81,7 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 - Event reasons: PascalCase past-tense — `FailoverStarted`, `WaveCompleted`, `GroupFailed`
 - RBAC: Kubernetes-native only — no custom authorization logic
 - DRPlan 8-phase lifecycle: 4 rest states (`SteadyState`, `FailedOver`, `DRedSteadyState`, `FailedBack`) + 4 transition states (`FailingOver`, `Reprotecting`, `FailingBack`, `ReprotectingBack`). Phase advances to transition state when execution starts, to rest state when execution completes
-- Unified handler model: `FailoverHandler` (config: GracefulShutdown, Force, RecordRPO) implements both failover and failback. `ReprotectHandler` implements both reprotect and restore. Direction is encoded in state machine phases, not handler logic
+- Unified handler model: `FailoverHandler` (config: GracefulShutdown, Force) implements both failover and failback. `ReprotectHandler` implements both reprotect and restore. Direction is encoded in state machine phases, not handler logic
 
 **ScyllaDB Storage Layer:**
 
@@ -266,7 +266,7 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 - Human-triggered only: all failover requires explicit human initiation — no auto-failover, no failure detection (eliminates split-brain)
 - Fail-forward: rollback impossible when active DC is down. Failed DRGroups marked `Failed`, engine continues, execution reports `PartiallySucceeded`
 - Reject retry if VM is in non-standard state — never attempt failover from unpredictable starting point
-- RPO is storage-determined: orchestrator reports estimated RPO but does not enforce targets
+- RPO is storage-determined: orchestrator does not track or enforce RPO targets
 - VM pre-existence: VMs exist on both clusters with PVC bindings. Orchestrator transitions volumes to Source role and starts VMs — does not create VMs or rebind PVCs
 - Homogeneous storage only: Dell-to-Dell, ODF-to-ODF — no cross-vendor replication
 - DR phase semantics: failback completes to FailedBack (no replication); reprotect-back (restore) completes to SteadyState with A→B replication

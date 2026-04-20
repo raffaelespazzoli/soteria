@@ -117,14 +117,18 @@ func makeVolumeGroupInfo(name, namespace string, vmNames ...string) soteriav1alp
 	}
 }
 
-const testVMKey = "ns1/vm-db01"
+const (
+	testVMKey       = "ns1/vm-db01"
+	statusSucceeded = "Succeeded"
+	statusFailed    = "Failed"
+)
 
 func gracefulConfig() FailoverConfig {
-	return FailoverConfig{GracefulShutdown: true, Force: false, RecordRPO: false}
+	return FailoverConfig{GracefulShutdown: true, Force: false}
 }
 
 func disasterConfig() FailoverConfig {
-	return FailoverConfig{GracefulShutdown: false, Force: true, RecordRPO: true}
+	return FailoverConfig{GracefulShutdown: false, Force: true}
 }
 
 // --- Planned migration (GracefulShutdown=true) tests ---
@@ -407,7 +411,7 @@ func TestFailoverHandler_Graceful_PerGroup_StepStatusRecorded(t *testing.T) {
 		if step.Name != expectedNames[i] {
 			t.Errorf("Step %d: name = %q, want %q", i, step.Name, expectedNames[i])
 		}
-		if step.Status != "Succeeded" {
+		if step.Status != statusSucceeded {
 			t.Errorf("Step %d: status = %q, want Succeeded", i, step.Status)
 		}
 		if step.Timestamp == nil {
@@ -633,15 +637,6 @@ func TestFailoverHandler_DisasterConfig_ForceTrue(t *testing.T) {
 		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
 	})
 
-	now := time.Now().Add(-5 * time.Minute)
-	drv.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
-		ReplicationStatus: &drivers.ReplicationStatus{
-			Role:         drivers.RoleSource,
-			Health:       drivers.HealthDegraded,
-			LastSyncTime: &now,
-		},
-	})
-
 	vm := newMockVMManager()
 	handler := &FailoverHandler{
 		Driver:    drv,
@@ -692,20 +687,85 @@ func TestFailoverHandler_DisasterConfig_NoStopReplication(t *testing.T) {
 	}
 }
 
-func TestFailoverHandler_DisasterConfig_RPORecorded(t *testing.T) {
+// --- Disaster failover comprehensive tests (Story 4.4) ---
+
+func TestFailover_Disaster_FullSuccess(t *testing.T) {
 	drv := fake.New()
 	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
 		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
 	})
-
-	now := time.Now().Add(-3 * time.Minute)
-	drv.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
-		ReplicationStatus: &drivers.ReplicationStatus{
-			Role:         drivers.RoleSource,
-			Health:       drivers.HealthDegraded,
-			LastSyncTime: &now,
-		},
+	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-2", Name: "vg-app"},
 	})
+
+	vm := newMockVMManager()
+	handler := &FailoverHandler{
+		Driver:    drv,
+		VMManager: vm,
+		Config:    disasterConfig(),
+	}
+
+	vms := []VMReference{
+		{Name: "vm-db01", Namespace: "ns1"},
+		{Name: "vm-app01", Namespace: "ns1"},
+	}
+	vgs := []soteriav1alpha1.VolumeGroupInfo{
+		makeVolumeGroupInfo("vg-db", "ns1", "vm-db01"),
+		makeVolumeGroupInfo("vg-app", "ns1", "vm-app01"),
+	}
+	group := makeExecutionGroup("wave-1-group-0", vms, vgs, drv, 0)
+
+	groups := []ExecutionGroup{group}
+	if err := handler.PreExecute(context.Background(), groups); err != nil {
+		t.Fatalf("PreExecute should be no-op for disaster: %v", err)
+	}
+	if len(vm.getStops()) != 0 {
+		t.Error("No VMs should be stopped in disaster mode")
+	}
+
+	steps, err := handler.ExecuteGroupWithSteps(context.Background(), group)
+	if err != nil {
+		t.Fatalf("ExecuteGroupWithSteps failed: %v", err)
+	}
+
+	// 2 SetSource + 2 StartVM = 4 steps
+	if len(steps) != 4 {
+		t.Fatalf("Expected 4 steps, got %d", len(steps))
+	}
+
+	for _, s := range steps {
+		if s.Status != statusSucceeded {
+			t.Errorf("Step %q should be Succeeded, got %q", s.Name, s.Status)
+		}
+	}
+
+	starts := vm.getStarts()
+	if len(starts) != 2 {
+		t.Errorf("Expected 2 VM starts, got %d", len(starts))
+	}
+
+	setSourceCalls := drv.CallsTo("SetSource")
+	if len(setSourceCalls) != 2 {
+		t.Fatalf("Expected 2 SetSource calls, got %d", len(setSourceCalls))
+	}
+	for _, call := range setSourceCalls {
+		opts := call.Args[1].(drivers.SetSourceOptions)
+		if !opts.Force {
+			t.Error("Disaster failover must use Force=true in SetSource")
+		}
+	}
+
+	if drv.Called("StopReplication") {
+		t.Error("Disaster failover must not call StopReplication")
+	}
+}
+
+func TestFailover_Disaster_SetSourceFails(t *testing.T) {
+	drv := fake.New()
+	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
+	})
+	drv.OnSetSource("vg-1").Return(errors.New("force promotion failed: peer unreachable"))
 
 	vm := newMockVMManager()
 	handler := &FailoverHandler{
@@ -716,6 +776,96 @@ func TestFailoverHandler_DisasterConfig_RPORecorded(t *testing.T) {
 
 	vms := []VMReference{{Name: "vm-db01", Namespace: "ns1"}}
 	vgs := []soteriav1alpha1.VolumeGroupInfo{makeVolumeGroupInfo("vg-db", "ns1", "vm-db01")}
+	group := makeExecutionGroup("wave-1-group-0", vms, vgs, drv, 0)
+
+	steps, err := handler.ExecuteGroupWithSteps(context.Background(), group)
+	if err == nil {
+		t.Fatal("ExecuteGroupWithSteps should fail when SetSource fails")
+	}
+	if !strings.Contains(err.Error(), StepSetSource) {
+		t.Errorf("Error should mention SetSource step: %v", err)
+	}
+	if !strings.Contains(err.Error(), "vg-db") {
+		t.Errorf("Error should mention volume group name: %v", err)
+	}
+
+	// Should have one Failed SetSource step
+	if len(steps) != 1 {
+		t.Fatalf("Expected 1 step (failed SetSource), got %d", len(steps))
+	}
+	if steps[0].Name != StepSetSource || steps[0].Status != statusFailed {
+		t.Errorf("Step should be failed SetSource: %+v", steps[0])
+	}
+
+	// No VMs should be started
+	if len(vm.getStarts()) != 0 {
+		t.Error("No VMs should start when SetSource fails")
+	}
+}
+
+func TestFailover_Disaster_StartVMFails(t *testing.T) {
+	drv := fake.New()
+	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
+	})
+
+	vm := newMockVMManager()
+	vm.failOn["ns1/vm-db01"] = errors.New("VM boot timeout")
+
+	handler := &FailoverHandler{
+		Driver:    drv,
+		VMManager: vm,
+		Config:    disasterConfig(),
+	}
+
+	vms := []VMReference{{Name: "vm-db01", Namespace: "ns1"}}
+	vgs := []soteriav1alpha1.VolumeGroupInfo{makeVolumeGroupInfo("vg-db", "ns1", "vm-db01")}
+	group := makeExecutionGroup("wave-1-group-0", vms, vgs, drv, 0)
+
+	steps, err := handler.ExecuteGroupWithSteps(context.Background(), group)
+	if err == nil {
+		t.Fatal("ExecuteGroupWithSteps should fail when StartVM fails")
+	}
+	if !strings.Contains(err.Error(), StepStartVM) {
+		t.Errorf("Error should mention StartVM step: %v", err)
+	}
+
+	// SetSource succeeded, StartVM failed — 2 steps total (no RPOSummary on failure)
+	if len(steps) != 2 {
+		t.Fatalf("Expected 2 steps (SetSource succeeded, StartVM failed), got %d", len(steps))
+	}
+	if steps[0].Name != StepSetSource || steps[0].Status != statusSucceeded {
+		t.Errorf("First step should be succeeded SetSource: %+v", steps[0])
+	}
+	if steps[1].Name != StepStartVM || steps[1].Status != statusFailed {
+		t.Errorf("Second step should be failed StartVM: %+v", steps[1])
+	}
+}
+
+func TestFailover_Disaster_StepStatusRecorded(t *testing.T) {
+	drv := fake.New()
+	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
+	})
+	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-2", Name: "vg-app"},
+	})
+
+	vm := newMockVMManager()
+	handler := &FailoverHandler{
+		Driver:    drv,
+		VMManager: vm,
+		Config:    disasterConfig(),
+	}
+
+	vms := []VMReference{
+		{Name: "vm-db01", Namespace: "ns1"},
+		{Name: "vm-app01", Namespace: "ns1"},
+	}
+	vgs := []soteriav1alpha1.VolumeGroupInfo{
+		makeVolumeGroupInfo("vg-db", "ns1", "vm-db01"),
+		makeVolumeGroupInfo("vg-app", "ns1", "vm-app01"),
+	}
 	group := makeExecutionGroup("wave-1-group-0", vms, vgs, drv, 0)
 
 	steps, err := handler.ExecuteGroupWithSteps(context.Background(), group)
@@ -723,25 +873,73 @@ func TestFailoverHandler_DisasterConfig_RPORecorded(t *testing.T) {
 		t.Fatalf("ExecuteGroupWithSteps failed: %v", err)
 	}
 
-	// Disaster: no StopReplication, so steps should be: SetSource + StartVM = 2
-	if len(steps) != 2 {
-		t.Fatalf("Expected 2 step statuses for disaster mode, got %d", len(steps))
+	// 2 SetSource + 2 StartVM = 4 steps
+	if len(steps) != 4 {
+		t.Fatalf("Expected 4 steps, got %d", len(steps))
 	}
 
-	if steps[0].Name != StepSetSource {
-		t.Errorf("First step should be SetSource, got %q", steps[0].Name)
+	expectedNames := []string{StepSetSource, StepSetSource, StepStartVM, StepStartVM}
+	for i, step := range steps {
+		if step.Name != expectedNames[i] {
+			t.Errorf("Step %d: name = %q, want %q", i, step.Name, expectedNames[i])
+		}
+		if step.Status != statusSucceeded {
+			t.Errorf("Step %d: status = %q, want Succeeded", i, step.Status)
+		}
+		if step.Timestamp == nil {
+			t.Errorf("Step %d: timestamp should not be nil", i)
+		}
 	}
-	if !strings.Contains(steps[0].Message, "RPO:") {
-		t.Errorf("SetSource step should contain RPO in message: %q", steps[0].Message)
+
+	for _, step := range steps {
+		if step.Name == StepStopReplication {
+			t.Error("Disaster mode should not have StopReplication steps")
+		}
 	}
 }
 
-func TestFailoverHandler_DisasterConfig_GetReplicationStatusFails(t *testing.T) {
+func TestFailover_Disaster_EmptyGroup(t *testing.T) {
+	drv := fake.New()
+	vm := newMockVMManager()
+	handler := &FailoverHandler{
+		Driver:    drv,
+		VMManager: vm,
+		Config:    disasterConfig(),
+	}
+
+	group := ExecutionGroup{
+		Chunk:     DRGroupChunk{Name: "empty-group"},
+		Driver:    drv,
+		WaveIndex: 0,
+	}
+
+	if err := handler.ExecuteGroup(context.Background(), group); err != nil {
+		t.Fatalf("ExecuteGroup with empty chunk should succeed: %v", err)
+	}
+
+	steps, err := handler.ExecuteGroupWithSteps(context.Background(), group)
+	if err != nil {
+		t.Fatalf("ExecuteGroupWithSteps with empty chunk should succeed: %v", err)
+	}
+
+	// No VGs → no RPOSummary; no VMs → no steps at all
+	if len(steps) != 0 {
+		t.Errorf("Expected 0 steps for empty group, got %d", len(steps))
+	}
+
+	if drv.Called("SetSource") || drv.Called("StopReplication") {
+		t.Error("No driver calls should be made for empty groups")
+	}
+	if len(vm.getStarts()) != 0 {
+		t.Error("No VM starts should occur for empty groups")
+	}
+}
+
+func TestFailover_Disaster_ContextCancelled(t *testing.T) {
 	drv := fake.New()
 	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
 		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
 	})
-	drv.OnGetReplicationStatus("vg-1").Return(errors.New("storage unreachable"))
 
 	vm := newMockVMManager()
 	handler := &FailoverHandler{
@@ -754,61 +952,28 @@ func TestFailoverHandler_DisasterConfig_GetReplicationStatusFails(t *testing.T) 
 	vgs := []soteriav1alpha1.VolumeGroupInfo{makeVolumeGroupInfo("vg-db", "ns1", "vm-db01")}
 	group := makeExecutionGroup("wave-1-group-0", vms, vgs, drv, 0)
 
-	steps, err := handler.ExecuteGroupWithSteps(context.Background(), group)
-	if err != nil {
-		t.Fatalf("ExecuteGroupWithSteps should succeed even when GetReplicationStatus fails: %v", err)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := handler.ExecuteGroup(ctx, group)
+	if err == nil {
+		t.Fatal("ExecuteGroup should fail when context is cancelled")
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("Error should be context.Canceled, got: %v", err)
 	}
 
-	if len(steps) != 2 {
-		t.Fatalf("Expected 2 step statuses, got %d", len(steps))
-	}
-	if !strings.Contains(steps[0].Message, "RPO: unknown") {
-		t.Errorf("SetSource message should record RPO as unknown: %q", steps[0].Message)
+	_, err = handler.ExecuteGroupWithSteps(ctx, group)
+	if err == nil {
+		t.Fatal("ExecuteGroupWithSteps should fail when context is cancelled")
 	}
 }
 
-func TestFailoverHandler_DisasterConfig_NilLastSyncTimeRecordedAsUnknown(t *testing.T) {
+func TestFailover_Disaster_ForceFlag(t *testing.T) {
 	drv := fake.New()
 	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
 		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
 	})
-	drv.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
-		ReplicationStatus: &drivers.ReplicationStatus{
-			Role:   drivers.RoleSource,
-			Health: drivers.HealthDegraded,
-		},
-	})
-
-	vm := newMockVMManager()
-	handler := &FailoverHandler{
-		Driver:    drv,
-		VMManager: vm,
-		Config:    disasterConfig(),
-	}
-
-	vms := []VMReference{{Name: "vm-db01", Namespace: "ns1"}}
-	vgs := []soteriav1alpha1.VolumeGroupInfo{makeVolumeGroupInfo("vg-db", "ns1", "vm-db01")}
-	group := makeExecutionGroup("wave-1-group-0", vms, vgs, drv, 0)
-
-	steps, err := handler.ExecuteGroupWithSteps(context.Background(), group)
-	if err != nil {
-		t.Fatalf("ExecuteGroupWithSteps should succeed when LastSyncTime is nil: %v", err)
-	}
-
-	if len(steps) != 2 {
-		t.Fatalf("Expected 2 step statuses, got %d", len(steps))
-	}
-	if !strings.Contains(steps[0].Message, "RPO: unknown") {
-		t.Errorf("SetSource message should record RPO as unknown when LastSyncTime is nil: %q", steps[0].Message)
-	}
-}
-
-func TestFailoverHandler_DisasterConfig_ExecuteGroupAlsoSucceeds(t *testing.T) {
-	drv := fake.New()
-	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
-		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
-	})
-	drv.OnGetReplicationStatus("vg-1").Return(errors.New("storage unreachable"))
 
 	vm := newMockVMManager()
 	handler := &FailoverHandler{
@@ -822,6 +987,177 @@ func TestFailoverHandler_DisasterConfig_ExecuteGroupAlsoSucceeds(t *testing.T) {
 	group := makeExecutionGroup("wave-1-group-0", vms, vgs, drv, 0)
 
 	if err := handler.ExecuteGroup(context.Background(), group); err != nil {
-		t.Fatalf("ExecuteGroup should succeed even when GetReplicationStatus fails for RPO: %v", err)
+		t.Fatalf("ExecuteGroup failed: %v", err)
+	}
+
+	calls := drv.CallsTo("SetSource")
+	if len(calls) != 1 {
+		t.Fatalf("Expected 1 SetSource call, got %d", len(calls))
+	}
+	opts := calls[0].Args[1].(drivers.SetSourceOptions)
+	if !opts.Force {
+		t.Error("Disaster failover must pass Force=true to SetSource")
+	}
+}
+
+func TestFailover_Disaster_NoStopReplication(t *testing.T) {
+	drv := fake.New()
+	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
+	})
+
+	vm := newMockVMManager()
+	handler := &FailoverHandler{
+		Driver:    drv,
+		VMManager: vm,
+		Config:    disasterConfig(),
+	}
+
+	vms := []VMReference{{Name: "vm-db01", Namespace: "ns1"}}
+	vgs := []soteriav1alpha1.VolumeGroupInfo{makeVolumeGroupInfo("vg-db", "ns1", "vm-db01")}
+	group := makeExecutionGroup("wave-1-group-0", vms, vgs, drv, 0)
+
+	if err := handler.ExecuteGroup(context.Background(), group); err != nil {
+		t.Fatalf("ExecuteGroup failed: %v", err)
+	}
+
+	if drv.Called("StopReplication") {
+		t.Error("Disaster failover must never call StopReplication")
+	}
+
+	drv.Reset()
+	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
+	})
+
+	handler2 := &FailoverHandler{
+		Driver:    drv,
+		VMManager: vm,
+		Config:    disasterConfig(),
+	}
+	_, err := handler2.ExecuteGroupWithSteps(context.Background(), group)
+	if err != nil {
+		t.Fatalf("ExecuteGroupWithSteps failed: %v", err)
+	}
+	if drv.Called("StopReplication") {
+		t.Error("StopReplication must never be called for disaster config (via steps path)")
+	}
+}
+
+func TestFailover_Disaster_MultipleVolumeGroups(t *testing.T) {
+	drv := fake.New()
+	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
+	})
+	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-2", Name: "vg-logs"},
+	})
+	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-3", Name: "vg-config"},
+	})
+
+	vm := newMockVMManager()
+	handler := &FailoverHandler{
+		Driver:    drv,
+		VMManager: vm,
+		Config:    disasterConfig(),
+	}
+
+	vms := []VMReference{
+		{Name: "vm-db01", Namespace: "ns1"},
+		{Name: "vm-app01", Namespace: "ns1"},
+	}
+	vgs := []soteriav1alpha1.VolumeGroupInfo{
+		makeVolumeGroupInfo("vg-db", "ns1", "vm-db01"),
+		makeVolumeGroupInfo("vg-logs", "ns1", "vm-db01"),
+		makeVolumeGroupInfo("vg-config", "ns1", "vm-app01"),
+	}
+	group := makeExecutionGroup("wave-1-group-0", vms, vgs, drv, 0)
+
+	steps, err := handler.ExecuteGroupWithSteps(context.Background(), group)
+	if err != nil {
+		t.Fatalf("ExecuteGroupWithSteps failed: %v", err)
+	}
+
+	// 3 SetSource + 2 StartVM = 5
+	if len(steps) != 5 {
+		t.Fatalf("Expected 5 steps, got %d", len(steps))
+	}
+
+	for i := range 3 {
+		if steps[i].Name != StepSetSource {
+			t.Errorf("Step %d should be SetSource, got %q", i, steps[i].Name)
+		}
+	}
+	for i := 3; i < 5; i++ {
+		if steps[i].Name != StepStartVM {
+			t.Errorf("Step %d should be StartVM, got %q", i, steps[i].Name)
+		}
+	}
+
+	allCalls := drv.Calls()
+	var setSourceDone bool
+	for _, c := range allCalls {
+		if c.Method == "SetSource" {
+			if setSourceDone {
+				t.Error("SetSource called after a non-SetSource method")
+			}
+		} else if c.Method != "CreateVolumeGroup" {
+			setSourceDone = true
+		}
+	}
+
+	setSourceCalls := drv.CallsTo("SetSource")
+	if len(setSourceCalls) != 3 {
+		t.Fatalf("Expected 3 SetSource calls, got %d", len(setSourceCalls))
+	}
+	for i, call := range setSourceCalls {
+		opts := call.Args[1].(drivers.SetSourceOptions)
+		if !opts.Force {
+			t.Errorf("SetSource call %d: Force should be true", i)
+		}
+	}
+}
+
+func TestFailover_Disaster_PreExecute_NoGracefulShutdown(t *testing.T) {
+	drv := fake.New()
+	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
+	})
+
+	vm := newMockVMManager()
+	handler := &FailoverHandler{
+		Driver:    drv,
+		VMManager: vm,
+		Config:    disasterConfig(),
+	}
+
+	vms := []VMReference{
+		{Name: "vm-db01", Namespace: "ns1"},
+		{Name: "vm-app01", Namespace: "ns2"},
+	}
+	vgs := []soteriav1alpha1.VolumeGroupInfo{
+		makeVolumeGroupInfo("vg-db", "ns1", "vm-db01"),
+	}
+	groups := []ExecutionGroup{
+		makeExecutionGroup("g-0", vms, vgs, drv, 0),
+	}
+
+	err := handler.PreExecute(context.Background(), groups)
+	if err != nil {
+		t.Fatalf("PreExecute should return nil for GracefulShutdown=false: %v", err)
+	}
+
+	if len(vm.getStops()) != 0 {
+		t.Error("No VMs should be stopped when GracefulShutdown=false")
+	}
+	if drv.Called("StopReplication") {
+		t.Error("StopReplication should not be called when GracefulShutdown=false")
+	}
+	if drv.Called("GetReplicationStatus") {
+		t.Error("GetReplicationStatus should not be called during PreExecute for disaster")
+	}
+	if drv.Called("CreateVolumeGroup") {
+		t.Error("CreateVolumeGroup should not be called during PreExecute for disaster")
 	}
 }

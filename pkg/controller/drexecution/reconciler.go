@@ -280,7 +280,7 @@ func (r *DRExecutionReconciler) resolveHandler(
 		}
 		return &engine.FailoverHandler{
 			VMManager:        r.VMManager,
-			Config:           engine.FailoverConfig{GracefulShutdown: true, Force: false, RecordRPO: false},
+			Config:           engine.FailoverConfig{GracefulShutdown: true, Force: false},
 			SyncPollInterval: 2 * time.Second,
 			SyncTimeout:      10 * time.Minute,
 		}, nil
@@ -294,7 +294,7 @@ func (r *DRExecutionReconciler) resolveHandler(
 		}
 		return &engine.FailoverHandler{
 			VMManager:        r.VMManager,
-			Config:           engine.FailoverConfig{GracefulShutdown: false, Force: true, RecordRPO: true},
+			Config:           engine.FailoverConfig{GracefulShutdown: false, Force: true},
 			SyncPollInterval: 2 * time.Second,
 			SyncTimeout:      10 * time.Minute,
 		}, nil
