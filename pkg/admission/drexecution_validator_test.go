@@ -70,27 +70,53 @@ func makeExecRequest(exec *soteriav1alpha1.DRExecution, op admissionv1.Operation
 }
 
 func TestDRExecutionValidator_ValidCREATE_Accepted(t *testing.T) {
-	reader := &stubReader{
-		plans: map[string]*soteriav1alpha1.DRPlan{
-			"my-plan": {
-				ObjectMeta: metav1.ObjectMeta{Name: "my-plan"},
-				Status:     soteriav1alpha1.DRPlanStatus{Phase: soteriav1alpha1.PhaseSteadyState},
-			},
+	tests := []struct {
+		name      string
+		planPhase string
+		mode      soteriav1alpha1.ExecutionMode
+	}{
+		{
+			name:      "planned migration from steady state",
+			planPhase: soteriav1alpha1.PhaseSteadyState,
+			mode:      soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+		{
+			name:      "reprotect from failed over",
+			planPhase: soteriav1alpha1.PhaseFailedOver,
+			mode:      soteriav1alpha1.ExecutionModeReprotect,
+		},
+		{
+			name:      "reprotect from failed back",
+			planPhase: soteriav1alpha1.PhaseFailedBack,
+			mode:      soteriav1alpha1.ExecutionModeReprotect,
 		},
 	}
 
-	v := &DRExecutionValidator{reader: reader}
-	exec := &soteriav1alpha1.DRExecution{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-exec"},
-		Spec: soteriav1alpha1.DRExecutionSpec{
-			PlanName: "my-plan",
-			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
-		},
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			reader := &stubReader{
+				plans: map[string]*soteriav1alpha1.DRPlan{
+					"my-plan": {
+						ObjectMeta: metav1.ObjectMeta{Name: "my-plan"},
+						Status:     soteriav1alpha1.DRPlanStatus{Phase: tt.planPhase},
+					},
+				},
+			}
 
-	resp := v.Handle(context.Background(), makeExecRequest(exec, admissionv1.Create))
-	if !resp.Allowed {
-		t.Errorf("expected allowed, got denied: %v", resp.Result)
+			v := &DRExecutionValidator{reader: reader}
+			exec := &soteriav1alpha1.DRExecution{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-exec"},
+				Spec: soteriav1alpha1.DRExecutionSpec{
+					PlanName: "my-plan",
+					Mode:     tt.mode,
+				},
+			}
+
+			resp := v.Handle(context.Background(), makeExecRequest(exec, admissionv1.Create))
+			if !resp.Allowed {
+				t.Errorf("expected allowed, got denied: %v", resp.Result)
+			}
+		})
 	}
 }
 

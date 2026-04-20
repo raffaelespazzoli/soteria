@@ -46,6 +46,12 @@ func TestTransition_ValidTransitions(t *testing.T) {
 			wantPhase:    soteriav1alpha1.PhaseFailingOver,
 		},
 		{
+			name:         "FailedOver + reprotect → Reprotecting",
+			currentPhase: soteriav1alpha1.PhaseFailedOver,
+			mode:         soteriav1alpha1.ExecutionModeReprotect,
+			wantPhase:    soteriav1alpha1.PhaseReprotecting,
+		},
+		{
 			name:         "DRedSteadyState + planned_migration → FailingBack",
 			currentPhase: soteriav1alpha1.PhaseDRedSteadyState,
 			mode:         soteriav1alpha1.ExecutionModePlannedMigration,
@@ -56,6 +62,12 @@ func TestTransition_ValidTransitions(t *testing.T) {
 			currentPhase: soteriav1alpha1.PhaseDRedSteadyState,
 			mode:         soteriav1alpha1.ExecutionModeDisaster,
 			wantPhase:    soteriav1alpha1.PhaseFailingBack,
+		},
+		{
+			name:         "FailedBack + reprotect → ReprotectingBack",
+			currentPhase: soteriav1alpha1.PhaseFailedBack,
+			mode:         soteriav1alpha1.ExecutionModeReprotect,
+			wantPhase:    soteriav1alpha1.PhaseReprotectingBack,
 		},
 	}
 
@@ -80,17 +92,22 @@ func TestTransition_InvalidTransitions(t *testing.T) {
 		soteriav1alpha1.PhaseReprotecting,
 		soteriav1alpha1.PhaseDRedSteadyState,
 		soteriav1alpha1.PhaseFailingBack,
+		soteriav1alpha1.PhaseFailedBack,
+		soteriav1alpha1.PhaseReprotectingBack,
 	}
 	allModes := []soteriav1alpha1.ExecutionMode{
 		soteriav1alpha1.ExecutionModePlannedMigration,
 		soteriav1alpha1.ExecutionModeDisaster,
+		soteriav1alpha1.ExecutionModeReprotect,
 	}
 
 	validSet := map[string]bool{
 		"SteadyState/planned_migration":     true,
 		"SteadyState/disaster":              true,
+		"FailedOver/reprotect":              true,
 		"DRedSteadyState/planned_migration": true,
 		"DRedSteadyState/disaster":          true,
+		"FailedBack/reprotect":              true,
 	}
 
 	for _, phase := range allPhases {
@@ -139,8 +156,13 @@ func TestCompleteTransition_ValidCompletions(t *testing.T) {
 			wantPhase:    soteriav1alpha1.PhaseDRedSteadyState,
 		},
 		{
-			name:         "FailingBack → SteadyState",
+			name:         "FailingBack → FailedBack",
 			currentPhase: soteriav1alpha1.PhaseFailingBack,
+			wantPhase:    soteriav1alpha1.PhaseFailedBack,
+		},
+		{
+			name:         "ReprotectingBack → SteadyState",
+			currentPhase: soteriav1alpha1.PhaseReprotectingBack,
 			wantPhase:    soteriav1alpha1.PhaseSteadyState,
 		},
 	}
@@ -163,6 +185,7 @@ func TestCompleteTransition_InvalidPhase_ReturnsError(t *testing.T) {
 		soteriav1alpha1.PhaseSteadyState,
 		soteriav1alpha1.PhaseFailedOver,
 		soteriav1alpha1.PhaseDRedSteadyState,
+		soteriav1alpha1.PhaseFailedBack,
 		"Unknown",
 	}
 
@@ -208,6 +231,11 @@ func TestValidStartingPhases(t *testing.T) {
 			name:       "disaster",
 			mode:       soteriav1alpha1.ExecutionModeDisaster,
 			wantPhases: []string{soteriav1alpha1.PhaseSteadyState, soteriav1alpha1.PhaseDRedSteadyState},
+		},
+		{
+			name:       "reprotect",
+			mode:       soteriav1alpha1.ExecutionModeReprotect,
+			wantPhases: []string{soteriav1alpha1.PhaseFailedOver, soteriav1alpha1.PhaseFailedBack},
 		},
 	}
 
@@ -257,6 +285,92 @@ func TestTransition_ConcurrentCalls(t *testing.T) {
 	}
 }
 
+func TestFullLifecycle_8Phases(t *testing.T) {
+	// SteadyState → FailingOver → FailedOver → Reprotecting → DRedSteadyState →
+	// FailingBack → FailedBack → ReprotectingBack → SteadyState
+
+	phase := soteriav1alpha1.PhaseSteadyState
+
+	// 1. Failover: SteadyState → FailingOver
+	next, err := Transition(phase, soteriav1alpha1.ExecutionModeDisaster)
+	if err != nil {
+		t.Fatalf("Transition(SteadyState, disaster): %v", err)
+	}
+	if next != soteriav1alpha1.PhaseFailingOver {
+		t.Fatalf("Expected FailingOver, got %s", next)
+	}
+	phase = next
+
+	// 2. Complete failover: FailingOver → FailedOver
+	next, err = CompleteTransition(phase)
+	if err != nil {
+		t.Fatalf("CompleteTransition(FailingOver): %v", err)
+	}
+	if next != soteriav1alpha1.PhaseFailedOver {
+		t.Fatalf("Expected FailedOver, got %s", next)
+	}
+	phase = next
+
+	// 3. Reprotect: FailedOver → Reprotecting
+	next, err = Transition(phase, soteriav1alpha1.ExecutionModeReprotect)
+	if err != nil {
+		t.Fatalf("Transition(FailedOver, reprotect): %v", err)
+	}
+	if next != soteriav1alpha1.PhaseReprotecting {
+		t.Fatalf("Expected Reprotecting, got %s", next)
+	}
+	phase = next
+
+	// 4. Complete reprotect: Reprotecting → DRedSteadyState
+	next, err = CompleteTransition(phase)
+	if err != nil {
+		t.Fatalf("CompleteTransition(Reprotecting): %v", err)
+	}
+	if next != soteriav1alpha1.PhaseDRedSteadyState {
+		t.Fatalf("Expected DRedSteadyState, got %s", next)
+	}
+	phase = next
+
+	// 5. Failback: DRedSteadyState → FailingBack
+	next, err = Transition(phase, soteriav1alpha1.ExecutionModePlannedMigration)
+	if err != nil {
+		t.Fatalf("Transition(DRedSteadyState, planned_migration): %v", err)
+	}
+	if next != soteriav1alpha1.PhaseFailingBack {
+		t.Fatalf("Expected FailingBack, got %s", next)
+	}
+	phase = next
+
+	// 6. Complete failback: FailingBack → FailedBack
+	next, err = CompleteTransition(phase)
+	if err != nil {
+		t.Fatalf("CompleteTransition(FailingBack): %v", err)
+	}
+	if next != soteriav1alpha1.PhaseFailedBack {
+		t.Fatalf("Expected FailedBack, got %s", next)
+	}
+	phase = next
+
+	// 7. Restore: FailedBack → ReprotectingBack
+	next, err = Transition(phase, soteriav1alpha1.ExecutionModeReprotect)
+	if err != nil {
+		t.Fatalf("Transition(FailedBack, reprotect): %v", err)
+	}
+	if next != soteriav1alpha1.PhaseReprotectingBack {
+		t.Fatalf("Expected ReprotectingBack, got %s", next)
+	}
+	phase = next
+
+	// 8. Complete restore: ReprotectingBack → SteadyState
+	next, err = CompleteTransition(phase)
+	if err != nil {
+		t.Fatalf("CompleteTransition(ReprotectingBack): %v", err)
+	}
+	if next != soteriav1alpha1.PhaseSteadyState {
+		t.Fatalf("Expected SteadyState, got %s", next)
+	}
+}
+
 func TestIsTerminalPhase(t *testing.T) {
 	tests := []struct {
 		phase string
@@ -268,6 +382,8 @@ func TestIsTerminalPhase(t *testing.T) {
 		{soteriav1alpha1.PhaseReprotecting, false},
 		{soteriav1alpha1.PhaseDRedSteadyState, true},
 		{soteriav1alpha1.PhaseFailingBack, false},
+		{soteriav1alpha1.PhaseFailedBack, true},
+		{soteriav1alpha1.PhaseReprotectingBack, false},
 	}
 
 	for _, tt := range tests {

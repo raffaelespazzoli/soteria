@@ -280,6 +280,11 @@ func TestDRExecutionReconciler_DisasterMode(t *testing.T) {
 	if got.Status.StartTime == nil {
 		t.Error("expected startTime to be set")
 	}
+	for _, c := range got.Status.Conditions {
+		if c.Type == "Step0Complete" && c.Status == metav1.ConditionTrue {
+			t.Error("did not expect Step0Complete for disaster mode")
+		}
+	}
 
 	// Verify plan advanced to FailedOver.
 	updatedPlan, err := waitForPlanPhase(ctx, plan.Name, soteriav1alpha1.PhaseFailedOver, execTestTimeout)
@@ -289,5 +294,75 @@ func TestDRExecutionReconciler_DisasterMode(t *testing.T) {
 	if updatedPlan.Status.Phase != soteriav1alpha1.PhaseFailedOver {
 		t.Errorf("expected plan phase %q, got %q",
 			soteriav1alpha1.PhaseFailedOver, updatedPlan.Status.Phase)
+	}
+}
+
+func TestDRExecutionReconciler_FailbackModes(t *testing.T) {
+	tests := []struct {
+		name   string
+		suffix string
+		mode   soteriav1alpha1.ExecutionMode
+	}{
+		{
+			name:   "planned migration",
+			suffix: "planned-migration",
+			mode:   soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+		{
+			name:   "disaster",
+			suffix: "disaster",
+			mode:   soteriav1alpha1.ExecutionModeDisaster,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx := context.Background()
+
+			plan := &soteriav1alpha1.DRPlan{
+				ObjectMeta: metav1.ObjectMeta{Name: "exec-failback-" + tt.suffix + "-plan"},
+				Spec: soteriav1alpha1.DRPlanSpec{
+					WaveLabel:              "soteria.io/wave",
+					MaxConcurrentFailovers: 4,
+				},
+			}
+			if err := testClient.Create(ctx, plan); err != nil {
+				t.Fatalf("creating DRPlan: %v", err)
+			}
+			t.Cleanup(func() { _ = testClient.Delete(ctx, plan) })
+
+			if err := setPlanPhase(ctx, plan.Name, soteriav1alpha1.PhaseDRedSteadyState); err != nil {
+				t.Fatalf("setting DRPlan phase: %v", err)
+			}
+
+			exec := &soteriav1alpha1.DRExecution{
+				ObjectMeta: metav1.ObjectMeta{Name: "exec-failback-" + tt.suffix},
+				Spec: soteriav1alpha1.DRExecutionSpec{
+					PlanName: plan.Name,
+					Mode:     tt.mode,
+				},
+			}
+			if err := testClient.Create(ctx, exec); err != nil {
+				t.Fatalf("creating DRExecution: %v", err)
+			}
+			t.Cleanup(func() { _ = testClient.Delete(ctx, exec) })
+
+			got, err := waitForExecResult(ctx, exec.Name, soteriav1alpha1.ExecutionResultSucceeded, execTestTimeout)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Status.StartTime == nil {
+				t.Error("expected startTime to be set")
+			}
+
+			updatedPlan, err := waitForPlanPhase(ctx, plan.Name, soteriav1alpha1.PhaseFailedBack, execTestTimeout)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if updatedPlan.Status.Phase != soteriav1alpha1.PhaseFailedBack {
+				t.Errorf("expected plan phase %q, got %q",
+					soteriav1alpha1.PhaseFailedBack, updatedPlan.Status.Phase)
+			}
+		})
 	}
 }

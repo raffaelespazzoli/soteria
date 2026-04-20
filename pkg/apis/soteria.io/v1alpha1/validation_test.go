@@ -141,6 +141,16 @@ func TestValidateDRExecution(t *testing.T) {
 			wantErrors: 0,
 		},
 		{
+			name: "valid reprotect",
+			exec: &DRExecution{
+				Spec: DRExecutionSpec{
+					PlanName: "my-plan",
+					Mode:     ExecutionModeReprotect,
+				},
+			},
+			wantErrors: 0,
+		},
+		{
 			name: "empty planName",
 			exec: &DRExecution{
 				Spec: DRExecutionSpec{

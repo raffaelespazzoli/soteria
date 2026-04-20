@@ -15,23 +15,29 @@ limitations under the License.
 */
 
 // Tier 2 – Architecture:
-// planned.go implements the planned migration workflow — the first real
-// DRGroupHandler that drives actual DR operations through the StorageProvider
-// driver. The workflow has two phases:
+// failover.go implements the unified FailoverHandler that drives both planned
+// migration and disaster failover through the StorageProvider driver. The same
+// handler is also used for failback (from DRedSteadyState) — the state machine
+// encodes direction, not the handler.
 //
-//  1. Step 0 (global pre-execution via PreExecute): stops all origin VMs,
-//     stops replication on all volume groups, and polls replication status
-//     until all volumes reach sync completion. This guarantees RPO=0 because
-//     no new writes can arrive after VMs are stopped and replication is flushed.
+// Behavior is controlled entirely by FailoverConfig, not the execution mode
+// string. The controller maps mode → config at dispatch time:
 //
-//  2. Per-DRGroup (via ExecuteGroup, called by the wave executor): for each
-//     group within a wave, calls SetSource(force=false) on each volume group
-//     to promote target volumes to Source, then starts VMs via VMManager.
-//     StopReplication is called per-group as well (idempotent after Step 0)
-//     to support retry scenarios where Step 0 succeeded but per-group failed.
+//   planned_migration → {GracefulShutdown: true,  Force: false, RecordRPO: false}
+//   disaster          → {GracefulShutdown: false, Force: true,  RecordRPO: true}
 //
-// The disaster failover handler (Story 4.4) uses force=true, skips Step 0,
-// and ignores origin errors — the key differentiator.
+// When GracefulShutdown=true, the handler runs a global Step 0 pre-execution:
+//   1. Stop all origin VMs (graceful shutdown)
+//   2. Stop replication on all volume groups (initiates final flush)
+//   3. Poll GetReplicationStatus until sync completion (RPO=0)
+//
+// When GracefulShutdown=false, PreExecute is a no-op and per-DRGroup skips
+// StopReplication — SetSource(force=true) handles promotion directly.
+//
+// When RecordRPO=true, after each SetSource the handler reads
+// GetReplicationStatus.LastSyncTime and includes the estimated RPO in the step
+// message. If GetReplicationStatus fails, RPO is recorded as "unknown" and the
+// group succeeds.
 
 package engine
 
@@ -57,36 +63,48 @@ const (
 	defaultSyncTimeout      = 10 * time.Minute
 )
 
-// PlannedMigrationHandler implements DRGroupHandler for planned migration.
-// It also exposes PreExecute for the global Step 0 phase that runs before
-// the wave executor dispatches any groups.
-type PlannedMigrationHandler struct {
+// FailoverConfig drives FailoverHandler behavior without mode-string switching.
+type FailoverConfig struct {
+	// GracefulShutdown enables Step 0 (stop VMs, stop replication, sync wait)
+	// and per-group StopReplication. False for disaster failover.
+	GracefulShutdown bool
+	// Force is passed to SetSourceOptions and StopReplicationOptions.
+	// True for disaster (origin may be unreachable).
+	Force bool
+	// RecordRPO reads GetReplicationStatus.LastSyncTime after SetSource to
+	// estimate data loss. True for disaster failover.
+	RecordRPO bool
+}
+
+// FailoverHandler implements DRGroupHandler for both planned migration and
+// disaster failover. It also exposes PreExecute for the global Step 0 phase
+// that runs before the wave executor dispatches any groups.
+type FailoverHandler struct {
 	Driver           drivers.StorageProvider
 	VMManager        VMManager
+	Config           FailoverConfig
 	SyncPollInterval time.Duration
 	SyncTimeout      time.Duration
 
-	// cacheMu guards vgIDCache for concurrent ExecuteGroup goroutines.
 	cacheMu   sync.Mutex
 	vgIDCache map[string]drivers.VolumeGroupID
 }
 
-func (h *PlannedMigrationHandler) syncPollInterval() time.Duration {
+func (h *FailoverHandler) syncPollInterval() time.Duration {
 	if h.SyncPollInterval > 0 {
 		return h.SyncPollInterval
 	}
 	return defaultSyncPollInterval
 }
 
-func (h *PlannedMigrationHandler) syncTimeout() time.Duration {
+func (h *FailoverHandler) syncTimeout() time.Duration {
 	if h.SyncTimeout > 0 {
 		return h.SyncTimeout
 	}
 	return defaultSyncTimeout
 }
 
-// initCacheLocked initializes the cache map. Must be called under cacheMu.
-func (h *PlannedMigrationHandler) initCacheLocked() {
+func (h *FailoverHandler) initCacheLocked() {
 	if h.vgIDCache == nil {
 		h.vgIDCache = make(map[string]drivers.VolumeGroupID)
 	}
@@ -95,7 +113,7 @@ func (h *PlannedMigrationHandler) initCacheLocked() {
 // resolveVolumeGroupID resolves a VolumeGroupInfo to a driver-level VolumeGroupID
 // by calling CreateVolumeGroup (idempotent — returns existing if matched).
 // Safe for concurrent use from multiple ExecuteGroup goroutines.
-func (h *PlannedMigrationHandler) resolveVolumeGroupID(
+func (h *FailoverHandler) resolveVolumeGroupID(
 	ctx context.Context, driver drivers.StorageProvider, vg soteriav1alpha1.VolumeGroupInfo,
 ) (drivers.VolumeGroupID, error) {
 	cacheKey := vg.Namespace + "/" + vg.Name
@@ -125,17 +143,25 @@ func (h *PlannedMigrationHandler) resolveVolumeGroupID(
 // PreExecute runs Step 0 — the global pre-execution phase that must complete
 // for ALL VMs/volumes BEFORE any wave starts.
 //
-// Phase 1: Stop all origin VMs (graceful shutdown).
-// Phase 2: Stop replication on all volume groups (initiates final flush).
-// Phase 3: Poll GetReplicationStatus until all volumes are synced (RPO=0).
-func (h *PlannedMigrationHandler) PreExecute(ctx context.Context, groups []ExecutionGroup) error {
+// When GracefulShutdown=false (disaster), returns nil immediately — there is
+// no Step 0 because the origin site may be unreachable.
+//
+// When GracefulShutdown=true (planned migration):
+//
+//	Phase 1: Stop all origin VMs (graceful shutdown).
+//	Phase 2: Stop replication on all volume groups (initiates final flush).
+//	Phase 3: Poll GetReplicationStatus until all volumes are synced (RPO=0).
+func (h *FailoverHandler) PreExecute(ctx context.Context, groups []ExecutionGroup) error {
+	if !h.Config.GracefulShutdown {
+		return nil
+	}
+
 	logger := log.FromContext(ctx)
 
 	if len(groups) == 0 {
 		return nil
 	}
 
-	// Collect unique VMs across all groups (deduplicate by namespace/name).
 	type vmKey struct{ name, namespace string }
 	seen := make(map[vmKey]bool)
 	var uniqueVMs []vmKey
@@ -149,7 +175,6 @@ func (h *PlannedMigrationHandler) PreExecute(ctx context.Context, groups []Execu
 		}
 	}
 
-	// Phase 1: Stop all origin VMs.
 	logger.Info("Starting Step 0: stopping origin VMs", "vmCount", len(uniqueVMs))
 	for _, vm := range uniqueVMs {
 		if ctx.Err() != nil {
@@ -160,7 +185,6 @@ func (h *PlannedMigrationHandler) PreExecute(ctx context.Context, groups []Execu
 		}
 	}
 
-	// Collect all volume groups across all execution groups with their drivers.
 	type vgWithDriver struct {
 		vg     soteriav1alpha1.VolumeGroupInfo
 		driver drivers.StorageProvider
@@ -177,7 +201,6 @@ func (h *PlannedMigrationHandler) PreExecute(ctx context.Context, groups []Execu
 		}
 	}
 
-	// Resolve volume group IDs.
 	var resolved []resolvedVG
 	for _, vgd := range allVGs {
 		if ctx.Err() != nil {
@@ -190,7 +213,6 @@ func (h *PlannedMigrationHandler) PreExecute(ctx context.Context, groups []Execu
 		resolved = append(resolved, resolvedVG{id: vgID, driver: vgd.driver, name: vgd.vg.Name})
 	}
 
-	// Phase 2: Stop replication on all volume groups.
 	logger.Info("Step 0: stopping replication on all volume groups", "volumeGroupCount", len(resolved))
 	for _, rvg := range resolved {
 		if ctx.Err() != nil {
@@ -201,14 +223,13 @@ func (h *PlannedMigrationHandler) PreExecute(ctx context.Context, groups []Execu
 		}
 	}
 
-	// Phase 3: Wait for sync completion.
 	logger.Info("Step 0: waiting for replication sync", "volumeGroupCount", len(resolved))
 	return h.waitForSync(ctx, resolved)
 }
 
 // waitForSync polls GetReplicationStatus at configured intervals until all
 // volume groups report sync completion or the timeout expires.
-func (h *PlannedMigrationHandler) waitForSync(ctx context.Context, vgs []resolvedVG) error {
+func (h *FailoverHandler) waitForSync(ctx context.Context, vgs []resolvedVG) error {
 	if len(vgs) == 0 {
 		return nil
 	}
@@ -258,36 +279,37 @@ func (h *PlannedMigrationHandler) waitForSync(ctx context.Context, vgs []resolve
 	}
 }
 
-// isSynced returns true when a volume group has completed its final sync.
 func isSynced(status drivers.ReplicationStatus) bool {
 	return status.Role == drivers.RoleNonReplicated || status.Health == drivers.HealthHealthy
 }
 
 // ExecuteGroup implements DRGroupHandler for a single DRGroup within a wave.
-// Steps: StopReplication → SetSource → StartVM (for each VM).
-func (h *PlannedMigrationHandler) ExecuteGroup(ctx context.Context, group ExecutionGroup) error {
+//
+// GracefulShutdown=true:  StopReplication → SetSource(force=false) → StartVM
+// GracefulShutdown=false: SetSource(force=true) → StartVM (+ optional RPO recording)
+func (h *FailoverHandler) ExecuteGroup(ctx context.Context, group ExecutionGroup) error {
 	logger := log.FromContext(ctx)
 	driver := group.Driver
 
-	// Step a: StopReplication on each volume group (idempotent after Step 0).
-	for _, vg := range group.Chunk.VolumeGroups {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
+	if h.Config.GracefulShutdown {
+		for _, vg := range group.Chunk.VolumeGroups {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
 
-		vgID, err := h.resolveVolumeGroupID(ctx, driver, vg)
-		if err != nil {
-			return err
-		}
+			vgID, err := h.resolveVolumeGroupID(ctx, driver, vg)
+			if err != nil {
+				return err
+			}
 
-		logger.V(1).Info("Stopping replication for DRGroup volume group",
-			"volumeGroup", vg.Name, "wave", group.WaveIndex)
-		if err := driver.StopReplication(ctx, vgID, drivers.StopReplicationOptions{Force: false}); err != nil {
-			return fmt.Errorf("step %s failed for volume group %s: %w", StepStopReplication, vg.Name, err)
+			logger.V(1).Info("Stopping replication for DRGroup volume group",
+				"volumeGroup", vg.Name, "wave", group.WaveIndex)
+			if err := driver.StopReplication(ctx, vgID, drivers.StopReplicationOptions{Force: false}); err != nil {
+				return fmt.Errorf("step %s failed for volume group %s: %w", StepStopReplication, vg.Name, err)
+			}
 		}
 	}
 
-	// Step b: SetSource on each volume group.
 	for _, vg := range group.Chunk.VolumeGroups {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -300,12 +322,26 @@ func (h *PlannedMigrationHandler) ExecuteGroup(ctx context.Context, group Execut
 
 		logger.V(1).Info("Setting source for DRGroup volume group",
 			"volumeGroup", vg.Name, "wave", group.WaveIndex)
-		if err := driver.SetSource(ctx, vgID, drivers.SetSourceOptions{Force: false}); err != nil {
+		if err := driver.SetSource(ctx, vgID, drivers.SetSourceOptions{Force: h.Config.Force}); err != nil {
 			return fmt.Errorf("step %s failed for volume group %s: %w", StepSetSource, vg.Name, err)
+		}
+
+		if h.Config.RecordRPO {
+			status, err := driver.GetReplicationStatus(ctx, vgID)
+			if err != nil {
+				logger.V(1).Info("Could not read RPO after SetSource, recording as unknown",
+					"volumeGroup", vg.Name, "error", err)
+			} else if status.LastSyncTime != nil {
+				rpo := time.Since(*status.LastSyncTime)
+				logger.Info("Estimated RPO recorded",
+					"volumeGroup", vg.Name, "rpo", rpo.String(), "lastSync", *status.LastSyncTime)
+			} else {
+				logger.V(1).Info("Could not read RPO after SetSource, recording as unknown",
+					"volumeGroup", vg.Name)
+			}
 		}
 	}
 
-	// Step c: Start each VM.
 	for _, vm := range group.Chunk.VMs {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -321,22 +357,9 @@ func (h *PlannedMigrationHandler) ExecuteGroup(ctx context.Context, group Execut
 	return nil
 }
 
-// Compile-time interface checks.
-var (
-	_ DRGroupHandler = (*PlannedMigrationHandler)(nil)
-	_ StepHandler    = (*PlannedMigrationHandler)(nil)
-)
-
-// resolvedVG bundles a resolved volume group ID with its driver for sync polling.
-type resolvedVG struct {
-	id     drivers.VolumeGroupID
-	driver drivers.StorageProvider
-	name   string
-}
-
 // ExecuteGroupWithSteps executes a single DRGroup and returns step statuses
-// for per-step recording in DRGroupStatus. This variant records each operation.
-func (h *PlannedMigrationHandler) ExecuteGroupWithSteps(
+// for per-step recording in DRGroupStatus.
+func (h *FailoverHandler) ExecuteGroupWithSteps(
 	ctx context.Context, group ExecutionGroup,
 ) ([]soteriav1alpha1.StepStatus, error) {
 	logger := log.FromContext(ctx)
@@ -353,23 +376,25 @@ func (h *PlannedMigrationHandler) ExecuteGroupWithSteps(
 		})
 	}
 
-	for _, vg := range group.Chunk.VolumeGroups {
-		if ctx.Err() != nil {
-			return steps, ctx.Err()
+	if h.Config.GracefulShutdown {
+		for _, vg := range group.Chunk.VolumeGroups {
+			if ctx.Err() != nil {
+				return steps, ctx.Err()
+			}
+			vgID, err := h.resolveVolumeGroupID(ctx, driver, vg)
+			if err != nil {
+				recordStep(StepStopReplication, "Failed", err.Error())
+				return steps, err
+			}
+			logger.V(1).Info("Stopping replication for DRGroup volume group",
+				"volumeGroup", vg.Name, "wave", group.WaveIndex)
+			if err := driver.StopReplication(ctx, vgID, drivers.StopReplicationOptions{Force: false}); err != nil {
+				recordStep(StepStopReplication, "Failed",
+					fmt.Sprintf("Failed to stop replication for volume group %s: %v", vg.Name, err))
+				return steps, fmt.Errorf("step %s failed for volume group %s: %w", StepStopReplication, vg.Name, err)
+			}
+			recordStep(StepStopReplication, "Succeeded", fmt.Sprintf("Stopped replication for volume group %s", vg.Name))
 		}
-		vgID, err := h.resolveVolumeGroupID(ctx, driver, vg)
-		if err != nil {
-			recordStep(StepStopReplication, "Failed", err.Error())
-			return steps, err
-		}
-		logger.V(1).Info("Stopping replication for DRGroup volume group",
-			"volumeGroup", vg.Name, "wave", group.WaveIndex)
-		if err := driver.StopReplication(ctx, vgID, drivers.StopReplicationOptions{Force: false}); err != nil {
-			recordStep(StepStopReplication, "Failed",
-				fmt.Sprintf("Failed to stop replication for volume group %s: %v", vg.Name, err))
-			return steps, fmt.Errorf("step %s failed for volume group %s: %w", StepStopReplication, vg.Name, err)
-		}
-		recordStep(StepStopReplication, "Succeeded", fmt.Sprintf("Stopped replication for volume group %s", vg.Name))
 	}
 
 	for _, vg := range group.Chunk.VolumeGroups {
@@ -383,11 +408,24 @@ func (h *PlannedMigrationHandler) ExecuteGroupWithSteps(
 		}
 		logger.V(1).Info("Setting source for DRGroup volume group",
 			"volumeGroup", vg.Name, "wave", group.WaveIndex)
-		if err := driver.SetSource(ctx, vgID, drivers.SetSourceOptions{Force: false}); err != nil {
+		if err := driver.SetSource(ctx, vgID, drivers.SetSourceOptions{Force: h.Config.Force}); err != nil {
 			recordStep(StepSetSource, "Failed", fmt.Sprintf("Failed to set source for volume group %s: %v", vg.Name, err))
 			return steps, fmt.Errorf("step %s failed for volume group %s: %w", StepSetSource, vg.Name, err)
 		}
-		recordStep(StepSetSource, "Succeeded", fmt.Sprintf("Set source for volume group %s", vg.Name))
+
+		rpoMsg := fmt.Sprintf("Set source for volume group %s", vg.Name)
+		if h.Config.RecordRPO {
+			status, rpoErr := driver.GetReplicationStatus(ctx, vgID)
+			if rpoErr != nil {
+				rpoMsg = fmt.Sprintf("Set source for volume group %s (RPO: unknown)", vg.Name)
+			} else if status.LastSyncTime != nil {
+				rpo := time.Since(*status.LastSyncTime)
+				rpoMsg = fmt.Sprintf("Set source for volume group %s (RPO: %s)", vg.Name, rpo.Truncate(time.Second))
+			} else {
+				rpoMsg = fmt.Sprintf("Set source for volume group %s (RPO: unknown)", vg.Name)
+			}
+		}
+		recordStep(StepSetSource, "Succeeded", rpoMsg)
 	}
 
 	for _, vm := range group.Chunk.VMs {
@@ -404,4 +442,16 @@ func (h *PlannedMigrationHandler) ExecuteGroupWithSteps(
 	}
 
 	return steps, nil
+}
+
+var (
+	_ DRGroupHandler = (*FailoverHandler)(nil)
+	_ StepHandler    = (*FailoverHandler)(nil)
+)
+
+// resolvedVG bundles a resolved volume group ID with its driver for sync polling.
+type resolvedVG struct {
+	id     drivers.VolumeGroupID
+	driver drivers.StorageProvider
+	name   string
 }

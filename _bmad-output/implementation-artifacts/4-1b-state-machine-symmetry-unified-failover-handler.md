@@ -1,6 +1,6 @@
 # Story 4.1b: State Machine Symmetry & Unified Failover Handler
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -70,65 +70,72 @@ This story is a correction that addresses three design insights identified durin
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Add new phase constants (AC: #1)
-  - [ ] 1.1 In `pkg/apis/soteria.io/v1alpha1/types.go`, add `PhaseFailedBack = "FailedBack"` and `PhaseReprotectingBack = "ReprotectingBack"` after `PhaseFailingBack`
-  - [ ] 1.2 Update the `DRPlanStatus.Phase` comment to list all 8 phases
-  - [ ] 1.3 Run `make generate` to verify (likely no deepcopy changes needed for string constants)
+- [x] Task 1: Add new phase constants (AC: #1)
+  - [x] 1.1 In `pkg/apis/soteria.io/v1alpha1/types.go`, add `PhaseFailedBack = "FailedBack"` and `PhaseReprotectingBack = "ReprotectingBack"` after `PhaseFailingBack`
+  - [x] 1.2 Update the `DRPlanStatus.Phase` comment to list all 8 phases
+  - [x] 1.3 Run `make generate` to verify (likely no deepcopy changes needed for string constants)
 
-- [ ] Task 2: Update state machine for 8-phase symmetry (AC: #2)
-  - [ ] 2.1 In `pkg/engine/statemachine.go`, add `FailedBack` entry to `validTransitions` map: `FailedBack: {ExecutionModeReprotect: PhaseReprotectingBack}` — requires adding `ExecutionModeReprotect` constant first (see Task 3)
-  - [ ] 2.2 Fix `completionTransitions`: change `PhaseFailingBack: PhaseSteadyState` to `PhaseFailingBack: PhaseFailedBack`
-  - [ ] 2.3 Add `PhaseReprotectingBack: PhaseSteadyState` to `completionTransitions`
-  - [ ] 2.4 Add `PhaseFailedBack: true` to `terminalPhases`
-  - [ ] 2.5 Update `FailedOver` entry in `validTransitions` to add reprotect: `FailedOver: {ExecutionModeReprotect: PhaseReprotecting}`
-  - [ ] 2.6 Update the Tier 2 architecture block comment at the top of `statemachine.go` to reflect the full 8-phase diagram
+- [x] Task 2: Update state machine for 8-phase symmetry (AC: #2)
+  - [x] 2.1 In `pkg/engine/statemachine.go`, add `FailedBack` entry to `validTransitions` map: `FailedBack: {ExecutionModeReprotect: PhaseReprotectingBack}` — requires adding `ExecutionModeReprotect` constant first (see Task 3)
+  - [x] 2.2 Fix `completionTransitions`: change `PhaseFailingBack: PhaseSteadyState` to `PhaseFailingBack: PhaseFailedBack`
+  - [x] 2.3 Add `PhaseReprotectingBack: PhaseSteadyState` to `completionTransitions`
+  - [x] 2.4 Add `PhaseFailedBack: true` to `terminalPhases`
+  - [x] 2.5 Update `FailedOver` entry in `validTransitions` to add reprotect: `FailedOver: {ExecutionModeReprotect: PhaseReprotecting}`
+  - [x] 2.6 Update the Tier 2 architecture block comment at the top of `statemachine.go` to reflect the full 8-phase diagram
 
-- [ ] Task 3: Add ExecutionModeReprotect constant (AC: #5)
-  - [ ] 3.1 In `pkg/apis/soteria.io/v1alpha1/types.go`, add `ExecutionModeReprotect ExecutionMode = "reprotect"` after `ExecutionModeDisaster`
+- [x] Task 3: Add ExecutionModeReprotect constant (AC: #5)
+  - [x] 3.1 In `pkg/apis/soteria.io/v1alpha1/types.go`, add `ExecutionModeReprotect ExecutionMode = "reprotect"` after `ExecutionModeDisaster`
 
-- [ ] Task 4: Update validation to accept reprotect mode (AC: #5)
-  - [ ] 4.1 In `pkg/registry/drexecution/strategy.go`, update `Validate` to accept `ExecutionModeReprotect`
-  - [ ] 4.2 In `pkg/apis/soteria.io/v1alpha1/validation.go`, update `ValidateDRExecution` to accept `reprotect`
-  - [ ] 4.3 In `pkg/admission/drexecution_validator.go`, update mode validation to accept `reprotect`
-  - [ ] 4.4 Add unit tests for reprotect mode validation
+- [x] Task 4: Update validation to accept reprotect mode (AC: #5)
+  - [x] 4.1 In `pkg/registry/drexecution/strategy.go`, update `Validate` to accept `ExecutionModeReprotect`
+  - [x] 4.2 In `pkg/apis/soteria.io/v1alpha1/validation.go`, update `ValidateDRExecution` to accept `reprotect`
+  - [x] 4.3 In `pkg/admission/drexecution_validator.go`, update mode validation to accept `reprotect`
+  - [x] 4.4 Add unit tests for reprotect mode validation
 
-- [ ] Task 5: Refactor PlannedMigrationHandler → FailoverHandler (AC: #3, #6)
-  - [ ] 5.1 Create `pkg/engine/failover.go` — copy content from `planned.go` as starting point
-  - [ ] 5.2 Define `FailoverConfig` struct: `GracefulShutdown bool`, `Force bool`, `RecordRPO bool`
-  - [ ] 5.3 Rename `PlannedMigrationHandler` → `FailoverHandler`, add `Config FailoverConfig` field
-  - [ ] 5.4 Update `PreExecute`: if `!Config.GracefulShutdown`, return nil immediately (no Step 0)
-  - [ ] 5.5 Update `ExecuteGroup`: use `Config.Force` in `SetSourceOptions{Force: h.Config.Force}`. Skip `StopReplication` when `!Config.GracefulShutdown`. Add RPO recording from `GetReplicationStatus.LastSyncTime` when `Config.RecordRPO` (port from Story 4.4 design)
-  - [ ] 5.6 Delete `pkg/engine/planned.go`
-  - [ ] 5.7 Move step constants to top of `failover.go` (or `pkg/engine/steps.go` if shared with reprotect)
+- [x] Task 5: Refactor PlannedMigrationHandler → FailoverHandler (AC: #3, #6)
+  - [x] 5.1 Create `pkg/engine/failover.go` — copy content from `planned.go` as starting point
+  - [x] 5.2 Define `FailoverConfig` struct: `GracefulShutdown bool`, `Force bool`, `RecordRPO bool`
+  - [x] 5.3 Rename `PlannedMigrationHandler` → `FailoverHandler`, add `Config FailoverConfig` field
+  - [x] 5.4 Update `PreExecute`: if `!Config.GracefulShutdown`, return nil immediately (no Step 0)
+  - [x] 5.5 Update `ExecuteGroup`: use `Config.Force` in `SetSourceOptions{Force: h.Config.Force}`. Skip `StopReplication` when `!Config.GracefulShutdown`. Add RPO recording from `GetReplicationStatus.LastSyncTime` when `Config.RecordRPO` (port from Story 4.4 design)
+  - [x] 5.6 Delete `pkg/engine/planned.go`
+  - [x] 5.7 Move step constants to top of `failover.go` (or `pkg/engine/steps.go` if shared with reprotect)
 
-- [ ] Task 6: Update controller dispatch (AC: #4)
-  - [ ] 6.1 In `pkg/controller/drexecution/reconciler.go`, update `resolveHandler` to create `FailoverHandler` with appropriate config based on mode
-  - [ ] 6.2 For `planned_migration`: `FailoverConfig{GracefulShutdown: true, Force: false, RecordRPO: false}`
-  - [ ] 6.3 For `disaster`: `FailoverConfig{GracefulShutdown: false, Force: true, RecordRPO: true}`
-  - [ ] 6.4 For `reprotect`: leave as NoOpHandler placeholder (Story 4.8 implements ReprotectHandler)
-  - [ ] 6.5 Both failover (from SteadyState) and failback (from DRedSteadyState) use the same handler — no directional logic needed
+- [x] Task 6: Update controller dispatch (AC: #4)
+  - [x] 6.1 In `pkg/controller/drexecution/reconciler.go`, update `resolveHandler` to create `FailoverHandler` with appropriate config based on mode
+  - [x] 6.2 For `planned_migration`: `FailoverConfig{GracefulShutdown: true, Force: false, RecordRPO: false}`
+  - [x] 6.3 For `disaster`: `FailoverConfig{GracefulShutdown: false, Force: true, RecordRPO: true}`
+  - [x] 6.4 For `reprotect`: leave as NoOpHandler placeholder (Story 4.8 implements ReprotectHandler)
+  - [x] 6.5 Both failover (from SteadyState) and failback (from DRedSteadyState) use the same handler — no directional logic needed
 
-- [ ] Task 7: Update tests (AC: #7, #9)
-  - [ ] 7.1 Create `pkg/engine/failover_test.go` — port tests from `planned_test.go`, rename to test `FailoverHandler`
-  - [ ] 7.2 Add test: `TestFailoverHandler_DisasterConfig_NoStep0` — verify PreExecute is no-op with GracefulShutdown=false
-  - [ ] 7.3 Add test: `TestFailoverHandler_DisasterConfig_ForceTrue` — verify SetSourceOptions{Force: true}
-  - [ ] 7.4 Add test: `TestFailoverHandler_DisasterConfig_RPORecorded` — verify RPO from GetReplicationStatus
-  - [ ] 7.5 Add test: `TestFailoverHandler_DisasterConfig_NoStopReplication` — verify StopReplication not called
-  - [ ] 7.6 Add test: `TestFailoverHandler_DisasterConfig_GetReplicationStatusFails` — RPO "unknown", group succeeds
-  - [ ] 7.7 Delete `pkg/engine/planned_test.go`
-  - [ ] 7.8 Update state machine tests for 8 phases: `TestTransition_Reprotect_FromFailedOver`, `TestTransition_Reprotect_FromFailedBack`, `TestCompleteTransition_FailingBack_ToFailedBack`, `TestCompleteTransition_ReprotectingBack_ToSteadyState`, `TestIsTerminalPhase_FailedBack`
-  - [ ] 7.9 Update controller integration tests: verify handler dispatch for both modes from both starting states
-  - [ ] 7.10 Update admission webhook tests: verify `reprotect` mode accepted from `FailedOver` and `FailedBack`
-  - [ ] 7.11 Add lifecycle test: `TestFullLifecycle_8Phases` — SteadyState → FailedOver → DRedSteadyState → FailedBack → SteadyState using state machine functions
+- [x] Task 7: Update tests (AC: #7, #9)
+  - [x] 7.1 Create `pkg/engine/failover_test.go` — port tests from `planned_test.go`, rename to test `FailoverHandler`
+  - [x] 7.2 Add test: `TestFailoverHandler_DisasterConfig_NoStep0` — verify PreExecute is no-op with GracefulShutdown=false
+  - [x] 7.3 Add test: `TestFailoverHandler_DisasterConfig_ForceTrue` — verify SetSourceOptions{Force: true}
+  - [x] 7.4 Add test: `TestFailoverHandler_DisasterConfig_RPORecorded` — verify RPO from GetReplicationStatus
+  - [x] 7.5 Add test: `TestFailoverHandler_DisasterConfig_NoStopReplication` — verify StopReplication not called
+  - [x] 7.6 Add test: `TestFailoverHandler_DisasterConfig_GetReplicationStatusFails` — RPO "unknown", group succeeds
+  - [x] 7.7 Delete `pkg/engine/planned_test.go`
+  - [x] 7.8 Update state machine tests for 8 phases: `TestTransition_Reprotect_FromFailedOver`, `TestTransition_Reprotect_FromFailedBack`, `TestCompleteTransition_FailingBack_ToFailedBack`, `TestCompleteTransition_ReprotectingBack_ToSteadyState`, `TestIsTerminalPhase_FailedBack`
+  - [x] 7.9 Update controller integration tests: verify handler dispatch for both modes from both starting states
+  - [x] 7.10 Update admission webhook tests: verify `reprotect` mode accepted from `FailedOver` and `FailedBack`
+  - [x] 7.11 Add lifecycle test: `TestFullLifecycle_8Phases` — SteadyState → FailedOver → DRedSteadyState → FailedBack → SteadyState using state machine functions
 
-- [ ] Task 8: Update wiring and documentation (AC: #8)
-  - [ ] 8.1 Update `cmd/soteria/main.go` if handler creation changes (FailoverHandler replaces PlannedMigrationHandler)
-  - [ ] 8.2 Update `pkg/engine/doc.go` — document the 8-phase model, unified FailoverHandler, and FailoverConfig
-  - [ ] 8.3 Run `make manifests` to regenerate RBAC/webhook configs
-  - [ ] 8.4 Run `make generate` to verify deepcopy
-  - [ ] 8.5 Run `make test` — all tests pass
-  - [ ] 8.6 Run `make lint-fix` followed by `make lint`
-  - [ ] 8.7 Run `make build` — compiles cleanly
+- [x] Task 8: Update wiring and documentation (AC: #8)
+  - [x] 8.1 Update `cmd/soteria/main.go` if handler creation changes (FailoverHandler replaces PlannedMigrationHandler)
+  - [x] 8.2 Update `pkg/engine/doc.go` — document the 8-phase model, unified FailoverHandler, and FailoverConfig
+  - [x] 8.3 Run `make manifests` to regenerate RBAC/webhook configs
+  - [x] 8.4 Run `make generate` to verify deepcopy
+  - [x] 8.5 Run `make test` — all tests pass
+  - [ ] 8.6 Run `make lint-fix` followed by `make lint` (blocked by pre-existing unrelated `goconst` in `internal/preflight/storage_test.go`)
+  - [x] 8.7 Run `make build` — compiles cleanly
+
+### Review Findings
+
+- [x] [Review][Patch] Gate Step 0 bookkeeping to graceful mode only [`pkg/controller/drexecution/reconciler.go:180`] — disaster executions now go through the generic `PreExecute` path, so the controller still sets `Step0Complete` and emits `PlannedMigrationStarted` / `Step0Failed` events even though disaster mode intentionally skips Step 0.
+- [x] [Review][Patch] Treat nil `LastSyncTime` as `RPO: unknown` [`pkg/engine/failover.go:329`] — `ReplicationStatus.LastSyncTime` is documented as nil when the driver cannot report sync time, but both RPO-recording paths currently omit any unknown marker instead of recording that the RPO is unavailable.
+- [x] [Review][Patch] Add reprotect validation and webhook tests [`pkg/apis/soteria.io/v1alpha1/validation_test.go:116`] — the validation code now accepts `reprotect`, but the unit and admission test suites still cover only `planned_migration` and `disaster`, so the new mode is unprotected by tests.
+- [x] [Review][Patch] Add failback controller dispatch coverage [`test/integration/controller/drexecution_test.go:34`] — the controller integration suite exercises only `SteadyState -> FailedOver` paths and does not verify handler dispatch from `DRedSteadyState` for either failback mode, which was part of the story's acceptance coverage.
 
 ## Dev Notes
 
@@ -142,7 +149,7 @@ This is a correction story inserted between Story 4.1 (done) and Story 4.4 (read
 |-------|-------------|--------|
 | 4.05 | Registry fallback + preflight convergence | done |
 | 4.1 | State machine (6-phase) + execution controller + admission webhook | done |
-| **4.1b** | **8-phase state machine + unified FailoverHandler** | **ready-for-dev (this story)** |
+| **4.1b** | **8-phase state machine + unified FailoverHandler** | **done (this story)** |
 | 4.2 | Wave executor framework + controller dispatch | done |
 | 4.3 | Planned migration workflow + VMManager | review → absorbed into 4.1b |
 | 4.4 | Disaster failover — add disaster config + RPO to FailoverHandler | ready-for-dev (simplified) |

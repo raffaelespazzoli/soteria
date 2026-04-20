@@ -18,9 +18,9 @@ package engine
 
 import "context"
 
-// NoOpHandler is a DRGroupHandler that returns nil immediately. It is used as
-// the default handler until Stories 4.3 (planned migration) and 4.4 (disaster
-// failover) provide real workflow implementations.
+// NoOpHandler is a DRGroupHandler that returns nil immediately. It serves as
+// a placeholder for execution modes that do not yet have a real handler (e.g.,
+// reprotect until Story 4.8) and for testing the executor loop.
 type NoOpHandler struct{}
 
 func (h *NoOpHandler) ExecuteGroup(_ context.Context, _ ExecutionGroup) error {

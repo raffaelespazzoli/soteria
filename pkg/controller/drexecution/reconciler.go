@@ -104,7 +104,8 @@ func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Gated on startTime so these steps never repeat on re-reconcile.
 	if exec.Status.StartTime == nil {
 		if exec.Spec.Mode != soteriav1alpha1.ExecutionModePlannedMigration &&
-			exec.Spec.Mode != soteriav1alpha1.ExecutionModeDisaster {
+			exec.Spec.Mode != soteriav1alpha1.ExecutionModeDisaster &&
+			exec.Spec.Mode != soteriav1alpha1.ExecutionModeReprotect {
 			return r.failExecution(ctx, &exec, "InvalidMode",
 				fmt.Sprintf("unsupported execution mode %q", exec.Spec.Mode))
 		}
@@ -148,8 +149,13 @@ func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			"plan", plan.Name, "from", previousPhase, "to", targetPhase)
 
 		eventReason, eventAction, eventVerb := "FailoverStarted", "FailoverAction", "Failover"
-		if targetPhase == soteriav1alpha1.PhaseFailingBack {
+		switch targetPhase {
+		case soteriav1alpha1.PhaseFailingBack:
 			eventReason, eventAction, eventVerb = "FailbackStarted", "FailbackAction", "Failback"
+		case soteriav1alpha1.PhaseReprotecting:
+			eventReason, eventAction, eventVerb = "ReprotectStarted", "ReprotectAction", "Reprotect"
+		case soteriav1alpha1.PhaseReprotectingBack:
+			eventReason, eventAction, eventVerb = "RestoreStarted", "RestoreAction", "Restore"
 		}
 		r.event(&plan, corev1.EventTypeNormal, eventReason, eventAction,
 			fmt.Sprintf("%s started for plan %s in %s mode via execution %s",
@@ -171,10 +177,11 @@ func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			Handler:   handler,
 		}
 
-		// If the handler supports PreExecute (e.g., planned migration Step 0),
-		// run it once. The Step0Complete condition prevents re-execution on retry.
+		// Step 0 is only part of planned migration. Disaster failover uses the
+		// same FailoverHandler type, but its PreExecute is intentionally a no-op
+		// and must not create Step0Complete conditions or planned-migration events.
 		step0Done := meta.IsStatusConditionTrue(exec.Status.Conditions, "Step0Complete")
-		if !step0Done {
+		if exec.Spec.Mode == soteriav1alpha1.ExecutionModePlannedMigration && !step0Done {
 			if ph, ok := handler.(interface {
 				PreExecute(ctx context.Context, groups []engine.ExecutionGroup) error
 			}); ok {
@@ -255,23 +262,44 @@ func (r *DRExecutionReconciler) failExecution(
 }
 
 // resolveHandler selects the appropriate DRGroupHandler based on execution mode.
-// Returns an error when the requested mode cannot be fulfilled (e.g. planned
-// migration without a configured VMManager).
+// FailoverHandler is used for both planned_migration and disaster — the config
+// drives behavior, not the mode string. When VMManager is not configured (e.g.,
+// integration tests), falls back to the injected Handler or NoOpHandler.
+// Reprotect uses a placeholder until Story 4.8 implements ReprotectHandler.
 func (r *DRExecutionReconciler) resolveHandler(
 	mode soteriav1alpha1.ExecutionMode,
 ) (engine.DRGroupHandler, error) {
 	switch mode {
 	case soteriav1alpha1.ExecutionModePlannedMigration:
 		if r.VMManager == nil {
+			if r.Handler != nil {
+				return r.Handler, nil
+			}
 			return nil, fmt.Errorf(
 				"VMManager not configured; planned migration requires a VMManager")
 		}
-		return &engine.PlannedMigrationHandler{
-			Driver:           nil, // executor resolves driver per-group
+		return &engine.FailoverHandler{
 			VMManager:        r.VMManager,
+			Config:           engine.FailoverConfig{GracefulShutdown: true, Force: false, RecordRPO: false},
 			SyncPollInterval: 2 * time.Second,
 			SyncTimeout:      10 * time.Minute,
 		}, nil
+	case soteriav1alpha1.ExecutionModeDisaster:
+		if r.VMManager == nil {
+			if r.Handler != nil {
+				return r.Handler, nil
+			}
+			return nil, fmt.Errorf(
+				"VMManager not configured; disaster failover requires a VMManager")
+		}
+		return &engine.FailoverHandler{
+			VMManager:        r.VMManager,
+			Config:           engine.FailoverConfig{GracefulShutdown: false, Force: true, RecordRPO: true},
+			SyncPollInterval: 2 * time.Second,
+			SyncTimeout:      10 * time.Minute,
+		}, nil
+	case soteriav1alpha1.ExecutionModeReprotect:
+		return &engine.NoOpHandler{}, nil
 	}
 	if r.Handler != nil {
 		return r.Handler, nil

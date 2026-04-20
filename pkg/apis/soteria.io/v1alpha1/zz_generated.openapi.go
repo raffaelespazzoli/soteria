@@ -718,7 +718,7 @@ func schema_pkg_apis_soteriaio_v1alpha1_DRPlanStatus(ref common.ReferenceCallbac
 				Properties: map[string]spec.Schema{
 					"phase": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Phase represents the current DR lifecycle state. Valid values: SteadyState, FailingOver, FailedOver, Reprotecting, DRedSteadyState, FailingBack",
+							Description: "Phase represents the current DR lifecycle state. Valid values: SteadyState, FailingOver, FailedOver, Reprotecting, DRedSteadyState, FailingBack, FailedBack, ReprotectingBack",
 							Type:        []string{"string"},
 							Format:      "",
 						},

@@ -68,11 +68,16 @@ func (drexecutionStrategy) Validate(_ context.Context, obj runtime.Object) field
 		allErrs = append(allErrs, field.Required(fldPath.Child("planName"), ""))
 	}
 	if exec.Spec.Mode != soteriav1alpha1.ExecutionModePlannedMigration &&
-		exec.Spec.Mode != soteriav1alpha1.ExecutionModeDisaster {
+		exec.Spec.Mode != soteriav1alpha1.ExecutionModeDisaster &&
+		exec.Spec.Mode != soteriav1alpha1.ExecutionModeReprotect {
 		allErrs = append(allErrs, field.NotSupported(
 			fldPath.Child("mode"),
 			exec.Spec.Mode,
-			[]string{string(soteriav1alpha1.ExecutionModePlannedMigration), string(soteriav1alpha1.ExecutionModeDisaster)},
+			[]string{
+				string(soteriav1alpha1.ExecutionModePlannedMigration),
+				string(soteriav1alpha1.ExecutionModeDisaster),
+				string(soteriav1alpha1.ExecutionModeReprotect),
+			},
 		))
 	}
 	return allErrs

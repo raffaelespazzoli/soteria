@@ -20,14 +20,18 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// DRPlan Phase values.
+// DRPlan Phase values — 8-phase symmetric lifecycle.
+// Rest states (4): SteadyState, FailedOver, DRedSteadyState, FailedBack
+// Transition states (4): FailingOver, Reprotecting, FailingBack, ReprotectingBack
 const (
-	PhaseSteadyState     = "SteadyState"
-	PhaseFailingOver     = "FailingOver"
-	PhaseFailedOver      = "FailedOver"
-	PhaseReprotecting    = "Reprotecting"
-	PhaseDRedSteadyState = "DRedSteadyState"
-	PhaseFailingBack     = "FailingBack"
+	PhaseSteadyState      = "SteadyState"
+	PhaseFailingOver      = "FailingOver"
+	PhaseFailedOver       = "FailedOver"
+	PhaseReprotecting     = "Reprotecting"
+	PhaseDRedSteadyState  = "DRedSteadyState"
+	PhaseFailingBack      = "FailingBack"
+	PhaseFailedBack       = "FailedBack"
+	PhaseReprotectingBack = "ReprotectingBack"
 )
 
 // ConsistencyLevel determines how VM disks are grouped into VolumeGroups for
@@ -70,7 +74,7 @@ type DRPlanSpec struct {
 
 type DRPlanStatus struct {
 	// Phase represents the current DR lifecycle state.
-	// Valid values: SteadyState, FailingOver, FailedOver, Reprotecting, DRedSteadyState, FailingBack
+	// Valid values: SteadyState, FailingOver, FailedOver, Reprotecting, DRedSteadyState, FailingBack, FailedBack, ReprotectingBack
 	Phase string `json:"phase,omitempty"`
 	// Conditions represent the latest observations of the DRPlan's state.
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
@@ -197,6 +201,7 @@ type ExecutionMode string
 const (
 	ExecutionModePlannedMigration ExecutionMode = "planned_migration"
 	ExecutionModeDisaster         ExecutionMode = "disaster"
+	ExecutionModeReprotect        ExecutionMode = "reprotect"
 )
 
 // ExecutionResult is the overall outcome of a DRExecution.

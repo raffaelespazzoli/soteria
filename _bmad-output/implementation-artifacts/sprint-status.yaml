@@ -151,7 +151,7 @@ development_status:
   epic-4: in-progress
   4-05-driver-registry-fallback-preflight-convergence: done
   4-1-dr-state-machine-execution-controller: done
-  4-1b-state-machine-symmetry-unified-failover-handler: ready-for-dev
+  4-1b-state-machine-symmetry-unified-failover-handler: done
   4-2-drgroup-chunking-wave-executor: done
   4-3-planned-migration-workflow: absorbed-into-4.1b
   4-4-disaster-failover-workflow: ready-for-dev

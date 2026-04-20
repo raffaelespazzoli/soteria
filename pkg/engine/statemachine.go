@@ -21,10 +21,12 @@ limitations under the License.
 // No mutable state is held — the controller reads current phase from the API,
 // calls Transition or CompleteTransition, and writes the result back.
 //
-// Phase graph:
+// 8-phase symmetric lifecycle (4 rest states, 4 transition states):
+//
 //   SteadyState ──(planned_migration|disaster)──► FailingOver ──(complete)──► FailedOver
-//   FailedOver ──(reprotect, Story 4.8)──► Reprotecting ──(complete)──► DRedSteadyState
-//   DRedSteadyState ──(planned_migration|disaster)──► FailingBack ──(complete)──► SteadyState
+//   FailedOver ──(reprotect)──► Reprotecting ──(complete)──► DRedSteadyState
+//   DRedSteadyState ──(planned_migration|disaster)──► FailingBack ──(complete)──► FailedBack
+//   FailedBack ──(reprotect)──► ReprotectingBack ──(complete)──► SteadyState
 
 package engine
 
@@ -40,31 +42,37 @@ import (
 var ErrInvalidPhaseTransition = errors.New("invalid phase transition")
 
 // validTransitions maps (currentPhase, executionMode) → target in-progress phase.
-// Only human-initiated execution modes (planned_migration, disaster) are wired;
-// reprotect transitions are handled by Story 4.8.
 var validTransitions = map[string]map[soteriav1alpha1.ExecutionMode]string{
 	soteriav1alpha1.PhaseSteadyState: {
 		soteriav1alpha1.ExecutionModePlannedMigration: soteriav1alpha1.PhaseFailingOver,
 		soteriav1alpha1.ExecutionModeDisaster:         soteriav1alpha1.PhaseFailingOver,
 	},
+	soteriav1alpha1.PhaseFailedOver: {
+		soteriav1alpha1.ExecutionModeReprotect: soteriav1alpha1.PhaseReprotecting,
+	},
 	soteriav1alpha1.PhaseDRedSteadyState: {
 		soteriav1alpha1.ExecutionModePlannedMigration: soteriav1alpha1.PhaseFailingBack,
 		soteriav1alpha1.ExecutionModeDisaster:         soteriav1alpha1.PhaseFailingBack,
+	},
+	soteriav1alpha1.PhaseFailedBack: {
+		soteriav1alpha1.ExecutionModeReprotect: soteriav1alpha1.PhaseReprotectingBack,
 	},
 }
 
 // completionTransitions maps an in-progress phase to its completion target.
 var completionTransitions = map[string]string{
-	soteriav1alpha1.PhaseFailingOver:  soteriav1alpha1.PhaseFailedOver,
-	soteriav1alpha1.PhaseReprotecting: soteriav1alpha1.PhaseDRedSteadyState,
-	soteriav1alpha1.PhaseFailingBack:  soteriav1alpha1.PhaseSteadyState,
+	soteriav1alpha1.PhaseFailingOver:      soteriav1alpha1.PhaseFailedOver,
+	soteriav1alpha1.PhaseReprotecting:     soteriav1alpha1.PhaseDRedSteadyState,
+	soteriav1alpha1.PhaseFailingBack:      soteriav1alpha1.PhaseFailedBack,
+	soteriav1alpha1.PhaseReprotectingBack: soteriav1alpha1.PhaseSteadyState,
 }
 
-// terminalPhases are steady states where no execution is in progress.
+// terminalPhases are rest states where no execution is in progress.
 var terminalPhases = map[string]bool{
 	soteriav1alpha1.PhaseSteadyState:     true,
 	soteriav1alpha1.PhaseFailedOver:      true,
 	soteriav1alpha1.PhaseDRedSteadyState: true,
+	soteriav1alpha1.PhaseFailedBack:      true,
 }
 
 // Transition validates whether the requested execution mode is legal given the
@@ -101,8 +109,8 @@ func ValidStartingPhases(mode soteriav1alpha1.ExecutionMode) []string {
 	return phases
 }
 
-// IsTerminalPhase returns true for steady-state phases where no execution is
-// in progress (SteadyState, FailedOver, DRedSteadyState).
+// IsTerminalPhase returns true for rest phases where no execution is
+// in progress (SteadyState, FailedOver, DRedSteadyState, FailedBack).
 func IsTerminalPhase(phase string) bool {
 	return terminalPhases[phase]
 }

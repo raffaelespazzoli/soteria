@@ -29,7 +29,7 @@ import (
 	"github.com/soteria-project/soteria/pkg/drivers/fake"
 )
 
-// --- mockVMManager for planned migration tests ---
+// --- mockVMManager for failover handler tests ---
 
 type mockVMManager struct {
 	mu      sync.Mutex
@@ -117,9 +117,19 @@ func makeVolumeGroupInfo(name, namespace string, vmNames ...string) soteriav1alp
 	}
 }
 
-// --- Tests ---
+const testVMKey = "ns1/vm-db01"
 
-func TestPlannedMigration_FullSuccess(t *testing.T) {
+func gracefulConfig() FailoverConfig {
+	return FailoverConfig{GracefulShutdown: true, Force: false, RecordRPO: false}
+}
+
+func disasterConfig() FailoverConfig {
+	return FailoverConfig{GracefulShutdown: false, Force: true, RecordRPO: true}
+}
+
+// --- Planned migration (GracefulShutdown=true) tests ---
+
+func TestFailoverHandler_Graceful_FullSuccess(t *testing.T) {
 	drv := fake.New()
 	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
 		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
@@ -132,9 +142,10 @@ func TestPlannedMigration_FullSuccess(t *testing.T) {
 	})
 
 	vm := newMockVMManager()
-	handler := &PlannedMigrationHandler{
+	handler := &FailoverHandler{
 		Driver:           drv,
 		VMManager:        vm,
+		Config:           gracefulConfig(),
 		SyncPollInterval: 1 * time.Millisecond,
 		SyncTimeout:      1 * time.Second,
 	}
@@ -150,8 +161,8 @@ func TestPlannedMigration_FullSuccess(t *testing.T) {
 	}
 
 	stops := vm.getStops()
-	if len(stops) != 1 || stops[0] != "ns1/vm-db01" {
-		t.Errorf("Expected VM stop ns1/vm-db01, got %v", stops)
+	if len(stops) != 1 || stops[0] != testVMKey {
+		t.Errorf("Expected VM stop %s, got %v", testVMKey, stops)
 	}
 
 	if err := handler.ExecuteGroup(ctx, groups[0]); err != nil {
@@ -159,8 +170,8 @@ func TestPlannedMigration_FullSuccess(t *testing.T) {
 	}
 
 	starts := vm.getStarts()
-	if len(starts) != 1 || starts[0] != "ns1/vm-db01" {
-		t.Errorf("Expected VM start ns1/vm-db01, got %v", starts)
+	if len(starts) != 1 || starts[0] != testVMKey {
+		t.Errorf("Expected VM start %s, got %v", testVMKey, starts)
 	}
 
 	if !drv.Called("StopReplication") {
@@ -171,14 +182,15 @@ func TestPlannedMigration_FullSuccess(t *testing.T) {
 	}
 }
 
-func TestPlannedMigration_Step0_StopVMFails(t *testing.T) {
+func TestFailoverHandler_Graceful_Step0_StopVMFails(t *testing.T) {
 	drv := fake.New()
 	vm := newMockVMManager()
-	vm.failOn["ns1/vm-db01"] = errors.New("connection refused")
+	vm.failOn[testVMKey] = errors.New("connection refused")
 
-	handler := &PlannedMigrationHandler{
+	handler := &FailoverHandler{
 		Driver:           drv,
 		VMManager:        vm,
+		Config:           gracefulConfig(),
 		SyncPollInterval: 1 * time.Millisecond,
 		SyncTimeout:      1 * time.Second,
 	}
@@ -196,7 +208,7 @@ func TestPlannedMigration_Step0_StopVMFails(t *testing.T) {
 	}
 }
 
-func TestPlannedMigration_Step0_StopReplicationFails(t *testing.T) {
+func TestFailoverHandler_Graceful_Step0_StopReplicationFails(t *testing.T) {
 	drv := fake.New()
 	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
 		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
@@ -204,9 +216,10 @@ func TestPlannedMigration_Step0_StopReplicationFails(t *testing.T) {
 	drv.OnStopReplication("vg-1").Return(errors.New("storage backend error"))
 
 	vm := newMockVMManager()
-	handler := &PlannedMigrationHandler{
+	handler := &FailoverHandler{
 		Driver:           drv,
 		VMManager:        vm,
+		Config:           gracefulConfig(),
 		SyncPollInterval: 1 * time.Millisecond,
 		SyncTimeout:      1 * time.Second,
 	}
@@ -224,12 +237,11 @@ func TestPlannedMigration_Step0_StopReplicationFails(t *testing.T) {
 	}
 }
 
-func TestPlannedMigration_Step0_SyncTimeout(t *testing.T) {
+func TestFailoverHandler_Graceful_Step0_SyncTimeout(t *testing.T) {
 	drv := fake.New()
 	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
 		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
 	})
-	// Return a status that never syncs (Source role, Degraded health).
 	for range 100 {
 		drv.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
 			ReplicationStatus: &drivers.ReplicationStatus{
@@ -240,9 +252,10 @@ func TestPlannedMigration_Step0_SyncTimeout(t *testing.T) {
 	}
 
 	vm := newMockVMManager()
-	handler := &PlannedMigrationHandler{
+	handler := &FailoverHandler{
 		Driver:           drv,
 		VMManager:        vm,
+		Config:           gracefulConfig(),
 		SyncPollInterval: 1 * time.Millisecond,
 		SyncTimeout:      50 * time.Millisecond,
 	}
@@ -260,12 +273,11 @@ func TestPlannedMigration_Step0_SyncTimeout(t *testing.T) {
 	}
 }
 
-func TestPlannedMigration_Step0_SyncCompletes(t *testing.T) {
+func TestFailoverHandler_Graceful_Step0_SyncCompletes(t *testing.T) {
 	drv := fake.New()
 	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
 		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
 	})
-	// First 2 polls: still syncing. Third poll: synced.
 	drv.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
 		ReplicationStatus: &drivers.ReplicationStatus{Role: drivers.RoleSource, Health: drivers.HealthSyncing},
 	})
@@ -277,9 +289,10 @@ func TestPlannedMigration_Step0_SyncCompletes(t *testing.T) {
 	})
 
 	vm := newMockVMManager()
-	handler := &PlannedMigrationHandler{
+	handler := &FailoverHandler{
 		Driver:           drv,
 		VMManager:        vm,
+		Config:           gracefulConfig(),
 		SyncPollInterval: 1 * time.Millisecond,
 		SyncTimeout:      1 * time.Second,
 	}
@@ -298,7 +311,7 @@ func TestPlannedMigration_Step0_SyncCompletes(t *testing.T) {
 	}
 }
 
-func TestPlannedMigration_PerGroup_SetSourceFails(t *testing.T) {
+func TestFailoverHandler_Graceful_PerGroup_SetSourceFails(t *testing.T) {
 	drv := fake.New()
 	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
 		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
@@ -306,9 +319,10 @@ func TestPlannedMigration_PerGroup_SetSourceFails(t *testing.T) {
 	drv.OnSetSource("vg-1").Return(errors.New("promotion failed"))
 
 	vm := newMockVMManager()
-	handler := &PlannedMigrationHandler{
+	handler := &FailoverHandler{
 		Driver:           drv,
 		VMManager:        vm,
+		Config:           gracefulConfig(),
 		SyncPollInterval: 1 * time.Millisecond,
 		SyncTimeout:      1 * time.Second,
 	}
@@ -326,18 +340,19 @@ func TestPlannedMigration_PerGroup_SetSourceFails(t *testing.T) {
 	}
 }
 
-func TestPlannedMigration_PerGroup_StartVMFails(t *testing.T) {
+func TestFailoverHandler_Graceful_PerGroup_StartVMFails(t *testing.T) {
 	drv := fake.New()
 	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
 		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
 	})
 
 	vm := newMockVMManager()
-	vm.failOn["ns1/vm-db01"] = errors.New("vm start timeout")
+	vm.failOn[testVMKey] = errors.New("vm start timeout")
 
-	handler := &PlannedMigrationHandler{
+	handler := &FailoverHandler{
 		Driver:           drv,
 		VMManager:        vm,
+		Config:           gracefulConfig(),
 		SyncPollInterval: 1 * time.Millisecond,
 		SyncTimeout:      1 * time.Second,
 	}
@@ -355,16 +370,17 @@ func TestPlannedMigration_PerGroup_StartVMFails(t *testing.T) {
 	}
 }
 
-func TestPlannedMigration_PerGroup_StepStatusRecorded(t *testing.T) {
+func TestFailoverHandler_Graceful_PerGroup_StepStatusRecorded(t *testing.T) {
 	drv := fake.New()
 	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
 		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
 	})
 
 	vm := newMockVMManager()
-	handler := &PlannedMigrationHandler{
+	handler := &FailoverHandler{
 		Driver:           drv,
 		VMManager:        vm,
+		Config:           gracefulConfig(),
 		SyncPollInterval: 1 * time.Millisecond,
 		SyncTimeout:      1 * time.Second,
 	}
@@ -400,12 +416,13 @@ func TestPlannedMigration_PerGroup_StepStatusRecorded(t *testing.T) {
 	}
 }
 
-func TestPlannedMigration_ContextCancelled(t *testing.T) {
+func TestFailoverHandler_Graceful_ContextCancelled(t *testing.T) {
 	drv := fake.New()
 	vm := newMockVMManager()
-	handler := &PlannedMigrationHandler{
+	handler := &FailoverHandler{
 		Driver:           drv,
 		VMManager:        vm,
+		Config:           gracefulConfig(),
 		SyncPollInterval: 1 * time.Millisecond,
 		SyncTimeout:      1 * time.Second,
 	}
@@ -423,22 +440,21 @@ func TestPlannedMigration_ContextCancelled(t *testing.T) {
 	}
 }
 
-func TestPlannedMigration_EmptyGroups(t *testing.T) {
+func TestFailoverHandler_Graceful_EmptyGroups(t *testing.T) {
 	drv := fake.New()
 	vm := newMockVMManager()
-	handler := &PlannedMigrationHandler{
+	handler := &FailoverHandler{
 		Driver:           drv,
 		VMManager:        vm,
+		Config:           gracefulConfig(),
 		SyncPollInterval: 1 * time.Millisecond,
 		SyncTimeout:      1 * time.Second,
 	}
 
-	// PreExecute with empty groups.
 	if err := handler.PreExecute(context.Background(), nil); err != nil {
 		t.Fatalf("PreExecute with empty groups should succeed: %v", err)
 	}
 
-	// ExecuteGroup with empty chunk.
 	group := ExecutionGroup{
 		Chunk:     DRGroupChunk{Name: "empty-group"},
 		Driver:    drv,
@@ -453,7 +469,7 @@ func TestPlannedMigration_EmptyGroups(t *testing.T) {
 	}
 }
 
-func TestPlannedMigration_MultiNamespace(t *testing.T) {
+func TestFailoverHandler_Graceful_MultiNamespace(t *testing.T) {
 	drv := fake.New()
 	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
 		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-web"},
@@ -469,9 +485,10 @@ func TestPlannedMigration_MultiNamespace(t *testing.T) {
 	})
 
 	vm := newMockVMManager()
-	handler := &PlannedMigrationHandler{
+	handler := &FailoverHandler{
 		Driver:           drv,
 		VMManager:        vm,
+		Config:           gracefulConfig(),
 		SyncPollInterval: 1 * time.Millisecond,
 		SyncTimeout:      1 * time.Second,
 	}
@@ -497,7 +514,7 @@ func TestPlannedMigration_MultiNamespace(t *testing.T) {
 	}
 }
 
-func TestPlannedMigration_VolumeGroupIDCaching(t *testing.T) {
+func TestFailoverHandler_Graceful_VolumeGroupIDCaching(t *testing.T) {
 	drv := fake.New()
 	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
 		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
@@ -510,9 +527,10 @@ func TestPlannedMigration_VolumeGroupIDCaching(t *testing.T) {
 	})
 
 	vm := newMockVMManager()
-	handler := &PlannedMigrationHandler{
+	handler := &FailoverHandler{
 		Driver:           drv,
 		VMManager:        vm,
+		Config:           gracefulConfig(),
 		SyncPollInterval: 1 * time.Millisecond,
 		SyncTimeout:      1 * time.Second,
 	}
@@ -523,12 +541,10 @@ func TestPlannedMigration_VolumeGroupIDCaching(t *testing.T) {
 
 	ctx := context.Background()
 
-	// PreExecute resolves vg-db → vg-1 (first CreateVolumeGroup call).
 	if err := handler.PreExecute(ctx, groups); err != nil {
 		t.Fatalf("PreExecute failed: %v", err)
 	}
 
-	// ExecuteGroup should reuse cached ID — no additional CreateVolumeGroup.
 	if err := handler.ExecuteGroup(ctx, groups[0]); err != nil {
 		t.Fatalf("ExecuteGroup failed: %v", err)
 	}
@@ -539,7 +555,7 @@ func TestPlannedMigration_VolumeGroupIDCaching(t *testing.T) {
 	}
 }
 
-func TestPlannedMigration_Step0_DeduplicatesVMs(t *testing.T) {
+func TestFailoverHandler_Graceful_Step0_DeduplicatesVMs(t *testing.T) {
 	drv := fake.New()
 	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
 		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
@@ -555,14 +571,14 @@ func TestPlannedMigration_Step0_DeduplicatesVMs(t *testing.T) {
 	})
 
 	vm := newMockVMManager()
-	handler := &PlannedMigrationHandler{
+	handler := &FailoverHandler{
 		Driver:           drv,
 		VMManager:        vm,
+		Config:           gracefulConfig(),
 		SyncPollInterval: 1 * time.Millisecond,
 		SyncTimeout:      1 * time.Second,
 	}
 
-	// Same VM appears in two groups (e.g., different volume groups sharing a VM).
 	sharedVM := VMReference{Name: "vm-db01", Namespace: "ns1"}
 	groups := []ExecutionGroup{
 		makeExecutionGroup("g-0", []VMReference{sharedVM}, []soteriav1alpha1.VolumeGroupInfo{
@@ -580,5 +596,232 @@ func TestPlannedMigration_Step0_DeduplicatesVMs(t *testing.T) {
 	stops := vm.getStops()
 	if len(stops) != 1 {
 		t.Errorf("VM should only be stopped once (deduplicated), got %d stops: %v", len(stops), stops)
+	}
+}
+
+// --- Disaster failover (GracefulShutdown=false) tests ---
+
+func TestFailoverHandler_DisasterConfig_NoStep0(t *testing.T) {
+	drv := fake.New()
+	vm := newMockVMManager()
+	handler := &FailoverHandler{
+		Driver:    drv,
+		VMManager: vm,
+		Config:    disasterConfig(),
+	}
+
+	vms := []VMReference{{Name: "vm-db01", Namespace: "ns1"}}
+	vgs := []soteriav1alpha1.VolumeGroupInfo{makeVolumeGroupInfo("vg-db", "ns1", "vm-db01")}
+	groups := []ExecutionGroup{makeExecutionGroup("wave-1-group-0", vms, vgs, drv, 0)}
+
+	if err := handler.PreExecute(context.Background(), groups); err != nil {
+		t.Fatalf("PreExecute should be a no-op for disaster: %v", err)
+	}
+
+	stops := vm.getStops()
+	if len(stops) != 0 {
+		t.Errorf("Disaster mode should not stop VMs in Step 0, got %d stops", len(stops))
+	}
+	if drv.Called("StopReplication") {
+		t.Error("Disaster mode Step 0 should not call StopReplication")
+	}
+}
+
+func TestFailoverHandler_DisasterConfig_ForceTrue(t *testing.T) {
+	drv := fake.New()
+	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
+	})
+
+	now := time.Now().Add(-5 * time.Minute)
+	drv.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:         drivers.RoleSource,
+			Health:       drivers.HealthDegraded,
+			LastSyncTime: &now,
+		},
+	})
+
+	vm := newMockVMManager()
+	handler := &FailoverHandler{
+		Driver:    drv,
+		VMManager: vm,
+		Config:    disasterConfig(),
+	}
+
+	vms := []VMReference{{Name: "vm-db01", Namespace: "ns1"}}
+	vgs := []soteriav1alpha1.VolumeGroupInfo{makeVolumeGroupInfo("vg-db", "ns1", "vm-db01")}
+	group := makeExecutionGroup("wave-1-group-0", vms, vgs, drv, 0)
+
+	if err := handler.ExecuteGroup(context.Background(), group); err != nil {
+		t.Fatalf("ExecuteGroup failed: %v", err)
+	}
+
+	if !drv.Called("SetSource") {
+		t.Error("Expected SetSource to be called")
+	}
+	starts := vm.getStarts()
+	if len(starts) != 1 || starts[0] != testVMKey {
+		t.Errorf("Expected VM start %s, got %v", testVMKey, starts)
+	}
+}
+
+func TestFailoverHandler_DisasterConfig_NoStopReplication(t *testing.T) {
+	drv := fake.New()
+	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
+	})
+
+	vm := newMockVMManager()
+	handler := &FailoverHandler{
+		Driver:    drv,
+		VMManager: vm,
+		Config:    disasterConfig(),
+	}
+
+	vms := []VMReference{{Name: "vm-db01", Namespace: "ns1"}}
+	vgs := []soteriav1alpha1.VolumeGroupInfo{makeVolumeGroupInfo("vg-db", "ns1", "vm-db01")}
+	group := makeExecutionGroup("wave-1-group-0", vms, vgs, drv, 0)
+
+	if err := handler.ExecuteGroup(context.Background(), group); err != nil {
+		t.Fatalf("ExecuteGroup failed: %v", err)
+	}
+
+	if drv.Called("StopReplication") {
+		t.Error("Disaster mode per-group should NOT call StopReplication")
+	}
+}
+
+func TestFailoverHandler_DisasterConfig_RPORecorded(t *testing.T) {
+	drv := fake.New()
+	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
+	})
+
+	now := time.Now().Add(-3 * time.Minute)
+	drv.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:         drivers.RoleSource,
+			Health:       drivers.HealthDegraded,
+			LastSyncTime: &now,
+		},
+	})
+
+	vm := newMockVMManager()
+	handler := &FailoverHandler{
+		Driver:    drv,
+		VMManager: vm,
+		Config:    disasterConfig(),
+	}
+
+	vms := []VMReference{{Name: "vm-db01", Namespace: "ns1"}}
+	vgs := []soteriav1alpha1.VolumeGroupInfo{makeVolumeGroupInfo("vg-db", "ns1", "vm-db01")}
+	group := makeExecutionGroup("wave-1-group-0", vms, vgs, drv, 0)
+
+	steps, err := handler.ExecuteGroupWithSteps(context.Background(), group)
+	if err != nil {
+		t.Fatalf("ExecuteGroupWithSteps failed: %v", err)
+	}
+
+	// Disaster: no StopReplication, so steps should be: SetSource + StartVM = 2
+	if len(steps) != 2 {
+		t.Fatalf("Expected 2 step statuses for disaster mode, got %d", len(steps))
+	}
+
+	if steps[0].Name != StepSetSource {
+		t.Errorf("First step should be SetSource, got %q", steps[0].Name)
+	}
+	if !strings.Contains(steps[0].Message, "RPO:") {
+		t.Errorf("SetSource step should contain RPO in message: %q", steps[0].Message)
+	}
+}
+
+func TestFailoverHandler_DisasterConfig_GetReplicationStatusFails(t *testing.T) {
+	drv := fake.New()
+	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
+	})
+	drv.OnGetReplicationStatus("vg-1").Return(errors.New("storage unreachable"))
+
+	vm := newMockVMManager()
+	handler := &FailoverHandler{
+		Driver:    drv,
+		VMManager: vm,
+		Config:    disasterConfig(),
+	}
+
+	vms := []VMReference{{Name: "vm-db01", Namespace: "ns1"}}
+	vgs := []soteriav1alpha1.VolumeGroupInfo{makeVolumeGroupInfo("vg-db", "ns1", "vm-db01")}
+	group := makeExecutionGroup("wave-1-group-0", vms, vgs, drv, 0)
+
+	steps, err := handler.ExecuteGroupWithSteps(context.Background(), group)
+	if err != nil {
+		t.Fatalf("ExecuteGroupWithSteps should succeed even when GetReplicationStatus fails: %v", err)
+	}
+
+	if len(steps) != 2 {
+		t.Fatalf("Expected 2 step statuses, got %d", len(steps))
+	}
+	if !strings.Contains(steps[0].Message, "RPO: unknown") {
+		t.Errorf("SetSource message should record RPO as unknown: %q", steps[0].Message)
+	}
+}
+
+func TestFailoverHandler_DisasterConfig_NilLastSyncTimeRecordedAsUnknown(t *testing.T) {
+	drv := fake.New()
+	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
+	})
+	drv.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleSource,
+			Health: drivers.HealthDegraded,
+		},
+	})
+
+	vm := newMockVMManager()
+	handler := &FailoverHandler{
+		Driver:    drv,
+		VMManager: vm,
+		Config:    disasterConfig(),
+	}
+
+	vms := []VMReference{{Name: "vm-db01", Namespace: "ns1"}}
+	vgs := []soteriav1alpha1.VolumeGroupInfo{makeVolumeGroupInfo("vg-db", "ns1", "vm-db01")}
+	group := makeExecutionGroup("wave-1-group-0", vms, vgs, drv, 0)
+
+	steps, err := handler.ExecuteGroupWithSteps(context.Background(), group)
+	if err != nil {
+		t.Fatalf("ExecuteGroupWithSteps should succeed when LastSyncTime is nil: %v", err)
+	}
+
+	if len(steps) != 2 {
+		t.Fatalf("Expected 2 step statuses, got %d", len(steps))
+	}
+	if !strings.Contains(steps[0].Message, "RPO: unknown") {
+		t.Errorf("SetSource message should record RPO as unknown when LastSyncTime is nil: %q", steps[0].Message)
+	}
+}
+
+func TestFailoverHandler_DisasterConfig_ExecuteGroupAlsoSucceeds(t *testing.T) {
+	drv := fake.New()
+	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
+	})
+	drv.OnGetReplicationStatus("vg-1").Return(errors.New("storage unreachable"))
+
+	vm := newMockVMManager()
+	handler := &FailoverHandler{
+		Driver:    drv,
+		VMManager: vm,
+		Config:    disasterConfig(),
+	}
+
+	vms := []VMReference{{Name: "vm-db01", Namespace: "ns1"}}
+	vgs := []soteriav1alpha1.VolumeGroupInfo{makeVolumeGroupInfo("vg-db", "ns1", "vm-db01")}
+	group := makeExecutionGroup("wave-1-group-0", vms, vgs, drv, 0)
+
+	if err := handler.ExecuteGroup(context.Background(), group); err != nil {
+		t.Fatalf("ExecuteGroup should succeed even when GetReplicationStatus fails for RPO: %v", err)
 	}
 }

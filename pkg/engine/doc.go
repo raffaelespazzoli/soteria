@@ -16,13 +16,16 @@ limitations under the License.
 
 // Package engine implements the DR workflow execution engine. It provides:
 //
-//   - DR lifecycle state machine (statemachine.go): defines the 6 DRPlan phases
-//     (SteadyState, FailingOver, FailedOver, Reprotecting, DRedSteadyState,
-//     FailingBack) and validates transitions between them. Transition() maps
-//     (currentPhase, executionMode) to the target in-progress phase.
-//     CompleteTransition() advances in-progress phases to their completion
-//     targets. All functions are pure — no mutable state is held; the DRPlan's
-//     .status.phase field is the authoritative state.
+//   - DR lifecycle state machine (statemachine.go): defines the 8-phase symmetric
+//     DRPlan lifecycle — 4 rest states (SteadyState, FailedOver, DRedSteadyState,
+//     FailedBack) and 4 transition states (FailingOver, Reprotecting, FailingBack,
+//     ReprotectingBack). Transition() maps (currentPhase, executionMode) to the
+//     target in-progress phase. CompleteTransition() advances in-progress phases to
+//     their completion targets. All functions are pure — no mutable state is held;
+//     the DRPlan's .status.phase field is the authoritative state.
+//
+//     Full cycle: SteadyState → FailingOver → FailedOver → Reprotecting →
+//     DRedSteadyState → FailingBack → FailedBack → ReprotectingBack → SteadyState.
 //
 //   - VM discovery and wave grouping (discovery.go): abstracts Kubernetes API
 //     access behind the VMDiscoverer interface, partitions VMs into ordered waves
@@ -43,22 +46,25 @@ limitations under the License.
 //   - Wave executor (executor.go): orchestrates DR execution by running the full
 //     discover → group → chunk pipeline at execution time, then executing waves
 //     sequentially with concurrent DRGroups within each wave. The DRGroupHandler
-//     interface abstracts per-group workflow steps (planned migration, disaster
-//     failover); a NoOpHandler (handler_noop.go) enables testing the executor
-//     loop without real storage operations. The executor uses fail-forward
-//     semantics: a failed DRGroup does not block siblings or subsequent waves.
-//     Status updates are serialized via mutex and written to the DRExecution
-//     status subresource after each group completes.
+//     interface abstracts per-group workflow steps; a NoOpHandler (handler_noop.go)
+//     enables testing the executor loop without real storage operations. The
+//     executor uses fail-forward semantics: a failed DRGroup does not block
+//     siblings or subsequent waves. Status updates are serialized via mutex and
+//     written to the DRExecution status subresource after each group completes.
 //
-//   - Planned migration workflow (planned.go): the first real DRGroupHandler
-//     implementation that drives actual DR operations through the StorageProvider
-//     driver. Two-phase design: Step 0 (PreExecute) is a global pre-execution
-//     phase that stops all origin VMs, stops replication on all volume groups,
-//     and polls GetReplicationStatus until sync completion — guaranteeing RPO=0.
-//     The per-DRGroup phase (ExecuteGroup) promotes target volumes to Source via
-//     SetSource(force=false) and starts target VMs, wave by wave. All driver
-//     calls use force=false because planned migration assumes both sites are
-//     healthy. The disaster failover handler (Story 4.4) uses force=true.
+//   - Unified FailoverHandler (failover.go): implements both planned migration and
+//     disaster failover through a single DRGroupHandler driven by FailoverConfig
+//     — not the execution mode string. The controller maps mode → config:
+//     planned_migration → {GracefulShutdown: true, Force: false, RecordRPO: false}
+//     disaster          → {GracefulShutdown: false, Force: true, RecordRPO: true}
+//     When GracefulShutdown=true, PreExecute runs Step 0 (stop VMs, stop
+//     replication, sync wait) and per-group calls StopReplication+SetSource+StartVM.
+//     When GracefulShutdown=false, PreExecute is a no-op, per-group skips
+//     StopReplication, and SetSource uses force=true. When RecordRPO=true,
+//     GetReplicationStatus.LastSyncTime is read after SetSource to estimate data
+//     loss. The same handler handles both failover (from SteadyState) and failback
+//     (from DRedSteadyState) — direction is encoded in state machine phases, not
+//     handler logic.
 //
 //   - VMManager interface (vm.go): abstracts KubeVirt VM lifecycle control for
 //     stopping origin VMs (Step 0) and starting target VMs (per-DRGroup).

@@ -57,11 +57,17 @@ func ValidateDRExecution(exec *DRExecution) field.ErrorList {
 		allErrs = append(allErrs, field.Required(specPath.Child("planName"), ""))
 	}
 
-	if exec.Spec.Mode != ExecutionModePlannedMigration && exec.Spec.Mode != ExecutionModeDisaster {
+	if exec.Spec.Mode != ExecutionModePlannedMigration &&
+		exec.Spec.Mode != ExecutionModeDisaster &&
+		exec.Spec.Mode != ExecutionModeReprotect {
 		allErrs = append(allErrs, field.NotSupported(
 			specPath.Child("mode"),
 			exec.Spec.Mode,
-			[]string{string(ExecutionModePlannedMigration), string(ExecutionModeDisaster)},
+			[]string{
+				string(ExecutionModePlannedMigration),
+				string(ExecutionModeDisaster),
+				string(ExecutionModeReprotect),
+			},
 		))
 	}
 

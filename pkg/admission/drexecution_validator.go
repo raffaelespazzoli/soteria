@@ -68,11 +68,13 @@ func (v *DRExecutionValidator) Handle(ctx context.Context, req admission.Request
 	}
 
 	if exec.Spec.Mode != soteriav1alpha1.ExecutionModePlannedMigration &&
-		exec.Spec.Mode != soteriav1alpha1.ExecutionModeDisaster {
+		exec.Spec.Mode != soteriav1alpha1.ExecutionModeDisaster &&
+		exec.Spec.Mode != soteriav1alpha1.ExecutionModeReprotect {
 		return admission.Denied(fmt.Sprintf(
-			"spec.mode must be %q or %q, got %q",
+			"spec.mode must be %q, %q, or %q, got %q",
 			soteriav1alpha1.ExecutionModePlannedMigration,
 			soteriav1alpha1.ExecutionModeDisaster,
+			soteriav1alpha1.ExecutionModeReprotect,
 			exec.Spec.Mode,
 		))
 	}
