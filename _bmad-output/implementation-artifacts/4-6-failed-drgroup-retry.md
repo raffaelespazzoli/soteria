@@ -166,9 +166,10 @@ This is Story 4.6 of Epic 4 (DR Workflow Engine — Full Lifecycle). It implemen
 |-------|-------------|-------------|
 | 4.05 | Registry fallback + preflight convergence | Prerequisite — done |
 | 4.1 | State machine + execution controller + admission webhook | Prerequisite — provides Transition, CompleteTransition, controller |
+| 4.1b | 8-phase state machine + unified FailoverHandler | Prerequisite — provides FailoverHandler, FailedBack, ReprotectingBack phases |
 | 4.2 | Wave executor framework + controller dispatch | Prerequisite — provides WaveExecutor, DRGroupHandler, ExecutionGroup, fail-forward |
-| 4.3 | Planned migration workflow + VMManager | Prerequisite — provides PlannedMigrationHandler |
-| 4.4 | Disaster failover workflow | Prerequisite — provides DisasterFailoverHandler |
+| 4.3 | Planned migration workflow + VMManager | Prerequisite — provides FailoverHandler |
+| 4.4 | Disaster failover workflow | Prerequisite — provides FailoverHandler |
 | 4.5 | Fail-forward error handling & partial success | Prerequisite — provides GroupError, StepRecorder, DRGroupStatus lifecycle, PVCResolver |
 | **4.6** | **Failed DRGroup retry** | **This story — annotation-triggered retry, VM health, strategy relaxation** |
 | 4.7 | Checkpoint, resume & HA | Builds on DRGroupStatus for resume state |
@@ -220,8 +221,7 @@ The current `drexecutionStatusStrategy.ValidateUpdate` blocks ALL status updates
 | File | What It Provides | How This Story Uses It |
 |------|-----------------|----------------------|
 | `pkg/engine/executor.go` (Story 4.2+4.5) | `WaveExecutor`, `DRGroupHandler`, `ExecutionGroup`, `executeWave`, `executeGroup`, `updateGroupStatus`, mutex pattern, `StepRecorder`, `GroupError` | Reuse the same per-group execution and status update infrastructure. Add `ExecuteRetry` method to `WaveExecutor`. |
-| `pkg/engine/planned.go` (Story 4.3) | `PlannedMigrationHandler` | Same handler for planned migration retries — no changes |
-| `pkg/engine/disaster.go` (Story 4.4) | `DisasterFailoverHandler` | Same handler for disaster retries — no changes |
+| `pkg/engine/failover.go` (Stories 4.3–4.4) | `FailoverHandler` | Same handler for planned migration and disaster retries — no changes |
 | `pkg/engine/vm.go` (Story 4.3) | `VMManager`, `KubeVirtVMManager` | VM health validator accesses same KubeVirt VMs — share scheme and client |
 | `pkg/engine/statemachine.go` (Story 4.1) | `CompleteTransition` | NOT called during retry — plan phase was already advanced during initial execution |
 | `pkg/engine/pvc_resolver.go` (Story 4.5) | `PVCResolver`, `KubeVirtPVCResolver` | Reuse for driver resolution during retry |
@@ -252,8 +252,7 @@ The current `drexecutionStatusStrategy.ValidateUpdate` blocks ALL status updates
 | File | Reason |
 |------|--------|
 | `pkg/engine/statemachine.go` | State machine — NOT called during retry (plan phase already advanced) |
-| `pkg/engine/planned.go` | Handler — use for retry, don't modify |
-| `pkg/engine/disaster.go` | Handler — use for retry, don't modify |
+| `pkg/engine/failover.go` | Handler — use for retry, don't modify |
 | `pkg/engine/chunker.go` | Chunker — no changes |
 | `pkg/engine/discovery.go` | VM discovery — reuse for driver resolution, don't modify |
 | `pkg/engine/consistency.go` | Consistency resolution — reuse, don't modify |
@@ -271,7 +270,7 @@ The current `drexecutionStatusStrategy.ValidateUpdate` blocks ALL status updates
 
 **1. Retry reuses the same `DRGroupHandler` — the handler doesn't know it's a retry.**
 
-The retry calls `handler.ExecuteGroup(ctx, group)` with the same `ExecutionGroup` struct. Handlers (planned.go, disaster.go) are idempotent by design (all driver methods are idempotent). The handler doesn't need retry awareness — it executes the same steps as the initial attempt.
+The retry calls `handler.ExecuteGroup(ctx, group)` with the same `ExecutionGroup` struct. The handler (`pkg/engine/failover.go`) is idempotent by design (all driver methods are idempotent). The handler doesn't need retry awareness — it executes the same steps as the initial attempt.
 
 **2. Retry does NOT call `CompleteTransition` — the plan phase was already advanced.**
 
@@ -466,12 +465,12 @@ return fmt.Errorf("executing retry for group %s: %w", groupName, err)
 - `CompleteTransition` called for Succeeded AND PartiallySucceeded — plan phase already advanced before retry
 
 **From Story 4.4 (Disaster Failover Workflow):**
-- `DisasterFailoverHandler` — reused during disaster retry without modification
+- `FailoverHandler` — reused during disaster retry without modification
 - RPO recording — retry does not re-record RPO (initial recording is sufficient)
 - Step name constants shared — retry records same step names
 
 **From Story 4.3 (Planned Migration Workflow):**
-- `PlannedMigrationHandler` — reused during planned migration retry without modification
+- `FailoverHandler` — reused during planned migration retry without modification
 - `resolveVolumeGroupID` — retry reconstructs chunks from execution status, bypassing this
 - `VMManager` — not directly used in retry (VM health validator replaces the need)
 

@@ -80,6 +80,8 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 - Labels/annotations: `soteria.io/<key>` kebab-case — `soteria.io/drplan`, `soteria.io/wave`
 - Event reasons: PascalCase past-tense — `FailoverStarted`, `WaveCompleted`, `GroupFailed`
 - RBAC: Kubernetes-native only — no custom authorization logic
+- DRPlan 8-phase lifecycle: 4 rest states (`SteadyState`, `FailedOver`, `DRedSteadyState`, `FailedBack`) + 4 transition states (`FailingOver`, `Reprotecting`, `FailingBack`, `ReprotectingBack`). Phase advances to transition state when execution starts, to rest state when execution completes
+- Unified handler model: `FailoverHandler` (config: GracefulShutdown, Force, RecordRPO) implements both failover and failback. `ReprotectHandler` implements both reprotect and restore. Direction is encoded in state machine phases, not handler logic
 
 **ScyllaDB Storage Layer:**
 
@@ -267,6 +269,7 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 - RPO is storage-determined: orchestrator reports estimated RPO but does not enforce targets
 - VM pre-existence: VMs exist on both clusters with PVC bindings. Orchestrator transitions volumes to Source role and starts VMs — does not create VMs or rebind PVCs
 - Homogeneous storage only: Dell-to-Dell, ODF-to-ODF — no cross-vendor replication
+- DR phase semantics: failback completes to FailedBack (no replication); reprotect-back (restore) completes to SteadyState with A→B replication
 
 **Architectural Boundaries:**
 
@@ -300,4 +303,4 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 - Review periodically for outdated rules
 - Remove rules that become obvious over time
 
-Last Updated: 2026-04-13
+Last Updated: 2026-04-20

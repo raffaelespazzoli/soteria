@@ -205,6 +205,7 @@ kubebuilder init --domain dr.orchestrator --repo github.com/soteria-project/sote
 | Controller ↔ API server | Standard client-go via kube-apiserver proxy | Decoupled from ScyllaDB; RBAC/audit/admission enforced uniformly; extra hop negligible at our write rates |
 | Checkpointing | Per-DRGroup — DRExecution status updated after each DRGroup completes | Natural execution boundary; concurrent operations within a DRGroup retry together; storage operations are idempotent |
 | Error model | Fail-forward with PartiallySucceeded (pre-decided in PRD) | Rollback impossible when active DC is down |
+| Unified handler model | Single FailoverHandler (planned/disaster config), single ReprotectHandler | Failover == failback, reprotect == restore at the code level. Direction encoded in state machine phases, not handler logic |
 
 ### Frontend Architecture
 
@@ -301,7 +302,7 @@ kubebuilder init --domain dr.orchestrator --repo github.com/soteria-project/sote
 | Area | Convention | Example |
 |---|---|---|
 | Status conditions | Standard `metav1.Condition` type | `type: Ready`, `type: Progressing`, `type: Degraded` |
-| DRPlan phase | PascalCase string enum on `.status.phase` | `SteadyState`, `FailingOver`, `FailedOver`, `Reprotecting`, `DRedSteadyState`, `FailingBack` |
+| DRPlan phase | PascalCase string enum on `.status.phase` | `SteadyState`, `FailingOver`, `FailedOver`, `Reprotecting`, `DRedSteadyState`, `FailingBack`, `FailedBack`, `ReprotectingBack` |
 | DRExecution result | `.status.result` enum | `Succeeded`, `PartiallySucceeded`, `Failed` |
 | Per-DRGroup status | Embedded in `.status.waves[].groups[]` | `Completed`, `Failed`, `InProgress`, `Pending` |
 | Timestamps | `metav1.Time` (ISO 8601) | `startTime`, `completionTime` |
@@ -435,8 +436,8 @@ soteria/
 │   │   ├── statemachine.go                  # 4-state DR cycle: transitions + validation
 │   │   ├── checkpoint.go                    # Per-DRGroup checkpoint: write status after each group
 │   │   ├── discovery.go                     # VM discovery via `soteria.io/drplan=<planName>` label + wave grouping
-│   │   ├── planned.go                       # Planned migration workflow
-│   │   └── disaster.go                      # Disaster recovery workflow
+│   │   ├── failover.go                      # Unified failover/failback workflow (planned + disaster modes)
+│   │   └── reprotect.go                     # Re-protect / restore workflow
 │   │
 │   ├── controller/                          # Kubernetes controllers (controller-runtime)
 │   │   ├── drplan/
@@ -545,7 +546,7 @@ Only `pkg/storage/scylladb/` touches ScyllaDB directly. The controller and Conso
 | FR Category | Primary Location | Key Files |
 |---|---|---|
 | DR Plan Management (FR1–FR8) | `pkg/apis/`, `pkg/controller/drplan/`, `pkg/admission/` | `types.go`, `reconciler.go`, `drplan_validator.go` |
-| DR Execution & Workflow (FR9–FR19) | `pkg/engine/`, `pkg/controller/drexecution/` | `executor.go`, `statemachine.go`, `checkpoint.go` |
+| DR Execution & Workflow (FR9–FR19) | `pkg/engine/`, `pkg/controller/drexecution/` | `failover.go`, `reprotect.go`, `statemachine.go`, `executor.go`, `checkpoint.go` |
 | Storage Abstraction (FR20, FR21, FR23–FR25) | `pkg/drivers/` | `interface.go`, `registry.go`, `noop/driver.go` |
 | Cross-Site Shared State (FR26–FR30) | `pkg/storage/scylladb/`, `pkg/apiserver/` | `store.go`, `watch.go`, `versioner.go` |
 | Monitoring (FR31–FR34) | `pkg/metrics/`, `pkg/controller/drplan/` | `metrics.go`, `reconciler.go` |
@@ -572,6 +573,14 @@ Only `pkg/storage/scylladb/` touches ScyllaDB directly. The controller and Conso
    → DRPlan controller polls driver.GetReplicationStatus()
    → Updates DRPlan status conditions → ScyllaDB
    → CDC → cacher → Console dashboard
+
+4. Full DR lifecycle (8-phase cycle)
+   SteadyState →[failover]→ FailingOver →[complete]→ FailedOver
+   →[reprotect]→ Reprotecting →[complete]→ DRedSteadyState
+   →[failback]→ FailingBack →[complete]→ FailedBack
+   →[restore]→ ReprotectingBack →[complete]→ SteadyState
+   Failover and failback use the same FailoverHandler.
+   Reprotect and restore use the same ReprotectHandler.
 ```
 
 ## Architecture Validation Results
@@ -625,7 +634,7 @@ Only `pkg/storage/scylladb/` touches ScyllaDB directly. The controller and Conso
 
 **Important Gaps (non-blocking):**
 
-1. **Re-protect workflow file:** Add `pkg/engine/reprotect.go` — re-protect is a storage-only operation (no waves) but deserves explicit code rather than being buried in the state machine.
+1. **Unified handler model:** `pkg/engine/failover.go` implements both planned migration and disaster failover as a single `FailoverHandler` with configuration. `pkg/engine/reprotect.go` implements both re-protect and restore as a single `ReprotectHandler`. The `FailedBack` rest state and `ReprotectingBack` transition state complete the symmetric 8-phase lifecycle.
 2. **Hook extension points:** Hooks are post-v1, but define empty hook interfaces in the executor (`preWave`, `postWave`, `preVM`, `postVM` callbacks) so v2 hooks don't require engine restructuring.
 3. **ScyllaDB operational docs:** `config/scylladb/` has the ScyllaCluster CR but sizing guidance and reference architecture should be documented post-v1.
 

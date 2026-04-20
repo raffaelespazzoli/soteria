@@ -39,7 +39,7 @@ The vendor-specific surface is narrow — four replication operations (SetSource
 
 - **Project Type:** Kubernetes Operator / Infrastructure Orchestrator (Go, CRDs, Aggregated API Server, kubectl-native)
 - **Domain:** Infrastructure — Disaster Recovery
-- **Complexity:** High — cross-site state coordination, multi-vendor storage abstraction, safety-critical failure scenarios, complex state machine (4-state DR cycle with 3 execution modes)
+- **Complexity:** High — cross-site state coordination, multi-vendor storage abstraction, safety-critical failure scenarios, complex state machine (4 rest states, 8 phases with 4 transitions, 3 execution modes: planned_migration, disaster, reprotect)
 - **Project Context:** Greenfield
 
 ## Success Criteria
@@ -283,11 +283,11 @@ Metrics are exposed via standard `/metrics` endpoint and scraped by Prometheus. 
 | StorageProvider Go interface | 7-method interface with role-based replication model (NonReplicated/Source/Target) |
 | No-op driver | Full interface implementation for dev/test/CI |
 | DRPlan CRD | Label-driven wave formation, waveLabel, maxConcurrentFailovers. VMs associated via `soteria.io/drplan` label. No `type` field — execution mode chosen at runtime |
-| DRExecution CRD | Immutable audit record. Execution mode (planned_migration, disaster) is a field on DRExecution, not DRPlan |
+| DRExecution CRD | Immutable audit record. Execution mode (planned_migration, disaster, reprotect) is a field on DRExecution, not DRPlan |
 | Planned migration workflow | Graceful stop → StopReplication on source → SetSource on target site → start VMs wave by wave. RPO=0 |
 | Disaster recovery workflow | SetSource(force=true) on target site → start VMs wave by wave. RPO>0. Origin errors ignored |
-| Re-protect workflow | StopReplication on old active → SetTarget on old active / SetSource on new active → monitor until healthy |
-| Failback | Mirror of failover (re-uses the same engine, reversed direction) |
+| Re-protect workflow | StopReplication on old active → SetSource on new active → monitor until healthy. Used after failover (FailedOver→DRedSteadyState) and after failback as "restore" (FailedBack→SteadyState) |
+| Failback | Same handler as failover (FailoverHandler with same planned_migration/disaster config). Lands at FailedBack state (unprotected) — restore required |
 | ScyllaDB + Aggregated API Server | Custom `storage.Interface` for k8s.io/apiserver. Shared resources: DRPlan, DRExecution, DRGroupStatus |
 | OCP Console plugin (core) | DR Dashboard, plan detail views, failover trigger with pre-flight checks, live execution monitor |
 | Prometheus metrics | VMs under plan, failover duration, RPO/replication lag, execution success/failure |
@@ -327,13 +327,20 @@ Metrics are exposed via standard `/metrics` endpoint and scraped by Prometheus. 
 
 **DRPlan has no `type` field.** A DRPlan describes what to protect and how — wave grouping and throttling. VMs declare plan membership via the `soteria.io/drplan` label. Execution mode is chosen at runtime and recorded on DRExecution.
 
-**Three execution modes (v1 ships two, third is post-v1):**
+**DRPlan phases track the DR lifecycle.** The plan progresses through 8 phases — 4 rest states (SteadyState, FailedOver, DRedSteadyState, FailedBack) and 4 transition states (FailingOver, Reprotecting, FailingBack, ReprotectingBack). Rest states indicate where the system is idle; transition states indicate an operation is in progress. The phase advances to a transition state when an execution starts, and to the next rest state when it completes. The full cycle is: SteadyState → FailingOver → FailedOver → Reprotecting → DRedSteadyState → FailingBack → FailedBack → ReprotectingBack → SteadyState.
+
+**Three execution modes (v1 ships all three):**
+
+Failover and failback use the same handler — the execution mode (planned_migration or disaster) determines behavior, not the direction. Direction is encoded in the state machine phases for human visibility and audit compliance.
 
 | Mode | Origin Site | Target Site | RPO | v1 | Lasting Effects |
 |---|---|---|---|---|---|
 | **Planned Migration** | Both DCs up. Graceful VM shutdown → StopReplication → final sync | SetSource on target volumes → start VMs wave by wave | 0 | Yes | Yes |
 | **Disaster Recovery** | May be down. Errors ignored | SetSource(force=true) on target volumes → start VMs wave by wave | >0 | Yes | Yes |
+| **Reprotect** | N/A (storage-only, no VM changes) | StopReplication(force=true) → SetSource → monitor replication health | N/A | Yes | Yes |
 | **Test** *(post-v1)* | VMs keep running, untouched | Clone/snapshot volumes → start VMs in isolated network → validate → cleanup | N/A | No | None |
+
+Planned migration and disaster recovery are the same core workflow with different configuration: planned migration adds a pre-execution phase (Step 0: stop origin VMs, stop replication, wait for final sync). Disaster skips Step 0 and uses force=true. A single `FailoverHandler` implements both modes. Similarly, failover (from SteadyState) and failback (from DRedSteadyState) are the same operation — the handler does not distinguish direction. Reprotect (from FailedOver) and restore (from FailedBack) are also the same operation — a single `ReprotectHandler` implements both.
 
 ## Functional Requirements
 
@@ -357,10 +364,10 @@ Metrics are exposed via standard `/metrics` endpoint and scraped by Prometheus. 
 - **FR13:** Orchestrator uses fail-forward error handling — if a DRGroup fails, it is marked `Failed`, the engine continues with remaining groups, and the execution is reported as `PartiallySucceeded`
 - **FR14:** Operator can manually retry a failed DRGroup if the VM is still in a healthy, known state on the original site
 - **FR15:** Orchestrator rejects retry attempts when the starting state is non-standard or unpredictable, requiring manual intervention
-- **FR16:** Operator can trigger re-protect after a failover — orchestrator stops replication on the old active site (if reachable), transitions old active volumes to Target and new active volumes to Source, and monitors until replication is healthy
-- **FR17:** Operator can trigger failback — orchestrator executes the reverse of failover using the same wave-based engine
+- **FR16:** Operator can trigger re-protect after a failover or failback — orchestrator stops replication on the old active site (if reachable), transitions old active volumes to Target and new active volumes to Source, and monitors until replication is healthy. Re-protect from FailedOver establishes reverse replication (Reprotecting → DRedSteadyState). Re-protect from FailedBack restores original replication (ReprotectingBack → SteadyState). Both use the same ReprotectHandler.
+- **FR17:** Operator can trigger failback from DRedSteadyState — orchestrator executes the same workflow as failover (planned_migration or disaster mode) using the same FailoverHandler. Failback lands at FailedBack state (unprotected). Operator must subsequently trigger restore (re-protect from FailedBack) to re-establish original replication and return to SteadyState.
 - **FR18:** All failover operations require explicit human initiation — no automatic failure detection or auto-failover
-- **FR19:** Execution mode (planned_migration or disaster) is specified at execution time, not on the DRPlan definition
+- **FR19:** Execution mode (planned_migration, disaster, or reprotect) is specified at execution time, not on the DRPlan definition
 
 ### Storage Abstraction
 

@@ -1,6 +1,6 @@
 # Story 4.1: DR State Machine & Execution Controller
 
-Status: done
+Status: done (extended by Story 4.1b — 8-phase model)
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 

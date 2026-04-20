@@ -294,7 +294,7 @@ Storage vendor engineers can implement and validate new drivers using the 7-meth
 **FRs covered:** FR20, FR21, FR23, FR24, FR25
 
 ### Epic 4: DR Workflow Engine — Full Lifecycle
-Operators can execute the complete 4-state DR lifecycle: planned migration (RPO=0), disaster failover (RPO>0), re-protect, and failback. Execution respects wave ordering, DRGroup chunking with throttling, fail-forward error handling, checkpoint-based pod restart resumption, and manual retry of failed groups.
+Operators can execute the complete DR lifecycle through 4 rest states and 8 phases: failover (planned migration RPO=0 or disaster RPO>0), re-protect, failback, and restore. Failover and failback share a single FailoverHandler. Re-protect and restore share a single ReprotectHandler.
 **FRs covered:** FR9, FR10, FR11, FR12, FR13, FR14, FR15, FR16, FR17, FR18, FR19
 
 ### Epic 5: Monitoring, Observability & Audit Trail
@@ -1060,7 +1060,7 @@ So that I can prove my driver implementation is correct before submitting it.
 
 ## Epic 4: DR Workflow Engine — Full Lifecycle
 
-Operators can execute the complete 4-state DR lifecycle: planned migration (RPO=0), disaster failover (RPO>0), re-protect, and failback. Execution respects wave ordering, DRGroup chunking with throttling, fail-forward error handling, checkpoint-based pod restart resumption, and manual retry of failed groups.
+Operators can execute the complete DR lifecycle through 4 rest states (SteadyState, FailedOver, DRedSteadyState, FailedBack) and 8 phases (including 4 transition states: FailingOver, Reprotecting, FailingBack, ReprotectingBack). Four operations drive the cycle: failover (planned migration RPO=0 or disaster RPO>0), re-protect, failback, and restore. Failover and failback share a single FailoverHandler. Re-protect and restore share a single ReprotectHandler. Execution respects wave ordering, DRGroup chunking with throttling, fail-forward error handling, checkpoint-based pod restart resumption, and manual retry of failed groups.
 
 ### Story 4.1: DR State Machine & Execution Controller
 
@@ -1072,15 +1072,15 @@ So that plans progress through well-defined states and invalid operations are re
 
 **Given** the state machine in `pkg/engine/statemachine.go`
 **When** DRPlan phase transitions are defined
-**Then** the following states exist: `SteadyState`, `FailingOver`, `FailedOver`, `Reprotecting`, `DRedSteadyState`, `FailingBack`
-**And** valid transitions are enforced: SteadyState→FailingOver, FailingOver→FailedOver, FailedOver→Reprotecting, Reprotecting→DRedSteadyState, DRedSteadyState→FailingBack, FailingBack→SteadyState
+**Then** the following 8 phases exist: 4 rest states (`SteadyState`, `FailedOver`, `DRedSteadyState`, `FailedBack`) and 4 transition states (`FailingOver`, `Reprotecting`, `FailingBack`, `ReprotectingBack`)
+**And** valid transitions are enforced: SteadyState→FailingOver, FailingOver→FailedOver, FailedOver→Reprotecting, Reprotecting→DRedSteadyState, DRedSteadyState→FailingBack, FailingBack→FailedBack, FailedBack→ReprotectingBack, ReprotectingBack→SteadyState
 **And** invalid transitions return a typed error with current and requested states
 
 **Given** the DRExecution controller in `pkg/controller/drexecution/reconciler.go`
 **When** a DRExecution resource is created
-**Then** the controller validates the execution mode is `planned_migration` or `disaster` (FR19)
+**Then** the controller validates the execution mode is `planned_migration`, `disaster`, or `reprotect` (FR19)
 **And** the controller validates the referenced DRPlan exists and is in a valid starting state
-**And** the DRPlan phase is transitioned to `FailingOver` or `FailingBack` as appropriate
+**And** the DRPlan phase is transitioned to the appropriate transition state (`FailingOver`, `Reprotecting`, `FailingBack`, or `ReprotectingBack`)
 **And** the controller triggers the workflow engine
 
 **Given** a DRExecution request
@@ -1141,7 +1141,7 @@ So that I can migrate workloads during maintenance windows.
 **Acceptance Criteria:**
 
 **Given** a DRExecution with mode `planned_migration` and both DCs available
-**When** the planned migration workflow in `pkg/engine/planned.go` executes
+**When** the unified failover workflow in `pkg/engine/failover.go` executes with GracefulShutdown=true
 **Then** Step 0 executes first: origin VMs are gracefully stopped, StopReplication is called on origin volumes, and the workflow waits for the final replication sync to complete — guaranteeing RPO=0 (FR9)
 **And** after sync completes, SetSource (force=false) is called on the target site volumes
 **And** target VMs are started wave by wave in sequence
@@ -1171,7 +1171,7 @@ So that workloads recover quickly when the primary DC is down.
 **Acceptance Criteria:**
 
 **Given** a DRExecution with mode `disaster`
-**When** the disaster workflow in `pkg/engine/disaster.go` executes
+**When** the unified failover workflow in `pkg/engine/failover.go` executes with GracefulShutdown=false, Force=true
 **Then** no Step 0 occurs — the origin site is assumed unreachable (FR10)
 **And** SetSource is called with `force: true` on the target site for each DRGroup
 **And** errors from the origin site are logged but do not block execution (FR10)
@@ -1297,13 +1297,13 @@ So that DR operations survive orchestrator failures.
 ### Story 4.8: Re-protect & Failback Workflows
 
 As an operator,
-I want to re-establish replication after failover via re-protect and eventually fail back to the original site,
-So that the system returns to full DR protection.
+I want to re-establish replication after failover or failback via re-protect, and fail back to the original site,
+So that the system completes the full 8-phase DR lifecycle.
 
 **Acceptance Criteria:**
 
 **Given** a DRPlan in `FailedOver` phase after a successful failover
-**When** the operator triggers re-protect by creating a DRExecution with the appropriate action
+**When** the operator triggers re-protect by creating a DRExecution with mode `reprotect`
 **Then** the orchestrator calls StopReplication on the old active site (if reachable) for each volume group (FR16)
 **And** transitions old active volumes to Target and new active volumes to Source to establish replication in the new direction
 **And** monitors replication health via GetReplicationStatus until all volume groups report Healthy
@@ -1315,20 +1315,26 @@ So that the system returns to full DR protection.
 **And** replication may take longer to establish but the workflow continues
 
 **Given** a DRPlan in `DRedSteadyState` phase with healthy replication
-**When** the operator triggers failback
-**Then** the orchestrator executes the reverse of failover using the same wave-based engine (FR17)
-**And** the workflow matches the original execution mode (planned migration for graceful failback, disaster if needed)
-**And** DRPlan phase transitions from `DRedSteadyState` → `FailingBack` → `SteadyState`
+**When** the operator triggers failback using the same FailoverHandler (planned_migration or disaster mode)
+**Then** the orchestrator executes the same workflow as failover (FR17)
+**And** DRPlan phase transitions from `DRedSteadyState` → `FailingBack` → `FailedBack`
+**And** `FailedBack` indicates the system is unprotected — restore is required
 
-**Given** the re-protect workflow
+**Given** a DRPlan in `FailedBack` phase after a successful failback
+**When** the operator triggers restore by creating a DRExecution with mode `reprotect`
+**Then** the same ReprotectHandler establishes replication in the original direction (A→B)
+**And** DRPlan phase transitions from `FailedBack` → `ReprotectingBack` → `SteadyState`
+
+**Given** the re-protect or restore workflow
 **When** replication health monitoring is in progress
 **Then** DRPlan status conditions report the resync progress (percentage or state)
 **And** the controller polls GetReplicationStatus at regular intervals until healthy
 
 **Given** the full DR lifecycle
-**When** executed end-to-end: SteadyState → failover → FailedOver → re-protect → DRedSteadyState → failback → SteadyState
+**When** executed end-to-end: SteadyState → FailingOver → FailedOver → Reprotecting → DRedSteadyState → FailingBack → FailedBack → ReprotectingBack → SteadyState
 **Then** the system returns to the original configuration with healthy replication in the original direction
-**And** DRExecution records exist for both the failover and failback operations
+**And** DRExecution records exist for all four operations (failover, re-protect, failback, restore)
+**And** the cycle can be repeated
 
 ---
 

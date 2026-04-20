@@ -153,7 +153,7 @@ This is Story 4.7 of Epic 4 (DR Workflow Engine — Full Lifecycle). It implemen
 
 **Story 4.7 scope:** Per-DRGroup checkpoint writes to DRExecution.Status via kube-apiserver, state reconstruction on startup, resume-aware execution (skip completed groups, retry in-flight groups), leader election configuration, and checkpoint metrics. This story does NOT add new CRDs or modify existing types — it uses the existing DRExecution status structure as the checkpoint store.
 
-**Prerequisites:** Stories 4.05 through 4.6 MUST be implemented and merged before this story. The engine files (`executor.go`, `statemachine.go`, `planned.go`, `disaster.go`, `vm_health.go`, `pvc_resolver.go`) and the full DRExecution reconciler do not exist in the codebase today — they are delivered by those stories. The types in `pkg/apis/soteria.io/v1alpha1/types.go` (including Story 4.6's `RetryCount` field) must be in place. This story adds checkpoint/resume on top of the complete executor infrastructure.
+**Prerequisites:** Stories 4.05 through 4.6 MUST be implemented and merged before this story. The engine files (`executor.go`, `statemachine.go`, `failover.go`, `vm_health.go`, `pvc_resolver.go`) and the full DRExecution reconciler do not exist in the codebase today — they are delivered by those stories. The types in `pkg/apis/soteria.io/v1alpha1/types.go` (including Story 4.6's `RetryCount` field) must be in place. This story adds checkpoint/resume on top of the complete executor infrastructure.
 
 ### Epic 4 Story Chain
 
@@ -161,9 +161,10 @@ This is Story 4.7 of Epic 4 (DR Workflow Engine — Full Lifecycle). It implemen
 |-------|-------------|-------------|
 | 4.05 | Registry fallback + preflight convergence | Prerequisite |
 | 4.1 | State machine + execution controller + admission webhook | Prerequisite — provides Transition, CompleteTransition, controller skeleton |
+| 4.1b | 8-phase state machine + unified FailoverHandler | Prerequisite — provides FailoverHandler, FailedBack, ReprotectingBack phases |
 | 4.2 | Wave executor framework + controller dispatch | Prerequisite — provides WaveExecutor, DRGroupHandler, fail-forward, updateGroupStatus |
-| 4.3 | Planned migration workflow + VMManager | Prerequisite — provides PlannedMigrationHandler |
-| 4.4 | Disaster failover workflow | Prerequisite — provides DisasterFailoverHandler |
+| 4.3 | Planned migration workflow + VMManager | Prerequisite — provides FailoverHandler |
+| 4.4 | Disaster failover workflow | Prerequisite — provides FailoverHandler |
 | 4.5 | Fail-forward error handling & partial success | Prerequisite — provides GroupError, StepRecorder, DRGroupStatus lifecycle, PVCResolver |
 | 4.6 | Failed DRGroup retry | Prerequisite — provides retry mechanism, VMHealthValidator, strategy relaxation |
 | **4.7** | **Checkpoint, resume & HA** | **This story — checkpoint writes, resume-on-startup, leader election, metrics** |
@@ -242,8 +243,7 @@ If all retries fail, the group is marked `Failed` with error `"checkpoint write 
 | File | What It Provides | How This Story Uses It |
 |------|-----------------|----------------------|
 | `pkg/engine/executor.go` (Stories 4.2-4.6) | `WaveExecutor`, `DRGroupHandler`, `ExecutionGroup`, `executeWave`, `executeGroup`, `updateGroupStatus`, `ExecuteRetry`, fail-forward loop | Add `Checkpointer` field; call `WriteCheckpoint` after each group in `executeGroup`; add `ExecuteFromWave` for resume |
-| `pkg/engine/planned.go` (Story 4.3) | `PlannedMigrationHandler` | Unchanged — handler is checkpoint-agnostic |
-| `pkg/engine/disaster.go` (Story 4.4) | `DisasterFailoverHandler` | Unchanged — handler is checkpoint-agnostic |
+| `pkg/engine/failover.go` (Stories 4.3–4.4) | `FailoverHandler` | Unchanged — handler is checkpoint-agnostic |
 | `pkg/engine/statemachine.go` (Story 4.1) | `Transition`, `CompleteTransition` | Unchanged — state machine is checkpoint-agnostic; resume does NOT re-transition (plan phase was already advanced) |
 | `pkg/engine/vm_health.go` (Story 4.6) | `VMHealthValidator` | Unchanged — used by retry, not checkpoint |
 | `pkg/engine/pvc_resolver.go` (Story 4.5) | `PVCResolver` | Reuse for driver resolution during resume re-execution |
@@ -280,8 +280,7 @@ If all retries fail, the group is marked `Failed` with error `"checkpoint write 
 | File | Reason |
 |------|--------|
 | `pkg/engine/statemachine.go` | State machine — not checkpoint-aware; resume does not re-transition |
-| `pkg/engine/planned.go` | Handler — checkpoint-agnostic; no changes needed |
-| `pkg/engine/disaster.go` | Handler — checkpoint-agnostic; no changes needed |
+| `pkg/engine/failover.go` | Handler — checkpoint-agnostic; no changes needed |
 | `pkg/engine/chunker.go` | Chunker — no changes |
 | `pkg/engine/discovery.go` | VM discovery — reuse for resume driver resolution |
 | `pkg/engine/consistency.go` | Consistency resolution — no changes |

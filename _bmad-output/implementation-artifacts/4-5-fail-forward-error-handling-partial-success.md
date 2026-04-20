@@ -60,15 +60,15 @@ So that partial recovery is better than no recovery during a disaster.
 - [ ] Task 4: Update ExecutionGroup to carry StepRecorder (AC: #7, #9)
   - [ ] 4.1 Add `StepRecorder StepRecorder` field to `ExecutionGroup` struct in `pkg/engine/executor.go`
   - [ ] 4.2 The executor populates this field before calling `handler.ExecuteGroup(ctx, group)`
-  - [ ] 4.3 Handlers (planned.go, disaster.go) call `group.StepRecorder.RecordStep(...)` after each driver/VM operation to update the DRGroupStatus in real-time
+  - [ ] 4.3 The handler (`pkg/engine/failover.go`) calls `group.StepRecorder.RecordStep(...)` after each driver/VM operation to update the DRGroupStatus in real-time
 
 - [ ] Task 5: Update planned migration handler for structured errors (AC: #9)
-  - [ ] 5.1 In `pkg/engine/planned.go` `ExecuteGroup`, wrap step failures with `&GroupError{StepName: StepStopReplication, Target: vg.Name, Err: err}` (or StepSetSource, StepStartVM)
+  - [ ] 5.1 In `pkg/engine/failover.go` `ExecuteGroup`, wrap step failures with `&GroupError{StepName: StepStopReplication, Target: vg.Name, Err: err}` (or StepSetSource, StepStartVM)
   - [ ] 5.2 After each step, call `group.StepRecorder.RecordStep(...)` with the step result (Succeeded/Failed, message, timestamp)
   - [ ] 5.3 Preserve existing error wrapping for PreExecute failures (PreExecute errors are top-level, not per-step)
 
 - [ ] Task 6: Update disaster failover handler for structured errors (AC: #9)
-  - [ ] 6.1 In `pkg/engine/disaster.go` `ExecuteGroup`, wrap step failures with `&GroupError{StepName: StepSetSource, Target: vg.Name, Err: err}` (or StepStartVM)
+  - [ ] 6.1 In `pkg/engine/failover.go` `ExecuteGroup`, wrap step failures with `&GroupError{StepName: StepSetSource, Target: vg.Name, Err: err}` (or StepStartVM)
   - [ ] 6.2 After each step, call `group.StepRecorder.RecordStep(...)` with the step result
 
 - [ ] Task 7: Emit per-DRGroup failure events (AC: #8)
@@ -130,8 +130,8 @@ So that partial recovery is better than no recovery during a disaster.
   - [ ] 14.3 Test: `TestWaveExecutor_MixedStorageClassWarning` — VolumeGroup with VMs using different storage classes → warning logged, first SC used
 
 - [ ] Task 15: Update handler tests to use StepRecorder (AC: #7)
-  - [ ] 15.1 Update `pkg/engine/planned_test.go` to inject a mock `StepRecorder` and verify steps are recorded
-  - [ ] 15.2 Update `pkg/engine/disaster_test.go` to inject a mock `StepRecorder` and verify steps are recorded
+  - [ ] 15.1 Update `pkg/engine/failover_test.go` to inject a mock `StepRecorder` and verify steps are recorded
+  - [ ] 15.2 Update `pkg/engine/failover_test.go` to inject a mock `StepRecorder` and verify steps are recorded
 
 - [ ] Task 16: Update documentation and verify (AC: all)
   - [ ] 16.1 Update `pkg/engine/doc.go` to cover: fail-forward error model, DRGroupStatus lifecycle, GroupError type, PVCResolver, per-VolumeGroup driver resolution
@@ -156,9 +156,10 @@ This is Story 4.5 of Epic 4 (DR Workflow Engine — Full Lifecycle). It hardens 
 |-------|-------------|-------------|
 | 4.05 | Registry fallback + preflight convergence | Prerequisite — done |
 | 4.1 | State machine + execution controller + admission webhook | Prerequisite — done |
+| 4.1b | 8-phase state machine + unified FailoverHandler | Prerequisite — provides FailoverHandler, FailedBack, ReprotectingBack phases |
 | 4.2 | Wave executor framework + controller dispatch | Prerequisite — provides DRGroupHandler, WaveExecutor, basic fail-forward |
-| 4.3 | Planned migration workflow + VMManager | Prerequisite — provides PlannedMigrationHandler, step recording pattern |
-| 4.4 | Disaster failover workflow | Prerequisite — provides DisasterFailoverHandler, RPO recording |
+| 4.3 | Planned migration workflow + VMManager | Prerequisite — provides FailoverHandler, step recording pattern |
+| 4.4 | Disaster failover workflow | Prerequisite — provides FailoverHandler, RPO recording |
 | **4.5** | **Fail-forward error handling & partial success** | **This story — structured errors, DRGroupStatus, events, multi-driver, PVC resolution** |
 | 4.6 | Failed DRGroup retry | Uses DRGroupStatus for retry targeting |
 | 4.7 | Checkpoint, resume & HA | Builds on DRGroupStatus for resume state |
@@ -169,8 +170,7 @@ This is Story 4.5 of Epic 4 (DR Workflow Engine — Full Lifecycle). It hardens 
 | File | What It Provides | How This Story Uses It |
 |------|-----------------|----------------------|
 | `pkg/engine/executor.go` (Story 4.2) | `WaveExecutor`, `DRGroupHandler`, `ExecutionGroup`, `executeWave`, `executeGroup`, `updateGroupStatus` | Enhance `executeGroup` for GroupError handling, DRGroupStatus creation, event emission. Do NOT rewrite executor loop. |
-| `pkg/engine/planned.go` (Story 4.3) | `PlannedMigrationHandler`, `resolveVolumeGroupID`, step name constants, step recording pattern | Update to return `*GroupError` instead of plain errors, call StepRecorder |
-| `pkg/engine/disaster.go` (Story 4.4) | `DisasterFailoverHandler`, RPO recording, step recording | Update to return `*GroupError`, call StepRecorder |
+| `pkg/engine/failover.go` (Stories 4.3–4.4) | `FailoverHandler`, `resolveVolumeGroupID`, RPO recording, step name constants, step recording pattern | Update to return `*GroupError` instead of plain errors, call StepRecorder |
 | `pkg/engine/handler_noop.go` (Story 4.2) | `NoOpHandler` | No changes needed — returns nil (no error, no steps) |
 | `pkg/engine/vm.go` (Story 4.3) | `VMManager`, `KubeVirtVMManager` | PVCResolver reads same KubeVirt VM resources — share scheme registration and client |
 | `pkg/engine/statemachine.go` (Story 4.1) | `CompleteTransition` | Verify gating: NOT called when result is `Failed` |
@@ -186,8 +186,7 @@ This is Story 4.5 of Epic 4 (DR Workflow Engine — Full Lifecycle). It hardens 
 | File | Current State | Changes Required |
 |------|--------------|-----------------|
 | `pkg/engine/executor.go` | Story 4.2: basic fail-forward with `sync.WaitGroup`, single-driver per group, no DRGroupStatus, no events | Add `GroupError` type; add `StepRecorder` interface; enhance `executeGroup` to create DRGroupStatus, record steps, emit events; refactor driver resolution to per-VolumeGroup; add `PVCResolver` field to WaveExecutor |
-| `pkg/engine/planned.go` | Story 4.3: returns `fmt.Errorf(...)` from step failures | Return `*GroupError{StepName, Target, Err}` instead; call `group.StepRecorder.RecordStep(...)` after each step |
-| `pkg/engine/disaster.go` | Story 4.4: returns `fmt.Errorf(...)` from step failures | Return `*GroupError{StepName, Target, Err}` instead; call `group.StepRecorder.RecordStep(...)` after each step |
+| `pkg/engine/failover.go` | Stories 4.3–4.4: returns `fmt.Errorf(...)` from step failures | Return `*GroupError{StepName, Target, Err}` instead; call `group.StepRecorder.RecordStep(...)` after each step |
 | `pkg/controller/drexecution/reconciler.go` | Stories 4.2-4.4: dispatches handlers, calls executor | Pass `Recorder` and `PVCResolver` to WaveExecutor; add RBAC markers for DRGroupStatus |
 | `cmd/soteria/main.go` | Stories 4.2-4.4: wires executor, handlers, VMManager | Create PVCResolver; pass to executor |
 | `pkg/engine/doc.go` | Covers discovery, consistency, chunking, wave executor, planned/disaster workflows | Add fail-forward error model, DRGroupStatus lifecycle, GroupError, PVCResolver |
@@ -394,7 +393,7 @@ Events use PascalCase past-tense reasons per project convention.
 
 **8. Backward compatibility: handlers that don't return GroupError still work.**
 
-The `errors.As` type assertion gracefully handles both `*GroupError` and plain errors. Existing handlers (planned.go, disaster.go) should be updated to return `*GroupError`, but if they return plain errors (e.g., from PreExecute), the executor falls back to `err.Error()`.
+The `errors.As` type assertion gracefully handles both `*GroupError` and plain errors. The handler in `pkg/engine/failover.go` should be updated to return `*GroupError`, but if it returns plain errors (e.g., from PreExecute), the executor falls back to `err.Error()`.
 
 ### Fail-Forward Error Flow
 
@@ -487,18 +486,18 @@ return fmt.Errorf("resolving PVCs for VM %s/%s: %w", namespace, vmName, err)
 
 **PVC resolver tests** (`pkg/engine/pvc_resolver_test.go`): Use controller-runtime fake client with kubevirt scheme, create VMs with various volume configurations (PVC, containerDisk, mixed).
 
-**Handler tests** (updated `planned_test.go`, `disaster_test.go`): Verify handlers return `*GroupError` and call `StepRecorder.RecordStep()`.
+**Handler tests** (updated `failover_test.go`): Verify the handler returns `*GroupError` and calls `StepRecorder.RecordStep()`.
 
 ### Previous Story Intelligence
 
 **From Story 4.4 (Disaster Failover Workflow):**
-- `DisasterFailoverHandler` uses same per-DRGroup step ordering: all volume ops before VM ops
+- `FailoverHandler` uses same per-DRGroup step ordering: all volume ops before VM ops
 - RPO recording via `GetReplicationStatus.LastSyncTime` — not affected by this story
 - Step name constants (`StepSetSource`, `StepStartVM`) are already shared or extractable
 - Error wrapping: `"setting source for volume group %s: %w"` → convert to `&GroupError{StepName: StepSetSource, Target: vg.Name, Err: err}`
 
 **From Story 4.3 (Planned Migration Workflow):**
-- `PlannedMigrationHandler.PreExecute` returns plain errors (not GroupError) — PreExecute errors are top-level failures, not per-step
+- `FailoverHandler.PreExecute` returns plain errors (not GroupError) — PreExecute errors are top-level failures, not per-step
 - `ExecuteGroup` returns `fmt.Errorf(...)` for step failures → convert to `*GroupError`
 - `resolveVolumeGroupID` helper may need PVC names from PVCResolver — currently passes empty PVCNames or defers to driver
 - `mockVMManager` test helper — reuse in executor tests
@@ -603,8 +602,7 @@ make integration  # Integration tests
 All files align with the architecture document:
 - `pkg/engine/executor.go` — enhanced with GroupError, StepRecorder, per-VG driver resolution
 - `pkg/engine/pvc_resolver.go` — new: PVC name resolution from VM specs
-- `pkg/engine/planned.go` — updated for GroupError + StepRecorder
-- `pkg/engine/disaster.go` — updated for GroupError + StepRecorder
+- `pkg/engine/failover.go` — updated for GroupError + StepRecorder
 - `pkg/controller/drexecution/reconciler.go` — enhanced with RBAC, PVCResolver wiring
 - `cmd/soteria/main.go` — wires PVCResolver
 - No changes to `pkg/apis/` — DRGroupStatus types already exist

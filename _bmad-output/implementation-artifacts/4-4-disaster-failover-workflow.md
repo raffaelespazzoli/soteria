@@ -7,89 +7,71 @@ Status: ready-for-dev
 ## Story
 
 As an operator,
-I want to execute a disaster failover that force-promotes target volumes and starts VMs wave by wave while ignoring origin errors,
+I want the unified FailoverHandler to support disaster mode with force-promotion, RPO recording, and origin error tolerance,
 So that workloads recover quickly when the primary DC is down.
 
 ## Acceptance Criteria
 
-1. **AC1 — Disaster failover handler:** `pkg/engine/disaster.go` implements the `DRGroupHandler` interface (from Story 4.2) with a `DisasterFailoverHandler`. For each DRGroup, it calls `SetSource(force=true)` on each volume group, then starts the target VMs via `VMManager`. Origin site errors are logged as warnings but never fail the execution (FR10).
+1. **AC1 — Disaster mode in unified handler:** `FailoverHandler` (from Story 4.1b) implements disaster mode when configured with `FailoverConfig{GracefulShutdown: false, Force: true, RecordRPO: true}`. For each DRGroup, it calls `SetSource(force=true)` on each volume group, then starts the target VMs via `VMManager`. Origin site errors are logged as warnings but never fail the execution (FR10).
 
-2. **AC2 — No Step 0 pre-execution:** `DisasterFailoverHandler` does NOT implement a `PreExecute` method (or its implementation is a no-op returning nil). The origin site is assumed unreachable — no VM stopping, no replication stopping, no sync wait occurs before wave execution begins. This is the fundamental difference from planned migration.
+2. **AC2 — No Step 0 pre-execution:** `PreExecute` returns nil when `GracefulShutdown=false` (already implemented in Story 4.1b). The origin site is assumed unreachable — no VM stopping, no replication stopping, no sync wait occurs before wave execution begins. This is the fundamental difference from planned migration.
 
-3. **AC3 — Force-promote via SetSource:** Every `SetSource` call uses `SetSourceOptions{Force: true}`. This tells the storage driver to promote target volumes to Source role even if the paired origin is unreachable. The driver handles internal split-brain semantics — the orchestrator only sets the flag.
+3. **AC3 — Force-promote via SetSource:** Every `SetSource` call in disaster mode uses `SetSourceOptions{Force: true}` (driven by `FailoverConfig.Force`). This tells the storage driver to promote target volumes to Source role even if the paired origin is unreachable. The driver handles internal split-brain semantics — the orchestrator only sets the flag.
 
-4. **AC4 — RPO recording:** After `SetSource` succeeds for a volume group, the handler calls `GetReplicationStatus` to read `LastSyncTime` and `EstimatedRPO`. The per-DRGroup `StepStatus` message includes the observed RPO (e.g., `"Set source for volume group ns-erp-database (RPO: ~47s)"`). The handler tracks the maximum RPO across all volume groups and records it in a final summary step.
+4. **AC4 — RPO recording:** When `RecordRPO=true`, after `SetSource` succeeds for a volume group, `FailoverHandler` calls `GetReplicationStatus` to read `LastSyncTime` and `EstimatedRPO`. The per-DRGroup `StepStatus` message includes the observed RPO (e.g., `"Set source for volume group ns-erp-database (RPO: ~47s)"`). The handler tracks the maximum RPO across all volume groups and records it in a final summary step.
 
-5. **AC5 — Origin error tolerance:** If `GetReplicationStatus` fails after a successful `SetSource` (e.g., origin-side metadata unavailable), the handler logs the error at V(1) and records RPO as `"unknown"` — it does NOT fail the DRGroup. The `SetSource(force=true)` call itself failing is a real error and fails the DRGroup.
+5. **AC5 — Origin error tolerance:** If `GetReplicationStatus` fails after a successful `SetSource` (e.g., origin-side metadata unavailable), `FailoverHandler` logs the error at V(1) and records RPO as `"unknown"` — it does NOT fail the DRGroup. The `SetSource(force=true)` call itself failing is a real error and fails the DRGroup.
 
-6. **AC6 — Per-DRGroup execution steps:** For each DRGroup within a wave, `ExecuteGroup` executes these steps in order: (a) `SetSource(force=true)` on each volume group in the group (no `StopReplication` — origin is down), (b) `StartVM` for each VM in the group. Each step is recorded as a `StepStatus` entry. If `SetSource` fails, the DRGroup is marked `Failed` with the step name and error.
+6. **AC6 — Per-DRGroup execution steps:** For each DRGroup within a wave, `FailoverHandler.ExecuteGroup` executes these steps in order: (a) `SetSource(force=true)` on each volume group in the group (no `StopReplication` — origin is down), (b) `StartVM` for each VM in the group. Each step is recorded as a `StepStatus` entry. If `SetSource` fails, the DRGroup is marked `Failed` with the step name and error.
 
 7. **AC7 — Per-step status recording:** Each operation within a DRGroup is recorded in the DRGroupStatus as a `StepStatus` entry with `Name` (e.g., `"SetSource"`, `"StartVM"`), `Status` (`"Succeeded"`/`"Failed"`), `Message`, and `Timestamp`. This mirrors the planned migration step recording pattern.
 
-8. **AC8 — Controller integration:** The DRExecution controller dispatches `DisasterFailoverHandler` when `exec.Spec.Mode == "disaster"`. The controller does NOT call `PreExecute` for disaster mode (or calls the no-op version). It passes the handler directly to the wave executor. After execution completes, `CompleteTransition` advances the DRPlan phase as usual.
+8. **AC8 — Controller integration:** Story 4.1b wires `FailoverHandler` for disaster mode. Verify the controller creates `FailoverHandler` with `FailoverConfig{GracefulShutdown: false, Force: true, RecordRPO: true}` when `exec.Spec.Mode == "disaster"`, passes it to the wave executor, and that `PreExecute` is skipped or no-op for that config. After execution completes, `CompleteTransition` advances the DRPlan phase as usual.
 
-9. **AC9 — Unit tests:** `pkg/engine/disaster_test.go` has table-driven tests covering: (a) successful disaster failover — all DRGroups succeed, VMs started, RPO recorded; (b) SetSource failure — group fails, error includes step name and volume group; (c) StartVM failure — group fails; (d) GetReplicationStatus failure after successful SetSource — RPO recorded as "unknown", group succeeds; (e) per-step status recording — all steps recorded with correct names and timestamps; (f) empty DRGroup — no driver calls, succeeds immediately; (g) context cancellation — graceful exit; (h) multiple volume groups in one DRGroup — all promoted before any VM started. Tests use fake driver (`pkg/drivers/fake/`) and mock `VMManager`.
+9. **AC9 — Unit tests:** Add disaster-specific tests in `pkg/engine/failover_test.go` (preferred) or `pkg/engine/disaster_test.go` with table-driven cases covering: (a) successful disaster failover — all DRGroups succeed, VMs started, RPO recorded; (b) SetSource failure — group fails, error includes step name and volume group; (c) StartVM failure — group fails; (d) GetReplicationStatus failure after successful SetSource — RPO recorded as "unknown", group succeeds; (e) per-step status recording — all steps recorded with correct names and timestamps; (f) empty DRGroup — no driver calls, succeeds immediately; (g) context cancellation — graceful exit; (h) multiple volume groups in one DRGroup — all promoted before any VM started; (i) `Force=true` and no `StopReplication` for disaster config. Tests use fake driver (`pkg/drivers/fake/`) and mock `VMManager`.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Implement disaster failover handler (AC: #1, #2, #3, #6, #7)
-  - [ ] 1.1 Create `pkg/engine/disaster.go` with copyright header and Tier 2 architecture block comment explaining the disaster failover workflow: no Step 0, force-promote, origin error tolerance
-  - [ ] 1.2 Define `DisasterFailoverHandler` struct with fields: `Driver drivers.StorageProvider`, `VMManager VMManager`
-  - [ ] 1.3 Implement `PreExecute(ctx context.Context, groups []ExecutionGroup) error` — return nil immediately (no-op for disaster mode)
-  - [ ] 1.4 Implement `ExecuteGroup(ctx context.Context, group ExecutionGroup) error` — the per-DRGroup handler
-  - [ ] 1.5 Phase 1 — Force-promote all volume groups: for each VolumeGroup in the group, resolve `VolumeGroupID` via `resolveVolumeGroupID` (reuse from planned.go or extract to shared helper), call `driver.SetSource(ctx, vgID, SetSourceOptions{Force: true})`, record `StepStatus{Name: StepSetSource, Status: "Succeeded"}`. On error, record `StepStatus{Status: "Failed"}` and return immediately
-  - [ ] 1.6 Phase 2 — Start target VMs: for each VM in the group, call `VMManager.StartVM(ctx, vm.Name, vm.Namespace)`, record `StepStatus{Name: StepStartVM}`. On error, record failure and return
-  - [ ] 1.7 Define step name constants: reuse `StepSetSource` and `StepStartVM` from `planned.go` (or define shared constants in a common location like `executor.go`)
+- [ ] Task 1: Implement disaster RPO recording in `FailoverHandler` (AC: #4, #5, #1)
+  - [ ] 1.1 Extend `pkg/engine/failover.go` (`FailoverHandler` from Story 4.1b): when `FailoverConfig.RecordRPO` is true, after each successful `SetSource`, call `driver.GetReplicationStatus(ctx, vgID)` to read `LastSyncTime`
+  - [ ] 1.2 Calculate RPO as `time.Since(*status.LastSyncTime)` if `LastSyncTime` is non-nil; otherwise RPO is `"unknown"`
+  - [ ] 1.3 Include RPO in the SetSource `StepStatus.Message`: `"Set source for volume group %s (RPO: ~%s)"` or `"Set source for volume group %s (RPO: unknown)"`
+  - [ ] 1.4 If `GetReplicationStatus` returns an error, log at V(1): `"Could not read replication status for RPO"` with volume group name and error, set RPO to `"unknown"` — do NOT fail the DRGroup
+  - [ ] 1.5 Track maximum RPO across all volume groups in the handler's execution scope (field or local variable within `ExecuteGroup`, consistent with 4.1b patterns)
 
-- [ ] Task 2: Implement RPO recording (AC: #4, #5)
-  - [ ] 2.1 After each successful `SetSource`, call `driver.GetReplicationStatus(ctx, vgID)` to read `LastSyncTime`
-  - [ ] 2.2 Calculate RPO as `time.Since(*status.LastSyncTime)` if `LastSyncTime` is non-nil; otherwise RPO is `"unknown"`
-  - [ ] 2.3 Include RPO in the SetSource `StepStatus.Message`: `"Set source for volume group %s (RPO: ~%s)"` or `"Set source for volume group %s (RPO: unknown)"`
-  - [ ] 2.4 If `GetReplicationStatus` returns an error, log at V(1): `"Could not read replication status for RPO"` with volume group name and error, set RPO to `"unknown"` — do NOT fail the DRGroup
-  - [ ] 2.5 Track maximum RPO across all volume groups in the handler's execution scope (use a field or local variable within `ExecuteGroup`)
+- [ ] Task 2: Unit tests — `FailoverHandler` with disaster config (AC: #9, #3, #6, #7)
+  - [ ] 2.1 Add cases in `pkg/engine/failover_test.go` (preferred) or create `pkg/engine/disaster_test.go` in the same package
+  - [ ] 2.2 Reuse shared test helpers (`mockVMManager`, fake driver setup) from existing engine tests
+  - [ ] 2.3 Test: `TestFailover_Disaster_FullSuccess` — disaster config, all DRGroups succeed with `SetSource(force=true)`, VMs started, RPO recorded in step messages
+  - [ ] 2.4 Test: `TestFailover_Disaster_SetSourceFails` — driver returns error on SetSource → group fails, step records failure, error includes volume group name
+  - [ ] 2.5 Test: `TestFailover_Disaster_StartVMFails` — VMManager returns error → group fails, step records failure
+  - [ ] 2.6 Test: `TestFailover_Disaster_GetReplicationStatusFails` — SetSource succeeds but GetReplicationStatus fails → RPO recorded as "unknown", group still succeeds
+  - [ ] 2.7 Test: `TestFailover_Disaster_RPORecording` — verify RPO appears in StepStatus message for each volume group, max RPO tracked when `RecordRPO=true`
+  - [ ] 2.8 Test: `TestFailover_Disaster_StepStatusRecorded` — verify all steps (SetSource per VG + StartVM per VM) recorded with correct names, timestamps, statuses
+  - [ ] 2.9 Test: `TestFailover_Disaster_EmptyGroup` — no volume groups, ExecuteGroup succeeds trivially
+  - [ ] 2.10 Test: `TestFailover_Disaster_ContextCancelled` — context cancelled mid-execution, returns ctx.Err()
+  - [ ] 2.11 Test: `TestFailover_Disaster_ForceFlag` — verify `SetSourceOptions{Force: true}` is passed to driver for disaster config
+  - [ ] 2.12 Test: `TestFailover_Disaster_NoStopReplication` — verify `StopReplication` is never called on the driver for disaster config
+  - [ ] 2.13 Test: `TestFailover_Disaster_MultipleVolumeGroups` — multiple VGs in one group: all SetSource called before any StartVM, correct step ordering
+  - [ ] 2.14 Test: `TestFailover_Disaster_PreExecute_NoGracefulShutdown` — `PreExecute` returns nil without graceful shutdown work when `GracefulShutdown=false`
 
-- [ ] Task 3: Extract shared helpers from planned migration (AC: #1)
-  - [ ] 3.1 If `resolveVolumeGroupID` is defined as an unexported function in `planned.go`, either: (a) extract it to a shared file `pkg/engine/helpers.go`, or (b) duplicate it in `disaster.go` (acceptable if small). Prefer extraction to avoid drift
-  - [ ] 3.2 If step name constants (`StepSetSource`, `StepStartVM`, `StepStopReplication`) are defined in `planned.go`, move them to `executor.go` or a shared `pkg/engine/steps.go` so both handlers can reference them
-  - [ ] 3.3 If the `recordStep` helper for creating `StepStatus` entries exists in `planned.go`, extract to a shared location
-
-- [ ] Task 4: Wire handler in DRExecution controller (AC: #8)
-  - [ ] 4.1 In `pkg/controller/drexecution/reconciler.go`, update the handler dispatch switch: when `exec.Spec.Mode == v1alpha1.ExecutionModeDisaster`, create `DisasterFailoverHandler` with the resolved driver and `VMManager`
-  - [ ] 4.2 For disaster mode, skip `handler.PreExecute()` call entirely (or call the no-op version). Do NOT call `StopReplication` or attempt any origin-side operations
-  - [ ] 4.3 Pass the handler to `WaveExecutor.Execute()` as the `DRGroupHandler`
-
-- [ ] Task 5: Unit tests for disaster failover handler (AC: #9)
-  - [ ] 5.1 Create `pkg/engine/disaster_test.go`
-  - [ ] 5.2 Reuse `mockVMManager` from `planned_test.go` (or extract to `testutil_test.go` if not already shared)
-  - [ ] 5.3 Test: `TestDisasterFailover_FullSuccess` — all DRGroups succeed with `SetSource(force=true)`, VMs started, RPO recorded in step messages
-  - [ ] 5.4 Test: `TestDisasterFailover_SetSourceFails` — driver returns error on SetSource → group fails, step records failure, error includes volume group name
-  - [ ] 5.5 Test: `TestDisasterFailover_StartVMFails` — VMManager returns error → group fails, step records failure
-  - [ ] 5.6 Test: `TestDisasterFailover_GetReplicationStatusFails` — SetSource succeeds but GetReplicationStatus fails → RPO recorded as "unknown", group still succeeds
-  - [ ] 5.7 Test: `TestDisasterFailover_RPORecording` — verify RPO appears in StepStatus message for each volume group, max RPO tracked
-  - [ ] 5.8 Test: `TestDisasterFailover_StepStatusRecorded` — verify all steps (SetSource per VG + StartVM per VM) recorded with correct names, timestamps, statuses
-  - [ ] 5.9 Test: `TestDisasterFailover_EmptyGroup` — no volume groups, ExecuteGroup succeeds trivially
-  - [ ] 5.10 Test: `TestDisasterFailover_ContextCancelled` — context cancelled mid-execution, returns ctx.Err()
-  - [ ] 5.11 Test: `TestDisasterFailover_ForceFlag` — verify `SetSourceOptions{Force: true}` is passed to driver (check via fake driver call recording)
-  - [ ] 5.12 Test: `TestDisasterFailover_NoStopReplication` — verify `StopReplication` is never called on the driver (disaster skips this entirely)
-  - [ ] 5.13 Test: `TestDisasterFailover_MultipleVolumeGroups` — 3 VGs in one group: all SetSource called before any StartVM, correct step ordering
-  - [ ] 5.14 Test: `TestDisasterFailover_PreExecute_Noop` — `PreExecute` returns nil without calling any driver or VMManager methods
-
-- [ ] Task 6: Update documentation and verify (AC: #1)
-  - [ ] 6.1 Update `pkg/engine/doc.go` to cover the disaster failover workflow and its difference from planned migration
-  - [ ] 6.2 Add godoc block comment on `disaster.go` explaining: no Step 0, force=true, origin error tolerance, RPO recording
-  - [ ] 6.3 Run `make manifests` to regenerate RBAC/webhook configs (in case any markers changed)
-  - [ ] 6.4 Run `make generate` if types changed
-  - [ ] 6.5 Run `make test` — all unit tests pass
-  - [ ] 6.6 Run `make lint-fix` followed by `make lint` — no new lint errors
-  - [ ] 6.7 Run `make build` — compiles cleanly
+- [ ] Task 3: Documentation, controller verification, and build (AC: #8, #1, #2)
+  - [ ] 3.1 Update `pkg/engine/doc.go` to describe disaster mode as `FailoverConfig` on `FailoverHandler` (contrast with planned migration config)
+  - [ ] 3.2 Add or extend godoc on `FailoverHandler` / `FailoverConfig` in `failover.go` explaining disaster mode: `GracefulShutdown=false`, `Force=true`, `RecordRPO=true`, origin error tolerance, RPO recording
+  - [ ] 3.3 Verify `pkg/controller/drexecution/reconciler.go` constructs `FailoverHandler` with disaster `FailoverConfig` for `ExecutionModeDisaster` (Story 4.1b); adjust only if gaps remain
+  - [ ] 3.4 Run `make manifests` to regenerate RBAC/webhook configs (in case any markers changed)
+  - [ ] 3.5 Run `make generate` if types changed
+  - [ ] 3.6 Run `make test` — all unit tests pass
+  - [ ] 3.7 Run `make lint-fix` followed by `make lint` — no new lint errors
+  - [ ] 3.8 Run `make build` — compiles cleanly
 
 ## Dev Notes
 
 ### Architecture Context
 
-This is Story 4.4 of Epic 4 (DR Workflow Engine — Full Lifecycle). It implements the disaster failover workflow — the second `DRGroupHandler`, purpose-built for when the primary DC is unreachable. Stories 4.05 (driver registry convergence), 4.1 (state machine + controller), 4.2 (wave executor framework), and 4.3 (planned migration + VMManager) are prerequisites.
+This is Story 4.4 of Epic 4 (DR Workflow Engine — Full Lifecycle). It extends the unified `FailoverHandler` introduced in Story 4.1b for disaster mode when the primary DC is unreachable. Stories 4.05 (driver registry convergence), 4.1 (state machine + controller), 4.1b (unified `FailoverHandler` + `FailoverConfig` + controller wiring for planned and disaster modes), 4.2 (wave executor framework), and 4.3 (planned migration path + VMManager patterns) are prerequisites.
 
-**Story 4.4 scope:** The `DisasterFailoverHandler` implementing `DRGroupHandler` with force-promoted `SetSource` and origin error tolerance. No Step 0, no replication stopping, no sync wait. Also adds RPO recording from `GetReplicationStatus.LastSyncTime` after promotion. The VMManager interface and `KubeVirtVMManager` implementation are already created in Story 4.3 — this story reuses them.
+**Story 4.4 scope:** Disaster-specific behavior on `FailoverHandler`: RPO recording when `FailoverConfig.RecordRPO=true`, with `GracefulShutdown=false` and `Force=true` for force-promoted `SetSource` and origin error tolerance. No Step 0, no replication stopping, no sync wait for disaster config. The VMManager interface and `KubeVirtVMManager` implementation come from Story 4.3 — this story reuses them via the unified handler.
 
 ### Epic 4 Story Chain
 
@@ -97,9 +79,10 @@ This is Story 4.4 of Epic 4 (DR Workflow Engine — Full Lifecycle). It implemen
 |-------|-------------|-------------|
 | 4.05 | Registry fallback + preflight convergence | Prerequisite — must be done |
 | 4.1 | State machine + execution controller + admission webhook | Prerequisite — must be done |
+| 4.1b | Unified `FailoverHandler` + `FailoverConfig` + controller dispatch for planned vs disaster | Prerequisite — provides shared handler, graceful vs disaster branching |
 | 4.2 | Wave executor framework + controller dispatch | Prerequisite — provides DRGroupHandler interface + WaveExecutor |
-| 4.3 | Planned migration workflow + VMManager | Prerequisite — provides VMManager, step recording patterns, resolveVolumeGroupID helper |
-| **4.4** | **Disaster failover workflow** | **This story — second DRGroupHandler, force-promote path** |
+| 4.3 | Planned migration workflow + VMManager | Prerequisite — provides VMManager, step recording patterns, helpers reused by `failover.go` |
+| **4.4** | **Disaster mode completion (RPO + tests + verification)** | **This story — extends 4.1b `FailoverHandler` for disaster RPO and validates config** |
 | 4.5 | Fail-forward error handling & partial success | Enhances executor error handling |
 | 4.6 | Failed DRGroup retry | Retry mechanism targeting specific failed groups |
 | 4.7 | Checkpoint, resume & HA | Per-DRGroup persistence, async execution, pod restart resume |
@@ -107,13 +90,13 @@ This is Story 4.4 of Epic 4 (DR Workflow Engine — Full Lifecycle). It implemen
 
 ### Existing Code to Reuse (Critical — Do NOT Reinvent)
 
-| File | What It Provides | How Disaster Failover Uses It |
+| File | What It Provides | How Disaster Mode Uses It |
 |------|-----------------|-------------------------------|
-| `pkg/engine/planned.go` (Story 4.3) | `PlannedMigrationHandler`, `resolveVolumeGroupID`, step name constants (`StepSetSource`, `StepStartVM`), step recording pattern | Disaster handler mirrors the per-DRGroup structure but with force=true and no StopReplication step |
-| `pkg/engine/vm.go` (Story 4.3) | `VMManager` interface, `KubeVirtVMManager`, `NoOpVMManager` | Handler calls `VMManager.StartVM` — same interface as planned migration |
-| `pkg/engine/executor.go` (Story 4.2) | `WaveExecutor`, `DRGroupHandler`, `ExecutionGroup` | Disaster failover implements `DRGroupHandler`; executor drives wave sequencing |
+| `pkg/engine/failover.go` (Story 4.1b) | `FailoverHandler`, `FailoverConfig{GracefulShutdown, Force, RecordRPO}`, per-DRGroup execution, step recording | Extend with RPO recording when `RecordRPO=true`; disaster path uses `Force=true`, skips graceful shutdown and `StopReplication` |
+| `pkg/engine/vm.go` (Story 4.3) | `VMManager` interface, `KubeVirtVMManager`, `NoOpVMManager` | `FailoverHandler` calls `VMManager.StartVM` — same as planned migration |
+| `pkg/engine/executor.go` (Story 4.2) | `WaveExecutor`, `DRGroupHandler`, `ExecutionGroup` | `FailoverHandler` implements `DRGroupHandler`; executor drives wave sequencing |
 | `pkg/engine/statemachine.go` (Story 4.1) | `Transition`, `CompleteTransition` | Controller calls after execution completes |
-| `pkg/drivers/interface.go` | `StorageProvider` — `SetSource`, `GetReplicationStatus`, `CreateVolumeGroup` | Handler calls `SetSource(force=true)` and `GetReplicationStatus` for RPO |
+| `pkg/drivers/interface.go` | `StorageProvider` — `SetSource`, `GetReplicationStatus`, `CreateVolumeGroup` | `SetSource(force=true)` and `GetReplicationStatus` for RPO when enabled |
 | `pkg/drivers/types.go` | `VolumeGroupID`, `SetSourceOptions`, `ReplicationStatus`, `VolumeRole`, `ReplicationHealth` | All types used by the handler |
 | `pkg/drivers/fake/driver.go` | Programmable fake `StorageProvider` | Unit testing without real storage |
 | `pkg/apis/soteria.io/v1alpha1/types.go` | `DRExecution`, `DRGroupExecutionStatus`, `StepStatus`, `ExecutionMode`, `ExecutionResult`, `VolumeGroupInfo` | Status recording, step tracking, mode checking |
@@ -122,38 +105,29 @@ This is Story 4.4 of Epic 4 (DR Workflow Engine — Full Lifecycle). It implemen
 
 | File | Current State | Changes Required |
 |------|--------------|-----------------|
-| `pkg/controller/drexecution/reconciler.go` | Story 4.3 adds `PlannedMigrationHandler` dispatch for `planned_migration` mode; `disaster` mode uses `NoOpHandler` placeholder | Replace `NoOpHandler` with `DisasterFailoverHandler` when `exec.Spec.Mode == "disaster"` |
-| `pkg/engine/doc.go` | Covers discovery, consistency, chunking, wave executor, planned migration | Add disaster failover workflow documentation |
+| `pkg/engine/failover.go` | Story 4.1b introduces `FailoverHandler` and disaster vs planned branching | Add RPO recording when `RecordRPO=true` (if not already present from 4.1b); keep disaster path aligned with AC |
+| `pkg/controller/drexecution/reconciler.go` | Story 4.1b wires `FailoverHandler` with mode-specific `FailoverConfig` | Verify disaster config; adjust only if wiring or `PreExecute` gating is incomplete |
+| `pkg/engine/doc.go` | Covers discovery, consistency, chunking, wave executor, planned migration | Document disaster mode as `FailoverConfig` on unified handler |
 
-### Shared Code Extraction (from Story 4.3)
+### Shared Code (Stories 4.1b / 4.3)
 
-Story 4.3 creates several helpers in `planned.go` that disaster.go also needs. Depending on how 4.3 organized them:
-
-| Helper | Current Location (Story 4.3) | Action for Story 4.4 |
-|--------|------------------------------|----------------------|
-| `resolveVolumeGroupID(ctx, driver, vg)` | `pkg/engine/planned.go` (unexported) | Extract to `pkg/engine/helpers.go` or duplicate (function is ~10 lines) |
-| `StepSetSource`, `StepStartVM`, `StepStopReplication` | `pkg/engine/planned.go` (constants) | Move to shared location (e.g., `executor.go` or `steps.go`) |
-| `recordStep(...)` or step recording pattern | `pkg/engine/planned.go` | Extract or duplicate — should be a shared utility |
-| `mockVMManager` | `pkg/engine/planned_test.go` | Extract to `pkg/engine/testutil_test.go` for sharing between test files |
-
-If Story 4.3 already extracted these to shared locations, simply import them. If not, extract as part of this story (minor refactor, no behavior change).
+`FailoverHandler` in `failover.go` should already consolidate helpers and step constants previously associated with `planned.go`. If Story 4.1b left helpers in `planned.go`, reuse through the unified handler rather than reintroducing a separate disaster file. Do not duplicate `resolveVolumeGroupID` / step recording logic if 4.1b centralizes it.
 
 ### New Files to Create
 
 | File | Purpose |
 |------|---------|
-| `pkg/engine/disaster.go` | Disaster failover workflow — `DRGroupHandler` with force-promote + RPO recording |
-| `pkg/engine/disaster_test.go` | Comprehensive disaster failover unit tests |
-| `pkg/engine/helpers.go` | Shared helpers extracted from planned.go (if not already extracted) — `resolveVolumeGroupID`, step constants |
-| `pkg/engine/testutil_test.go` | Shared test helpers — `mockVMManager` (if not already extracted) |
+| *(optional)* `pkg/engine/disaster_test.go` | Additional disaster-only tests if not folded into `failover_test.go` |
+
+No new `disaster.go` — disaster behavior lives in `failover.go` with `FailoverConfig`.
 
 ### Existing Code to Preserve (Do NOT Modify)
 
 | File | Reason |
 |------|--------|
-| `pkg/engine/planned.go` | Planned migration handler — do not change its behavior; only extract shared helpers if needed |
-| `pkg/engine/planned_test.go` | Planned migration tests — no changes (unless extracting mockVMManager) |
-| `pkg/engine/executor.go` | Executor framework — disaster handler implements its interface, does not modify it |
+| `pkg/engine/planned.go` | Legacy or thin wrapper — avoid unrelated refactors; prefer changes in `failover.go` per 4.1b |
+| `pkg/engine/planned_test.go` | Planned migration tests — no changes unless shared test extraction is already agreed |
+| `pkg/engine/executor.go` | Executor framework — `FailoverHandler` implements its interface, does not modify executor internals |
 | `pkg/engine/executor_test.go` | Executor tests — no changes |
 | `pkg/engine/handler_noop.go` | No-op handler stays as default — no changes |
 | `pkg/engine/vm.go` | VMManager interface — use, don't modify |
@@ -177,9 +151,9 @@ If Story 4.3 already extracted these to shared locations, simply import them. If
 
 The origin site is assumed unreachable. There is no point in stopping origin VMs (can't reach them), stopping replication (can't coordinate with origin), or waiting for sync (no sync will happen). The handler goes directly to force-promoting target volumes and starting target VMs.
 
-The `DisasterFailoverHandler` struct implements:
-- `PreExecute(ctx, groups)` — returns nil immediately (no-op)
-- `ExecuteGroup(ctx, group)` — per-DRGroup handler with force-promote
+`FailoverHandler` with `FailoverConfig{GracefulShutdown: false, Force: true, RecordRPO: true}` implements:
+- `PreExecute(ctx, groups)` — returns nil when `GracefulShutdown=false` (no graceful shutdown work)
+- `ExecuteGroup(ctx, group)` — per-DRGroup handler with force-promote and optional RPO recording
 
 **2. SetSource uses Force=true — the critical disaster flag.**
 
@@ -198,7 +172,7 @@ Planned migration calls `StopReplication(force=false)` before `SetSource` to flu
 
 **4. RPO recording provides operational visibility.**
 
-After each successful `SetSource`, the handler queries `GetReplicationStatus` to read `LastSyncTime`. RPO is calculated as `time.Since(*lastSyncTime)`. This is informational only — it does not gate execution. If the query fails (origin metadata unavailable), RPO is recorded as `"unknown"`.
+When `FailoverConfig.RecordRPO=true`, after each successful `SetSource`, `FailoverHandler` queries `GetReplicationStatus` to read `LastSyncTime`. RPO is calculated as `time.Since(*lastSyncTime)`. This is informational only — it does not gate execution. If the query fails (origin metadata unavailable), RPO is recorded as `"unknown"`.
 
 ```go
 status, err := handler.Driver.GetReplicationStatus(ctx, vgID)
@@ -221,33 +195,22 @@ if err != nil {
 | `GetReplicationStatus` (for RPO) | Tolerated → log warning, RPO="unknown", continue |
 | `StartVM` | Real failure → DRGroup fails |
 
-**6. The controller dispatch is a simple switch update.**
+**6. Controller dispatch is owned by Story 4.1b.**
 
-Story 4.3 already establishes the dispatch pattern:
+Story 4.1b constructs one `FailoverHandler` type with mode-specific `FailoverConfig` (planned vs disaster). Story 4.4 verifies disaster wiring and completes any missing RPO behavior; it does not introduce a second handler type.
 
 ```go
-var handler engine.DRGroupHandler
-switch exec.Spec.Mode {
-case v1alpha1.ExecutionModePlannedMigration:
-    handler = &engine.PlannedMigrationHandler{
-        Driver:           resolvedDriver,
-        VMManager:        r.VMManager,
-        SyncPollInterval: 2 * time.Second,
-        SyncTimeout:      10 * time.Minute,
-    }
-case v1alpha1.ExecutionModeDisaster:
-    handler = &engine.DisasterFailoverHandler{
-        Driver:    resolvedDriver,
-        VMManager: r.VMManager,
-    }
+// Illustrative — align with actual 4.1b reconciler code
+handler := &engine.FailoverHandler{
+    Driver:    resolvedDriver,
+    VMManager: r.VMManager,
+    Config:    failoverConfigForMode(exec.Spec.Mode),
 }
 ```
 
-Story 4.4 replaces the `NoOpHandler{}` placeholder for disaster mode with the real handler. `DisasterFailoverHandler` is simpler than `PlannedMigrationHandler` — it has no sync timeout/interval configuration.
-
 **7. VolumeGroupID resolution reuses the same pattern as planned migration.**
 
-The `resolveVolumeGroupID` helper calls `driver.CreateVolumeGroup(spec)` which is idempotent. Same approach, same code — extract to a shared helper if not already done in Story 4.3.
+The `resolveVolumeGroupID` helper (in `failover.go` or shared engine helpers after 4.1b) calls `driver.CreateVolumeGroup(spec)` which is idempotent. Reuse the implementation from Story 4.1b / 4.3 consolidation — do not fork.
 
 **8. Per-DRGroup step ordering: all SetSource before any StartVM.**
 
@@ -270,7 +233,7 @@ For DRGroup:
    ↓
 3. Wave executor discovers VMs → groups → chunks (Story 4.2)
    ↓
-4. NO Step 0 — skip directly to per-wave execution
+4. NO Step 0 — `FailoverConfig.GracefulShutdown=false` skips graceful shutdown; proceed directly to per-wave execution
    ↓
 5. Per wave (sequential):
    Per DRGroup (concurrent):
@@ -284,17 +247,17 @@ For DRGroup:
 
 ### Disaster vs Planned Migration Comparison
 
-| Aspect | Planned Migration (Story 4.3) | Disaster Failover (Story 4.4) |
+| Aspect | Planned migration config (`FailoverHandler`) | Disaster config (`FailoverHandler`) |
 |--------|------|---------|
-| Step 0 (PreExecute) | Yes — stop VMs, stop replication, wait sync | No — returns nil immediately |
-| SetSource force | `false` — both sites healthy | `true` — force promote |
-| StopReplication | Called in Step 0 AND per-DRGroup (idempotent) | Never called |
-| Origin VM handling | Gracefully stopped in Step 0 | Ignored (origin assumed unreachable) |
-| RPO guarantee | RPO=0 (sync guaranteed) | RPO>0 (data loss since last sync) |
-| RPO recording | Not applicable (RPO=0 by design) | Recorded from GetReplicationStatus.LastSyncTime |
-| Origin errors | Fail execution | Log and ignore |
-| Sync timeout config | SyncPollInterval, SyncTimeout fields | Not applicable |
-| Handler fields | Driver, VMManager, SyncPollInterval, SyncTimeout | Driver, VMManager only |
+| Step 0 (PreExecute) | `GracefulShutdown=true` — stop VMs, stop replication, wait sync | `GracefulShutdown=false` — returns nil without that work |
+| SetSource force | `Force=false` when both sites healthy | `Force=true` — force promote |
+| StopReplication | Called in graceful path (Step 0 / per-DRGroup as designed) | Not called for disaster config |
+| Origin VM handling | Gracefully stopped when graceful shutdown enabled | Ignored (origin assumed unreachable) |
+| RPO guarantee | RPO=0 (sync guaranteed) by design | RPO>0 (data loss since last sync) |
+| RPO recording | Typically off or informational per config | `RecordRPO=true` — from `GetReplicationStatus.LastSyncTime` |
+| Origin errors | Fail execution in graceful path | Log and ignore for RPO/status reads per AC |
+| Sync timeout config | Planned fields on config/handler | Not applicable for disaster |
+| Handler type | `FailoverHandler` | Same `FailoverHandler`, different `FailoverConfig` |
 
 ### Volume Role Transitions During Disaster Failover
 
@@ -307,7 +270,7 @@ In disaster mode, the driver's `SetSource(force=true)` handles the Target→Sour
 
 ### StepStatus Recording
 
-The disaster handler records the same step types as planned migration, minus `StopReplication`:
+`FailoverHandler` in disaster mode records the same step types as planned migration, minus `StopReplication`:
 
 ```yaml
 steps:
@@ -359,16 +322,16 @@ Both DRPlan and DRExecution are cluster-scoped resources (no namespace). Use `cl
 
 ### Test Strategy
 
-**Unit tests** (`pkg/engine/disaster_test.go`): Use fake driver from `pkg/drivers/fake/`, mock `VMManager`, and verify:
-- Force flag: `SetSourceOptions{Force: true}` passed to every SetSource call
-- No StopReplication: verify driver's StopReplication is never called
+**Unit tests** (`pkg/engine/failover_test.go` or optional `disaster_test.go` in the same package): Use fake driver from `pkg/drivers/fake/`, mock `VMManager`, construct `FailoverHandler` with disaster `FailoverConfig`, and verify:
+- Force flag: `SetSourceOptions{Force: true}` passed to every SetSource call when `Config.Force=true`
+- No StopReplication: verify driver's `StopReplication` is never called for disaster config
 - Step ordering: all SetSource before any StartVM within a DRGroup
-- RPO recording: `GetReplicationStatus` called after each SetSource, RPO in message
+- RPO recording: when `RecordRPO=true`, `GetReplicationStatus` called after each SetSource, RPO in message
 - RPO tolerance: `GetReplicationStatus` failure does not fail the group
 - Error handling: SetSource failure and StartVM failure produce correct error messages
 - StepStatus recording: all operations recorded with names and timestamps
 - Context cancellation: graceful exit
-- PreExecute no-op: returns nil without touching driver or VMManager
+- PreExecute with `GracefulShutdown=false`: returns nil without graceful shutdown driver/VM work
 
 **Mock VMManager (reused from Story 4.3):**
 ```go
@@ -396,12 +359,16 @@ assert.Empty(t, fakeDriver.Calls("StopReplication"), "disaster failover must not
 
 ### Previous Story Intelligence
 
+**From Story 4.1b (Unified Failover Handler):**
+- `FailoverHandler` with `FailoverConfig{GracefulShutdown, Force, RecordRPO}` — single type for planned and disaster modes; Story 4.4 adds or completes `RecordRPO` behavior and disaster-focused tests
+- Controller should already pass disaster `FailoverConfig` when `ExecutionModeDisaster` — verify and patch gaps only
+
 **From Story 4.3 (Planned Migration Workflow):**
-- `PlannedMigrationHandler` structure: `Driver`, `VMManager`, `SyncPollInterval`, `SyncTimeout` — disaster is simpler: only `Driver` + `VMManager`
-- `resolveVolumeGroupID` helper: calls `driver.CreateVolumeGroup(spec)` idempotently — reuse directly
-- Step name constants: `StepSetSource`, `StepStartVM`, `StepStopReplication` — reuse (minus StopReplication)
+- Planned path patterns (volume resolution, step names, `StepStatus` shape) live in or feed `failover.go` after 4.1b — follow existing constants and helpers there
+- `resolveVolumeGroupID` helper: calls `driver.CreateVolumeGroup(spec)` idempotently — reuse from unified handler
+- Step name constants: `StepSetSource`, `StepStartVM`, `StepStopReplication` — disaster path omits `StopReplication`
 - Step recording pattern: `StepStatus{Name, Status, Message, Timestamp}` with `metav1.Now()` — follow exactly
-- `mockVMManager` test helper: configurable success/failure, records calls — extract and reuse
+- `mockVMManager` test helper: configurable success/failure, records calls — reuse from engine tests
 - VMManager `StartVM` is idempotent: returns nil if already running
 - Per-DRGroup execution: all volume operations before any VM operations — follow this ordering
 - Error wrapping style: `"<operation> for <subject>: %w"` — follow exactly
@@ -412,7 +379,7 @@ assert.Empty(t, fakeDriver.Calls("StopReplication"), "disaster failover must not
 - `ExecutionGroup` bundles `DRGroupChunk` + resolved `StorageProvider` driver + `WaveIndex int`
 - The executor runs synchronously in the reconcile loop (async is Story 4.7)
 - Status updates use mutex-serialized writes via `updateGroupStatus`
-- The controller calls `PreExecute` before dispatching the executor for planned migration; for disaster mode, skip it or call the no-op
+- The controller calls `PreExecute` when appropriate for the handler; for `FailoverHandler` with `GracefulShutdown=false`, `PreExecute` returns nil without origin work
 - Do NOT use `errgroup` for within-wave concurrency — use `sync.WaitGroup` (fail-forward)
 - The controller calls `CompleteTransition` after execution finishes (Succeeded or PartiallySucceeded only)
 
@@ -448,12 +415,11 @@ make integration  # Integration tests
 
 ### Project Structure Notes
 
-All files align with the architecture document:
-- `pkg/engine/disaster.go` — disaster failover workflow (architecture: `pkg/engine/disaster.go`)
-- `pkg/engine/disaster_test.go` — unit tests
-- `pkg/engine/helpers.go` — shared engine helpers (if extracted)
-- `pkg/controller/drexecution/reconciler.go` — enhanced controller dispatch
-- No changes to `cmd/soteria/main.go` — disaster handler creation is in the controller, wiring is already complete from Story 4.3
+Implementation centers on the unified handler (update `architecture.md` project structure if it still lists `pkg/engine/disaster.go`):
+- `pkg/engine/failover.go` — `FailoverHandler`, `FailoverConfig`, planned and disaster execution paths
+- `pkg/engine/failover_test.go` — include disaster-mode cases (optional `disaster_test.go` for extra grouping)
+- `pkg/controller/drexecution/reconciler.go` — verify `FailoverHandler` construction for disaster mode (Story 4.1b)
+- No changes to `cmd/soteria/main.go` — wiring remains in the controller from Story 4.1b
 
 ### References
 
@@ -463,7 +429,7 @@ All files align with the architecture document:
 - [Source: _bmad-output/planning-artifacts/prd.md#FR13] — Fail-forward error handling with PartiallySucceeded reporting
 - [Source: _bmad-output/planning-artifacts/prd.md#FR18] — Human-triggered only, no auto-failover
 - [Source: _bmad-output/planning-artifacts/prd.md#FR19] — Execution mode specified at runtime, not on plan
-- [Source: _bmad-output/planning-artifacts/architecture.md#Project Structure] — `pkg/engine/disaster.go` in directory structure
+- [Source: _bmad-output/planning-artifacts/architecture.md#Project Structure] — align with `pkg/engine/failover.go` (unified handler); update architecture if it still references `disaster.go`
 - [Source: _bmad-output/planning-artifacts/architecture.md#Controller Patterns] — Reconcile return patterns, structured logging
 - [Source: _bmad-output/planning-artifacts/architecture.md#Driver Implementation Patterns] — Registration, idempotency, typed errors, context
 - [Source: _bmad-output/planning-artifacts/architecture.md#Engine Boundary] — Engine owns workflow execution, receives plan and driver
@@ -480,7 +446,8 @@ All files align with the architecture document:
 - [Source: pkg/engine/chunker.go] — DRGroupChunk, WaveChunks (contains VolumeGroups and VMs)
 - [Source: pkg/engine/discovery.go] — VMDiscoverer interface, VMReference, TypedVMDiscoverer
 - [Source: pkg/controller/drexecution/reconciler.go] — Current controller with handler dispatch pattern
-- [Source: _bmad-output/implementation-artifacts/4-3-planned-migration-workflow.md] — Previous story: planned migration handler, VMManager, resolveVolumeGroupID, step recording
+- [Source: _bmad-output/implementation-artifacts/4-1b-state-machine-symmetry-unified-failover-handler.md] — Prerequisite: unified `FailoverHandler`, `FailoverConfig`, controller wiring
+- [Source: _bmad-output/implementation-artifacts/4-3-planned-migration-workflow.md] — Previous story: planned migration path, VMManager, step recording patterns feeding the unified handler
 - [Source: _bmad-output/implementation-artifacts/4-2-drgroup-chunking-wave-executor.md] — Previous story: executor framework, DRGroupHandler interface, ExecutionGroup, fail-forward semantics
 - [Source: _bmad-output/implementation-artifacts/4-1-dr-state-machine-execution-controller.md] — Previous story: state machine, controller setup, admission webhook
 - [Source: _bmad-output/implementation-artifacts/4-05-driver-registry-fallback-preflight-convergence.md] — Previous story: registry fallback, noop-fallback flag

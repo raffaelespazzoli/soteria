@@ -1,6 +1,6 @@
 # Story 4.3: Planned Migration Workflow
 
-Status: review
+Status: absorbed-into-4.1b (PlannedMigrationHandler refactored to unified FailoverHandler in Story 4.1b)
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
