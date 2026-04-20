@@ -49,6 +49,16 @@ type DRGroupHandler interface {
 	ExecuteGroup(ctx context.Context, group ExecutionGroup) error
 }
 
+// StepHandler is an optional extension of DRGroupHandler that returns
+// per-step execution details alongside the error. Handlers that implement
+// this interface get their steps recorded in DRGroupExecutionStatus.
+type StepHandler interface {
+	DRGroupHandler
+	ExecuteGroupWithSteps(
+		ctx context.Context, group ExecutionGroup,
+	) ([]soteriav1alpha1.StepStatus, error)
+}
+
 // ExecutionGroup bundles a DRGroupChunk with its resolved StorageProvider
 // driver so the handler does not need to resolve drivers itself.
 type ExecutionGroup struct {
@@ -223,7 +233,13 @@ func (e *WaveExecutor) executeGroup(
 		Driver:    driver,
 		WaveIndex: waveIdx,
 	}
-	err = handler.ExecuteGroup(ctx, execGroup)
+
+	var steps []soteriav1alpha1.StepStatus
+	if sh, ok := handler.(StepHandler); ok {
+		steps, err = sh.ExecuteGroupWithSteps(ctx, execGroup)
+	} else {
+		err = handler.ExecuteGroup(ctx, execGroup)
+	}
 
 	completionTime := metav1.Now()
 	if err != nil {
@@ -233,6 +249,7 @@ func (e *WaveExecutor) executeGroup(
 			Result:         soteriav1alpha1.DRGroupResultFailed,
 			VMNames:        vmNames,
 			Error:          err.Error(),
+			Steps:          steps,
 			StartTime:      &startTime,
 			CompletionTime: &completionTime,
 		})
@@ -244,6 +261,7 @@ func (e *WaveExecutor) executeGroup(
 		Name:           chunk.Name,
 		Result:         soteriav1alpha1.DRGroupResultCompleted,
 		VMNames:        vmNames,
+		Steps:          steps,
 		StartTime:      &startTime,
 		CompletionTime: &completionTime,
 	})
@@ -504,6 +522,46 @@ func (e *WaveExecutor) getGroupVMNames(
 	out := make([]string, len(names))
 	copy(out, names)
 	return out
+}
+
+// BuildExecutionGroups runs the discover → group → chunk pipeline and returns
+// all ExecutionGroups across all waves. Used by the controller to pass groups
+// to PreExecute before the wave executor runs.
+func (e *WaveExecutor) BuildExecutionGroups(
+	ctx context.Context, plan *soteriav1alpha1.DRPlan,
+) ([]ExecutionGroup, error) {
+	vms, err := e.VMDiscoverer.DiscoverVMs(ctx, plan.Name)
+	if err != nil {
+		return nil, fmt.Errorf("VM discovery failed: %w", err)
+	}
+	if len(vms) == 0 {
+		return nil, nil
+	}
+
+	discovery := GroupByWave(vms, plan.Spec.WaveLabel)
+	consistency, err := ResolveVolumeGroups(ctx, vms, plan.Spec.WaveLabel, e.NamespaceLookup)
+	if err != nil {
+		return nil, fmt.Errorf("volume group resolution failed: %w", err)
+	}
+
+	chunkInput := buildChunkInput(discovery, consistency, vms, plan.Spec.WaveLabel)
+	chunkResult := ChunkWaves(chunkInput, plan.Spec.MaxConcurrentFailovers)
+
+	var groups []ExecutionGroup
+	for waveIdx, wc := range chunkResult.Waves {
+		for _, chunk := range wc.Chunks {
+			driver, err := e.resolveDriver(ctx, chunk)
+			if err != nil {
+				return nil, fmt.Errorf("resolving driver for chunk %s: %w", chunk.Name, err)
+			}
+			groups = append(groups, ExecutionGroup{
+				Chunk:     chunk,
+				Driver:    driver,
+				WaveIndex: waveIdx,
+			})
+		}
+	}
+	return groups, nil
 }
 
 // buildChunkInput constructs the ChunkInput by matching VolumeGroups to waves.

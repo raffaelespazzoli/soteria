@@ -271,12 +271,21 @@ func main() {
 		SCLister:        scLister,
 	}
 
+	var vmManager engine.VMManager
+	if noopFallback {
+		vmManager = &engine.NoOpVMManager{}
+		setupLog.Info("Using NoOpVMManager for dev/CI (noop-fallback enabled)")
+	} else {
+		vmManager = &engine.KubeVirtVMManager{Client: mgr.GetClient()}
+	}
+
 	if err := (&drexecution.DRExecutionReconciler{
 		Client:       mgr.GetClient(),
 		Scheme:       mgr.GetScheme(),
 		Recorder:     drexecRecorder,
 		WaveExecutor: waveExecutor,
 		Handler:      &engine.NoOpHandler{},
+		VMManager:    vmManager,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "DRExecution")
 		os.Exit(1)

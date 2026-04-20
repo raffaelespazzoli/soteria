@@ -267,6 +267,9 @@ type DRGroupExecutionStatus struct {
 	VMNames []string `json:"vmNames,omitempty"`
 	// Error contains error details if the group failed.
 	Error string `json:"error,omitempty"`
+	// Steps records per-step execution details within this DRGroup.
+	// +listType=atomic
+	Steps []StepStatus `json:"steps,omitempty"`
 	// StartTime is when this group began processing.
 	StartTime *metav1.Time `json:"startTime,omitempty"`
 	// CompletionTime is when this group finished.

@@ -148,6 +148,13 @@ func (in *DRGroupExecutionStatus) DeepCopyInto(out *DRGroupExecutionStatus) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	if in.Steps != nil {
+		in, out := &in.Steps, &out.Steps
+		*out = make([]StepStatus, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
 	if in.StartTime != nil {
 		in, out := &in.StartTime, &out.StartTime
 		*out = (*in).DeepCopy()

@@ -340,6 +340,25 @@ func schema_pkg_apis_soteriaio_v1alpha1_DRGroupExecutionStatus(ref common.Refere
 							Format:      "",
 						},
 					},
+					"steps": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "atomic",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "Steps records per-step execution details within this DRGroup.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: map[string]interface{}{},
+										Ref:     ref("github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.StepStatus"),
+									},
+								},
+							},
+						},
+					},
 					"startTime": {
 						SchemaProps: spec.SchemaProps{
 							Description: "StartTime is when this group began processing.",
@@ -357,7 +376,7 @@ func schema_pkg_apis_soteriaio_v1alpha1_DRGroupExecutionStatus(ref common.Refere
 			},
 		},
 		Dependencies: []string{
-			v1.Time{}.OpenAPIModelName()},
+			"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.StepStatus", v1.Time{}.OpenAPIModelName()},
 	}
 }
 

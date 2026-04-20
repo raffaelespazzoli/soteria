@@ -50,6 +50,21 @@ limitations under the License.
 //     Status updates are serialized via mutex and written to the DRExecution
 //     status subresource after each group completes.
 //
+//   - Planned migration workflow (planned.go): the first real DRGroupHandler
+//     implementation that drives actual DR operations through the StorageProvider
+//     driver. Two-phase design: Step 0 (PreExecute) is a global pre-execution
+//     phase that stops all origin VMs, stops replication on all volume groups,
+//     and polls GetReplicationStatus until sync completion — guaranteeing RPO=0.
+//     The per-DRGroup phase (ExecuteGroup) promotes target volumes to Source via
+//     SetSource(force=false) and starts target VMs, wave by wave. All driver
+//     calls use force=false because planned migration assumes both sites are
+//     healthy. The disaster failover handler (Story 4.4) uses force=true.
+//
+//   - VMManager interface (vm.go): abstracts KubeVirt VM lifecycle control for
+//     stopping origin VMs (Step 0) and starting target VMs (per-DRGroup).
+//     KubeVirtVMManager patches VirtualMachine.Spec.RunStrategy via merge patch.
+//     NoOpVMManager (vm_noop.go) enables testing and dev/CI without KubeVirt.
+//
 // All engine functions are pure or accept interfaces for dependency injection,
 // keeping the DRPlan and DRExecution controllers testable at every level.
 package engine

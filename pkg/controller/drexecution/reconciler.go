@@ -30,6 +30,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -50,7 +51,7 @@ import (
 // +kubebuilder:rbac:groups=soteria.io,resources=drplans,verbs=get;list;watch
 // +kubebuilder:rbac:groups=soteria.io,resources=drplans/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
-// +kubebuilder:rbac:groups=kubevirt.io,resources=virtualmachines,verbs=get;list;watch
+// +kubebuilder:rbac:groups=kubevirt.io,resources=virtualmachines,verbs=get;list;watch;patch;update
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list
 // +kubebuilder:rbac:groups=storage.k8s.io,resources=storageclasses,verbs=get;list
@@ -65,6 +66,7 @@ type DRExecutionReconciler struct {
 	Recorder     events.EventRecorder
 	WaveExecutor *engine.WaveExecutor
 	Handler      engine.DRGroupHandler
+	VMManager    engine.VMManager
 }
 
 func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -159,15 +161,54 @@ func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	// Dispatch (or re-dispatch) the wave executor.
 	if r.WaveExecutor != nil {
-		handler := r.Handler
-		if handler == nil {
-			handler = &engine.NoOpHandler{}
+		handler, err := r.resolveHandler(exec.Spec.Mode)
+		if err != nil {
+			return r.failExecution(ctx, &exec, "HandlerResolutionFailed", err.Error())
 		}
 		execInput := engine.ExecuteInput{
 			Execution: &exec,
 			Plan:      &plan,
 			Handler:   handler,
 		}
+
+		// If the handler supports PreExecute (e.g., planned migration Step 0),
+		// run it once. The Step0Complete condition prevents re-execution on retry.
+		step0Done := meta.IsStatusConditionTrue(exec.Status.Conditions, "Step0Complete")
+		if !step0Done {
+			if ph, ok := handler.(interface {
+				PreExecute(ctx context.Context, groups []engine.ExecutionGroup) error
+			}); ok {
+				allGroups, err := r.WaveExecutor.BuildExecutionGroups(ctx, &plan)
+				if err != nil {
+					logger.Error(err, "Failed to build execution groups for pre-execution")
+					return r.failExecution(ctx, &exec, "PreExecutionFailed",
+						fmt.Sprintf("building execution groups: %v", err))
+				}
+				if err := ph.PreExecute(ctx, allGroups); err != nil {
+					logger.Error(err, "Pre-execution (Step 0) failed")
+					r.event(&exec, corev1.EventTypeWarning, "Step0Failed", "PlannedMigration",
+						fmt.Sprintf("Step 0 failed: %v", err))
+					return r.failExecution(ctx, &exec, "PreExecutionFailed",
+						fmt.Sprintf("pre-execution failed: %v", err))
+				}
+
+				execPatch := client.MergeFrom(exec.DeepCopy())
+				meta.SetStatusCondition(&exec.Status.Conditions, metav1.Condition{
+					Type:               "Step0Complete",
+					Status:             metav1.ConditionTrue,
+					Reason:             "PreExecutionCompleted",
+					Message:            "Step 0 completed successfully",
+					ObservedGeneration: exec.Generation,
+				})
+				if err := r.Status().Patch(ctx, &exec, execPatch); err != nil {
+					return ctrl.Result{}, err
+				}
+
+				r.event(&exec, corev1.EventTypeNormal, "PlannedMigrationStarted", "PlannedMigration",
+					fmt.Sprintf("Planned migration Step 0 completed for plan %s", plan.Name))
+			}
+		}
+
 		if err := r.WaveExecutor.Execute(ctx, execInput); err != nil {
 			logger.Error(err, "Wave execution failed", "plan", plan.Name, "execution", exec.Name)
 			return ctrl.Result{}, err
@@ -193,7 +234,9 @@ func (r *DRExecutionReconciler) failExecution(
 	now := metav1.Now()
 	patch := client.MergeFrom(exec.DeepCopy())
 	exec.Status.Result = soteriav1alpha1.ExecutionResultFailed
-	exec.Status.StartTime = &now
+	if exec.Status.StartTime == nil {
+		exec.Status.StartTime = &now
+	}
 	exec.Status.CompletionTime = &now
 	meta.SetStatusCondition(&exec.Status.Conditions, metav1.Condition{
 		Type:               "Ready",
@@ -209,6 +252,31 @@ func (r *DRExecutionReconciler) failExecution(
 	}
 
 	return ctrl.Result{}, nil
+}
+
+// resolveHandler selects the appropriate DRGroupHandler based on execution mode.
+// Returns an error when the requested mode cannot be fulfilled (e.g. planned
+// migration without a configured VMManager).
+func (r *DRExecutionReconciler) resolveHandler(
+	mode soteriav1alpha1.ExecutionMode,
+) (engine.DRGroupHandler, error) {
+	switch mode {
+	case soteriav1alpha1.ExecutionModePlannedMigration:
+		if r.VMManager == nil {
+			return nil, fmt.Errorf(
+				"VMManager not configured; planned migration requires a VMManager")
+		}
+		return &engine.PlannedMigrationHandler{
+			Driver:           nil, // executor resolves driver per-group
+			VMManager:        r.VMManager,
+			SyncPollInterval: 2 * time.Second,
+			SyncTimeout:      10 * time.Minute,
+		}, nil
+	}
+	if r.Handler != nil {
+		return r.Handler, nil
+	}
+	return &engine.NoOpHandler{}, nil
 }
 
 func (r *DRExecutionReconciler) event(
