@@ -120,6 +120,49 @@ limitations under the License.
 //     VM exists, is not migrating/provisioning, and is not paused.
 //     NoOpVMHealthValidator always returns nil for dev/CI environments.
 //
+//   - Per-DRGroup checkpointing (checkpoint.go): After each DRGroup completes
+//     (success or failure), the executor writes the updated DRExecution.Status to
+//     the Kubernetes API server via the status subresource. The checkpoint write
+//     path: controller → kube-apiserver → aggregated API server → ScyllaDB. The
+//     controller never bypasses the Kubernetes API chain. KubeCheckpointer retries
+//     with exponential backoff (100ms initial, 2x factor, 5s cap, 6 attempts). On
+//     retry exhaustion, the group is marked Failed and execution continues
+//     fail-forward. NoOpCheckpointer records calls for unit testing.
+//
+//     Checkpoint timing guarantee: at most one in-flight DRGroup can be lost on
+//     crash — the last group whose checkpoint write completed is the recovery
+//     point. The statusMu mutex serializes in-memory status updates; the
+//     checkpoint write happens immediately after each group status update.
+//     Concurrent DRPlan executions use separate DRExecution resources and separate
+//     checkpoint write paths — no shared mutex between executions.
+//
+//   - Execution state reconstruction and resume (resume.go): On startup,
+//     controller-runtime syncs informer caches and queues a reconcile for every
+//     existing DRExecution. The reconciler detects in-progress executions
+//     (StartTime != nil AND Result == "") and calls ResumeAnalyzer.AnalyzeExecution
+//     to determine the resume point. The algorithm walks Status.Waves[] to find the
+//     first wave with non-terminal groups. Groups with Result == InProgress (crashed
+//     mid-execution) are reset to Pending and retried — driver operations are
+//     idempotent. Completed and Failed groups are skipped. ExecuteFromWave starts
+//     execution from the resume wave, skipping already-terminal groups, and
+//     continues normally for subsequent waves.
+//
+//   - Leader election gating (cmd/soteria/main.go): Leader election
+//     (ctrl.Options{LeaderElection: true}) gates only the workflow engine
+//     reconciliation. All replicas continue serving API requests through the
+//     aggregated API server. The leader lease ID is "soteria.io". Configurable
+//     via --leader-elect-lease-duration (default 15s), --leader-elect-renew-deadline
+//     (default 10s), --leader-elect-retry-period (default 2s). On leader failure,
+//     the standby acquires the lease and its controller manager starts reconciling,
+//     picking up in-progress executions via checkpoint resume.
+//
+//   - Checkpoint Prometheus metrics (pkg/metrics/metrics.go):
+//     soteria_checkpoint_writes_total (CounterVec, labels: execution, result),
+//     soteria_checkpoint_write_duration_seconds (Histogram),
+//     soteria_checkpoint_retries_total (Counter). All use the soteria_ prefix per
+//     project convention and are registered with controller-runtime's metrics
+//     registry.
+//
 // All engine functions are pure or accept interfaces for dependency injection,
 // keeping the DRPlan and DRExecution controllers testable at every level.
 package engine

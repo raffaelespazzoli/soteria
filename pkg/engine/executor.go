@@ -168,6 +168,7 @@ type WaveExecutor struct {
 	Recorder          events.EventRecorder
 	PVCResolver       PVCResolver
 	VMHealthValidator VMHealthValidator
+	Checkpointer      Checkpointer
 
 	statusMu sync.Mutex
 }
@@ -180,8 +181,8 @@ type ExecuteInput struct {
 }
 
 // Execute runs the full execution pipeline: discover → group → chunk → execute
-// waves → compute result. It returns nil on success; errors indicate
-// infrastructure failures (not DRGroup failures, which are recorded in status).
+// waves → compute result. It delegates to ExecuteFromWave with startWaveIndex=0
+// and no skip groups for backward compatibility.
 func (e *WaveExecutor) Execute(ctx context.Context, input ExecuteInput) error {
 	logger := log.FromContext(ctx)
 	exec := input.Execution
@@ -257,6 +258,88 @@ func (e *WaveExecutor) Execute(ctx context.Context, input ExecuteInput) error {
 	return e.finishExecution(ctx, exec, plan, result, "")
 }
 
+// ExecuteFromWave starts execution from a specific wave index, skipping groups
+// whose names appear in skipGroups. For the resume wave, only pending and
+// in-flight (retried) groups are executed. Subsequent waves execute normally.
+// This method is the core execution loop shared by both new executions and
+// resume-after-restart.
+func (e *WaveExecutor) ExecuteFromWave(
+	ctx context.Context, input ExecuteInput, startWaveIndex int, skipGroups map[string]bool,
+) error {
+	logger := log.FromContext(ctx)
+	exec := input.Execution
+	plan := input.Plan
+
+	for i := startWaveIndex; i < len(exec.Status.Waves); i++ {
+		if ctx.Err() != nil {
+			logger.Info("Context cancelled, stopping execution")
+			return e.finishExecution(ctx, exec, plan, e.computeResult(exec), "Context cancelled")
+		}
+
+		wave := exec.Status.Waves[i]
+
+		// Build the chunk list for this wave, skipping completed/failed groups
+		// when resuming the first wave.
+		var chunks []DRGroupChunk
+		for _, group := range wave.Groups {
+			if i == startWaveIndex && skipGroups != nil && skipGroups[group.Name] {
+				continue
+			}
+			chunks = append(chunks, e.reconstructChunkFromStatus(group, plan, i))
+		}
+
+		if len(chunks) > 0 {
+			e.executeWave(ctx, i, chunks, input.Handler, exec)
+		}
+	}
+
+	result := e.computeResult(exec)
+	logger.Info("Wave execution completed", "result", result)
+	return e.finishExecution(ctx, exec, plan, result, "")
+}
+
+// reconstructChunkFromStatus builds a DRGroupChunk from a group's execution
+// status and plan data for resume execution.
+func (e *WaveExecutor) reconstructChunkFromStatus(
+	group soteriav1alpha1.DRGroupExecutionStatus,
+	plan *soteriav1alpha1.DRPlan,
+	waveIdx int,
+) DRGroupChunk {
+	vms := make([]VMReference, len(group.VMNames))
+	vmNameSet := make(map[string]bool, len(group.VMNames))
+	for i, name := range group.VMNames {
+		ns := ""
+		if waveIdx < len(plan.Status.Waves) {
+			for _, dvm := range plan.Status.Waves[waveIdx].VMs {
+				if dvm.Name == name {
+					ns = dvm.Namespace
+					break
+				}
+			}
+		}
+		vms[i] = VMReference{Name: name, Namespace: ns}
+		vmNameSet[name] = true
+	}
+
+	var volumeGroups []soteriav1alpha1.VolumeGroupInfo
+	if waveIdx < len(plan.Status.Waves) {
+		for _, vg := range plan.Status.Waves[waveIdx].Groups {
+			for _, vmName := range vg.VMNames {
+				if vmNameSet[vmName] {
+					volumeGroups = append(volumeGroups, vg)
+					break
+				}
+			}
+		}
+	}
+
+	return DRGroupChunk{
+		Name:         group.Name,
+		VMs:          vms,
+		VolumeGroups: volumeGroups,
+	}
+}
+
 // executeWave runs all DRGroup chunks in a wave concurrently using
 // sync.WaitGroup (NOT errgroup, which cancels siblings on first error —
 // opposite of fail-forward semantics).
@@ -282,6 +365,7 @@ func (e *WaveExecutor) executeWave(
 
 	completionTime := metav1.Now()
 	e.setWaveCompletionTime(exec, waveIdx, &completionTime)
+	e.writeCheckpoint(ctx, exec, fmt.Sprintf("wave-%d", waveIdx))
 	logger.Info("Wave execution completed", "wave", waveIdx)
 }
 
@@ -323,6 +407,7 @@ func (e *WaveExecutor) executeGroup(
 			StartTime:      &startTime,
 			CompletionTime: &completionTime,
 		})
+		e.writeCheckpoint(ctx, exec, chunk.Name)
 		return
 	}
 
@@ -364,6 +449,7 @@ func (e *WaveExecutor) executeGroup(
 			StartTime:      &startTime,
 			CompletionTime: &completionTime,
 		})
+		e.writeCheckpoint(ctx, exec, chunk.Name)
 		return
 	}
 
@@ -378,6 +464,46 @@ func (e *WaveExecutor) executeGroup(
 		StartTime:      &startTime,
 		CompletionTime: &completionTime,
 	})
+	if !e.writeCheckpoint(ctx, exec, chunk.Name) {
+		logger.Info("Marking group Failed due to checkpoint exhaustion",
+			"wave", waveIdx, "group", chunk.Name)
+		e.setGroupStatus(ctx, exec, waveIdx, groupIdx, soteriav1alpha1.DRGroupExecutionStatus{
+			Name:           chunk.Name,
+			Result:         soteriav1alpha1.DRGroupResultFailed,
+			VMNames:        vmNames,
+			Steps:          steps,
+			Error:          "checkpoint write failed after retries",
+			StartTime:      &startTime,
+			CompletionTime: &completionTime,
+		})
+	}
+}
+
+// writeCheckpoint persists the current DRExecution status as a checkpoint.
+// Returns true on success (or nil Checkpointer), false on failure. On
+// ErrCheckpointFailed the success-path caller must mark the group Failed
+// per AC3; failure-path callers can ignore the return since the group is
+// already Failed. The snapshot is taken under statusMu to prevent concurrent
+// group completions from overwriting each other's checkpoint data.
+func (e *WaveExecutor) writeCheckpoint(ctx context.Context, exec *soteriav1alpha1.DRExecution, groupName string) bool {
+	if e.Checkpointer == nil {
+		return true
+	}
+	e.statusMu.Lock()
+	snapshot := exec.DeepCopy()
+	e.statusMu.Unlock()
+	if err := e.Checkpointer.WriteCheckpoint(ctx, snapshot); err != nil {
+		logger := log.FromContext(ctx)
+		if errors.Is(err, ErrCheckpointFailed) {
+			logger.Info("Checkpoint write exhausted retries, continuing fail-forward",
+				"execution", exec.Name, "group", groupName, "error", err)
+		} else {
+			logger.Error(err, "Checkpoint write failed",
+				"execution", exec.Name, "group", groupName)
+		}
+		return false
+	}
+	return true
 }
 
 // createDRGroupStatus creates a DRGroupStatus resource for real-time tracking

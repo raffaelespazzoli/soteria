@@ -80,6 +80,9 @@ func main() {
 	var metricsCertPath, metricsCertName, metricsCertKey string
 	var webhookCertPath, webhookCertName, webhookCertKey string
 	var enableLeaderElection bool
+	var leaderElectLeaseDuration time.Duration
+	var leaderElectRenewDeadline time.Duration
+	var leaderElectRetryPeriod time.Duration
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
@@ -98,6 +101,12 @@ func main() {
 	fs.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
+	fs.DurationVar(&leaderElectLeaseDuration, "leader-elect-lease-duration", 15*time.Second,
+		"The duration that non-leader candidates will wait to force acquire leadership.")
+	fs.DurationVar(&leaderElectRenewDeadline, "leader-elect-renew-deadline", 10*time.Second,
+		"The duration that the acting leader will retry refreshing leadership before giving up.")
+	fs.DurationVar(&leaderElectRetryPeriod, "leader-elect-retry-period", 2*time.Second,
+		"The duration the LeaderElector clients should wait between tries of actions.")
 	fs.BoolVar(&secureMetrics, "metrics-secure", true,
 		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
 	fs.StringVar(&webhookCertPath, "webhook-cert-path", "", "The directory that contains the webhook certificate.")
@@ -208,6 +217,9 @@ func main() {
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "soteria.io",
+		LeaseDuration:          &leaderElectLeaseDuration,
+		RenewDeadline:          &leaderElectRenewDeadline,
+		RetryPeriod:            &leaderElectRetryPeriod,
 	})
 	if err != nil {
 		setupLog.Error(err, "Failed to start manager")
@@ -278,6 +290,8 @@ func main() {
 		vmHealthValidator = &engine.KubeVirtVMHealthValidator{Client: mgr.GetClient()}
 	}
 
+	checkpointer := &engine.KubeCheckpointer{Client: mgr.GetClient()}
+
 	waveExecutor := &engine.WaveExecutor{
 		Client:            mgr.GetClient(),
 		CoreClient:        clientset.CoreV1(),
@@ -288,6 +302,7 @@ func main() {
 		Recorder:          drexecRecorder,
 		PVCResolver:       pvcResolver,
 		VMHealthValidator: vmHealthValidator,
+		Checkpointer:      checkpointer,
 	}
 
 	var vmManager engine.VMManager
@@ -298,13 +313,23 @@ func main() {
 		vmManager = &engine.KubeVirtVMManager{Client: mgr.GetClient()}
 	}
 
+	resumeAnalyzer := &engine.ResumeAnalyzer{}
+
+	if enableLeaderElection {
+		setupLog.Info("Leader election configured",
+			"leaseDuration", leaderElectLeaseDuration,
+			"renewDeadline", leaderElectRenewDeadline,
+			"retryPeriod", leaderElectRetryPeriod)
+	}
+
 	if err := (&drexecution.DRExecutionReconciler{
-		Client:       mgr.GetClient(),
-		Scheme:       mgr.GetScheme(),
-		Recorder:     drexecRecorder,
-		WaveExecutor: waveExecutor,
-		Handler:      &engine.NoOpHandler{},
-		VMManager:    vmManager,
+		Client:         mgr.GetClient(),
+		Scheme:         mgr.GetScheme(),
+		Recorder:       drexecRecorder,
+		WaveExecutor:   waveExecutor,
+		Handler:        &engine.NoOpHandler{},
+		VMManager:      vmManager,
+		ResumeAnalyzer: resumeAnalyzer,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "DRExecution")
 		os.Exit(1)

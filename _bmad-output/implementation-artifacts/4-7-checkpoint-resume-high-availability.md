@@ -604,3 +604,10 @@ The engine boundary is maintained: `pkg/engine/` knows about plans, drivers, and
 ### Completion Notes List
 
 ### File List
+
+### Review Findings
+
+- [x] [Review][Patch] Resume can falsely succeed when restart happens before any wave status is initialized [`pkg/controller/drexecution/reconciler.go`] — Fixed: `reconcileResume` now dispatches to full `Execute` when `len(exec.Status.Waves) == 0`
+- [x] [Review][Patch] Resume can re-execute already terminal groups when only final result computation was missing [`pkg/engine/resume.go`] — Fixed: fallthrough now populates `CompletedGroups`/`FailedGroups` so groups are skipped
+- [x] [Review][Patch] Concurrent checkpoint writes can overwrite newer status for the same execution [`pkg/engine/executor.go`] — Fixed: snapshot taken under `statusMu` lock
+- [x] [Review][Patch] Checkpoint retry exhaustion is only logged instead of marking the group failed and fail-forwarding per spec [`pkg/engine/executor.go`] — Fixed: `writeCheckpoint` returns bool; success-path caller downgrades group to Failed on exhaustion

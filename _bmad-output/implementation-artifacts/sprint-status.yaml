@@ -35,7 +35,9 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-06
-last_updated: 2026-04-20
+last_updated: 2026-04-21
+# 4.7 review: Checkpoint, Resume & High Availability — per-DRGroup checkpointing (KubeCheckpointer with exponential backoff), ResumeAnalyzer for crash recovery, ExecuteFromWave resume-aware execution, reconciler resume path with event emission, leader election configuration flags, checkpoint Prometheus metrics (writes/duration/retries), NoOpCheckpointer for testing, 33 new tests (checkpoint/resume/reconciler/executor), 80.8% engine coverage, 28.9% DRExecution controller coverage
+# 4.7 in-progress: Checkpoint, Resume & High Availability — development started
 # 4.6 done: code review fixes deferred (terminal-result annotation cleanup, resolveVMNamespace ctx propagation, duplicate annotation dedup)
 # 4.6 review: Failed DRGroup Retry — annotation-driven retry (specific or all-failed), VM health pre-validation (KubeVirt/NoOp), wave-ordered re-execution, RetryCount tracking, strategy relaxation for PartiallySucceeded, retry events, 28 new tests, 80.3% engine coverage
 # 4.5 review: Fail-Forward Error Handling & Partial Success — GroupError structured errors, DRGroupStatus lifecycle, StepRecorder, per-DRGroup events, PVC resolver, 16 new tests, 82.5% engine coverage
@@ -161,7 +163,7 @@ development_status:
   4-4-disaster-failover-workflow: done
   4-5-fail-forward-error-handling-partial-success: done
   4-6-failed-drgroup-retry: done
-  4-7-checkpoint-resume-high-availability: ready-for-dev
+  4-7-checkpoint-resume-high-availability: done
   4-8-re-protect-failback-workflows: ready-for-dev
   epic-4-retrospective: optional
 

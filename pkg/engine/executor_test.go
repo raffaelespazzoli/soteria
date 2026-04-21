@@ -1723,6 +1723,238 @@ func TestWaveExecutor_RetryContextCancelled(t *testing.T) {
 	}
 }
 
+// --- Resume-aware executor tests (Story 4.7 Task 10) ---
+
+func TestWaveExecutor_ExecuteFromWave_SkipsCompletedGroups(t *testing.T) {
+	plan := newRetryTestPlan("plan-resume-skip", []soteriav1alpha1.WaveInfo{
+		{WaveKey: "alpha", VMs: []soteriav1alpha1.DiscoveredVM{
+			{Name: "vm-1", Namespace: "ns-1"}, {Name: "vm-2", Namespace: "ns-1"}, {Name: "vm-3", Namespace: "ns-1"},
+		}},
+	})
+	now := metav1.Now()
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "exec-resume-skip"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-resume-skip",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+		Status: soteriav1alpha1.DRExecutionStatus{
+			StartTime: &now,
+			Waves: []soteriav1alpha1.WaveStatus{
+				{
+					WaveIndex: 0,
+					Groups: []soteriav1alpha1.DRGroupExecutionStatus{
+						{Name: "wave-alpha-group-0", Result: soteriav1alpha1.DRGroupResultCompleted, VMNames: []string{"vm-1"}},
+						{Name: "wave-alpha-group-1", Result: soteriav1alpha1.DRGroupResultCompleted, VMNames: []string{"vm-2"}},
+						{Name: "wave-alpha-group-2", Result: soteriav1alpha1.DRGroupResultPending, VMNames: []string{"vm-3"}},
+					},
+				},
+			},
+		},
+	}
+
+	vms := makeVMs([]string{"vm-1", "vm-2", "vm-3"}, "alpha")
+	cl := newFakeClient(vms, plan, exec)
+	handler := &mockHandler{}
+	executor := newTestExecutor(cl, &mockVMDiscoverer{vms: vms},
+		&mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{"ns-1": soteriav1alpha1.ConsistencyLevelVM}})
+
+	skipGroups := map[string]bool{
+		"wave-alpha-group-0": true,
+		"wave-alpha-group-1": true,
+	}
+
+	err := executor.ExecuteFromWave(context.Background(), ExecuteInput{
+		Execution: exec,
+		Plan:      plan,
+		Handler:   handler,
+	}, 0, skipGroups)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	calls := handler.getCalls()
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 handler call (only pending group), got %d: %v", len(calls), calls)
+	}
+}
+
+func TestWaveExecutor_ExecuteFromWave_RetriesInFlightGroup(t *testing.T) {
+	plan := newRetryTestPlan("plan-resume-inflight", []soteriav1alpha1.WaveInfo{
+		{WaveKey: "alpha", VMs: []soteriav1alpha1.DiscoveredVM{
+			{Name: "vm-1", Namespace: "ns-1"}, {Name: "vm-2", Namespace: "ns-1"},
+		}},
+	})
+	now := metav1.Now()
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "exec-resume-inflight"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-resume-inflight",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+		Status: soteriav1alpha1.DRExecutionStatus{
+			StartTime: &now,
+			Waves: []soteriav1alpha1.WaveStatus{
+				{
+					WaveIndex: 0,
+					Groups: []soteriav1alpha1.DRGroupExecutionStatus{
+						{Name: "wave-alpha-group-0", Result: soteriav1alpha1.DRGroupResultCompleted, VMNames: []string{"vm-1"}},
+						// Reset from InProgress to Pending by reconciler before calling ExecuteFromWave.
+						{Name: "wave-alpha-group-1", Result: soteriav1alpha1.DRGroupResultPending, VMNames: []string{"vm-2"}},
+					},
+				},
+			},
+		},
+	}
+
+	vms := makeVMs([]string{"vm-1", "vm-2"}, "alpha")
+	cl := newFakeClient(vms, plan, exec)
+	handler := &mockHandler{}
+	executor := newTestExecutor(cl, &mockVMDiscoverer{vms: vms},
+		&mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{"ns-1": soteriav1alpha1.ConsistencyLevelVM}})
+
+	skipGroups := map[string]bool{
+		"wave-alpha-group-0": true,
+	}
+
+	err := executor.ExecuteFromWave(context.Background(), ExecuteInput{
+		Execution: exec,
+		Plan:      plan,
+		Handler:   handler,
+	}, 0, skipGroups)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	calls := handler.getCalls()
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 handler call (retried in-flight group), got %d", len(calls))
+	}
+
+	// Verify the originally-completed group was not re-executed.
+	group0 := exec.Status.Waves[0].Groups[0]
+	if group0.Result != soteriav1alpha1.DRGroupResultCompleted {
+		t.Errorf("completed group should remain Completed, got %q", group0.Result)
+	}
+}
+
+func TestWaveExecutor_ExecuteFromWave_ContinuesNextWave(t *testing.T) {
+	plan := newRetryTestPlan("plan-resume-next", []soteriav1alpha1.WaveInfo{
+		{WaveKey: "alpha", VMs: []soteriav1alpha1.DiscoveredVM{
+			{Name: "vm-1", Namespace: "ns-1"},
+		}},
+		{WaveKey: "beta", VMs: []soteriav1alpha1.DiscoveredVM{
+			{Name: "vm-2", Namespace: "ns-1"},
+		}},
+	})
+	now := metav1.Now()
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "exec-resume-next"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-resume-next",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+		Status: soteriav1alpha1.DRExecutionStatus{
+			StartTime: &now,
+			Waves: []soteriav1alpha1.WaveStatus{
+				{
+					WaveIndex: 0,
+					Groups: []soteriav1alpha1.DRGroupExecutionStatus{
+						{Name: "wave-alpha-group-0", Result: soteriav1alpha1.DRGroupResultCompleted, VMNames: []string{"vm-1"}},
+					},
+				},
+				{
+					WaveIndex: 1,
+					Groups: []soteriav1alpha1.DRGroupExecutionStatus{
+						{Name: "wave-beta-group-0", Result: soteriav1alpha1.DRGroupResultPending, VMNames: []string{"vm-2"}},
+					},
+				},
+			},
+		},
+	}
+
+	vms := makeMultiWaveVMs(map[string][]string{"alpha": {"vm-1"}, "beta": {"vm-2"}})
+	cl := newFakeClient(vms, plan, exec)
+	handler := &mockHandler{}
+	executor := newTestExecutor(cl, &mockVMDiscoverer{vms: vms},
+		&mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{"ns-1": soteriav1alpha1.ConsistencyLevelVM}})
+
+	// Resume from wave 1 (wave 0 already complete).
+	err := executor.ExecuteFromWave(context.Background(), ExecuteInput{
+		Execution: exec,
+		Plan:      plan,
+		Handler:   handler,
+	}, 1, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	calls := handler.getCalls()
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 handler call (wave 1 only), got %d", len(calls))
+	}
+
+	if exec.Status.Result != soteriav1alpha1.ExecutionResultSucceeded {
+		t.Errorf("expected Succeeded, got %q", exec.Status.Result)
+	}
+}
+
+func TestWaveExecutor_Execute_BackwardCompatible(t *testing.T) {
+	plan := newTestPlan("plan-compat")
+	exec := newTestExecution("exec-compat", "plan-compat")
+	vms := makeVMs([]string{"vm-1"}, "alpha")
+	cl := newFakeClient(vms, plan, exec)
+	handler := &mockHandler{}
+
+	executor := newTestExecutor(cl, &mockVMDiscoverer{vms: vms},
+		&mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{"ns-1": soteriav1alpha1.ConsistencyLevelVM}})
+
+	err := executor.Execute(context.Background(), ExecuteInput{
+		Execution: exec,
+		Plan:      plan,
+		Handler:   handler,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if exec.Status.Result != soteriav1alpha1.ExecutionResultSucceeded {
+		t.Errorf("expected Succeeded, got %q", exec.Status.Result)
+	}
+	calls := handler.getCalls()
+	if len(calls) == 0 {
+		t.Error("expected handler to be called")
+	}
+}
+
+func TestWaveExecutor_CheckpointAfterEachGroup(t *testing.T) {
+	plan := newTestPlan("plan-cp-each")
+	plan.Spec.MaxConcurrentFailovers = 1
+	exec := newTestExecution("exec-cp-each", "plan-cp-each")
+	vms := makeVMs([]string{"vm-1", "vm-2"}, "alpha")
+	cl := newFakeClient(vms, plan, exec)
+
+	cp := &NoOpCheckpointer{}
+	executor := newTestExecutor(cl, &mockVMDiscoverer{vms: vms},
+		&mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{"ns-1": soteriav1alpha1.ConsistencyLevelVM}})
+	executor.Checkpointer = cp
+
+	err := executor.Execute(context.Background(), ExecuteInput{
+		Execution: exec,
+		Plan:      plan,
+		Handler:   &NoOpHandler{},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// With 2 groups + 1 wave completion = 3 checkpoint calls at minimum.
+	calls := cp.GetCalls()
+	if len(calls) < 3 {
+		t.Errorf("expected at least 3 checkpoint calls (2 groups + 1 wave), got %d", len(calls))
+	}
+}
+
 func TestBuildChunkInput(t *testing.T) {
 	vms := makeMultiWaveVMs(map[string][]string{
 		"alpha": {"vm-a1", "vm-a2"},

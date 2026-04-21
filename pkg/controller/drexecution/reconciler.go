@@ -63,14 +63,17 @@ import (
 // DRExecutionReconciler watches DRExecution resources and drives the DR
 // workflow engine. It validates execution requests against the state machine,
 // transitions the referenced DRPlan to an in-progress phase, dispatches the
-// wave executor, and records the final result.
+// wave executor, and records the final result. On startup, it detects
+// in-progress executions (StartTime != nil, Result == "") and resumes them
+// from their last checkpoint.
 type DRExecutionReconciler struct {
 	client.Client
-	Scheme       *runtime.Scheme
-	Recorder     events.EventRecorder
-	WaveExecutor *engine.WaveExecutor
-	Handler      engine.DRGroupHandler
-	VMManager    engine.VMManager
+	Scheme         *runtime.Scheme
+	Recorder       events.EventRecorder
+	WaveExecutor   *engine.WaveExecutor
+	Handler        engine.DRGroupHandler
+	VMManager      engine.VMManager
+	ResumeAnalyzer *engine.ResumeAnalyzer
 }
 
 func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -89,6 +92,13 @@ func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		exec.Status.Result == soteriav1alpha1.ExecutionResultFailed {
 		logger.V(1).Info("DRExecution already completed, skipping", "result", exec.Status.Result)
 		return ctrl.Result{}, nil
+	}
+
+	// Resume path: in-progress execution needs resume after restart.
+	// StartTime != nil means the controller already dispatched this execution.
+	// Result == "" (empty) means execution is still in-progress (not terminal).
+	if exec.Status.StartTime != nil && exec.Status.Result == "" {
+		return r.reconcileResume(ctx, &exec)
 	}
 
 	// Retry path: PartiallySucceeded + retry annotation.
@@ -235,6 +245,123 @@ func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	return ctrl.Result{}, nil
+}
+
+// reconcileResume handles the resume path for in-progress executions after
+// a pod restart or leader failover. It analyzes the execution status to
+// determine the resume point, resets in-flight groups to Pending, and
+// dispatches the wave executor from the resume wave.
+func (r *DRExecutionReconciler) reconcileResume(
+	ctx context.Context, exec *soteriav1alpha1.DRExecution,
+) (ctrl.Result, error) {
+	logger := log.FromContext(ctx).WithValues("drexecution", exec.Name)
+
+	if r.ResumeAnalyzer == nil {
+		logger.V(1).Info("ResumeAnalyzer not configured, skipping resume")
+		return ctrl.Result{}, nil
+	}
+
+	resumePoint := r.ResumeAnalyzer.AnalyzeExecution(exec)
+	if resumePoint.IsComplete {
+		logger.V(1).Info("Execution analysis shows complete, skipping resume")
+		return ctrl.Result{}, nil
+	}
+
+	logger.Info("Resuming execution",
+		"waveIndex", resumePoint.WaveIndex,
+		"completedGroups", len(resumePoint.CompletedGroups),
+		"failedGroups", len(resumePoint.FailedGroups),
+		"inFlightGroups", len(resumePoint.InFlightGroups),
+		"pendingGroups", len(resumePoint.PendingGroups))
+
+	// Reset in-flight groups (InProgress at crash time) to Pending for retry.
+	for _, groupName := range resumePoint.InFlightGroups {
+		r.resetInFlightGroup(exec, resumePoint.WaveIndex, groupName)
+	}
+	if len(resumePoint.InFlightGroups) > 0 {
+		if err := r.Status().Update(ctx, exec); err != nil {
+			logger.Error(err, "Failed to reset in-flight groups")
+			return ctrl.Result{}, err
+		}
+	}
+
+	// Emit ExecutionResumed event.
+	r.event(exec, corev1.EventTypeNormal, "ExecutionResumed", "Checkpoint",
+		fmt.Sprintf("Resuming execution from wave %d: %d completed, %d failed, %d retrying",
+			resumePoint.WaveIndex,
+			len(resumePoint.CompletedGroups),
+			len(resumePoint.FailedGroups),
+			len(resumePoint.InFlightGroups)))
+
+	// Fetch the referenced DRPlan.
+	var plan soteriav1alpha1.DRPlan
+	if err := r.Get(ctx, client.ObjectKey{Name: exec.Spec.PlanName}, &plan); err != nil {
+		if errors.IsNotFound(err) {
+			return r.failExecution(ctx, exec, "PlanNotFound",
+				fmt.Sprintf("DRPlan %q not found during resume", exec.Spec.PlanName))
+		}
+		return ctrl.Result{}, err
+	}
+
+	// Resolve handler for the execution mode.
+	handler, err := r.resolveHandler(exec.Spec.Mode)
+	if err != nil {
+		return r.failExecution(ctx, exec, "HandlerResolutionFailed", err.Error())
+	}
+
+	// Build the set of groups to skip in the resume wave (completed + failed).
+	skipGroups := make(map[string]bool,
+		len(resumePoint.CompletedGroups)+len(resumePoint.FailedGroups))
+	for _, name := range resumePoint.CompletedGroups {
+		skipGroups[name] = true
+	}
+	for _, name := range resumePoint.FailedGroups {
+		skipGroups[name] = true
+	}
+
+	// Dispatch execution.
+	if r.WaveExecutor != nil {
+		execInput := engine.ExecuteInput{
+			Execution: exec,
+			Plan:      &plan,
+			Handler:   handler,
+		}
+
+		if len(exec.Status.Waves) == 0 {
+			// No waves initialized before crash — run the full execution
+			// pipeline (discover → chunk → execute) instead of resume.
+			if err := r.WaveExecutor.Execute(ctx, execInput); err != nil {
+				logger.Error(err, "Full re-execution failed after resume with no waves")
+				return ctrl.Result{}, err
+			}
+		} else {
+			if err := r.WaveExecutor.ExecuteFromWave(ctx, execInput, resumePoint.WaveIndex, skipGroups); err != nil {
+				logger.Error(err, "Resume execution failed")
+				return ctrl.Result{}, err
+			}
+		}
+
+		r.event(exec, corev1.EventTypeNormal, "ExecutionCompleted", "WaveExecution",
+			fmt.Sprintf("Resumed execution completed: %s", exec.Status.Result))
+	}
+
+	return ctrl.Result{}, nil
+}
+
+// resetInFlightGroup finds a group by name in the specified wave and resets
+// its Result from InProgress to Pending for retry after crash.
+func (r *DRExecutionReconciler) resetInFlightGroup(
+	exec *soteriav1alpha1.DRExecution, waveIdx int, groupName string,
+) {
+	if waveIdx >= len(exec.Status.Waves) {
+		return
+	}
+	for i := range exec.Status.Waves[waveIdx].Groups {
+		if exec.Status.Waves[waveIdx].Groups[i].Name == groupName &&
+			exec.Status.Waves[waveIdx].Groups[i].Result == soteriav1alpha1.DRGroupResultInProgress {
+			exec.Status.Waves[waveIdx].Groups[i].Result = soteriav1alpha1.DRGroupResultPending
+		}
+	}
 }
 
 // failExecution marks a DRExecution as Failed with a descriptive condition.
