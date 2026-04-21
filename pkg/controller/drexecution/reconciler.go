@@ -19,9 +19,11 @@ limitations under the License.
 // applies state machine transitions on the referenced DRPlan, sets initial
 // execution status, and dispatches the wave executor to orchestrate DRGroup
 // execution across waves. Idempotency is two-layered: terminal results
-// (Succeeded/PartiallySucceeded/Failed) cause an immediate skip, while a
-// set startTime gates the setup phase so plan transitions are never repeated
-// on re-reconcile.
+// (Succeeded/Failed) cause an immediate skip, while a set startTime gates
+// the setup phase so plan transitions are never repeated on re-reconcile.
+// PartiallySucceeded executions are re-openable via the retry annotation
+// (soteria.io/retry-groups) — the controller detects the annotation, validates
+// preconditions, re-executes failed groups, and removes the annotation.
 
 package drexecution
 
@@ -81,14 +83,17 @@ func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	// Idempotency: skip if the execution has reached a terminal result.
-	// We check Result (not just StartTime) so that the reconciler can
-	// retry when the executor returned an infrastructure error after
-	// StartTime was set but before a terminal result was written.
+	// PartiallySucceeded is re-openable via the retry annotation — handle
+	// that path separately below.
 	if exec.Status.Result == soteriav1alpha1.ExecutionResultSucceeded ||
-		exec.Status.Result == soteriav1alpha1.ExecutionResultPartiallySucceeded ||
 		exec.Status.Result == soteriav1alpha1.ExecutionResultFailed {
 		logger.V(1).Info("DRExecution already completed, skipping", "result", exec.Status.Result)
 		return ctrl.Result{}, nil
+	}
+
+	// Retry path: PartiallySucceeded + retry annotation.
+	if exec.Status.Result == soteriav1alpha1.ExecutionResultPartiallySucceeded {
+		return r.reconcileRetry(ctx, &exec)
 	}
 
 	// Fetch the referenced DRPlan (needed by both setup and executor paths).
@@ -307,6 +312,186 @@ func (r *DRExecutionReconciler) resolveHandler(
 		return r.Handler, nil
 	}
 	return &engine.NoOpHandler{}, nil
+}
+
+// reconcileRetry handles the retry path for PartiallySucceeded executions.
+// Triggered when the operator adds the soteria.io/retry-groups annotation.
+func (r *DRExecutionReconciler) reconcileRetry(
+	ctx context.Context, exec *soteriav1alpha1.DRExecution,
+) (ctrl.Result, error) {
+	logger := log.FromContext(ctx).WithValues("drexecution", exec.Name)
+
+	annotation, hasAnnotation := exec.Annotations[engine.RetryGroupsAnnotation]
+	if !hasAnnotation {
+		logger.V(1).Info("PartiallySucceeded execution without retry annotation, skipping")
+		return ctrl.Result{}, nil
+	}
+
+	// Guard: if any group is InProgress, a retry is already running — wait.
+	for _, wave := range exec.Status.Waves {
+		for _, group := range wave.Groups {
+			if group.Result == soteriav1alpha1.DRGroupResultInProgress {
+				logger.V(1).Info("Retry already in progress, waiting", "group", group.Name)
+				return ctrl.Result{}, nil
+			}
+		}
+	}
+
+	// Resolve retry targets from the annotation.
+	targets, err := engine.ResolveRetryGroups(exec, annotation)
+	if err != nil {
+		logger.Info("Retry group resolution failed", "error", err)
+		r.removeRetryAnnotation(ctx, exec)
+		r.setRetryRejectedCondition(ctx, exec, fmt.Sprintf("retry group resolution failed: %v", err))
+		r.event(exec, corev1.EventTypeWarning, "RetryRejected", "RetryAction",
+			fmt.Sprintf("Retry rejected for execution %s: %v", exec.Name, err))
+		return ctrl.Result{}, nil
+	}
+
+	if len(targets) == 0 {
+		logger.Info("No failed groups to retry, removing annotation")
+		r.removeRetryAnnotation(ctx, exec)
+		return ctrl.Result{}, nil
+	}
+
+	// VM health validation for all VMs in retry groups.
+	if r.WaveExecutor != nil && r.WaveExecutor.VMHealthValidator != nil {
+		for _, target := range targets {
+			groupStatus := exec.Status.Waves[target.WaveIndex].Groups[target.GroupIndex]
+			for _, vmName := range groupStatus.VMNames {
+				ns := r.resolveVMNamespace(exec, target, vmName)
+				if err := r.WaveExecutor.VMHealthValidator.ValidateVMHealth(ctx, vmName, ns); err != nil {
+					logger.Info("VM health validation failed, rejecting retry",
+						"vm", vmName, "namespace", ns, "error", err)
+					r.removeRetryAnnotation(ctx, exec)
+					r.setRetryRejectedCondition(ctx, exec, err.Error())
+					r.event(exec, corev1.EventTypeWarning, "RetryRejected", "RetryAction",
+						fmt.Sprintf("Retry rejected for execution %s: %v", exec.Name, err))
+					return ctrl.Result{}, nil
+				}
+			}
+		}
+	}
+
+	// Fetch the plan for chunk reconstruction.
+	var plan soteriav1alpha1.DRPlan
+	if err := r.Get(ctx, client.ObjectKey{Name: exec.Spec.PlanName}, &plan); err != nil {
+		logger.Error(err, "Failed to fetch DRPlan for retry")
+		return ctrl.Result{}, err
+	}
+
+	// Resolve handler.
+	handler, err := r.resolveHandler(exec.Spec.Mode)
+	if err != nil {
+		logger.Error(err, "Failed to resolve handler for retry")
+		r.removeRetryAnnotation(ctx, exec)
+		r.setRetryRejectedCondition(ctx, exec, fmt.Sprintf("handler resolution failed: %v", err))
+		return ctrl.Result{}, nil
+	}
+
+	// Emit RetryStarted event.
+	groupNames := make([]string, len(targets))
+	for i, t := range targets {
+		groupNames[i] = t.GroupName
+	}
+	r.event(exec, corev1.EventTypeNormal, "RetryStarted", "RetryAction",
+		fmt.Sprintf("Retry started for execution %s: groups %s",
+			exec.Name, strings.Join(groupNames, ", ")))
+
+	// Execute retry.
+	retryInput := engine.RetryInput{
+		Execution:    exec,
+		Plan:         &plan,
+		Handler:      handler,
+		RetryTargets: targets,
+	}
+	if err := r.WaveExecutor.ExecuteRetry(ctx, retryInput); err != nil {
+		logger.Error(err, "Retry execution failed")
+		return ctrl.Result{}, err
+	}
+
+	// Emit per-group and completion events.
+	for _, target := range targets {
+		groupStatus := exec.Status.Waves[target.WaveIndex].Groups[target.GroupIndex]
+		switch groupStatus.Result {
+		case soteriav1alpha1.DRGroupResultCompleted:
+			r.event(exec, corev1.EventTypeNormal, "GroupRetrySucceeded", "RetryAction",
+				fmt.Sprintf("DRGroup %s retry succeeded (attempt %d)",
+					target.GroupName, groupStatus.RetryCount))
+		case soteriav1alpha1.DRGroupResultFailed:
+			r.event(exec, corev1.EventTypeWarning, "GroupRetryFailed", "RetryAction",
+				fmt.Sprintf("DRGroup %s retry failed (attempt %d): %s",
+					target.GroupName, groupStatus.RetryCount, groupStatus.Error))
+		}
+	}
+
+	r.event(exec, corev1.EventTypeNormal, "RetryCompleted", "RetryAction",
+		fmt.Sprintf("Retry completed for execution %s: result %s", exec.Name, exec.Status.Result))
+
+	// Remove annotation after retry completes.
+	r.removeRetryAnnotation(ctx, exec)
+
+	return ctrl.Result{}, nil
+}
+
+// removeRetryAnnotation removes the retry annotation from the DRExecution.
+func (r *DRExecutionReconciler) removeRetryAnnotation(
+	ctx context.Context, exec *soteriav1alpha1.DRExecution,
+) {
+	logger := log.FromContext(ctx)
+
+	if err := r.Get(ctx, client.ObjectKeyFromObject(exec), exec); err != nil {
+		logger.V(1).Info("Could not re-fetch DRExecution for annotation removal", "error", err)
+		return
+	}
+	if _, ok := exec.Annotations[engine.RetryGroupsAnnotation]; !ok {
+		return
+	}
+	delete(exec.Annotations, engine.RetryGroupsAnnotation)
+	if err := r.Update(ctx, exec); err != nil {
+		logger.V(1).Info("Could not remove retry annotation", "error", err)
+	}
+}
+
+// setRetryRejectedCondition sets a RetryRejected condition on the execution.
+func (r *DRExecutionReconciler) setRetryRejectedCondition(
+	ctx context.Context, exec *soteriav1alpha1.DRExecution, message string,
+) {
+	logger := log.FromContext(ctx)
+
+	if err := r.Get(ctx, client.ObjectKeyFromObject(exec), exec); err != nil {
+		logger.V(1).Info("Could not re-fetch DRExecution for condition update", "error", err)
+		return
+	}
+
+	meta.SetStatusCondition(&exec.Status.Conditions, metav1.Condition{
+		Type:               "RetryRejected",
+		Status:             metav1.ConditionTrue,
+		Reason:             "RetryRejected",
+		Message:            message,
+		ObservedGeneration: exec.Generation,
+	})
+	if err := r.Status().Update(ctx, exec); err != nil {
+		logger.V(1).Info("Could not set RetryRejected condition", "error", err)
+	}
+}
+
+// resolveVMNamespace finds the namespace for a VM in the retry target's wave.
+func (r *DRExecutionReconciler) resolveVMNamespace(
+	exec *soteriav1alpha1.DRExecution, target engine.RetryTarget, vmName string,
+) string {
+	var plan soteriav1alpha1.DRPlan
+	if err := r.Get(context.Background(), client.ObjectKey{Name: exec.Spec.PlanName}, &plan); err != nil {
+		return ""
+	}
+	if target.WaveIndex < len(plan.Status.Waves) {
+		for _, dvm := range plan.Status.Waves[target.WaveIndex].VMs {
+			if dvm.Name == vmName {
+				return dvm.Namespace
+			}
+		}
+	}
+	return ""
 }
 
 func (r *DRExecutionReconciler) event(

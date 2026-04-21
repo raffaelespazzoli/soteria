@@ -359,6 +359,13 @@ func schema_pkg_apis_soteriaio_v1alpha1_DRGroupExecutionStatus(ref common.Refere
 							},
 						},
 					},
+					"retryCount": {
+						SchemaProps: spec.SchemaProps{
+							Description: "RetryCount tracks how many times this group has been retried. Incremented on each retry attempt for audit trail purposes.",
+							Type:        []string{"integer"},
+							Format:      "int32",
+						},
+					},
 					"startTime": {
 						SchemaProps: spec.SchemaProps{
 							Description: "StartTime is when this group began processing.",

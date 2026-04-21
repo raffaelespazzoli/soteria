@@ -270,15 +270,24 @@ func main() {
 		pvcResolver = &engine.KubeVirtPVCResolver{Client: mgr.GetClient()}
 	}
 
+	var vmHealthValidator engine.VMHealthValidator
+	if noopFallback {
+		vmHealthValidator = engine.NoOpVMHealthValidator{}
+		setupLog.Info("Using NoOpVMHealthValidator for dev/CI (noop-fallback enabled)")
+	} else {
+		vmHealthValidator = &engine.KubeVirtVMHealthValidator{Client: mgr.GetClient()}
+	}
+
 	waveExecutor := &engine.WaveExecutor{
-		Client:          mgr.GetClient(),
-		CoreClient:      clientset.CoreV1(),
-		VMDiscoverer:    vmDiscoverer,
-		NamespaceLookup: nsLookup,
-		Registry:        drivers.DefaultRegistry,
-		SCLister:        scLister,
-		Recorder:        drexecRecorder,
-		PVCResolver:     pvcResolver,
+		Client:            mgr.GetClient(),
+		CoreClient:        clientset.CoreV1(),
+		VMDiscoverer:      vmDiscoverer,
+		NamespaceLookup:   nsLookup,
+		Registry:          drivers.DefaultRegistry,
+		SCLister:          scLister,
+		Recorder:          drexecRecorder,
+		PVCResolver:       pvcResolver,
+		VMHealthValidator: vmHealthValidator,
 	}
 
 	var vmManager engine.VMManager

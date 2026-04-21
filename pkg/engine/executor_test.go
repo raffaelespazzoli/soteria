@@ -1203,6 +1203,526 @@ func TestWaveExecutor_StepRecorder_PassedToHandler(t *testing.T) {
 	}
 }
 
+// --- Retry tests (Story 4.6) ---
+
+// newPartiallySucceededExec builds a DRExecution with PartiallySucceeded status
+// containing the specified group results distributed across waves.
+func newPartiallySucceededExec(
+	name, planName string, waves [][]soteriav1alpha1.DRGroupExecutionStatus,
+) *soteriav1alpha1.DRExecution {
+	now := metav1.Now()
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: planName,
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+		Status: soteriav1alpha1.DRExecutionStatus{
+			Result:    soteriav1alpha1.ExecutionResultPartiallySucceeded,
+			StartTime: &now,
+		},
+	}
+	for i, groups := range waves {
+		exec.Status.Waves = append(exec.Status.Waves, soteriav1alpha1.WaveStatus{
+			WaveIndex: i,
+			Groups:    groups,
+		})
+	}
+	return exec
+}
+
+func TestResolveRetryGroups_SpecificGroups(t *testing.T) {
+	exec := newPartiallySucceededExec("exec-1", "plan-1", [][]soteriav1alpha1.DRGroupExecutionStatus{
+		{
+			{Name: "wave-alpha-group-0", Result: soteriav1alpha1.DRGroupResultCompleted, VMNames: []string{"vm-1"}},
+			{
+				Name: "wave-alpha-group-1", Result: soteriav1alpha1.DRGroupResultFailed,
+				VMNames: []string{"vm-2"}, Error: "storage error",
+			},
+		},
+	})
+
+	targets, err := ResolveRetryGroups(exec, "wave-alpha-group-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(targets) != 1 {
+		t.Fatalf("expected 1 retry target, got %d", len(targets))
+	}
+	if targets[0].GroupName != "wave-alpha-group-1" {
+		t.Errorf("expected group name wave-alpha-group-1, got %s", targets[0].GroupName)
+	}
+	if targets[0].WaveIndex != 0 || targets[0].GroupIndex != 1 {
+		t.Errorf("expected wave=0 group=1, got wave=%d group=%d", targets[0].WaveIndex, targets[0].GroupIndex)
+	}
+}
+
+func TestResolveRetryGroups_AllFailed(t *testing.T) {
+	exec := newPartiallySucceededExec("exec-1", "plan-1", [][]soteriav1alpha1.DRGroupExecutionStatus{
+		{
+			{Name: "wave-alpha-group-0", Result: soteriav1alpha1.DRGroupResultCompleted, VMNames: []string{"vm-1"}},
+			{Name: "wave-alpha-group-1", Result: soteriav1alpha1.DRGroupResultFailed, VMNames: []string{"vm-2"}},
+		},
+		{
+			{Name: "wave-beta-group-0", Result: soteriav1alpha1.DRGroupResultFailed, VMNames: []string{"vm-3"}},
+		},
+	})
+
+	targets, err := ResolveRetryGroups(exec, "all-failed")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(targets) != 2 {
+		t.Fatalf("expected 2 retry targets, got %d", len(targets))
+	}
+	// Should find groups from both waves.
+	names := map[string]bool{}
+	for _, t := range targets {
+		names[t.GroupName] = true
+	}
+	if !names["wave-alpha-group-1"] || !names["wave-beta-group-0"] {
+		t.Errorf("expected both failed groups, got targets: %v", targets)
+	}
+}
+
+func TestResolveRetryGroups_GroupNotFound(t *testing.T) {
+	exec := newPartiallySucceededExec("exec-1", "plan-1", [][]soteriav1alpha1.DRGroupExecutionStatus{
+		{
+			{Name: "wave-alpha-group-0", Result: soteriav1alpha1.DRGroupResultCompleted, VMNames: []string{"vm-1"}},
+		},
+	})
+
+	_, err := ResolveRetryGroups(exec, "nonexistent-group")
+	if err == nil {
+		t.Fatal("expected error for non-existent group")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("expected 'not found' error, got: %v", err)
+	}
+}
+
+func TestResolveRetryGroups_GroupNotFailed(t *testing.T) {
+	exec := newPartiallySucceededExec("exec-1", "plan-1", [][]soteriav1alpha1.DRGroupExecutionStatus{
+		{
+			{Name: "wave-alpha-group-0", Result: soteriav1alpha1.DRGroupResultCompleted, VMNames: []string{"vm-1"}},
+			{Name: "wave-alpha-group-1", Result: soteriav1alpha1.DRGroupResultFailed, VMNames: []string{"vm-2"}},
+		},
+	})
+
+	// Completed group should be silently skipped.
+	targets, err := ResolveRetryGroups(exec, "wave-alpha-group-0")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(targets) != 0 {
+		t.Errorf("expected 0 targets for already-Completed group, got %d", len(targets))
+	}
+}
+
+func TestResolveRetryGroups_WaveOrdering(t *testing.T) {
+	exec := newPartiallySucceededExec("exec-1", "plan-1", [][]soteriav1alpha1.DRGroupExecutionStatus{
+		{
+			{Name: "wave-alpha-group-0", Result: soteriav1alpha1.DRGroupResultCompleted, VMNames: []string{"vm-1"}},
+		},
+		{
+			{Name: "wave-beta-group-0", Result: soteriav1alpha1.DRGroupResultCompleted, VMNames: []string{"vm-2"}},
+		},
+		{
+			{Name: "wave-gamma-group-0", Result: soteriav1alpha1.DRGroupResultFailed, VMNames: []string{"vm-3"}},
+		},
+	})
+
+	// Insert out of order in annotation — targets should come back sorted.
+	targets, err := ResolveRetryGroups(exec, "wave-gamma-group-0")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(targets) != 1 {
+		t.Fatalf("expected 1 target, got %d", len(targets))
+	}
+	if targets[0].WaveIndex != 2 {
+		t.Errorf("expected wave index 2, got %d", targets[0].WaveIndex)
+	}
+}
+
+func TestParseRetryAnnotation_AllFailed(t *testing.T) {
+	result := parseRetryAnnotation("all-failed")
+	if result != nil {
+		t.Errorf("expected nil for all-failed sentinel, got %v", result)
+	}
+}
+
+func TestParseRetryAnnotation_CommaSeparated(t *testing.T) {
+	result := parseRetryAnnotation("group-1, group-2 ,group-3")
+	if len(result) != 3 {
+		t.Fatalf("expected 3 groups, got %d", len(result))
+	}
+	if result[0] != "group-1" || result[1] != "group-2" || result[2] != "group-3" {
+		t.Errorf("unexpected parsed groups: %v", result)
+	}
+}
+
+// --- Retry execution tests (Task 10) ---
+
+// newRetryTestPlan creates a plan with Status.Waves populated for retry tests.
+func newRetryTestPlan(name string, waves []soteriav1alpha1.WaveInfo) *soteriav1alpha1.DRPlan {
+	plan := newTestPlan(name)
+	plan.Status.Waves = waves
+	return plan
+}
+
+func TestWaveExecutor_RetryOneGroup_Succeeds_ResultSucceeded(t *testing.T) {
+	plan := newRetryTestPlan("plan-retry", []soteriav1alpha1.WaveInfo{
+		{WaveKey: "alpha", VMs: []soteriav1alpha1.DiscoveredVM{
+			{Name: "vm-1", Namespace: "ns-1"}, {Name: "vm-2", Namespace: "ns-1"},
+		}},
+	})
+	exec := newPartiallySucceededExec("exec-retry", "plan-retry", [][]soteriav1alpha1.DRGroupExecutionStatus{
+		{
+			{Name: "wave-alpha-group-0", Result: soteriav1alpha1.DRGroupResultCompleted, VMNames: []string{"vm-1"}},
+			{
+				Name: "wave-alpha-group-1", Result: soteriav1alpha1.DRGroupResultFailed,
+				VMNames: []string{"vm-2"}, Error: "storage error",
+			},
+		},
+	})
+
+	vms := makeVMs([]string{"vm-1", "vm-2"}, "alpha")
+	cl := newFakeClient(vms, plan, exec)
+	handler := &mockHandler{}
+	executor := newTestExecutor(cl, &mockVMDiscoverer{vms: vms},
+		&mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{"ns-1": soteriav1alpha1.ConsistencyLevelVM}})
+
+	targets := []RetryTarget{
+		{WaveIndex: 0, GroupIndex: 1, GroupName: "wave-alpha-group-1"},
+	}
+
+	err := executor.ExecuteRetry(context.Background(), RetryInput{
+		Execution:    exec,
+		Plan:         plan,
+		Handler:      handler,
+		RetryTargets: targets,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if exec.Status.Result != soteriav1alpha1.ExecutionResultSucceeded {
+		t.Errorf("expected Succeeded after retry, got %q", exec.Status.Result)
+	}
+
+	retryGroup := exec.Status.Waves[0].Groups[1]
+	if retryGroup.Result != soteriav1alpha1.DRGroupResultCompleted {
+		t.Errorf("retried group should be Completed, got %q", retryGroup.Result)
+	}
+	if retryGroup.RetryCount != 1 {
+		t.Errorf("expected RetryCount=1, got %d", retryGroup.RetryCount)
+	}
+}
+
+func TestWaveExecutor_RetryOneOfTwo_Succeeds_ResultPartiallySucceeded(t *testing.T) {
+	plan := newRetryTestPlan("plan-retry2", []soteriav1alpha1.WaveInfo{
+		{WaveKey: "alpha", VMs: []soteriav1alpha1.DiscoveredVM{
+			{Name: "vm-1", Namespace: "ns-1"}, {Name: "vm-2", Namespace: "ns-1"}, {Name: "vm-3", Namespace: "ns-1"},
+		}},
+	})
+	exec := newPartiallySucceededExec("exec-retry2", "plan-retry2", [][]soteriav1alpha1.DRGroupExecutionStatus{
+		{
+			{Name: "wave-alpha-group-0", Result: soteriav1alpha1.DRGroupResultCompleted, VMNames: []string{"vm-1"}},
+			{Name: "wave-alpha-group-1", Result: soteriav1alpha1.DRGroupResultFailed, VMNames: []string{"vm-2"}},
+			{Name: "wave-alpha-group-2", Result: soteriav1alpha1.DRGroupResultFailed, VMNames: []string{"vm-3"}},
+		},
+	})
+
+	vms := makeVMs([]string{"vm-1", "vm-2", "vm-3"}, "alpha")
+	cl := newFakeClient(vms, plan, exec)
+	handler := &mockHandler{}
+	executor := newTestExecutor(cl, &mockVMDiscoverer{vms: vms},
+		&mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{"ns-1": soteriav1alpha1.ConsistencyLevelVM}})
+
+	// Only retry 1 of the 2 failed groups.
+	targets := []RetryTarget{
+		{WaveIndex: 0, GroupIndex: 1, GroupName: "wave-alpha-group-1"},
+	}
+
+	err := executor.ExecuteRetry(context.Background(), RetryInput{
+		Execution:    exec,
+		Plan:         plan,
+		Handler:      handler,
+		RetryTargets: targets,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if exec.Status.Result != soteriav1alpha1.ExecutionResultPartiallySucceeded {
+		t.Errorf("expected PartiallySucceeded (1 still failed), got %q", exec.Status.Result)
+	}
+}
+
+func TestWaveExecutor_RetryAllFailed_AllSucceed_ResultSucceeded(t *testing.T) {
+	plan := newRetryTestPlan("plan-retryall", []soteriav1alpha1.WaveInfo{
+		{WaveKey: "alpha", VMs: []soteriav1alpha1.DiscoveredVM{
+			{Name: "vm-1", Namespace: "ns-1"}, {Name: "vm-2", Namespace: "ns-1"},
+		}},
+		{WaveKey: "beta", VMs: []soteriav1alpha1.DiscoveredVM{
+			{Name: "vm-3", Namespace: "ns-1"},
+		}},
+	})
+	exec := newPartiallySucceededExec("exec-retryall", "plan-retryall", [][]soteriav1alpha1.DRGroupExecutionStatus{
+		{
+			{Name: "wave-alpha-group-0", Result: soteriav1alpha1.DRGroupResultCompleted, VMNames: []string{"vm-1"}},
+			{Name: "wave-alpha-group-1", Result: soteriav1alpha1.DRGroupResultFailed, VMNames: []string{"vm-2"}},
+		},
+		{
+			{Name: "wave-beta-group-0", Result: soteriav1alpha1.DRGroupResultFailed, VMNames: []string{"vm-3"}},
+		},
+	})
+
+	vms := makeMultiWaveVMs(map[string][]string{"alpha": {"vm-1", "vm-2"}, "beta": {"vm-3"}})
+	cl := newFakeClient(vms, plan, exec)
+	handler := &mockHandler{}
+	executor := newTestExecutor(cl, &mockVMDiscoverer{vms: vms},
+		&mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{"ns-1": soteriav1alpha1.ConsistencyLevelVM}})
+
+	targets := []RetryTarget{
+		{WaveIndex: 0, GroupIndex: 1, GroupName: "wave-alpha-group-1"},
+		{WaveIndex: 1, GroupIndex: 0, GroupName: "wave-beta-group-0"},
+	}
+
+	err := executor.ExecuteRetry(context.Background(), RetryInput{
+		Execution:    exec,
+		Plan:         plan,
+		Handler:      handler,
+		RetryTargets: targets,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if exec.Status.Result != soteriav1alpha1.ExecutionResultSucceeded {
+		t.Errorf("expected Succeeded after all retries succeed, got %q", exec.Status.Result)
+	}
+}
+
+func TestWaveExecutor_RetryFails_GroupBackToFailed(t *testing.T) {
+	plan := newRetryTestPlan("plan-retryfail", []soteriav1alpha1.WaveInfo{
+		{WaveKey: "alpha", VMs: []soteriav1alpha1.DiscoveredVM{
+			{Name: "vm-1", Namespace: "ns-1"}, {Name: "vm-2", Namespace: "ns-1"},
+		}},
+	})
+	exec := newPartiallySucceededExec("exec-retryfail", "plan-retryfail", [][]soteriav1alpha1.DRGroupExecutionStatus{
+		{
+			{Name: "wave-alpha-group-0", Result: soteriav1alpha1.DRGroupResultCompleted, VMNames: []string{"vm-1"}},
+			{
+				Name: "wave-alpha-group-1", Result: soteriav1alpha1.DRGroupResultFailed,
+				VMNames: []string{"vm-2"}, Error: "old error",
+			},
+		},
+	})
+
+	vms := makeVMs([]string{"vm-1", "vm-2"}, "alpha")
+	cl := newFakeClient(vms, plan, exec)
+	handler := &mockHandler{
+		failOn: map[string]error{
+			"wave-alpha-group-1": fmt.Errorf("retry also failed"),
+		},
+	}
+	executor := newTestExecutor(cl, &mockVMDiscoverer{vms: vms},
+		&mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{"ns-1": soteriav1alpha1.ConsistencyLevelVM}})
+
+	targets := []RetryTarget{
+		{WaveIndex: 0, GroupIndex: 1, GroupName: "wave-alpha-group-1"},
+	}
+
+	err := executor.ExecuteRetry(context.Background(), RetryInput{
+		Execution:    exec,
+		Plan:         plan,
+		Handler:      handler,
+		RetryTargets: targets,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	retryGroup := exec.Status.Waves[0].Groups[1]
+	if retryGroup.Result != soteriav1alpha1.DRGroupResultFailed {
+		t.Errorf("expected Failed after retry failure, got %q", retryGroup.Result)
+	}
+	if retryGroup.Error != "retry also failed" {
+		t.Errorf("expected new error message, got %q", retryGroup.Error)
+	}
+	if retryGroup.RetryCount != 1 {
+		t.Errorf("expected RetryCount=1, got %d", retryGroup.RetryCount)
+	}
+	if exec.Status.Result != soteriav1alpha1.ExecutionResultPartiallySucceeded {
+		t.Errorf("result should stay PartiallySucceeded, got %q", exec.Status.Result)
+	}
+}
+
+func TestWaveExecutor_RetryWaveOrdering(t *testing.T) {
+	plan := newRetryTestPlan("plan-retryord", []soteriav1alpha1.WaveInfo{
+		{WaveKey: "alpha", VMs: []soteriav1alpha1.DiscoveredVM{{Name: "vm-1", Namespace: "ns-1"}}},
+		{WaveKey: "beta", VMs: []soteriav1alpha1.DiscoveredVM{{Name: "vm-2", Namespace: "ns-1"}}},
+		{WaveKey: "gamma", VMs: []soteriav1alpha1.DiscoveredVM{{Name: "vm-3", Namespace: "ns-1"}}},
+	})
+	exec := newPartiallySucceededExec("exec-retryord", "plan-retryord", [][]soteriav1alpha1.DRGroupExecutionStatus{
+		{
+			{Name: "wave-alpha-group-0", Result: soteriav1alpha1.DRGroupResultFailed, VMNames: []string{"vm-1"}},
+		},
+		{
+			{Name: "wave-beta-group-0", Result: soteriav1alpha1.DRGroupResultCompleted, VMNames: []string{"vm-2"}},
+		},
+		{
+			{Name: "wave-gamma-group-0", Result: soteriav1alpha1.DRGroupResultFailed, VMNames: []string{"vm-3"}},
+		},
+	})
+
+	vms := makeMultiWaveVMs(map[string][]string{
+		"alpha": {"vm-1"}, "beta": {"vm-2"}, "gamma": {"vm-3"},
+	})
+	cl := newFakeClient(vms, plan, exec)
+
+	// Track execution order.
+	var executionOrder []string
+	var orderMu sync.Mutex
+	orderHandler := &mockHandler{
+		delay: 10 * time.Millisecond,
+	}
+	wrappedHandler := &orderTrackingHandler{
+		inner: orderHandler,
+		order: &executionOrder,
+		mu:    &orderMu,
+	}
+
+	executor := newTestExecutor(cl, &mockVMDiscoverer{vms: vms},
+		&mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{"ns-1": soteriav1alpha1.ConsistencyLevelVM}})
+
+	targets := []RetryTarget{
+		{WaveIndex: 0, GroupIndex: 0, GroupName: "wave-alpha-group-0"},
+		{WaveIndex: 2, GroupIndex: 0, GroupName: "wave-gamma-group-0"},
+	}
+
+	err := executor.ExecuteRetry(context.Background(), RetryInput{
+		Execution:    exec,
+		Plan:         plan,
+		Handler:      wrappedHandler,
+		RetryTargets: targets,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	orderMu.Lock()
+	order := make([]string, len(executionOrder))
+	copy(order, executionOrder)
+	orderMu.Unlock()
+
+	if len(order) != 2 {
+		t.Fatalf("expected 2 groups executed, got %d", len(order))
+	}
+	// Wave 0 should execute before wave 2.
+	if order[0] != "wave-alpha-group-0" || order[1] != "wave-gamma-group-0" {
+		t.Errorf("wave ordering violated: got %v", order)
+	}
+}
+
+type orderTrackingHandler struct {
+	inner DRGroupHandler
+	order *[]string
+	mu    *sync.Mutex
+}
+
+func (h *orderTrackingHandler) ExecuteGroup(ctx context.Context, group ExecutionGroup) error {
+	h.mu.Lock()
+	*h.order = append(*h.order, group.Chunk.Name)
+	h.mu.Unlock()
+	return h.inner.ExecuteGroup(ctx, group)
+}
+
+func TestWaveExecutor_RetryCount_Incremented(t *testing.T) {
+	plan := newRetryTestPlan("plan-retrycnt", []soteriav1alpha1.WaveInfo{
+		{WaveKey: "alpha", VMs: []soteriav1alpha1.DiscoveredVM{
+			{Name: "vm-1", Namespace: "ns-1"}, {Name: "vm-2", Namespace: "ns-1"},
+		}},
+	})
+	exec := newPartiallySucceededExec("exec-retrycnt", "plan-retrycnt", [][]soteriav1alpha1.DRGroupExecutionStatus{
+		{
+			{Name: "wave-alpha-group-0", Result: soteriav1alpha1.DRGroupResultCompleted, VMNames: []string{"vm-1"}},
+			{Name: "wave-alpha-group-1", Result: soteriav1alpha1.DRGroupResultFailed, VMNames: []string{"vm-2"}, RetryCount: 1},
+		},
+	})
+
+	vms := makeVMs([]string{"vm-1", "vm-2"}, "alpha")
+	cl := newFakeClient(vms, plan, exec)
+	handler := &mockHandler{}
+	executor := newTestExecutor(cl, &mockVMDiscoverer{vms: vms},
+		&mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{"ns-1": soteriav1alpha1.ConsistencyLevelVM}})
+
+	targets := []RetryTarget{
+		{WaveIndex: 0, GroupIndex: 1, GroupName: "wave-alpha-group-1"},
+	}
+
+	err := executor.ExecuteRetry(context.Background(), RetryInput{
+		Execution:    exec,
+		Plan:         plan,
+		Handler:      handler,
+		RetryTargets: targets,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	retryGroup := exec.Status.Waves[0].Groups[1]
+	if retryGroup.RetryCount != 2 {
+		t.Errorf("expected RetryCount=2 (was 1, incremented), got %d", retryGroup.RetryCount)
+	}
+}
+
+func TestWaveExecutor_RetryContextCancelled(t *testing.T) {
+	plan := newRetryTestPlan("plan-retryctx", []soteriav1alpha1.WaveInfo{
+		{WaveKey: "alpha", VMs: []soteriav1alpha1.DiscoveredVM{{Name: "vm-1", Namespace: "ns-1"}}},
+		{WaveKey: "beta", VMs: []soteriav1alpha1.DiscoveredVM{{Name: "vm-2", Namespace: "ns-1"}}},
+	})
+	exec := newPartiallySucceededExec("exec-retryctx", "plan-retryctx", [][]soteriav1alpha1.DRGroupExecutionStatus{
+		{
+			{Name: "wave-alpha-group-0", Result: soteriav1alpha1.DRGroupResultFailed, VMNames: []string{"vm-1"}},
+		},
+		{
+			{Name: "wave-beta-group-0", Result: soteriav1alpha1.DRGroupResultFailed, VMNames: []string{"vm-2"}},
+		},
+	})
+
+	vms := makeMultiWaveVMs(map[string][]string{"alpha": {"vm-1"}, "beta": {"vm-2"}})
+	cl := newFakeClient(vms, plan, exec)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	handler := &mockHandler{delay: 200 * time.Millisecond}
+
+	executor := newTestExecutor(cl, &mockVMDiscoverer{vms: vms},
+		&mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{"ns-1": soteriav1alpha1.ConsistencyLevelVM}})
+
+	// Cancel during first wave.
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+	}()
+
+	_ = executor.ExecuteRetry(ctx, RetryInput{
+		Execution: exec,
+		Plan:      plan,
+		Handler:   handler,
+		RetryTargets: []RetryTarget{
+			{WaveIndex: 0, GroupIndex: 0, GroupName: "wave-alpha-group-0"},
+			{WaveIndex: 1, GroupIndex: 0, GroupName: "wave-beta-group-0"},
+		},
+	})
+
+	if exec.Status.CompletionTime == nil {
+		t.Error("expected CompletionTime to be set after cancellation")
+	}
+}
+
 func TestBuildChunkInput(t *testing.T) {
 	vms := makeMultiWaveVMs(map[string][]string{
 		"alpha": {"vm-a1", "vm-a2"},

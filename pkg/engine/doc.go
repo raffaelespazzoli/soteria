@@ -100,6 +100,26 @@ limitations under the License.
 //     event on success. Final execution result events (ExecutionSucceeded,
 //     ExecutionPartiallySucceeded, ExecutionFailed) are emitted on completion.
 //
+//   - Failed DRGroup retry (executor.go): Operators can retry failed DRGroups
+//     within a PartiallySucceeded DRExecution by annotating the resource with
+//     soteria.io/retry-groups (comma-separated group names or "all-failed").
+//     The controller validates preconditions: execution must be PartiallySucceeded,
+//     no retry already in progress (no InProgress groups), and all VMs in retry
+//     groups must pass VMHealthValidator checks. ExecuteRetry re-executes groups
+//     wave-ordered using the same handler (planned migration or disaster) and
+//     driver infrastructure as the initial execution. DRGroupChunks are
+//     reconstructed from execution status and plan data — no full re-discovery.
+//     RetryCount on each DRGroupExecutionStatus provides an audit trail.
+//     CompleteTransition is NOT called during retry — the plan phase was already
+//     advanced during the initial execution. The annotation is removed after
+//     retry completes (regardless of individual outcomes) to allow re-annotation.
+//
+//   - VM health validation (vm_health.go): VMHealthValidator checks whether a
+//     KubeVirt VirtualMachine exists and is in a known, healthy state before
+//     allowing retry (FR15). KubeVirtVMHealthValidator performs lightweight checks:
+//     VM exists, is not migrating/provisioning, and is not paused.
+//     NoOpVMHealthValidator always returns nil for dev/CI environments.
+//
 // All engine functions are pure or accept interfaces for dependency injection,
 // keeping the DRPlan and DRExecution controllers testable at every level.
 package engine

@@ -1,6 +1,6 @@
 # Story 4.6: Failed DRGroup Retry
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -608,8 +608,26 @@ All files align with the architecture document:
 
 {{agent_model_name_version}}
 
+### Review Findings
+
+- [x] [Review][Defer] Terminal-result annotation cleanup — Succeeded/Failed executions skip before inspecting retry annotation; no RetryRejected condition or annotation removal [reconciler.go:85-92] — deferred, tracked for next story
+- [x] [Review][Defer] resolveVMNamespace uses context.Background() and silently returns "" — violates project rule #4, can produce misleading VM health rejections [reconciler.go:484] — deferred, tracked for next story
+- [x] [Review][Defer] Duplicate group names in annotation not deduplicated — parseRetryAnnotation preserves dupes, can double-execute same group concurrently [executor.go:961-973] — deferred, tracked for next story
+
 ### Debug Log References
 
 ### Completion Notes List
 
 ### File List
+
+- pkg/apis/soteria.io/v1alpha1/types.go (modified — RetryCount field)
+- pkg/apis/soteria.io/v1alpha1/zz_generated.openapi.go (auto-generated)
+- pkg/engine/executor.go (modified — retry support: annotation parsing, group resolution, ExecuteRetry, VMHealthValidator interface)
+- pkg/engine/vm_health.go (new — KubeVirtVMHealthValidator, NoOpVMHealthValidator)
+- pkg/engine/vm_health_test.go (new — 5 VM health tests)
+- pkg/engine/executor_test.go (modified — 19 retry tests)
+- pkg/engine/doc.go (modified — retry mechanism docs)
+- pkg/controller/drexecution/reconciler.go (modified — reconcileRetry, annotation lifecycle, VM health gate)
+- pkg/registry/drexecution/strategy.go (modified — PartiallySucceeded relaxation)
+- pkg/registry/drexecution/strategy_test.go (modified — 4 strategy tests)
+- cmd/soteria/main.go (modified — VMHealthValidator wiring)

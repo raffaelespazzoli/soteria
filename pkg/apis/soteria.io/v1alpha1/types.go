@@ -275,6 +275,9 @@ type DRGroupExecutionStatus struct {
 	// Steps records per-step execution details within this DRGroup.
 	// +listType=atomic
 	Steps []StepStatus `json:"steps,omitempty"`
+	// RetryCount tracks how many times this group has been retried.
+	// Incremented on each retry attempt for audit trail purposes.
+	RetryCount int `json:"retryCount,omitempty"`
 	// StartTime is when this group began processing.
 	StartTime *metav1.Time `json:"startTime,omitempty"`
 	// CompletionTime is when this group finished.

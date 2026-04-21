@@ -17,6 +17,7 @@ limitations under the License.
 package drexecution
 
 import (
+	"context"
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -82,5 +83,87 @@ func TestMatchDRExecution_UsesGetAttrs(t *testing.T) {
 	pred := MatchDRExecution(nil, nil)
 	if pred.GetAttrs == nil {
 		t.Error("MatchDRExecution predicate must have GetAttrs set")
+	}
+}
+
+// --- Status strategy relaxation tests (Story 4.6) ---
+
+func TestStatusStrategy_PartiallySucceeded_AllowsUpdate(t *testing.T) {
+	oldExec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "exec-1"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-1",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+		Status: soteriav1alpha1.DRExecutionStatus{
+			Result: soteriav1alpha1.ExecutionResultPartiallySucceeded,
+		},
+	}
+	newExec := oldExec.DeepCopy()
+	newExec.Status.Result = soteriav1alpha1.ExecutionResultSucceeded
+
+	errs := StatusStrategy.ValidateUpdate(context.Background(), newExec, oldExec)
+	if len(errs) != 0 {
+		t.Errorf("expected no errors for PartiallySucceeded → update, got: %v", errs)
+	}
+}
+
+func TestStatusStrategy_Succeeded_BlocksUpdate(t *testing.T) {
+	oldExec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "exec-1"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-1",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+		Status: soteriav1alpha1.DRExecutionStatus{
+			Result: soteriav1alpha1.ExecutionResultSucceeded,
+		},
+	}
+	newExec := oldExec.DeepCopy()
+	newExec.Status.Result = soteriav1alpha1.ExecutionResultFailed
+
+	errs := StatusStrategy.ValidateUpdate(context.Background(), newExec, oldExec)
+	if len(errs) == 0 {
+		t.Error("expected errors for Succeeded → update, got none")
+	}
+}
+
+func TestStatusStrategy_Failed_BlocksUpdate(t *testing.T) {
+	oldExec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "exec-1"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-1",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+		Status: soteriav1alpha1.DRExecutionStatus{
+			Result: soteriav1alpha1.ExecutionResultFailed,
+		},
+	}
+	newExec := oldExec.DeepCopy()
+	newExec.Status.Result = soteriav1alpha1.ExecutionResultSucceeded
+
+	errs := StatusStrategy.ValidateUpdate(context.Background(), newExec, oldExec)
+	if len(errs) == 0 {
+		t.Error("expected errors for Failed → update, got none")
+	}
+}
+
+func TestStatusStrategy_EmptyResult_AllowsUpdate(t *testing.T) {
+	oldExec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "exec-1"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-1",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+		Status: soteriav1alpha1.DRExecutionStatus{
+			Result: "",
+		},
+	}
+	newExec := oldExec.DeepCopy()
+	newExec.Status.Result = soteriav1alpha1.ExecutionResultSucceeded
+
+	errs := StatusStrategy.ValidateUpdate(context.Background(), newExec, oldExec)
+	if len(errs) != 0 {
+		t.Errorf("expected no errors for empty result → update (execution in progress), got: %v", errs)
 	}
 }

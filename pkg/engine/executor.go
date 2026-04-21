@@ -29,6 +29,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
+	"strings"
 	"sync"
 
 	corev1 "k8s.io/api/core/v1"
@@ -46,6 +48,15 @@ import (
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
 	"github.com/soteria-project/soteria/pkg/drivers"
 )
+
+// RetryGroupsAnnotation is the annotation key that operators use to trigger
+// retry of failed DRGroups. The value is a comma-separated list of group names
+// or "all-failed" to retry every group with Result == Failed.
+const RetryGroupsAnnotation = "soteria.io/retry-groups"
+
+// RetryAllFailed is the sentinel annotation value that means "retry all
+// DRGroups that have Result == Failed".
+const RetryAllFailed = "all-failed"
 
 // GroupError carries structured error context from a handler step failure.
 // Handlers SHOULD return *GroupError when a step fails so the executor can
@@ -137,18 +148,26 @@ func (g ExecutionGroup) DriverForVG(vgName string) drivers.StorageProvider {
 	return g.Driver
 }
 
+// VMHealthValidator checks whether a VM is in a known, healthy state before
+// allowing a retry operation. Retry is rejected when any VM in the group fails
+// validation — this prevents retry from an unpredictable starting point (FR15).
+type VMHealthValidator interface {
+	ValidateVMHealth(ctx context.Context, vmName, namespace string) error
+}
+
 // WaveExecutor orchestrates sequential wave execution with concurrent DRGroups.
 // Status updates are serialized via statusMu to prevent races when multiple
 // goroutines update the same DRExecution concurrently.
 type WaveExecutor struct {
-	Client          client.Client
-	CoreClient      corev1client.CoreV1Interface
-	VMDiscoverer    VMDiscoverer
-	NamespaceLookup NamespaceLookup
-	Registry        *drivers.Registry
-	SCLister        drivers.StorageClassLister
-	Recorder        events.EventRecorder
-	PVCResolver     PVCResolver
+	Client            client.Client
+	CoreClient        corev1client.CoreV1Interface
+	VMDiscoverer      VMDiscoverer
+	NamespaceLookup   NamespaceLookup
+	Registry          *drivers.Registry
+	SCLister          drivers.StorageClassLister
+	Recorder          events.EventRecorder
+	PVCResolver       PVCResolver
+	VMHealthValidator VMHealthValidator
 
 	statusMu sync.Mutex
 }
@@ -918,6 +937,377 @@ func (e *WaveExecutor) BuildExecutionGroups(
 		}
 	}
 	return groups, nil
+}
+
+// --- Retry support ---
+
+// RetryTarget identifies a single DRGroup to be retried.
+type RetryTarget struct {
+	WaveIndex  int
+	GroupIndex int
+	GroupName  string
+}
+
+// RetryInput holds the inputs for a retry invocation.
+type RetryInput struct {
+	Execution    *soteriav1alpha1.DRExecution
+	Plan         *soteriav1alpha1.DRPlan
+	Handler      DRGroupHandler
+	RetryTargets []RetryTarget
+}
+
+// parseRetryAnnotation splits the annotation value into group names.
+// Returns nil for the "all-failed" sentinel — the caller resolves those.
+func parseRetryAnnotation(value string) []string {
+	if value == RetryAllFailed {
+		return nil
+	}
+	groups := strings.Split(value, ",")
+	result := make([]string, 0, len(groups))
+	for _, g := range groups {
+		g = strings.TrimSpace(g)
+		if g != "" {
+			result = append(result, g)
+		}
+	}
+	return result
+}
+
+// ResolveRetryGroups parses the annotation value, validates each group exists
+// in the execution status and has Result == Failed, returns structured retry
+// targets sorted by wave index. Already-Completed groups are silently skipped.
+func ResolveRetryGroups(
+	exec *soteriav1alpha1.DRExecution, annotation string,
+) ([]RetryTarget, error) {
+	requestedNames := parseRetryAnnotation(annotation)
+
+	var targets []RetryTarget
+
+	if requestedNames == nil {
+		// all-failed: scan all waves/groups for Result == Failed.
+		for wi, wave := range exec.Status.Waves {
+			for gi, group := range wave.Groups {
+				if group.Result == soteriav1alpha1.DRGroupResultFailed {
+					targets = append(targets, RetryTarget{
+						WaveIndex:  wi,
+						GroupIndex: gi,
+						GroupName:  group.Name,
+					})
+				}
+			}
+		}
+		return targets, nil
+	}
+
+	// Build index of group names → location.
+	type groupLocation struct {
+		waveIdx  int
+		groupIdx int
+		result   soteriav1alpha1.DRGroupResult
+	}
+	index := make(map[string]groupLocation)
+	for wi, wave := range exec.Status.Waves {
+		for gi, group := range wave.Groups {
+			index[group.Name] = groupLocation{
+				waveIdx:  wi,
+				groupIdx: gi,
+				result:   group.Result,
+			}
+		}
+	}
+
+	for _, name := range requestedNames {
+		loc, found := index[name]
+		if !found {
+			return nil, fmt.Errorf("retry group %q not found in execution", name)
+		}
+		if loc.result == soteriav1alpha1.DRGroupResultCompleted {
+			continue
+		}
+		if loc.result != soteriav1alpha1.DRGroupResultFailed {
+			return nil, fmt.Errorf("retry group %q has result %q, expected Failed", name, loc.result)
+		}
+		targets = append(targets, RetryTarget{
+			WaveIndex:  loc.waveIdx,
+			GroupIndex: loc.groupIdx,
+			GroupName:  name,
+		})
+	}
+
+	sort.Slice(targets, func(i, j int) bool {
+		if targets[i].WaveIndex != targets[j].WaveIndex {
+			return targets[i].WaveIndex < targets[j].WaveIndex
+		}
+		return targets[i].GroupIndex < targets[j].GroupIndex
+	})
+
+	return targets, nil
+}
+
+// ExecuteRetry re-executes failed DRGroups respecting wave ordering. Groups
+// from wave N are retried before groups from wave N+1. Within a wave, groups
+// are retried concurrently (same fail-forward semantics as initial execution).
+// Does NOT call CompleteTransition — the plan phase was already advanced during
+// initial execution.
+func (e *WaveExecutor) ExecuteRetry(ctx context.Context, input RetryInput) error {
+	logger := log.FromContext(ctx)
+	exec := input.Execution
+
+	logger.Info("Starting retry execution",
+		"execution", exec.Name, "retryGroups", len(input.RetryTargets))
+
+	// Group targets by wave index.
+	waveGroups := make(map[int][]RetryTarget)
+	for _, t := range input.RetryTargets {
+		waveGroups[t.WaveIndex] = append(waveGroups[t.WaveIndex], t)
+	}
+
+	// Sort wave indices for sequential execution.
+	waveIndices := make([]int, 0, len(waveGroups))
+	for wi := range waveGroups {
+		waveIndices = append(waveIndices, wi)
+	}
+	sort.Ints(waveIndices)
+
+	// Execute waves sequentially.
+	for _, wi := range waveIndices {
+		if ctx.Err() != nil {
+			logger.Info("Context cancelled during retry, stopping")
+			break
+		}
+		e.executeRetryWave(ctx, wi, waveGroups[wi], input.Handler, exec, input.Plan)
+	}
+
+	// Recompute overall result.
+	result := e.computeResult(exec)
+	logger.Info("Retry execution completed", "result", result)
+
+	exec.Status.Result = result
+	now := metav1.Now()
+	exec.Status.CompletionTime = &now
+	if err := e.persistStatus(ctx, exec); err != nil {
+		return fmt.Errorf("writing retry execution status: %w", err)
+	}
+
+	return nil
+}
+
+// executeRetryWave runs retry groups within a wave concurrently.
+func (e *WaveExecutor) executeRetryWave(
+	ctx context.Context, waveIdx int, targets []RetryTarget,
+	handler DRGroupHandler, exec *soteriav1alpha1.DRExecution,
+	plan *soteriav1alpha1.DRPlan,
+) {
+	logger := log.FromContext(ctx)
+	logger.Info("Starting retry wave", "wave", waveIdx, "groups", len(targets))
+
+	var wg sync.WaitGroup
+	for _, target := range targets {
+		wg.Add(1)
+		go func(t RetryTarget) {
+			defer wg.Done()
+			e.executeRetryGroup(ctx, t, handler, exec, plan)
+		}(target)
+	}
+	wg.Wait()
+
+	logger.Info("Retry wave completed", "wave", waveIdx)
+}
+
+// executeRetryGroup re-executes a single failed DRGroup: increments RetryCount,
+// resets status to InProgress, clears DRGroupStatus steps, calls the handler,
+// and records the result.
+func (e *WaveExecutor) executeRetryGroup(
+	ctx context.Context, target RetryTarget,
+	handler DRGroupHandler, exec *soteriav1alpha1.DRExecution,
+	plan *soteriav1alpha1.DRPlan,
+) {
+	logger := log.FromContext(ctx)
+
+	e.statusMu.Lock()
+	groupStatus := &exec.Status.Waves[target.WaveIndex].Groups[target.GroupIndex]
+	groupStatus.RetryCount++
+	retryCount := groupStatus.RetryCount
+	groupStatus.Result = soteriav1alpha1.DRGroupResultInProgress
+	groupStatus.Error = ""
+	startTime := metav1.Now()
+	groupStatus.StartTime = &startTime
+	groupStatus.CompletionTime = nil
+	groupStatus.Steps = nil
+	vmNames := make([]string, len(groupStatus.VMNames))
+	copy(vmNames, groupStatus.VMNames)
+	e.statusMu.Unlock()
+
+	if err := e.persistStatus(ctx, exec); err != nil {
+		logger.Error(err, "Failed to persist retry InProgress status", "group", target.GroupName)
+	}
+
+	// Reset DRGroupStatus resource for the retry.
+	e.resetDRGroupStatus(ctx, exec, target)
+
+	// Reconstruct the chunk from execution status and plan.
+	chunk := e.reconstructChunk(target, exec, plan)
+
+	// Resolve drivers for the retry group.
+	driverMap, fallbackDriver, err := e.resolveDrivers(ctx, chunk)
+	if err != nil {
+		logger.Error(err, "Driver resolution failed during retry", "group", target.GroupName)
+		completionTime := metav1.Now()
+		e.setGroupStatus(ctx, exec, target.WaveIndex, target.GroupIndex, soteriav1alpha1.DRGroupExecutionStatus{
+			Name:           target.GroupName,
+			Result:         soteriav1alpha1.DRGroupResultFailed,
+			VMNames:        vmNames,
+			RetryCount:     retryCount,
+			Error:          fmt.Sprintf("step DriverResolution failed for %s: %v", target.GroupName, err),
+			StartTime:      &startTime,
+			CompletionTime: &completionTime,
+		})
+		return
+	}
+
+	recorder := e.getDRGroupStatusRecorder(ctx, exec, target)
+
+	execGroup := ExecutionGroup{
+		Chunk:        chunk,
+		Driver:       fallbackDriver,
+		Drivers:      driverMap,
+		WaveIndex:    target.WaveIndex,
+		StepRecorder: recorder,
+		PVCResolver:  e.PVCResolver,
+	}
+
+	var steps []soteriav1alpha1.StepStatus
+	if sh, ok := handler.(StepHandler); ok {
+		steps, err = sh.ExecuteGroupWithSteps(ctx, execGroup)
+	} else {
+		err = handler.ExecuteGroup(ctx, execGroup)
+	}
+
+	completionTime := metav1.Now()
+	if err != nil {
+		errMsg := err.Error()
+		var ge *GroupError
+		if errors.As(err, &ge) {
+			errMsg = fmt.Sprintf("step %s failed for %s: %v", ge.StepName, ge.Target, ge.Err)
+			logger.Error(err, "DRGroup retry failed", "group", target.GroupName,
+				"step", ge.StepName, "target", ge.Target, "retryCount", retryCount)
+		} else {
+			logger.Error(err, "DRGroup retry failed", "group", target.GroupName, "retryCount", retryCount)
+		}
+		e.finishDRGroupStatus(ctx, recorder, soteriav1alpha1.DRGroupResultFailed, &completionTime)
+		e.setGroupStatus(ctx, exec, target.WaveIndex, target.GroupIndex, soteriav1alpha1.DRGroupExecutionStatus{
+			Name:           target.GroupName,
+			Result:         soteriav1alpha1.DRGroupResultFailed,
+			VMNames:        vmNames,
+			RetryCount:     retryCount,
+			Error:          errMsg,
+			Steps:          steps,
+			StartTime:      &startTime,
+			CompletionTime: &completionTime,
+		})
+		return
+	}
+
+	e.finishDRGroupStatus(ctx, recorder, soteriav1alpha1.DRGroupResultCompleted, &completionTime)
+	logger.Info("DRGroup retry completed", "group", target.GroupName,
+		"result", "Completed", "retryCount", retryCount)
+	e.setGroupStatus(ctx, exec, target.WaveIndex, target.GroupIndex, soteriav1alpha1.DRGroupExecutionStatus{
+		Name:           target.GroupName,
+		Result:         soteriav1alpha1.DRGroupResultCompleted,
+		VMNames:        vmNames,
+		RetryCount:     retryCount,
+		Steps:          steps,
+		StartTime:      &startTime,
+		CompletionTime: &completionTime,
+	})
+}
+
+// resetDRGroupStatus resets an existing DRGroupStatus resource for retry:
+// clears steps, sets phase to InProgress.
+func (e *WaveExecutor) resetDRGroupStatus(
+	ctx context.Context, exec *soteriav1alpha1.DRExecution, target RetryTarget,
+) {
+	logger := log.FromContext(ctx)
+	dgsName := fmt.Sprintf("%s-%s", exec.Name, target.GroupName)
+
+	var dgs soteriav1alpha1.DRGroupStatus
+	if err := e.Client.Get(ctx, client.ObjectKey{Name: dgsName}, &dgs); err != nil {
+		logger.V(1).Info("Could not fetch DRGroupStatus for retry reset", "name", dgsName, "error", err)
+		return
+	}
+
+	dgs.Status.Phase = soteriav1alpha1.DRGroupResultInProgress
+	dgs.Status.Steps = nil
+	now := metav1.Now()
+	dgs.Status.LastTransitionTime = &now
+	if err := e.Client.Status().Update(ctx, &dgs); err != nil {
+		logger.V(1).Info("Could not reset DRGroupStatus for retry", "name", dgsName, "error", err)
+	}
+}
+
+// getDRGroupStatusRecorder returns a StepRecorder for an existing DRGroupStatus.
+func (e *WaveExecutor) getDRGroupStatusRecorder(
+	ctx context.Context, exec *soteriav1alpha1.DRExecution, target RetryTarget,
+) StepRecorder {
+	logger := log.FromContext(ctx)
+	dgsName := fmt.Sprintf("%s-%s", exec.Name, target.GroupName)
+
+	var dgs soteriav1alpha1.DRGroupStatus
+	if err := e.Client.Get(ctx, client.ObjectKey{Name: dgsName}, &dgs); err != nil {
+		logger.V(1).Info("Could not fetch DRGroupStatus for retry recorder", "name", dgsName, "error", err)
+		return noopStepRecorder{}
+	}
+
+	return &drgroupStatusRecorder{
+		client:    e.Client,
+		statusKey: client.ObjectKey{Name: dgsName},
+	}
+}
+
+// reconstructChunk builds a DRGroupChunk from execution status and plan data
+// for retry. Uses VMNames from the group status and VolumeGroups from the
+// plan's wave info.
+func (e *WaveExecutor) reconstructChunk(
+	target RetryTarget, exec *soteriav1alpha1.DRExecution,
+	plan *soteriav1alpha1.DRPlan,
+) DRGroupChunk {
+	groupStatus := exec.Status.Waves[target.WaveIndex].Groups[target.GroupIndex]
+
+	// Build VM references from the group's VM names.
+	vms := make([]VMReference, len(groupStatus.VMNames))
+	vmNameSet := make(map[string]bool, len(groupStatus.VMNames))
+	for i, name := range groupStatus.VMNames {
+		ns := ""
+		if target.WaveIndex < len(plan.Status.Waves) {
+			for _, dvm := range plan.Status.Waves[target.WaveIndex].VMs {
+				if dvm.Name == name {
+					ns = dvm.Namespace
+					break
+				}
+			}
+		}
+		vms[i] = VMReference{Name: name, Namespace: ns}
+		vmNameSet[name] = true
+	}
+
+	// Find matching VolumeGroups from the plan's wave info.
+	var volumeGroups []soteriav1alpha1.VolumeGroupInfo
+	if target.WaveIndex < len(plan.Status.Waves) {
+		for _, vg := range plan.Status.Waves[target.WaveIndex].Groups {
+			for _, vmName := range vg.VMNames {
+				if vmNameSet[vmName] {
+					volumeGroups = append(volumeGroups, vg)
+					break
+				}
+			}
+		}
+	}
+
+	return DRGroupChunk{
+		Name:         target.GroupName,
+		VMs:          vms,
+		VolumeGroups: volumeGroups,
+	}
 }
 
 // buildChunkInput constructs the ChunkInput by matching VolumeGroups to waves.
