@@ -45,6 +45,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
+	"github.com/soteria-project/soteria/pkg/drivers"
 	"github.com/soteria-project/soteria/pkg/engine"
 )
 
@@ -68,12 +69,13 @@ import (
 // from their last checkpoint.
 type DRExecutionReconciler struct {
 	client.Client
-	Scheme         *runtime.Scheme
-	Recorder       events.EventRecorder
-	WaveExecutor   *engine.WaveExecutor
-	Handler        engine.DRGroupHandler
-	VMManager      engine.VMManager
-	ResumeAnalyzer *engine.ResumeAnalyzer
+	Scheme           *runtime.Scheme
+	Recorder         events.EventRecorder
+	WaveExecutor     *engine.WaveExecutor
+	Handler          engine.DRGroupHandler
+	VMManager        engine.VMManager
+	ResumeAnalyzer   *engine.ResumeAnalyzer
+	ReprotectHandler *engine.ReprotectHandler
 }
 
 func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -98,6 +100,9 @@ func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// StartTime != nil means the controller already dispatched this execution.
 	// Result == "" (empty) means execution is still in-progress (not terminal).
 	if exec.Status.StartTime != nil && exec.Status.Result == "" {
+		if exec.Spec.Mode == soteriav1alpha1.ExecutionModeReprotect {
+			return r.reconcileReprotectResume(ctx, &exec)
+		}
 		return r.reconcileResume(ctx, &exec)
 	}
 
@@ -182,6 +187,11 @@ func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			"plan", plan.Name, "mode", exec.Spec.Mode, "targetPhase", targetPhase)
 	}
 
+	// Re-protect dispatch: storage-only, not wave-based.
+	if exec.Spec.Mode == soteriav1alpha1.ExecutionModeReprotect {
+		return r.reconcileReprotect(ctx, &exec, &plan)
+	}
+
 	// Dispatch (or re-dispatch) the wave executor.
 	if r.WaveExecutor != nil {
 		handler, err := r.resolveHandler(exec.Spec.Mode)
@@ -245,6 +255,235 @@ func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	return ctrl.Result{}, nil
+}
+
+// reconcileReprotect dispatches the ReprotectHandler for re-protect and restore
+// executions. Re-protect is storage-only (no waves, no VM operations):
+// StopReplication + SetSource + health monitoring for all volume groups.
+func (r *DRExecutionReconciler) reconcileReprotect(
+	ctx context.Context, exec *soteriav1alpha1.DRExecution, plan *soteriav1alpha1.DRPlan,
+) (ctrl.Result, error) {
+	logger := log.FromContext(ctx).WithValues("drexecution", exec.Name)
+
+	if r.ReprotectHandler == nil {
+		return r.failExecution(ctx, exec, "ReprotectNotConfigured",
+			"ReprotectHandler not configured")
+	}
+
+	r.event(exec, corev1.EventTypeNormal, "ReprotectStarted", "Dispatch",
+		fmt.Sprintf("Re-protect started for plan %s", plan.Name))
+
+	// Discover volume groups from the plan's wave status. Unlike wave-based
+	// execution (which re-discovers VMs at runtime), re-protect reads from
+	// plan.Status.Waves populated by the DRPlan controller. If waves are
+	// empty the plan may not have been reconciled since VMs were labelled.
+	vgEntries, err := r.buildVolumeGroupEntries(ctx, plan)
+	if err != nil {
+		logger.Error(err, "Failed to build volume group entries for re-protect")
+		return r.failExecution(ctx, exec, "VolumeGroupResolutionFailed",
+			fmt.Sprintf("discovering volume groups for re-protect: %v", err))
+	}
+	if len(vgEntries) == 0 {
+		r.event(exec, corev1.EventTypeWarning, "NoVolumeGroups", "Dispatch",
+			fmt.Sprintf("No volume groups found for re-protect on plan %s; "+
+				"plan wave status may be empty or stale", plan.Name))
+	}
+
+	input := engine.ReprotectInput{
+		Execution:    exec,
+		Plan:         plan,
+		VolumeGroups: vgEntries,
+	}
+
+	// Capture plan state before Execute, which mutates plan.Status.Conditions
+	// in-place. The pre-execution base ensures MergeFrom includes condition
+	// changes in the final patch (not just the phase advance).
+	planPreExec := plan.DeepCopy()
+
+	result, execErr := r.ReprotectHandler.Execute(ctx, input)
+
+	if execErr != nil && result == nil {
+		logger.Error(execErr, "Re-protect execution failed")
+		return r.failExecution(ctx, exec, "ReprotectFailed",
+			fmt.Sprintf("re-protect failed: %v", execErr))
+	}
+
+	// Context cancellation (leader election loss, shutdown): do NOT write a
+	// terminal result — let the new leader re-reconcile and resume via
+	// reconcileReprotectResume. All driver operations are idempotent.
+	if ctx.Err() != nil {
+		logger.Info("Re-protect interrupted, will resume on next reconcile")
+		return ctrl.Result{}, ctx.Err()
+	}
+
+	// Record the execution result.
+	now := metav1.Now()
+	execResult := result.Result()
+	execPatch := client.MergeFrom(exec.DeepCopy())
+	exec.Status.Result = execResult
+	exec.Status.CompletionTime = &now
+
+	condStatus := metav1.ConditionTrue
+	condReason := "ReprotectSucceeded"
+	switch execResult {
+	case soteriav1alpha1.ExecutionResultFailed:
+		condStatus = metav1.ConditionFalse
+		condReason = "ReprotectFailed"
+	case soteriav1alpha1.ExecutionResultPartiallySucceeded:
+		condReason = "ReprotectPartiallySucceeded"
+	}
+	meta.SetStatusCondition(&exec.Status.Conditions, metav1.Condition{
+		Type:               "Ready",
+		Status:             condStatus,
+		Reason:             condReason,
+		Message:            fmt.Sprintf("Re-protect completed: %s", execResult),
+		ObservedGeneration: exec.Generation,
+	})
+	meta.SetStatusCondition(&exec.Status.Conditions, metav1.Condition{
+		Type:   "ReprotectPhase",
+		Status: metav1.ConditionTrue,
+		Reason: "Complete",
+		Message: fmt.Sprintf("Role setup: %d/%d, healthy: %d/%d",
+			result.SetupSucceeded, result.TotalVGs, result.HealthyVGs, result.TotalVGs),
+		ObservedGeneration: exec.Generation,
+	})
+	if err := r.Status().Patch(ctx, exec, execPatch); err != nil {
+		logger.Error(err, "Failed to update DRExecution result after re-protect")
+		return ctrl.Result{}, err
+	}
+
+	// Emit completion events.
+	r.event(exec, corev1.EventTypeNormal, "ReprotectRoleSetupComplete", "RoleSetup",
+		fmt.Sprintf("Re-protect role setup complete: %d/%d volume groups succeeded",
+			result.SetupSucceeded, result.TotalVGs))
+
+	if result.TimedOut {
+		r.event(exec, corev1.EventTypeWarning, "ReprotectTimeout", "HealthMonitoring",
+			fmt.Sprintf("Re-protect health monitoring timed out: %d/%d volume groups healthy",
+				result.HealthyVGs, result.TotalVGs))
+	} else if execResult != soteriav1alpha1.ExecutionResultFailed {
+		r.event(exec, corev1.EventTypeNormal, "ReprotectHealthy", "HealthMonitoring",
+			fmt.Sprintf("All %d volume groups report healthy replication", result.HealthyVGs))
+	}
+
+	// Advance DRPlan phase on success or partial success (AC6: timeout still advances).
+	if execResult == soteriav1alpha1.ExecutionResultSucceeded ||
+		execResult == soteriav1alpha1.ExecutionResultPartiallySucceeded {
+		previousPhase := plan.Status.Phase
+		newPhase, err := engine.CompleteTransition(plan.Status.Phase)
+		if err != nil {
+			logger.Error(err, "Could not complete phase transition", "currentPhase", plan.Status.Phase)
+		} else {
+			planPatch := client.MergeFrom(planPreExec)
+			plan.Status.Phase = newPhase
+			if err := r.Status().Patch(ctx, plan, planPatch); err != nil {
+				logger.Error(err, "Failed to advance DRPlan phase",
+					"plan", plan.Name, "targetPhase", newPhase)
+				return ctrl.Result{}, err
+			}
+			logger.Info("Advanced DRPlan phase",
+				"plan", plan.Name, "from", previousPhase, "to", newPhase)
+		}
+	}
+
+	return ctrl.Result{}, nil
+}
+
+// buildVolumeGroupEntries collects all volume groups from the plan's wave
+// status, resolves a driver per VG, and resolves VolumeGroupIDs via
+// CreateVolumeGroup (idempotent). This gives the ReprotectHandler everything
+// it needs without depending on the wave executor.
+func (r *DRExecutionReconciler) buildVolumeGroupEntries(
+	ctx context.Context, plan *soteriav1alpha1.DRPlan,
+) ([]engine.VolumeGroupEntry, error) {
+	if r.WaveExecutor == nil {
+		return nil, fmt.Errorf("WaveExecutor required for VG resolution")
+	}
+
+	var entries []engine.VolumeGroupEntry
+	seen := make(map[string]bool)
+
+	for _, wave := range plan.Status.Waves {
+		for _, vg := range wave.Groups {
+			key := vg.Namespace + "/" + vg.Name
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+
+			drv, err := r.WaveExecutor.ResolveVGDriver(ctx, vg)
+			if err != nil {
+				return nil, fmt.Errorf("resolving driver for volume group %s: %w", vg.Name, err)
+			}
+
+			vgID, err := r.resolveVGID(ctx, drv, vg)
+			if err != nil {
+				return nil, fmt.Errorf("resolving volume group ID for %s: %w", vg.Name, err)
+			}
+
+			entries = append(entries, engine.VolumeGroupEntry{
+				Info:   vg,
+				Driver: drv,
+				VGID:   vgID,
+			})
+		}
+	}
+	return entries, nil
+}
+
+// reconcileReprotectResume handles the resume path for in-progress re-protect
+// executions after a pod restart. Unlike wave-based resume (which skips
+// completed waves), re-protect uses an idempotent-replay model: the entire
+// workflow is re-executed from scratch. This is safe because every driver
+// operation (StopReplication, SetSource, GetReplicationStatus) is idempotent
+// and produces the same outcome on repeated calls. The trade-off is a
+// slightly longer recovery time vs. adding phase-checkpoint complexity.
+func (r *DRExecutionReconciler) reconcileReprotectResume(
+	ctx context.Context, exec *soteriav1alpha1.DRExecution,
+) (ctrl.Result, error) {
+	logger := log.FromContext(ctx).WithValues("drexecution", exec.Name)
+	logger.Info("Resuming re-protect execution (idempotent replay)")
+
+	var plan soteriav1alpha1.DRPlan
+	if err := r.Get(ctx, client.ObjectKey{Name: exec.Spec.PlanName}, &plan); err != nil {
+		if errors.IsNotFound(err) {
+			return r.failExecution(ctx, exec, "PlanNotFound",
+				fmt.Sprintf("DRPlan %q not found during re-protect resume", exec.Spec.PlanName))
+		}
+		return ctrl.Result{}, err
+	}
+
+	r.event(exec, corev1.EventTypeNormal, "ReprotectResumed", "Checkpoint",
+		"Resuming re-protect execution after restart (idempotent replay)")
+
+	return r.reconcileReprotect(ctx, exec, &plan)
+}
+
+// resolveVGID resolves a VolumeGroupInfo to a driver-level VolumeGroupID
+// via CreateVolumeGroup (idempotent).
+func (r *DRExecutionReconciler) resolveVGID(
+	ctx context.Context, drv drivers.StorageProvider, vg soteriav1alpha1.VolumeGroupInfo,
+) (drivers.VolumeGroupID, error) {
+	var pvcNames []string
+	if r.WaveExecutor != nil && r.WaveExecutor.PVCResolver != nil {
+		for _, vmName := range vg.VMNames {
+			names, err := r.WaveExecutor.PVCResolver.ResolvePVCNames(ctx, vmName, vg.Namespace)
+			if err != nil {
+				return "", fmt.Errorf("resolving PVC names for VM %s/%s: %w", vg.Namespace, vmName, err)
+			}
+			pvcNames = append(pvcNames, names...)
+		}
+	}
+
+	info, err := drv.CreateVolumeGroup(ctx, drivers.VolumeGroupSpec{
+		Name:      vg.Name,
+		Namespace: vg.Namespace,
+		PVCNames:  pvcNames,
+	})
+	if err != nil {
+		return "", fmt.Errorf("resolving volume group %s: %w", vg.Name, err)
+	}
+	return info.ID, nil
 }
 
 // reconcileResume handles the resume path for in-progress executions after
@@ -399,7 +638,7 @@ func (r *DRExecutionReconciler) failExecution(
 // FailoverHandler is used for both planned_migration and disaster — the config
 // drives behavior, not the mode string. When VMManager is not configured (e.g.,
 // integration tests), falls back to the injected Handler or NoOpHandler.
-// Reprotect uses a placeholder until Story 4.8 implements ReprotectHandler.
+// Reprotect is dispatched via reconcileReprotect and never reaches this method.
 func (r *DRExecutionReconciler) resolveHandler(
 	mode soteriav1alpha1.ExecutionMode,
 ) (engine.DRGroupHandler, error) {

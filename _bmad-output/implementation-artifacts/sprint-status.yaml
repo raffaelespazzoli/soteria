@@ -1,5 +1,5 @@
 # generated: 2026-04-06
-# last_updated: 2026-04-10
+# last_updated: 2026-04-21
 # project: dr-orchestrator
 # project_key: NOKEY
 # tracking_system: file-system
@@ -36,6 +36,9 @@
 
 generated: 2026-04-06
 last_updated: 2026-04-21
+# 4.8 done: Re-protect & Failback Workflows — ReprotectHandler (storage-only two-phase: role setup + health monitoring), StopReplication(force=true) tolerant, SetSource(force=false), Replicating conditions on DRExecution+DRPlan, health polling with configurable interval/timeout, PartiallySucceeded on timeout or partial SetSource failure, controller dispatch for reprotect mode bypassing WaveExecutor, buildVolumeGroupEntries helper with empty-waves guard, resume support via idempotent replay, ctx.Err() guard for safe leader-election handoff, planPreExec MergeFrom base for condition persistence, 3 re-protect Prometheus metrics (duration/setup/polls), main.go wiring, 21 new tests (16 ReprotectHandler + 5 state machine/lifecycle), 82.1% engine coverage. 6 review findings resolved (4 code fixes, 2 documented design decisions).
+# 4.8 review: Re-protect & Failback Workflows — 6 patch findings from code review
+# 4.8 in-progress: Re-protect & Failback Workflows — development started
 # 4.7 review: Checkpoint, Resume & High Availability — per-DRGroup checkpointing (KubeCheckpointer with exponential backoff), ResumeAnalyzer for crash recovery, ExecuteFromWave resume-aware execution, reconciler resume path with event emission, leader election configuration flags, checkpoint Prometheus metrics (writes/duration/retries), NoOpCheckpointer for testing, 33 new tests (checkpoint/resume/reconciler/executor), 80.8% engine coverage, 28.9% DRExecution controller coverage
 # 4.7 in-progress: Checkpoint, Resume & High Availability — development started
 # 4.6 done: code review fixes deferred (terminal-result annotation cleanup, resolveVMNamespace ctx propagation, duplicate annotation dedup)
@@ -164,7 +167,7 @@ development_status:
   4-5-fail-forward-error-handling-partial-success: done
   4-6-failed-drgroup-retry: done
   4-7-checkpoint-resume-high-availability: done
-  4-8-re-protect-failback-workflows: ready-for-dev
+  4-8-re-protect-failback-workflows: done
   epic-4-retrospective: optional
 
   # Epic 5: Monitoring, Observability & Audit Trail

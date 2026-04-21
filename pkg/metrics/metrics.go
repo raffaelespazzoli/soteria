@@ -51,6 +51,35 @@ var (
 			Help: "Total number of checkpoint write retry attempts",
 		},
 	)
+
+	// ReprotectDuration tracks total re-protect execution time including
+	// health monitoring in seconds.
+	ReprotectDuration = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "soteria_reprotect_duration_seconds",
+			Help:    "Total re-protect execution time including health monitoring",
+			Buckets: []float64{1, 5, 10, 30, 60, 300, 600, 1800, 3600},
+		},
+	)
+
+	// ReprotectVGSetupDuration tracks the role setup phase duration in seconds
+	// (StopReplication + SetSource for all VGs, excluding health monitoring).
+	ReprotectVGSetupDuration = prometheus.NewHistogram(
+		prometheus.HistogramOpts{
+			Name:    "soteria_reprotect_vg_setup_duration_seconds",
+			Help:    "Re-protect role setup phase duration in seconds",
+			Buckets: []float64{0.1, 0.5, 1, 2.5, 5, 10, 30, 60},
+		},
+	)
+
+	// ReprotectHealthPollsTotal counts the number of health poll iterations
+	// during re-protect health monitoring.
+	ReprotectHealthPollsTotal = prometheus.NewCounter(
+		prometheus.CounterOpts{
+			Name: "soteria_reprotect_health_polls_total",
+			Help: "Total number of re-protect health poll iterations",
+		},
+	)
 )
 
 func init() {
@@ -58,5 +87,8 @@ func init() {
 		CheckpointWritesTotal,
 		CheckpointWriteDuration,
 		CheckpointRetriesTotal,
+		ReprotectDuration,
+		ReprotectVGSetupDuration,
+		ReprotectHealthPollsTotal,
 	)
 }

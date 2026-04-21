@@ -145,6 +145,15 @@ So that the system returns to full DR protection after the complete 8-phase life
   - [ ] 14.7 Run `make lint-fix` followed by `make lint` — no new lint errors
   - [ ] 14.8 Run `make build` — compiles cleanly
 
+### Review Findings
+
+- [x] [Review][Patch] Re-protect can be marked terminal on `context.Canceled` instead of remaining resumable — **Fixed**: added `ctx.Err()` guard before writing terminal result in `reconcileReprotect`
+- [x] [Review][Patch] Mixed `SetSource` failures are still classified as full success — **Fixed**: `Result()` now returns `PartiallySucceeded` when `SetupFailed > 0`; added test case
+- [x] [Review][Patch] Re-protect uses `DRPlan.Status.Waves` instead of the live execution discovery pipeline — **Mitigated**: added empty-waves guard with operator-visible `NoVolumeGroups` warning event + comment documenting the design decision; full re-discovery deferred (needs WaveExecutor refactor)
+- [x] [Review][Patch] `DRPlan` replication progress is updated only in memory and never persisted during re-protect — **Fixed**: `planPreExec` base captured before `Execute()` so `MergeFrom` patch includes condition changes alongside phase advance
+- [x] [Review][Patch] `ReprotectPhase` never records `RoleSetup` / `HealthMonitoring`, so resume just re-runs the full workflow — **Documented**: updated godoc to describe idempotent-replay model; trade-off is intentional (idempotent ops vs phase-checkpoint complexity)
+- [x] [Review][Patch] Re-protect step history is never surfaced on the persisted API objects — **Documented**: CRD schema gap noted in `doc.go`; adding a top-level `Steps` field requires a schema extension story
+
 ## Dev Notes
 
 ### Architecture Context

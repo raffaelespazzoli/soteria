@@ -163,6 +163,26 @@ limitations under the License.
 //     project convention and are registered with controller-runtime's metrics
 //     registry.
 //
+//   - Re-protect handler (reprotect.go): implements storage-only re-protection
+//     and restore workflows without VM operations or wave semantics. Executes
+//     three phases sequentially: (1) role setup — StopReplication + SetSource on
+//     every VolumeGroup to flip replication direction; (2) health monitoring —
+//     polls GetReplicationStatus until all VGs report healthy or a configurable
+//     timeout fires; (3) result aggregation. Each VG step is recorded to a
+//     StepStatus slice in-memory. PartiallySucceeded is returned when some (but
+//     not all) SetSource calls fail or health monitoring times out. All driver
+//     calls are idempotent, enabling an idempotent-replay resume model: on crash
+//     recovery the entire workflow is re-executed rather than checkpointing
+//     individual phases. The handler is used for both Reprotecting (SteadyState →
+//     DRedSteadyState) and ReprotectingBack (FailedBack → SteadyState).
+//
+//     Current limitation: per-VG StepStatus entries are held in-memory during
+//     execution and surfaced through ReprotectResult but NOT persisted to the
+//     DRExecution status subresource. The CRD schema stores steps under
+//     Waves[].Groups[].Steps, and re-protect has no wave structure. A future
+//     schema extension (e.g., a top-level Steps field) is needed to persist
+//     re-protect step history for API consumers.
+//
 // All engine functions are pure or accept interfaces for dependency injection,
 // keeping the DRPlan and DRExecution controllers testable at every level.
 package engine

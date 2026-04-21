@@ -315,6 +315,12 @@ func main() {
 
 	resumeAnalyzer := &engine.ResumeAnalyzer{}
 
+	reprotectHandler := &engine.ReprotectHandler{
+		Checkpointer:       checkpointer,
+		HealthPollInterval: 30 * time.Second,
+		HealthTimeout:      24 * time.Hour,
+	}
+
 	if enableLeaderElection {
 		setupLog.Info("Leader election configured",
 			"leaseDuration", leaderElectLeaseDuration,
@@ -323,13 +329,14 @@ func main() {
 	}
 
 	if err := (&drexecution.DRExecutionReconciler{
-		Client:         mgr.GetClient(),
-		Scheme:         mgr.GetScheme(),
-		Recorder:       drexecRecorder,
-		WaveExecutor:   waveExecutor,
-		Handler:        &engine.NoOpHandler{},
-		VMManager:      vmManager,
-		ResumeAnalyzer: resumeAnalyzer,
+		Client:           mgr.GetClient(),
+		Scheme:           mgr.GetScheme(),
+		Recorder:         drexecRecorder,
+		WaveExecutor:     waveExecutor,
+		Handler:          &engine.NoOpHandler{},
+		VMManager:        vmManager,
+		ResumeAnalyzer:   resumeAnalyzer,
+		ReprotectHandler: reprotectHandler,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "DRExecution")
 		os.Exit(1)

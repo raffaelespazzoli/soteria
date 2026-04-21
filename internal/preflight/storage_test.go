@@ -151,7 +151,7 @@ func TestResolveBackends(t *testing.T) {
 			},
 			registry:     newTestRegistry(nil, nil),
 			scLister:     &fakeSCLister{provisioners: map[string]string{"some-unknown-class": "unregistered.csi.com"}},
-			wantBackends: map[string]string{"ns1/vm-1": "unknown"},
+			wantBackends: map[string]string{"ns1/vm-1": backendUnknown},
 			wantWarnings: 1,
 		},
 		{
@@ -198,7 +198,7 @@ func TestResolveBackends(t *testing.T) {
 			},
 			registry:     newTestRegistry(nil, nil),
 			scLister:     &fakeSCLister{},
-			wantBackends: map[string]string{"ns1/vm-1": "unknown"},
+			wantBackends: map[string]string{"ns1/vm-1": backendUnknown},
 			wantWarnings: 1,
 		},
 		{
@@ -498,8 +498,8 @@ func TestResolveBackends_NilRegistry(t *testing.T) {
 		t.Fatalf("ResolveBackends() error: %v", err)
 	}
 
-	if got := backends["ns1/vm-noreg"]; got != "unknown" {
-		t.Errorf("Backend = %q, want %q", got, "unknown")
+	if got := backends["ns1/vm-noreg"]; got != backendUnknown {
+		t.Errorf("Backend = %q, want %q", got, backendUnknown)
 	}
 	if len(warnings) != 1 {
 		t.Errorf("Expected 1 warning for nil Registry, got %d: %v", len(warnings), warnings)
@@ -550,8 +550,8 @@ func TestResolveBackends_EmptyProvisioner(t *testing.T) {
 		t.Fatalf("ResolveBackends() error: %v", err)
 	}
 
-	if got := backends["ns1/vm-empty"]; got != "unknown" {
-		t.Errorf("Backend = %q, want %q", got, "unknown")
+	if got := backends["ns1/vm-empty"]; got != backendUnknown {
+		t.Errorf("Backend = %q, want %q", got, backendUnknown)
 	}
 	if len(warnings) != 1 {
 		t.Errorf("Expected 1 warning for empty provisioner, got %d: %v", len(warnings), warnings)
@@ -602,8 +602,8 @@ func TestResolveBackends_NilSCLister(t *testing.T) {
 		t.Fatalf("ResolveBackends() error: %v", err)
 	}
 
-	if got := backends["ns1/vm-nil"]; got != "unknown" {
-		t.Errorf("Backend = %q, want %q", got, "unknown")
+	if got := backends["ns1/vm-nil"]; got != backendUnknown {
+		t.Errorf("Backend = %q, want %q", got, backendUnknown)
 	}
 	if len(warnings) != 1 {
 		t.Errorf("Expected 1 warning for nil SCLister, got %d: %v", len(warnings), warnings)

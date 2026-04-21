@@ -750,7 +750,7 @@ func (e *WaveExecutor) resolveDrivers(
 
 	driverMap = make(map[string]drivers.StorageProvider, len(chunk.VolumeGroups))
 	for _, vg := range chunk.VolumeGroups {
-		drv, err := e.resolveVGDriver(ctx, vg)
+		drv, err := e.ResolveVGDriver(ctx, vg)
 		if err != nil {
 			return nil, nil, fmt.Errorf("volume group %s: %w", vg.Name, err)
 		}
@@ -762,8 +762,8 @@ func (e *WaveExecutor) resolveDrivers(
 	return driverMap, fallback, nil
 }
 
-// resolveVGDriver resolves the StorageProvider for a single VolumeGroup.
-func (e *WaveExecutor) resolveVGDriver(
+// ResolveVGDriver resolves the StorageProvider for a single VolumeGroup.
+func (e *WaveExecutor) ResolveVGDriver(
 	ctx context.Context, vg soteriav1alpha1.VolumeGroupInfo,
 ) (drivers.StorageProvider, error) {
 	logger := log.FromContext(ctx)
