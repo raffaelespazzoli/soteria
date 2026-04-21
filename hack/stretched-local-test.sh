@@ -50,6 +50,9 @@ cd "${SCRIPT_ROOT}"
 IMG="${IMG:-quay.io/raffaelespazzoli/soteria:latest}"
 KEYSPACE="${KEYSPACE:-soteria}"
 NAMESPACE="soteria"
+DR_TEST_NS="soteria-dr-test"
+DR_TEST_SC="${DR_TEST_SC:-ocs-storagecluster-ceph-rbd-virtualization}"
+DR_TEST_DISK_SIZE="${DR_TEST_DISK_SIZE:-30Gi}"
 
 KUBECONFIG_FILE="${KUBECONFIG:-${HOME}/.kube/config}"
 CTX_ETL6="${CTX_ETL6:-etl6}"
@@ -90,6 +93,9 @@ stop() {
     echo "Deleting resources from context ${ctx}..."
     kustomize_build "${overlay}" \
       | kctl --context="${ctx}" delete --ignore-not-found -f - 2>/dev/null || true
+
+    echo "Deleting DR test namespace from context ${ctx}..."
+    kctl --context="${ctx}" delete namespace "${DR_TEST_NS}" --ignore-not-found 2>/dev/null || true
   done
 
   echo "Done."
@@ -414,6 +420,101 @@ EOF
 echo "  Sample data populated."
 
 # ---------------------------------------------------------------------------
+# Deploy DR test VMs (Fedora) with DRPlan
+# ---------------------------------------------------------------------------
+echo ""
+echo "=== Creating DR test namespace and Fedora VMs ==="
+
+for ctx in "${CTX_ETL6}" "${CTX_ETL7}"; do
+  kctl --context="${ctx}" create namespace "${DR_TEST_NS}" --dry-run=client -o yaml \
+    | kctl --context="${ctx}" apply --server-side -f -
+  echo "  ${ctx}: namespace ${DR_TEST_NS} ready"
+done
+
+create_fedora_vm() {
+  local ctx="$1" name="$2" wave="$3" run_strategy="$4"
+  echo "  ${ctx}: creating VM ${name} (wave=${wave}, runStrategy=${run_strategy})..."
+  kctl --context="${ctx}" apply -f - <<VMEOF
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: ${name}
+  namespace: ${DR_TEST_NS}
+  labels:
+    soteria.io/drplan: fedora-app
+    soteria.io/wave: "${wave}"
+spec:
+  runStrategy: ${run_strategy}
+  dataVolumeTemplates:
+    - metadata:
+        name: ${name}-rootdisk
+      spec:
+        sourceRef:
+          kind: DataSource
+          name: fedora
+          namespace: openshift-virtualization-os-images
+        storage:
+          resources:
+            requests:
+              storage: ${DR_TEST_DISK_SIZE}
+          storageClassName: ${DR_TEST_SC}
+  template:
+    metadata:
+      labels:
+        soteria.io/drplan: fedora-app
+        soteria.io/wave: "${wave}"
+    spec:
+      domain:
+        resources:
+          requests:
+            memory: 2Gi
+        devices:
+          disks:
+            - name: rootdisk
+              disk:
+                bus: virtio
+      volumes:
+        - name: rootdisk
+          dataVolume:
+            name: ${name}-rootdisk
+VMEOF
+}
+
+declare -A VM_WAVES=(
+  ["fedora-db"]="1"
+  ["fedora-appserver-1"]="2"
+  ["fedora-appserver-2"]="2"
+  ["fedora-webserver-1"]="3"
+  ["fedora-webserver-2"]="3"
+)
+
+for vm_name in fedora-db fedora-appserver-1 fedora-appserver-2 fedora-webserver-1 fedora-webserver-2; do
+  wave="${VM_WAVES[${vm_name}]}"
+  create_fedora_vm "${CTX_ETL6}" "${vm_name}" "${wave}" "Always"
+  create_fedora_vm "${CTX_ETL7}" "${vm_name}" "${wave}" "Halted"
+done
+
+echo ""
+echo "=== Creating DRPlan fedora-app ==="
+
+for ctx in "${CTX_ETL6}" "${CTX_ETL7}"; do
+  echo "  DRPlan 'fedora-app' → ${ctx}..."
+  kctl --context="${ctx}" apply -f - <<'EOF'
+apiVersion: soteria.io/v1alpha1
+kind: DRPlan
+metadata:
+  name: fedora-app
+  namespace: soteria-dr-test
+spec:
+  waveLabel: soteria.io/wave
+  maxConcurrentFailovers: 2
+EOF
+done
+
+sleep 2
+echo "  DR test VMs and DRPlan deployed."
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 cat <<SUMMARY
@@ -438,9 +539,22 @@ cat <<SUMMARY
    DRPlans:      finance-dr (via ${CTX_ETL6}), payments-dr (via ${CTX_ETL7})
    DRExecutions: finance-failover-001 (planned_migration), payments-disaster-001 (disaster)
 
+ DR test (namespace: ${DR_TEST_NS}):
+   DRPlan: fedora-app (waveLabel: soteria.io/wave, maxConcurrentFailovers: 2)
+   Wave 1: fedora-db
+   Wave 2: fedora-appserver-1, fedora-appserver-2
+   Wave 3: fedora-webserver-1, fedora-webserver-2
+   ${CTX_ETL6}: VMs running (runStrategy: Always)
+   ${CTX_ETL7}: VMs stopped (runStrategy: Halted)
+
  Retrieve DRPlans (via aggregated API):
    kubectl --context=${CTX_ETL6} get drplans -n default
    kubectl --context=${CTX_ETL7} get drplans -n default
+   kubectl --context=${CTX_ETL6} get drplans -n ${DR_TEST_NS}
+
+ Retrieve Fedora VMs:
+   kubectl --context=${CTX_ETL6} get vm -n ${DR_TEST_NS}
+   kubectl --context=${CTX_ETL7} get vm -n ${DR_TEST_NS}
 
  Cross-DC replication test:
    kubectl --context=${CTX_ETL6} get drplans -n default -o name

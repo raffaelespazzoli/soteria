@@ -36,6 +36,7 @@
 
 generated: 2026-04-06
 last_updated: 2026-04-21
+# 4.9 created: Site Topology Fields — primarySite/secondarySite in DRPlanSpec, activeSite in DRPlanStatus, immutable sites, activeSite flip on failover/failback completion, critical field detection, preflight report, test fixture updates (~14 prod files, ~23 test files)
 # 4.8 done: Re-protect & Failback Workflows — ReprotectHandler (storage-only two-phase: role setup + health monitoring), StopReplication(force=true) tolerant, SetSource(force=false), Replicating conditions on DRExecution+DRPlan, health polling with configurable interval/timeout, PartiallySucceeded on timeout or partial SetSource failure, controller dispatch for reprotect mode bypassing WaveExecutor, buildVolumeGroupEntries helper with empty-waves guard, resume support via idempotent replay, ctx.Err() guard for safe leader-election handoff, planPreExec MergeFrom base for condition persistence, 3 re-protect Prometheus metrics (duration/setup/polls), main.go wiring, 21 new tests (16 ReprotectHandler + 5 state machine/lifecycle), 82.1% engine coverage. 6 review findings resolved (4 code fixes, 2 documented design decisions).
 # 4.8 review: Re-protect & Failback Workflows — 6 patch findings from code review
 # 4.8 in-progress: Re-protect & Failback Workflows — development started
@@ -168,6 +169,7 @@ development_status:
   4-6-failed-drgroup-retry: done
   4-7-checkpoint-resume-high-availability: done
   4-8-re-protect-failback-workflows: done
+  4-9-site-topology-fields: ready-for-dev
   epic-4-retrospective: optional
 
   # Epic 5: Monitoring, Observability & Audit Trail
