@@ -50,6 +50,8 @@ import (
 // +kubebuilder:rbac:groups=soteria.io,resources=drexecutions/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=soteria.io,resources=drplans,verbs=get;list;watch
 // +kubebuilder:rbac:groups=soteria.io,resources=drplans/status,verbs=get;update;patch
+// +kubebuilder:rbac:groups=soteria.io,resources=drgroupstatuses,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=soteria.io,resources=drgroupstatuses/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 // +kubebuilder:rbac:groups=kubevirt.io,resources=virtualmachines,verbs=get;list;watch;patch;update
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list

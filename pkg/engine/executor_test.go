@@ -20,6 +20,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -200,7 +201,11 @@ func newFakeClient(vms []VMReference, objs ...client.Object) client.Client {
 	scheme := newTestScheme()
 	builder := fake.NewClientBuilder().
 		WithScheme(scheme).
-		WithStatusSubresource(&soteriav1alpha1.DRExecution{}, &soteriav1alpha1.DRPlan{})
+		WithStatusSubresource(
+			&soteriav1alpha1.DRExecution{},
+			&soteriav1alpha1.DRPlan{},
+			&soteriav1alpha1.DRGroupStatus{},
+		)
 	for _, obj := range objs {
 		builder = builder.WithObjects(obj)
 	}
@@ -833,6 +838,368 @@ func TestNoOpHandler(t *testing.T) {
 	err := h.ExecuteGroup(context.Background(), ExecutionGroup{})
 	if err != nil {
 		t.Errorf("NoOpHandler returned error: %v", err)
+	}
+}
+
+// --- GroupError tests ---
+
+func TestGroupError_Error(t *testing.T) {
+	ge := &GroupError{
+		StepName: "SetSource",
+		Target:   "ns-erp-database",
+		Err:      fmt.Errorf("invalid replication state transition"),
+	}
+	want := "SetSource for ns-erp-database: invalid replication state transition"
+	if ge.Error() != want {
+		t.Errorf("Error() = %q, want %q", ge.Error(), want)
+	}
+}
+
+func TestGroupError_Unwrap(t *testing.T) {
+	underlying := fmt.Errorf("base error")
+	ge := &GroupError{StepName: "SetSource", Target: "vg-1", Err: underlying}
+	if !errors.Is(ge, underlying) {
+		t.Error("errors.Is should find the underlying error")
+	}
+}
+
+func TestGroupError_ErrorsAs(t *testing.T) {
+	underlying := fmt.Errorf("base error")
+	wrapped := fmt.Errorf("wrapping: %w", &GroupError{StepName: "SetSource", Target: "vg-1", Err: underlying})
+	var ge *GroupError
+	if !errors.As(wrapped, &ge) {
+		t.Error("errors.As should find *GroupError through wrapping")
+	}
+	if ge.StepName != "SetSource" {
+		t.Errorf("StepName = %q, want SetSource", ge.StepName)
+	}
+}
+
+// --- Fail-forward executor tests (Story 4.5 AC13) ---
+
+func TestWaveExecutor_PartialFailure_ReportsPartiallySucceeded(t *testing.T) {
+	plan := newTestPlan("plan-pf")
+	plan.Spec.MaxConcurrentFailovers = 1
+	exec := newTestExecution("exec-pf", "plan-pf")
+	vms := makeVMs([]string{"vm-ok", "vm-fail", "vm-ok2"}, "alpha")
+	cl := newFakeClient(vms, plan, exec)
+
+	handler := &mockHandler{
+		failOn: map[string]error{
+			"wave-alpha-group-1": &GroupError{
+				StepName: StepSetSource,
+				Target:   "ns-erp-db",
+				Err:      fmt.Errorf("replication state transition invalid"),
+			},
+		},
+	}
+
+	executor := newTestExecutor(cl, &mockVMDiscoverer{vms: vms},
+		&mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{"ns-1": soteriav1alpha1.ConsistencyLevelVM}})
+
+	err := executor.Execute(context.Background(), ExecuteInput{
+		Execution: exec,
+		Plan:      plan,
+		Handler:   handler,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if exec.Status.Result != soteriav1alpha1.ExecutionResultPartiallySucceeded {
+		t.Errorf("expected PartiallySucceeded, got %q", exec.Status.Result)
+	}
+
+	// Verify the failed group has step detail in its Error field.
+	for _, wave := range exec.Status.Waves {
+		for _, g := range wave.Groups {
+			if g.Result == soteriav1alpha1.DRGroupResultFailed {
+				if g.Error == "" {
+					t.Error("failed group should have Error set")
+				}
+				if !strings.Contains(g.Error, "SetSource") {
+					t.Errorf("Error should contain step name, got: %s", g.Error)
+				}
+				if !strings.Contains(g.Error, "ns-erp-db") {
+					t.Errorf("Error should contain target, got: %s", g.Error)
+				}
+			}
+		}
+	}
+}
+
+func TestWaveExecutor_GroupError_StepDetail(t *testing.T) {
+	plan := newTestPlan("plan-ge")
+	plan.Spec.MaxConcurrentFailovers = 1
+	exec := newTestExecution("exec-ge", "plan-ge")
+	vms := makeVMs([]string{"vm-1"}, "alpha")
+	cl := newFakeClient(vms, plan, exec)
+
+	handler := &mockHandler{
+		failOn: map[string]error{
+			"wave-alpha-group-0": &GroupError{
+				StepName: "SetSource",
+				Target:   "ns-erp-db",
+				Err:      fmt.Errorf("underlying driver error"),
+			},
+		},
+	}
+
+	executor := newTestExecutor(cl, &mockVMDiscoverer{vms: vms},
+		&mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{"ns-1": soteriav1alpha1.ConsistencyLevelVM}})
+
+	_ = executor.Execute(context.Background(), ExecuteInput{
+		Execution: exec,
+		Plan:      plan,
+		Handler:   handler,
+	})
+
+	group := exec.Status.Waves[0].Groups[0]
+	if group.Result != soteriav1alpha1.DRGroupResultFailed {
+		t.Errorf("expected Failed, got %q", group.Result)
+	}
+	want := "step SetSource failed for ns-erp-db: underlying driver error"
+	if group.Error != want {
+		t.Errorf("Error = %q, want %q", group.Error, want)
+	}
+}
+
+func TestWaveExecutor_NonGroupError_FallbackFormat(t *testing.T) {
+	plan := newTestPlan("plan-nge")
+	plan.Spec.MaxConcurrentFailovers = 1
+	exec := newTestExecution("exec-nge", "plan-nge")
+	vms := makeVMs([]string{"vm-1"}, "alpha")
+	cl := newFakeClient(vms, plan, exec)
+
+	handler := &mockHandler{
+		failOn: map[string]error{
+			"wave-alpha-group-0": fmt.Errorf("plain error without structure"),
+		},
+	}
+
+	executor := newTestExecutor(cl, &mockVMDiscoverer{vms: vms},
+		&mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{"ns-1": soteriav1alpha1.ConsistencyLevelVM}})
+
+	_ = executor.Execute(context.Background(), ExecuteInput{
+		Execution: exec,
+		Plan:      plan,
+		Handler:   handler,
+	})
+
+	group := exec.Status.Waves[0].Groups[0]
+	if group.Error != "plain error without structure" {
+		t.Errorf("Error should be the plain error string, got: %q", group.Error)
+	}
+}
+
+func TestWaveExecutor_DRGroupStatus_Created(t *testing.T) {
+	plan := newTestPlan("plan-dgs")
+	plan.Spec.MaxConcurrentFailovers = 1
+	exec := newTestExecution("exec-dgs", "plan-dgs")
+	vms := makeVMs([]string{"vm-1", "vm-2"}, "alpha")
+	cl := newFakeClient(vms, plan, exec)
+
+	executor := newTestExecutor(cl, &mockVMDiscoverer{vms: vms},
+		&mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{"ns-1": soteriav1alpha1.ConsistencyLevelVM}})
+
+	err := executor.Execute(context.Background(), ExecuteInput{
+		Execution: exec,
+		Plan:      plan,
+		Handler:   &NoOpHandler{},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify DRGroupStatus resources were created (one per chunk).
+	var dgsList soteriav1alpha1.DRGroupStatusList
+	if err := cl.List(context.Background(), &dgsList); err != nil {
+		t.Fatalf("listing DRGroupStatuses: %v", err)
+	}
+	if len(dgsList.Items) == 0 {
+		t.Error("expected at least one DRGroupStatus resource to be created")
+	}
+	for _, dgs := range dgsList.Items {
+		if dgs.Spec.ExecutionName != exec.Name {
+			t.Errorf("DRGroupStatus.Spec.ExecutionName = %q, want %q", dgs.Spec.ExecutionName, exec.Name)
+		}
+		if dgs.Status.Phase != soteriav1alpha1.DRGroupResultCompleted {
+			t.Errorf("DRGroupStatus.Status.Phase = %q, want Completed", dgs.Status.Phase)
+		}
+	}
+}
+
+func TestWaveExecutor_DRGroupStatus_FailedPhase(t *testing.T) {
+	plan := newTestPlan("plan-dgsf")
+	plan.Spec.MaxConcurrentFailovers = 1
+	exec := newTestExecution("exec-dgsf", "plan-dgsf")
+	vms := makeVMs([]string{"vm-1"}, "alpha")
+	cl := newFakeClient(vms, plan, exec)
+
+	handler := &mockHandler{
+		failOn: map[string]error{
+			"wave-alpha-group-0": fmt.Errorf("step failure"),
+		},
+	}
+
+	executor := newTestExecutor(cl, &mockVMDiscoverer{vms: vms},
+		&mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{"ns-1": soteriav1alpha1.ConsistencyLevelVM}})
+
+	_ = executor.Execute(context.Background(), ExecuteInput{
+		Execution: exec,
+		Plan:      plan,
+		Handler:   handler,
+	})
+
+	var dgsList soteriav1alpha1.DRGroupStatusList
+	if err := cl.List(context.Background(), &dgsList); err != nil {
+		t.Fatalf("listing DRGroupStatuses: %v", err)
+	}
+	for _, dgs := range dgsList.Items {
+		if dgs.Status.Phase != soteriav1alpha1.DRGroupResultFailed {
+			t.Errorf("DRGroupStatus.Status.Phase = %q, want Failed", dgs.Status.Phase)
+		}
+		if dgs.Status.LastTransitionTime == nil {
+			t.Error("DRGroupStatus.Status.LastTransitionTime should be set")
+		}
+	}
+}
+
+func TestWaveExecutor_CompleteTransition_NotCalledOnFailed(t *testing.T) {
+	plan := newTestPlan("plan-ct")
+	plan.Spec.MaxConcurrentFailovers = 1
+	exec := newTestExecution("exec-ct", "plan-ct")
+	vms := makeVMs([]string{"vm-1"}, "alpha")
+	cl := newFakeClient(vms, plan, exec)
+
+	handler := &mockHandler{
+		failOn: map[string]error{
+			"wave-alpha-group-0": fmt.Errorf("all groups fail"),
+		},
+	}
+
+	executor := newTestExecutor(cl, &mockVMDiscoverer{vms: vms},
+		&mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{"ns-1": soteriav1alpha1.ConsistencyLevelVM}})
+
+	_ = executor.Execute(context.Background(), ExecuteInput{
+		Execution: exec,
+		Plan:      plan,
+		Handler:   handler,
+	})
+
+	if exec.Status.Result != soteriav1alpha1.ExecutionResultFailed {
+		t.Fatalf("expected Failed, got %q", exec.Status.Result)
+	}
+
+	var updatedPlan soteriav1alpha1.DRPlan
+	if err := cl.Get(context.Background(), client.ObjectKey{Name: "plan-ct"}, &updatedPlan); err != nil {
+		t.Fatalf("getting plan: %v", err)
+	}
+	if updatedPlan.Status.Phase != soteriav1alpha1.PhaseFailingOver {
+		t.Errorf("plan phase should NOT advance on Failed: got %q, want FailingOver", updatedPlan.Status.Phase)
+	}
+}
+
+func TestWaveExecutor_PreConditionFailure_ResultFailed(t *testing.T) {
+	plan := newTestPlan("plan-pre")
+	exec := newTestExecution("exec-pre", "plan-pre")
+	cl := newFakeClient(nil, plan, exec)
+
+	discoverer := &mockVMDiscoverer{err: errors.New("API server unreachable")}
+	executor := newTestExecutor(cl, discoverer, &mockNamespaceLookup{})
+
+	_ = executor.Execute(context.Background(), ExecuteInput{
+		Execution: exec,
+		Plan:      plan,
+		Handler:   &NoOpHandler{},
+	})
+
+	if exec.Status.Result != soteriav1alpha1.ExecutionResultFailed {
+		t.Errorf("expected Failed, got %q", exec.Status.Result)
+	}
+
+	// Verify no DRGroupStatus resources were created.
+	var dgsList soteriav1alpha1.DRGroupStatusList
+	if err := cl.List(context.Background(), &dgsList); err != nil {
+		t.Fatalf("listing DRGroupStatuses: %v", err)
+	}
+	if len(dgsList.Items) != 0 {
+		t.Errorf("expected 0 DRGroupStatus resources for pre-condition failure, got %d", len(dgsList.Items))
+	}
+}
+
+func TestWaveExecutor_ContextCancellation_PartialResults(t *testing.T) {
+	plan := newTestPlan("plan-cc")
+	exec := newTestExecution("exec-cc", "plan-cc")
+	vms := makeMultiWaveVMs(map[string][]string{
+		"alpha": {"vm-a"},
+		"beta":  {"vm-b"},
+	})
+	cl := newFakeClient(vms, plan, exec)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	handler := &mockHandler{delay: 200 * time.Millisecond}
+
+	executor := newTestExecutor(cl, &mockVMDiscoverer{vms: vms},
+		&mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{"ns-1": soteriav1alpha1.ConsistencyLevelVM}})
+
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+	}()
+
+	_ = executor.Execute(ctx, ExecuteInput{
+		Execution: exec,
+		Plan:      plan,
+		Handler:   handler,
+	})
+
+	if exec.Status.CompletionTime == nil {
+		t.Error("expected CompletionTime to be set after cancellation")
+	}
+}
+
+func TestWaveExecutor_StepRecorder_PassedToHandler(t *testing.T) {
+	plan := newTestPlan("plan-sr")
+	plan.Spec.MaxConcurrentFailovers = 1
+	exec := newTestExecution("exec-sr", "plan-sr")
+	vms := makeVMs([]string{"vm-1"}, "alpha")
+	cl := newFakeClient(vms, plan, exec)
+
+	// Use a StepHandler to verify steps are recorded in DRGroupStatus.
+	drv := &noop.Driver{}
+	vm := newMockVMManager()
+	handler := &FailoverHandler{
+		Driver:           drv,
+		VMManager:        vm,
+		Config:           FailoverConfig{GracefulShutdown: false, Force: true},
+		SyncPollInterval: 1 * time.Millisecond,
+		SyncTimeout:      1 * time.Second,
+	}
+
+	executor := newTestExecutor(cl, &mockVMDiscoverer{vms: vms},
+		&mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{"ns-1": soteriav1alpha1.ConsistencyLevelVM}})
+
+	err := executor.Execute(context.Background(), ExecuteInput{
+		Execution: exec,
+		Plan:      plan,
+		Handler:   handler,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify DRGroupStatus has steps recorded.
+	var dgsList soteriav1alpha1.DRGroupStatusList
+	if err := cl.List(context.Background(), &dgsList); err != nil {
+		t.Fatalf("listing DRGroupStatuses: %v", err)
+	}
+	if len(dgsList.Items) == 0 {
+		t.Fatal("expected at least one DRGroupStatus")
+	}
+	dgs := dgsList.Items[0]
+	if len(dgs.Status.Steps) == 0 {
+		t.Error("expected steps to be recorded in DRGroupStatus via StepRecorder")
 	}
 }
 

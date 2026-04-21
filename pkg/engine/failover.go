@@ -104,9 +104,11 @@ func (h *FailoverHandler) initCacheLocked() {
 
 // resolveVolumeGroupID resolves a VolumeGroupInfo to a driver-level VolumeGroupID
 // by calling CreateVolumeGroup (idempotent — returns existing if matched).
+// When pvcResolver is non-nil it populates PVCNames from the VG's VMs.
 // Safe for concurrent use from multiple ExecuteGroup goroutines.
 func (h *FailoverHandler) resolveVolumeGroupID(
 	ctx context.Context, driver drivers.StorageProvider, vg soteriav1alpha1.VolumeGroupInfo,
+	pvcResolver PVCResolver,
 ) (drivers.VolumeGroupID, error) {
 	cacheKey := vg.Namespace + "/" + vg.Name
 
@@ -118,9 +120,21 @@ func (h *FailoverHandler) resolveVolumeGroupID(
 	}
 	h.cacheMu.Unlock()
 
+	var pvcNames []string
+	if pvcResolver != nil {
+		for _, vmName := range vg.VMNames {
+			names, err := pvcResolver.ResolvePVCNames(ctx, vmName, vg.Namespace)
+			if err != nil {
+				return "", fmt.Errorf("resolving PVC names for VM %s/%s: %w", vg.Namespace, vmName, err)
+			}
+			pvcNames = append(pvcNames, names...)
+		}
+	}
+
 	info, err := driver.CreateVolumeGroup(ctx, drivers.VolumeGroupSpec{
 		Name:      vg.Name,
 		Namespace: vg.Namespace,
+		PVCNames:  pvcNames,
 	})
 	if err != nil {
 		return "", fmt.Errorf("resolving volume group %s: %w", vg.Name, err)
@@ -178,8 +192,9 @@ func (h *FailoverHandler) PreExecute(ctx context.Context, groups []ExecutionGrou
 	}
 
 	type vgWithDriver struct {
-		vg     soteriav1alpha1.VolumeGroupInfo
-		driver drivers.StorageProvider
+		vg          soteriav1alpha1.VolumeGroupInfo
+		driver      drivers.StorageProvider
+		pvcResolver PVCResolver
 	}
 	seenVG := make(map[string]bool)
 	var allVGs []vgWithDriver
@@ -188,7 +203,7 @@ func (h *FailoverHandler) PreExecute(ctx context.Context, groups []ExecutionGrou
 			key := vg.Namespace + "/" + vg.Name
 			if !seenVG[key] {
 				seenVG[key] = true
-				allVGs = append(allVGs, vgWithDriver{vg: vg, driver: g.Driver})
+				allVGs = append(allVGs, vgWithDriver{vg: vg, driver: g.DriverForVG(vg.Name), pvcResolver: g.PVCResolver})
 			}
 		}
 	}
@@ -198,7 +213,7 @@ func (h *FailoverHandler) PreExecute(ctx context.Context, groups []ExecutionGrou
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		vgID, err := h.resolveVolumeGroupID(ctx, vgd.driver, vgd.vg)
+		vgID, err := h.resolveVolumeGroupID(ctx, vgd.driver, vgd.vg, vgd.pvcResolver)
 		if err != nil {
 			return err
 		}
@@ -276,12 +291,12 @@ func isSynced(status drivers.ReplicationStatus) bool {
 }
 
 // ExecuteGroup implements DRGroupHandler for a single DRGroup within a wave.
+// Returns *GroupError for step failures to enable structured error propagation.
 //
 // GracefulShutdown=true:  StopReplication → SetSource(force=false) → StartVM
 // GracefulShutdown=false: SetSource(force=true) → StartVM
 func (h *FailoverHandler) ExecuteGroup(ctx context.Context, group ExecutionGroup) error {
 	logger := log.FromContext(ctx)
-	driver := group.Driver
 
 	if h.Config.GracefulShutdown {
 		for _, vg := range group.Chunk.VolumeGroups {
@@ -289,15 +304,16 @@ func (h *FailoverHandler) ExecuteGroup(ctx context.Context, group ExecutionGroup
 				return ctx.Err()
 			}
 
-			vgID, err := h.resolveVolumeGroupID(ctx, driver, vg)
+			driver := group.DriverForVG(vg.Name)
+			vgID, err := h.resolveVolumeGroupID(ctx, driver, vg, group.PVCResolver)
 			if err != nil {
-				return err
+				return &GroupError{StepName: StepStopReplication, Target: vg.Name, Err: err}
 			}
 
 			logger.V(1).Info("Stopping replication for DRGroup volume group",
 				"volumeGroup", vg.Name, "wave", group.WaveIndex)
 			if err := driver.StopReplication(ctx, vgID, drivers.StopReplicationOptions{Force: false}); err != nil {
-				return fmt.Errorf("step %s failed for volume group %s: %w", StepStopReplication, vg.Name, err)
+				return &GroupError{StepName: StepStopReplication, Target: vg.Name, Err: err}
 			}
 		}
 	}
@@ -307,15 +323,16 @@ func (h *FailoverHandler) ExecuteGroup(ctx context.Context, group ExecutionGroup
 			return ctx.Err()
 		}
 
-		vgID, err := h.resolveVolumeGroupID(ctx, driver, vg)
+		driver := group.DriverForVG(vg.Name)
+		vgID, err := h.resolveVolumeGroupID(ctx, driver, vg, group.PVCResolver)
 		if err != nil {
-			return err
+			return &GroupError{StepName: StepSetSource, Target: vg.Name, Err: err}
 		}
 
 		logger.V(1).Info("Setting source for DRGroup volume group",
 			"volumeGroup", vg.Name, "wave", group.WaveIndex)
 		if err := driver.SetSource(ctx, vgID, drivers.SetSourceOptions{Force: h.Config.Force}); err != nil {
-			return fmt.Errorf("step %s failed for volume group %s: %w", StepSetSource, vg.Name, err)
+			return &GroupError{StepName: StepSetSource, Target: vg.Name, Err: err}
 		}
 	}
 
@@ -327,7 +344,7 @@ func (h *FailoverHandler) ExecuteGroup(ctx context.Context, group ExecutionGroup
 		logger.V(1).Info("Starting VM for DRGroup",
 			"vm", vm.Name, "namespace", vm.Namespace, "wave", group.WaveIndex)
 		if err := h.VMManager.StartVM(ctx, vm.Name, vm.Namespace); err != nil {
-			return fmt.Errorf("step %s failed for VM %s/%s: %w", StepStartVM, vm.Namespace, vm.Name, err)
+			return &GroupError{StepName: StepStartVM, Target: vm.Namespace + "/" + vm.Name, Err: err}
 		}
 	}
 
@@ -335,22 +352,29 @@ func (h *FailoverHandler) ExecuteGroup(ctx context.Context, group ExecutionGroup
 }
 
 // ExecuteGroupWithSteps executes a single DRGroup and returns step statuses
-// for per-step recording in DRGroupStatus.
+// for per-step recording in DRGroupStatus. Returns *GroupError for step failures.
+// Also forwards steps to group.StepRecorder for real-time DRGroupStatus updates.
 func (h *FailoverHandler) ExecuteGroupWithSteps(
 	ctx context.Context, group ExecutionGroup,
 ) ([]soteriav1alpha1.StepStatus, error) {
 	logger := log.FromContext(ctx)
-	driver := group.Driver
 	var steps []soteriav1alpha1.StepStatus
+
+	sr := group.StepRecorder
+	if sr == nil {
+		sr = noopStepRecorder{}
+	}
 
 	recordStep := func(name, status, message string) {
 		now := metav1.Now()
-		steps = append(steps, soteriav1alpha1.StepStatus{
+		step := soteriav1alpha1.StepStatus{
 			Name:      name,
 			Status:    status,
 			Message:   message,
 			Timestamp: &now,
-		})
+		}
+		steps = append(steps, step)
+		_ = sr.RecordStep(ctx, step)
 	}
 
 	if h.Config.GracefulShutdown {
@@ -358,17 +382,18 @@ func (h *FailoverHandler) ExecuteGroupWithSteps(
 			if ctx.Err() != nil {
 				return steps, ctx.Err()
 			}
-			vgID, err := h.resolveVolumeGroupID(ctx, driver, vg)
+			driver := group.DriverForVG(vg.Name)
+			vgID, err := h.resolveVolumeGroupID(ctx, driver, vg, group.PVCResolver)
 			if err != nil {
 				recordStep(StepStopReplication, "Failed", err.Error())
-				return steps, err
+				return steps, &GroupError{StepName: StepStopReplication, Target: vg.Name, Err: err}
 			}
 			logger.V(1).Info("Stopping replication for DRGroup volume group",
 				"volumeGroup", vg.Name, "wave", group.WaveIndex)
 			if err := driver.StopReplication(ctx, vgID, drivers.StopReplicationOptions{Force: false}); err != nil {
 				recordStep(StepStopReplication, "Failed",
 					fmt.Sprintf("Failed to stop replication for volume group %s: %v", vg.Name, err))
-				return steps, fmt.Errorf("step %s failed for volume group %s: %w", StepStopReplication, vg.Name, err)
+				return steps, &GroupError{StepName: StepStopReplication, Target: vg.Name, Err: err}
 			}
 			recordStep(StepStopReplication, "Succeeded", fmt.Sprintf("Stopped replication for volume group %s", vg.Name))
 		}
@@ -378,16 +403,17 @@ func (h *FailoverHandler) ExecuteGroupWithSteps(
 		if ctx.Err() != nil {
 			return steps, ctx.Err()
 		}
-		vgID, err := h.resolveVolumeGroupID(ctx, driver, vg)
+		driver := group.DriverForVG(vg.Name)
+		vgID, err := h.resolveVolumeGroupID(ctx, driver, vg, group.PVCResolver)
 		if err != nil {
 			recordStep(StepSetSource, "Failed", err.Error())
-			return steps, err
+			return steps, &GroupError{StepName: StepSetSource, Target: vg.Name, Err: err}
 		}
 		logger.V(1).Info("Setting source for DRGroup volume group",
 			"volumeGroup", vg.Name, "wave", group.WaveIndex)
 		if err := driver.SetSource(ctx, vgID, drivers.SetSourceOptions{Force: h.Config.Force}); err != nil {
 			recordStep(StepSetSource, "Failed", fmt.Sprintf("Failed to set source for volume group %s: %v", vg.Name, err))
-			return steps, fmt.Errorf("step %s failed for volume group %s: %w", StepSetSource, vg.Name, err)
+			return steps, &GroupError{StepName: StepSetSource, Target: vg.Name, Err: err}
 		}
 		recordStep(StepSetSource, "Succeeded", fmt.Sprintf("Set source for volume group %s", vg.Name))
 	}
@@ -400,7 +426,7 @@ func (h *FailoverHandler) ExecuteGroupWithSteps(
 			"vm", vm.Name, "namespace", vm.Namespace, "wave", group.WaveIndex)
 		if err := h.VMManager.StartVM(ctx, vm.Name, vm.Namespace); err != nil {
 			recordStep(StepStartVM, "Failed", fmt.Sprintf("Failed to start VM %s: %v", vm.Name, err))
-			return steps, fmt.Errorf("step %s failed for VM %s/%s: %w", StepStartVM, vm.Namespace, vm.Name, err)
+			return steps, &GroupError{StepName: StepStartVM, Target: vm.Namespace + "/" + vm.Name, Err: err}
 		}
 		recordStep(StepStartVM, "Succeeded", fmt.Sprintf("Started VM %s", vm.Name))
 	}

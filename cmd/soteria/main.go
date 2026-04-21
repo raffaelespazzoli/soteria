@@ -262,6 +262,14 @@ func main() {
 
 	drexecRecorder := eventBroadcaster.NewRecorder("drexecution-controller")
 
+	var pvcResolver engine.PVCResolver
+	if noopFallback {
+		pvcResolver = engine.NoOpPVCResolver{}
+		setupLog.Info("Using NoOpPVCResolver for dev/CI (noop-fallback enabled)")
+	} else {
+		pvcResolver = &engine.KubeVirtPVCResolver{Client: mgr.GetClient()}
+	}
+
 	waveExecutor := &engine.WaveExecutor{
 		Client:          mgr.GetClient(),
 		CoreClient:      clientset.CoreV1(),
@@ -269,6 +277,8 @@ func main() {
 		NamespaceLookup: nsLookup,
 		Registry:        drivers.DefaultRegistry,
 		SCLister:        scLister,
+		Recorder:        drexecRecorder,
+		PVCResolver:     pvcResolver,
 	}
 
 	var vmManager engine.VMManager

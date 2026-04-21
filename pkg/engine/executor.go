@@ -27,24 +27,47 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
+	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
+	"k8s.io/client-go/tools/events"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
 	"github.com/soteria-project/soteria/pkg/drivers"
 )
 
+// GroupError carries structured error context from a handler step failure.
+// Handlers SHOULD return *GroupError when a step fails so the executor can
+// record step-level detail (step name + affected resource) without parsing
+// error strings. The executor gracefully falls back to err.Error() for
+// non-GroupError errors.
+type GroupError struct {
+	StepName string // e.g. "SetSource", "StopReplication", "StartVM", "DriverResolution", "PVCResolution"
+	Target   string // volume group name or "namespace/vmName"
+	Err      error  // underlying driver or system error
+}
+
+func (e *GroupError) Error() string {
+	return fmt.Sprintf("%s for %s: %v", e.StepName, e.Target, e.Err)
+}
+
+func (e *GroupError) Unwrap() error { return e.Err }
+
 // DRGroupHandler abstracts the per-DRGroup workflow logic. Stories 4.3
 // (planned migration) and 4.4 (disaster failover) provide real
 // implementations; Story 4.2 provides a NoOpHandler for testing.
+// Handlers SHOULD return *GroupError when a step fails.
 type DRGroupHandler interface {
 	ExecuteGroup(ctx context.Context, group ExecutionGroup) error
 }
@@ -59,12 +82,59 @@ type StepHandler interface {
 	) ([]soteriav1alpha1.StepStatus, error)
 }
 
+// StepRecorder enables real-time DRGroupStatus updates without the handler
+// knowing about Kubernetes resources. The executor's implementation writes
+// to the DRGroupStatus status subresource; tests can inject a no-op or
+// recording mock.
+type StepRecorder interface {
+	RecordStep(ctx context.Context, step soteriav1alpha1.StepStatus) error
+}
+
+// noopStepRecorder discards step recordings (used when DRGroupStatus is not configured).
+type noopStepRecorder struct{}
+
+func (noopStepRecorder) RecordStep(context.Context, soteriav1alpha1.StepStatus) error { return nil }
+
+// drgroupStatusRecorder writes step updates to a DRGroupStatus resource.
+type drgroupStatusRecorder struct {
+	client    client.Client
+	statusKey client.ObjectKey
+	mu        sync.Mutex
+}
+
+func (r *drgroupStatusRecorder) RecordStep(ctx context.Context, step soteriav1alpha1.StepStatus) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var dgs soteriav1alpha1.DRGroupStatus
+	if err := r.client.Get(ctx, r.statusKey, &dgs); err != nil {
+		return fmt.Errorf("re-fetching DRGroupStatus %s: %w", r.statusKey.Name, err)
+	}
+	dgs.Status.Steps = append(dgs.Status.Steps, step)
+	return r.client.Status().Update(ctx, &dgs)
+}
+
 // ExecutionGroup bundles a DRGroupChunk with its resolved StorageProvider
-// driver so the handler does not need to resolve drivers itself.
+// driver(s) so the handler does not need to resolve drivers itself.
+// Drivers maps VolumeGroup name → driver for per-VG resolution. Driver is a
+// fallback used when Drivers is nil or a VG has no entry.
 type ExecutionGroup struct {
-	Chunk     DRGroupChunk
-	Driver    drivers.StorageProvider
-	WaveIndex int
+	Chunk        DRGroupChunk
+	Driver       drivers.StorageProvider
+	Drivers      map[string]drivers.StorageProvider
+	WaveIndex    int
+	StepRecorder StepRecorder
+	PVCResolver  PVCResolver
+}
+
+// DriverForVG returns the driver for the named volume group.
+// Falls back to Driver when no per-VG mapping exists.
+func (g ExecutionGroup) DriverForVG(vgName string) drivers.StorageProvider {
+	if g.Drivers != nil {
+		if d, ok := g.Drivers[vgName]; ok {
+			return d
+		}
+	}
+	return g.Driver
 }
 
 // WaveExecutor orchestrates sequential wave execution with concurrent DRGroups.
@@ -77,6 +147,8 @@ type WaveExecutor struct {
 	NamespaceLookup NamespaceLookup
 	Registry        *drivers.Registry
 	SCLister        drivers.StorageClassLister
+	Recorder        events.EventRecorder
+	PVCResolver     PVCResolver
 
 	statusMu sync.Mutex
 }
@@ -194,8 +266,9 @@ func (e *WaveExecutor) executeWave(
 	logger.Info("Wave execution completed", "wave", waveIdx)
 }
 
-// executeGroup processes a single DRGroup chunk: resolves the driver, calls
-// the handler, and records the result.
+// executeGroup processes a single DRGroup chunk: creates DRGroupStatus,
+// resolves the driver, calls the handler with a StepRecorder, records the
+// result, and emits events.
 func (e *WaveExecutor) executeGroup(
 	ctx context.Context, waveIdx, groupIdx int, chunk DRGroupChunk,
 	handler DRGroupHandler, exec *soteriav1alpha1.DRExecution,
@@ -212,16 +285,22 @@ func (e *WaveExecutor) executeGroup(
 		StartTime: &startTime,
 	})
 
-	// Resolve the storage driver for this group.
-	driver, err := e.resolveDriver(ctx, chunk)
+	// Create DRGroupStatus resource for real-time tracking.
+	recorder := e.createDRGroupStatus(ctx, exec, waveIdx, chunk, vmNames)
+
+	// Resolve storage drivers per volume group.
+	driverMap, fallbackDriver, err := e.resolveDrivers(ctx, chunk)
 	if err != nil {
 		logger.Error(err, "Driver resolution failed", "wave", waveIdx, "group", chunk.Name)
 		completionTime := metav1.Now()
+		e.finishDRGroupStatus(ctx, recorder, soteriav1alpha1.DRGroupResultFailed, &completionTime)
+		e.emitGroupEvent(exec, waveIdx, chunk.Name,
+			&GroupError{StepName: "DriverResolution", Target: chunk.Name, Err: err})
 		e.setGroupStatus(ctx, exec, waveIdx, groupIdx, soteriav1alpha1.DRGroupExecutionStatus{
 			Name:           chunk.Name,
 			Result:         soteriav1alpha1.DRGroupResultFailed,
 			VMNames:        vmNames,
-			Error:          fmt.Sprintf("driver resolution failed: %v", err),
+			Error:          fmt.Sprintf("step DriverResolution failed for %s: %v", chunk.Name, err),
 			StartTime:      &startTime,
 			CompletionTime: &completionTime,
 		})
@@ -229,9 +308,12 @@ func (e *WaveExecutor) executeGroup(
 	}
 
 	execGroup := ExecutionGroup{
-		Chunk:     chunk,
-		Driver:    driver,
-		WaveIndex: waveIdx,
+		Chunk:        chunk,
+		Driver:       fallbackDriver,
+		Drivers:      driverMap,
+		WaveIndex:    waveIdx,
+		StepRecorder: recorder,
+		PVCResolver:  e.PVCResolver,
 	}
 
 	var steps []soteriav1alpha1.StepStatus
@@ -243,12 +325,22 @@ func (e *WaveExecutor) executeGroup(
 
 	completionTime := metav1.Now()
 	if err != nil {
-		logger.Error(err, "DRGroup failed", "wave", waveIdx, "group", chunk.Name)
+		errMsg := err.Error()
+		var ge *GroupError
+		if errors.As(err, &ge) {
+			errMsg = fmt.Sprintf("step %s failed for %s: %v", ge.StepName, ge.Target, ge.Err)
+			logger.Error(err, "DRGroup failed", "wave", waveIdx, "group", chunk.Name,
+				"step", ge.StepName, "target", ge.Target)
+		} else {
+			logger.Error(err, "DRGroup failed", "wave", waveIdx, "group", chunk.Name)
+		}
+		e.finishDRGroupStatus(ctx, recorder, soteriav1alpha1.DRGroupResultFailed, &completionTime)
+		e.emitGroupEvent(exec, waveIdx, chunk.Name, err)
 		e.setGroupStatus(ctx, exec, waveIdx, groupIdx, soteriav1alpha1.DRGroupExecutionStatus{
 			Name:           chunk.Name,
 			Result:         soteriav1alpha1.DRGroupResultFailed,
 			VMNames:        vmNames,
-			Error:          err.Error(),
+			Error:          errMsg,
 			Steps:          steps,
 			StartTime:      &startTime,
 			CompletionTime: &completionTime,
@@ -256,6 +348,8 @@ func (e *WaveExecutor) executeGroup(
 		return
 	}
 
+	e.finishDRGroupStatus(ctx, recorder, soteriav1alpha1.DRGroupResultCompleted, &completionTime)
+	e.emitGroupCompletedEvent(exec, waveIdx, chunk.Name)
 	logger.Info("DRGroup completed", "wave", waveIdx, "group", chunk.Name, "result", "Completed")
 	e.setGroupStatus(ctx, exec, waveIdx, groupIdx, soteriav1alpha1.DRGroupExecutionStatus{
 		Name:           chunk.Name,
@@ -265,6 +359,136 @@ func (e *WaveExecutor) executeGroup(
 		StartTime:      &startTime,
 		CompletionTime: &completionTime,
 	})
+}
+
+// createDRGroupStatus creates a DRGroupStatus resource for real-time tracking
+// and returns the StepRecorder for it. On AlreadyExists (requeue), it reuses
+// the existing resource. Returns noopStepRecorder only for unexpected errors.
+func (e *WaveExecutor) createDRGroupStatus(
+	ctx context.Context, exec *soteriav1alpha1.DRExecution,
+	waveIdx int, chunk DRGroupChunk, vmNames []string,
+) StepRecorder {
+	logger := log.FromContext(ctx)
+	dgsName := fmt.Sprintf("%s-%s", exec.Name, chunk.Name)
+	dgs := &soteriav1alpha1.DRGroupStatus{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: dgsName,
+		},
+		Spec: soteriav1alpha1.DRGroupStatusSpec{
+			ExecutionName: exec.Name,
+			WaveIndex:     waveIdx,
+			GroupName:     chunk.Name,
+			VMNames:       vmNames,
+		},
+	}
+
+	if err := controllerutil.SetOwnerReference(exec, dgs, e.Client.Scheme()); err != nil {
+		logger.V(1).Info("Could not set owner reference on DRGroupStatus", "name", dgsName, "error", err)
+	}
+
+	if err := e.Client.Create(ctx, dgs); err != nil {
+		if !apierrors.IsAlreadyExists(err) {
+			logger.V(1).Info("Could not create DRGroupStatus", "name", dgsName, "error", err)
+			return noopStepRecorder{}
+		}
+		// Reuse existing resource on retry/requeue.
+		if getErr := e.Client.Get(ctx, client.ObjectKey{Name: dgsName}, dgs); getErr != nil {
+			logger.V(1).Info("Could not fetch existing DRGroupStatus", "name", dgsName, "error", getErr)
+			return noopStepRecorder{}
+		}
+		logger.V(1).Info("Reusing existing DRGroupStatus", "name", dgsName)
+	}
+
+	// PrepareForCreate zeroes Status, so set InProgress via the status
+	// subresource to ensure the phase is persisted.
+	dgs.Status.Phase = soteriav1alpha1.DRGroupResultInProgress
+	if err := e.Client.Status().Update(ctx, dgs); err != nil {
+		logger.V(1).Info("Could not set initial InProgress status on DRGroupStatus", "name", dgsName, "error", err)
+	}
+
+	logger.V(1).Info("Created DRGroupStatus", "name", dgsName, "execution", exec.Name)
+	return &drgroupStatusRecorder{
+		client:    e.Client,
+		statusKey: client.ObjectKey{Name: dgsName},
+	}
+}
+
+// finishDRGroupStatus sets the terminal phase and lastTransitionTime on a DRGroupStatus.
+func (e *WaveExecutor) finishDRGroupStatus(
+	ctx context.Context, recorder StepRecorder,
+	phase soteriav1alpha1.DRGroupResult, completionTime *metav1.Time,
+) {
+	r, ok := recorder.(*drgroupStatusRecorder)
+	if !ok {
+		return
+	}
+	logger := log.FromContext(ctx)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	var dgs soteriav1alpha1.DRGroupStatus
+	if err := r.client.Get(ctx, r.statusKey, &dgs); err != nil {
+		logger.V(1).Info("Could not fetch DRGroupStatus for finalization", "name", r.statusKey.Name, "error", err)
+		return
+	}
+	dgs.Status.Phase = phase
+	dgs.Status.LastTransitionTime = completionTime
+	if err := r.client.Status().Update(ctx, &dgs); err != nil {
+		logger.V(1).Info("Could not finalize DRGroupStatus", "name", r.statusKey.Name, "error", err)
+	}
+}
+
+// emitGroupEvent emits a GroupFailed event on the DRExecution.
+func (e *WaveExecutor) emitGroupEvent(
+	exec *soteriav1alpha1.DRExecution, waveIdx int, groupName string, err error,
+) {
+	if e.Recorder == nil {
+		return
+	}
+	var ge *GroupError
+	if errors.As(err, &ge) {
+		e.Recorder.Eventf(exec, nil, corev1.EventTypeWarning, "GroupFailed", "WaveExecution",
+			"DRGroup %s in wave %d failed at step %s for %s: %v",
+			groupName, waveIdx, ge.StepName, ge.Target, ge.Err)
+	} else {
+		e.Recorder.Eventf(exec, nil, corev1.EventTypeWarning, "GroupFailed", "WaveExecution",
+			"DRGroup %s in wave %d failed: %v", groupName, waveIdx, err)
+	}
+}
+
+// emitGroupCompletedEvent emits a GroupCompleted event on the DRExecution.
+func (e *WaveExecutor) emitGroupCompletedEvent(
+	exec *soteriav1alpha1.DRExecution, waveIdx int, groupName string,
+) {
+	if e.Recorder == nil {
+		return
+	}
+	e.Recorder.Eventf(exec, nil, corev1.EventTypeNormal, "GroupCompleted", "WaveExecution",
+		"DRGroup %s in wave %d completed", groupName, waveIdx)
+}
+
+// emitResultEvent emits a final execution result event on the DRExecution.
+func (e *WaveExecutor) emitResultEvent(
+	exec *soteriav1alpha1.DRExecution, plan *soteriav1alpha1.DRPlan,
+	result soteriav1alpha1.ExecutionResult, failedCount, totalCount int, topErr string,
+) {
+	if e.Recorder == nil {
+		return
+	}
+	switch result {
+	case soteriav1alpha1.ExecutionResultSucceeded:
+		e.Recorder.Eventf(exec, nil, corev1.EventTypeNormal, "ExecutionSucceeded", "Execution",
+			"Execution completed successfully for plan %s", plan.Name)
+	case soteriav1alpha1.ExecutionResultPartiallySucceeded:
+		e.Recorder.Eventf(exec, nil, corev1.EventTypeWarning, "ExecutionPartiallySucceeded", "Execution",
+			"Execution partially succeeded for plan %s: %d of %d groups failed", plan.Name, failedCount, totalCount)
+	case soteriav1alpha1.ExecutionResultFailed:
+		msg := fmt.Sprintf("Execution failed for plan %s", plan.Name)
+		if topErr != "" {
+			msg += ": " + topErr
+		}
+		e.Recorder.Eventf(exec, nil, corev1.EventTypeWarning, "ExecutionFailed", "Execution", msg)
+	}
 }
 
 // resolveDriver resolves the StorageProvider for a DRGroup chunk by reading
@@ -364,6 +588,119 @@ func (e *WaveExecutor) resolveChunkStorageClass(
 	return commonSC, nil
 }
 
+// resolveDrivers resolves one StorageProvider per VolumeGroup within the chunk.
+// Each VolumeGroup must have homogeneous storage classes (same driver), but
+// different VolumeGroups in the same chunk may use different drivers.
+// When no VolumeGroups exist it falls back to the chunk-level resolveDriver.
+func (e *WaveExecutor) resolveDrivers(
+	ctx context.Context, chunk DRGroupChunk,
+) (driverMap map[string]drivers.StorageProvider, fallback drivers.StorageProvider, err error) {
+	if e.Registry == nil {
+		return nil, nil, fmt.Errorf("driver registry not configured")
+	}
+	if len(chunk.VolumeGroups) == 0 {
+		drv, err := e.resolveDriver(ctx, chunk)
+		return nil, drv, err
+	}
+
+	driverMap = make(map[string]drivers.StorageProvider, len(chunk.VolumeGroups))
+	for _, vg := range chunk.VolumeGroups {
+		drv, err := e.resolveVGDriver(ctx, vg)
+		if err != nil {
+			return nil, nil, fmt.Errorf("volume group %s: %w", vg.Name, err)
+		}
+		driverMap[vg.Name] = drv
+		if fallback == nil {
+			fallback = drv
+		}
+	}
+	return driverMap, fallback, nil
+}
+
+// resolveVGDriver resolves the StorageProvider for a single VolumeGroup.
+func (e *WaveExecutor) resolveVGDriver(
+	ctx context.Context, vg soteriav1alpha1.VolumeGroupInfo,
+) (drivers.StorageProvider, error) {
+	logger := log.FromContext(ctx)
+	sc, err := e.resolveVGStorageClass(ctx, vg)
+	if err != nil {
+		return nil, err
+	}
+	if sc == "" {
+		logger.V(1).Info("No PVC storage class found for volume group, using fallback driver", "vg", vg.Name)
+		return e.Registry.GetDriver("")
+	}
+	return e.Registry.GetDriverForPVC(ctx, sc, e.SCLister)
+}
+
+// resolveVGStorageClass extracts the common storage class for a single
+// VolumeGroup by reading the PVCs attached to its VMs. Returns an error if
+// PVCs within the VolumeGroup use different storage classes.
+func (e *WaveExecutor) resolveVGStorageClass(
+	ctx context.Context, vg soteriav1alpha1.VolumeGroupInfo,
+) (string, error) {
+	var commonSC string
+
+	for _, vmName := range vg.VMNames {
+		var vm kubevirtv1.VirtualMachine
+		if err := e.Client.Get(ctx, types.NamespacedName{
+			Name: vmName, Namespace: vg.Namespace,
+		}, &vm); err != nil {
+			return "", fmt.Errorf("fetching VM %s/%s: %w", vg.Namespace, vmName, err)
+		}
+
+		if vm.Spec.Template == nil {
+			continue
+		}
+
+		for _, vol := range vm.Spec.Template.Spec.Volumes {
+			claimName := ""
+			if vol.PersistentVolumeClaim != nil {
+				claimName = vol.PersistentVolumeClaim.ClaimName
+			} else if vol.DataVolume != nil {
+				claimName = vol.DataVolume.Name
+			}
+			if claimName == "" {
+				continue
+			}
+
+			if e.CoreClient == nil {
+				return "", fmt.Errorf(
+					"nil CoreClient, cannot read PVC %s/%s",
+					vg.Namespace, claimName)
+			}
+			pvc, err := e.CoreClient.PersistentVolumeClaims(
+				vg.Namespace,
+			).Get(ctx, claimName, metav1.GetOptions{})
+			if err != nil {
+				return "", fmt.Errorf(
+					"fetching PVC %s/%s for VM %s: %w",
+					vg.Namespace, claimName, vmName, err)
+			}
+
+			scName := ""
+			if pvc.Spec.StorageClassName != nil {
+				scName = *pvc.Spec.StorageClassName
+			}
+			if scName == "" {
+				continue
+			}
+
+			if commonSC == "" {
+				commonSC = scName
+			} else if scName != commonSC {
+				return "", fmt.Errorf(
+					"heterogeneous storage classes in volume group %q: "+
+						"found %q on PVC %s/%s but expected %q",
+					vg.Name, scName, vg.Namespace,
+					claimName, commonSC)
+			}
+		}
+	}
+
+	return commonSC, nil
+}
+
 // computeResult scans all groups across all waves and determines the overall
 // execution result. Groups still in Pending or InProgress (e.g. after context
 // cancellation) are treated as incomplete — if any exist alongside completed
@@ -397,7 +734,7 @@ func (e *WaveExecutor) computeResult(exec *soteriav1alpha1.DRExecution) soteriav
 
 // finishExecution sets the final result, completion time, and conditions on the
 // DRExecution. If the result is Succeeded or PartiallySucceeded, it also
-// advances the DRPlan phase via CompleteTransition.
+// advances the DRPlan phase via CompleteTransition. Emits a final result event.
 func (e *WaveExecutor) finishExecution(
 	ctx context.Context, exec *soteriav1alpha1.DRExecution,
 	plan *soteriav1alpha1.DRPlan, result soteriav1alpha1.ExecutionResult,
@@ -442,6 +779,10 @@ func (e *WaveExecutor) finishExecution(
 		return fmt.Errorf("writing final execution status: %w", err)
 	}
 
+	// Emit result event.
+	failed, total := e.countGroups(exec)
+	e.emitResultEvent(exec, plan, result, failed, total, message)
+
 	// Advance DRPlan phase on success or partial success.
 	if result == soteriav1alpha1.ExecutionResultSucceeded ||
 		result == soteriav1alpha1.ExecutionResultPartiallySucceeded {
@@ -461,6 +802,19 @@ func (e *WaveExecutor) finishExecution(
 	}
 
 	return nil
+}
+
+// countGroups tallies failed and total groups across all waves.
+func (e *WaveExecutor) countGroups(exec *soteriav1alpha1.DRExecution) (failed, total int) {
+	for _, wave := range exec.Status.Waves {
+		for _, g := range wave.Groups {
+			total++
+			if g.Result == soteriav1alpha1.DRGroupResultFailed {
+				failed++
+			}
+		}
+	}
+	return
 }
 
 // persistStatus serializes status writes to prevent concurrent goroutines from
@@ -550,14 +904,16 @@ func (e *WaveExecutor) BuildExecutionGroups(
 	var groups []ExecutionGroup
 	for waveIdx, wc := range chunkResult.Waves {
 		for _, chunk := range wc.Chunks {
-			driver, err := e.resolveDriver(ctx, chunk)
+			driverMap, fallbackDriver, err := e.resolveDrivers(ctx, chunk)
 			if err != nil {
-				return nil, fmt.Errorf("resolving driver for chunk %s: %w", chunk.Name, err)
+				return nil, fmt.Errorf("resolving drivers for chunk %s: %w", chunk.Name, err)
 			}
 			groups = append(groups, ExecutionGroup{
-				Chunk:     chunk,
-				Driver:    driver,
-				WaveIndex: waveIdx,
+				Chunk:       chunk,
+				Driver:      fallbackDriver,
+				Drivers:     driverMap,
+				WaveIndex:   waveIdx,
+				PVCResolver: e.PVCResolver,
 			})
 		}
 	}

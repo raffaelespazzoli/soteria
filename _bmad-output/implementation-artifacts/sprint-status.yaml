@@ -36,6 +36,7 @@
 
 generated: 2026-04-06
 last_updated: 2026-04-20
+# 4.5 review: Fail-Forward Error Handling & Partial Success — GroupError structured errors, DRGroupStatus lifecycle, StepRecorder, per-DRGroup events, PVC resolver, 16 new tests, 82.5% engine coverage
 # 4.4 review: Disaster Failover Workflow — RPO recording with max RPO tracking and RPOSummary step, 11 new disaster tests (31 total failover tests), doc updates, 84.8% engine coverage
 # 4.1b created: State Machine Symmetry & Unified Failover Handler — 8-phase model (FailedBack+ReprotectingBack), unified FailoverHandler replacing PlannedMigrationHandler, reprotect mode validation, absorbs 4.3 refactor
 # 4.3 review→absorbed-into-4.1b: Planned Migration Workflow — VMManager interface (KubeVirt/NoOp), PlannedMigrationHandler (Step 0: stop VMs+replication+sync wait, per-DRGroup: SetSource+StartVM), controller dispatch with PreExecute, 24 new tests, 82.3% engine coverage. Handler refactored to unified FailoverHandler in 4.1b
@@ -156,7 +157,7 @@ development_status:
   4-2-drgroup-chunking-wave-executor: done
   4-3-planned-migration-workflow: absorbed-into-4.1b
   4-4-disaster-failover-workflow: done
-  4-5-fail-forward-error-handling-partial-success: ready-for-dev
+  4-5-fail-forward-error-handling-partial-success: done
   4-6-failed-drgroup-retry: ready-for-dev
   4-7-checkpoint-resume-high-availability: ready-for-dev
   4-8-re-protect-failback-workflows: ready-for-dev
