@@ -56,7 +56,6 @@ import (
 	"github.com/soteria-project/soteria/pkg/controller/drexecution"
 	"github.com/soteria-project/soteria/pkg/controller/drplan"
 	"github.com/soteria-project/soteria/pkg/drivers"
-	"github.com/soteria-project/soteria/pkg/drivers/noop"
 	"github.com/soteria-project/soteria/pkg/engine"
 	scylladb "github.com/soteria-project/soteria/pkg/storage/scylladb"
 	// +kubebuilder:scaffold:imports
@@ -119,8 +118,9 @@ func main() {
 	fs.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
 	fs.BoolVar(&noopFallback, "noop-fallback", false,
-		"When enabled, unregistered CSI provisioners fall back to the noop driver instead of failing. "+
-			"Intended for dev/CI environments without real storage infrastructure.")
+		"When enabled, uses no-op implementations for PVC resolution, VM health validation, and VM management. "+
+			"Intended for dev/CI environments without real KubeVirt infrastructure. "+
+			"Note: unregistered CSI provisioners always fall back to the noop storage driver.")
 
 	zapOpts := zap.Options{Development: true}
 	goFS := flag.NewFlagSet("", flag.ExitOnError)
@@ -239,10 +239,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	if noopFallback {
-		drivers.SetFallbackDriver(func() drivers.StorageProvider { return noop.New() })
-		setupLog.Info("Noop fallback enabled for unregistered provisioners")
-	}
 	setupLog.Info("Registered storage drivers", "drivers", drivers.ListRegistered())
 
 	vmDiscoverer := engine.NewTypedVMDiscoverer(mgr.GetClient())

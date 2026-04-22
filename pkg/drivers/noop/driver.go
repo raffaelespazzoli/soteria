@@ -262,4 +262,10 @@ func init() {
 	drivers.RegisterDriver(ProvisionerName, func() drivers.StorageProvider {
 		return New()
 	})
+	// The noop driver is the catch-all: any CSI provisioner not claimed by a
+	// real DR storage driver falls through to noop (no storage-level
+	// replication actions). This removes the need for an explicit flag.
+	drivers.SetFallbackDriver(func() drivers.StorageProvider {
+		return New()
+	})
 }

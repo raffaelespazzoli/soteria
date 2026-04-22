@@ -51,7 +51,7 @@ IMG="${IMG:-quay.io/raffaelespazzoli/soteria:latest}"
 KEYSPACE="${KEYSPACE:-soteria}"
 NAMESPACE="soteria"
 DR_TEST_NS="soteria-dr-test"
-DR_TEST_SC="${DR_TEST_SC:-ocs-storagecluster-ceph-rbd-virtualization}"
+DR_TEST_SC="${DR_TEST_SC:-ontap-san}"
 DR_TEST_DISK_SIZE="${DR_TEST_DISK_SIZE:-30Gi}"
 
 KUBECONFIG_FILE="${KUBECONFIG:-${HOME}/.kube/config}"
