@@ -33,6 +33,8 @@ func TestValidateDRPlan(t *testing.T) {
 				Spec: DRPlanSpec{
 					WaveLabel:              "soteria.io/wave",
 					MaxConcurrentFailovers: 4,
+					PrimarySite:            "dc-west",
+					SecondarySite:          "dc-east",
 				},
 			},
 			wantErrors: 0,
@@ -43,6 +45,8 @@ func TestValidateDRPlan(t *testing.T) {
 				Spec: DRPlanSpec{
 					WaveLabel:              "",
 					MaxConcurrentFailovers: 4,
+					PrimarySite:            "dc-west",
+					SecondarySite:          "dc-east",
 				},
 			},
 			wantErrors: 1,
@@ -54,6 +58,8 @@ func TestValidateDRPlan(t *testing.T) {
 				Spec: DRPlanSpec{
 					WaveLabel:              "soteria.io/wave",
 					MaxConcurrentFailovers: 0,
+					PrimarySite:            "dc-west",
+					SecondarySite:          "dc-east",
 				},
 			},
 			wantErrors: 1,
@@ -65,6 +71,8 @@ func TestValidateDRPlan(t *testing.T) {
 				Spec: DRPlanSpec{
 					WaveLabel:              "soteria.io/wave",
 					MaxConcurrentFailovers: -1,
+					PrimarySite:            "dc-west",
+					SecondarySite:          "dc-east",
 				},
 			},
 			wantErrors: 1,
@@ -76,6 +84,8 @@ func TestValidateDRPlan(t *testing.T) {
 				Spec: DRPlanSpec{
 					WaveLabel:              "",
 					MaxConcurrentFailovers: 0,
+					PrimarySite:            "dc-west",
+					SecondarySite:          "dc-east",
 				},
 			},
 			wantErrors: 2,
@@ -87,9 +97,50 @@ func TestValidateDRPlan(t *testing.T) {
 				Spec: DRPlanSpec{
 					WaveLabel:              "soteria.io/wave",
 					MaxConcurrentFailovers: 2,
+					PrimarySite:            "dc-west",
+					SecondarySite:          "dc-east",
 				},
 			},
 			wantErrors: 0,
+		},
+		{
+			name: "missing primarySite",
+			plan: &DRPlan{
+				Spec: DRPlanSpec{
+					WaveLabel:              "soteria.io/wave",
+					MaxConcurrentFailovers: 4,
+					PrimarySite:            "",
+					SecondarySite:          "dc-east",
+				},
+			},
+			wantErrors: 1,
+			wantFields: []string{"spec.primarySite"},
+		},
+		{
+			name: "missing secondarySite",
+			plan: &DRPlan{
+				Spec: DRPlanSpec{
+					WaveLabel:              "soteria.io/wave",
+					MaxConcurrentFailovers: 4,
+					PrimarySite:            "dc-west",
+					SecondarySite:          "",
+				},
+			},
+			wantErrors: 1,
+			wantFields: []string{"spec.secondarySite"},
+		},
+		{
+			name: "primarySite equals secondarySite",
+			plan: &DRPlan{
+				Spec: DRPlanSpec{
+					WaveLabel:              "soteria.io/wave",
+					MaxConcurrentFailovers: 4,
+					PrimarySite:            "dc-west",
+					SecondarySite:          "dc-west",
+				},
+			},
+			wantErrors: 1,
+			wantFields: []string{"spec.secondarySite"},
 		},
 	}
 
@@ -260,12 +311,16 @@ func TestValidateDRPlanUpdate(t *testing.T) {
 		Spec: DRPlanSpec{
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 4,
+			PrimarySite:            "dc-west",
+			SecondarySite:          "dc-east",
 		},
 	}
 	invalidPlan := &DRPlan{
 		Spec: DRPlanSpec{
 			WaveLabel:              "",
 			MaxConcurrentFailovers: 0,
+			PrimarySite:            "dc-west",
+			SecondarySite:          "dc-east",
 		},
 	}
 
@@ -280,6 +335,57 @@ func TestValidateDRPlanUpdate(t *testing.T) {
 		errs := ValidateDRPlanUpdate(invalidPlan, validPlan)
 		if len(errs) == 0 {
 			t.Error("expected errors for invalid new plan, got 0")
+		}
+	})
+
+	t.Run("primarySite changed", func(t *testing.T) {
+		changed := &DRPlan{
+			Spec: DRPlanSpec{
+				WaveLabel:              "soteria.io/wave",
+				MaxConcurrentFailovers: 4,
+				PrimarySite:            "dc-north",
+				SecondarySite:          "dc-east",
+			},
+		}
+		errs := ValidateDRPlanUpdate(changed, validPlan)
+		if len(errs) != 1 {
+			t.Fatalf("expected 1 error, got %d: %v", len(errs), errs)
+		}
+		if errs[0].Field != "spec.primarySite" {
+			t.Errorf("error.Field = %q, want %q", errs[0].Field, "spec.primarySite")
+		}
+	})
+
+	t.Run("secondarySite changed", func(t *testing.T) {
+		changed := &DRPlan{
+			Spec: DRPlanSpec{
+				WaveLabel:              "soteria.io/wave",
+				MaxConcurrentFailovers: 4,
+				PrimarySite:            "dc-west",
+				SecondarySite:          "dc-south",
+			},
+		}
+		errs := ValidateDRPlanUpdate(changed, validPlan)
+		if len(errs) != 1 {
+			t.Fatalf("expected 1 error, got %d: %v", len(errs), errs)
+		}
+		if errs[0].Field != "spec.secondarySite" {
+			t.Errorf("error.Field = %q, want %q", errs[0].Field, "spec.secondarySite")
+		}
+	})
+
+	t.Run("both sites changed", func(t *testing.T) {
+		changed := &DRPlan{
+			Spec: DRPlanSpec{
+				WaveLabel:              "soteria.io/wave",
+				MaxConcurrentFailovers: 4,
+				PrimarySite:            "dc-north",
+				SecondarySite:          "dc-south",
+			},
+		}
+		errs := ValidateDRPlanUpdate(changed, validPlan)
+		if len(errs) != 2 {
+			t.Fatalf("expected 2 errors, got %d: %v", len(errs), errs)
 		}
 	})
 }

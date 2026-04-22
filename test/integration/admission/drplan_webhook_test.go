@@ -81,6 +81,8 @@ func TestDRPlanWebhook_ValidPlan_Allowed(t *testing.T) {
 	plan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("valid-plan-%d", uniqueCounter())},
 		Spec: soteriav1alpha1.DRPlanSpec{
+			PrimarySite:            "dc-west",
+			SecondarySite:          "dc-east",
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 10,
 		},
@@ -97,6 +99,8 @@ func TestDRPlanWebhook_InvalidWaveLabel_Rejected(t *testing.T) {
 	plan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("no-wave-%d", uniqueCounter())},
 		Spec: soteriav1alpha1.DRPlanSpec{
+			PrimarySite:            "dc-west",
+			SecondarySite:          "dc-east",
 			WaveLabel:              "",
 			MaxConcurrentFailovers: 10,
 		},
@@ -117,6 +121,8 @@ func TestDRPlanWebhook_InvalidMaxConcurrent_Rejected(t *testing.T) {
 	plan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: fmt.Sprintf("bad-max-%d", uniqueCounter())},
 		Spec: soteriav1alpha1.DRPlanSpec{
+			PrimarySite:            "dc-west",
+			SecondarySite:          "dc-east",
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 0,
 		},
@@ -138,6 +144,8 @@ func TestDRPlanWebhook_DELETE_Allowed(t *testing.T) {
 	plan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: planName},
 		Spec: soteriav1alpha1.DRPlanSpec{
+			PrimarySite:            "dc-west",
+			SecondarySite:          "dc-east",
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 10,
 		},
@@ -158,6 +166,8 @@ func TestDRPlanWebhook_UPDATE_Validation(t *testing.T) {
 	plan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: planName},
 		Spec: soteriav1alpha1.DRPlanSpec{
+			PrimarySite:            "dc-west",
+			SecondarySite:          "dc-east",
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 10,
 		},
@@ -175,6 +185,79 @@ func TestDRPlanWebhook_UPDATE_Validation(t *testing.T) {
 	existing.Spec.MaxConcurrentFailovers = 8
 	if err := testClient.Update(ctx, &existing); err != nil {
 		t.Fatalf("Expected valid update to succeed, but failed: %v", err)
+	}
+}
+
+func TestDRPlanWebhook_MissingSites_Rejected(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name        string
+		primary     string
+		secondary   string
+		wantMessage string
+	}{
+		{"missing primarySite", "", "dc-east", "primarySite"},
+		{"missing secondarySite", "dc-west", "", "secondarySite"},
+		{"equal sites", "dc-west", "dc-west", "secondarySite"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			plan := &soteriav1alpha1.DRPlan{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: fmt.Sprintf("site-%d", uniqueCounter()),
+				},
+				Spec: soteriav1alpha1.DRPlanSpec{
+					PrimarySite:            tt.primary,
+					SecondarySite:          tt.secondary,
+					WaveLabel:              "soteria.io/wave",
+					MaxConcurrentFailovers: 10,
+				},
+			}
+			err := testClient.Create(ctx, plan)
+			if err == nil {
+				defer cleanupDRPlan(t, ctx, plan.Name)
+				t.Fatalf("expected creation denied for %s", tt.name)
+			}
+			if !strings.Contains(err.Error(), tt.wantMessage) {
+				t.Errorf("expected error containing %q, got: %v",
+					tt.wantMessage, err)
+			}
+		})
+	}
+}
+
+func TestDRPlanWebhook_SiteImmutability_Rejected(t *testing.T) {
+	ctx := context.Background()
+
+	planName := fmt.Sprintf("immut-site-%d", uniqueCounter())
+	plan := &soteriav1alpha1.DRPlan{
+		ObjectMeta: metav1.ObjectMeta{Name: planName},
+		Spec: soteriav1alpha1.DRPlanSpec{
+			PrimarySite:            "dc-west",
+			SecondarySite:          "dc-east",
+			WaveLabel:              "soteria.io/wave",
+			MaxConcurrentFailovers: 10,
+		},
+	}
+	if err := testClient.Create(ctx, plan); err != nil {
+		t.Fatalf("Failed to create plan: %v", err)
+	}
+	defer cleanupDRPlan(t, ctx, planName)
+
+	var existing soteriav1alpha1.DRPlan
+	if err := waitForObject(ctx, client.ObjectKey{Name: planName}, &existing); err != nil {
+		t.Fatalf("Failed to get plan: %v", err)
+	}
+
+	existing.Spec.PrimarySite = "dc-north"
+	err := testClient.Update(ctx, &existing)
+	if err == nil {
+		t.Fatal("expected update denied when primarySite changes")
+	}
+	if !strings.Contains(err.Error(), "primarySite") {
+		t.Errorf("expected error containing 'primarySite', got: %v", err)
 	}
 }
 

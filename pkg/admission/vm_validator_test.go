@@ -58,6 +58,8 @@ func TestVMValidator_PlanExistence(t *testing.T) {
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "wave",
 			MaxConcurrentFailovers: 4,
+			PrimarySite:            "dc-west",
+			SecondarySite:          "dc-east",
 		},
 	}
 
@@ -155,6 +157,8 @@ func TestVMValidator_WaveConflict(t *testing.T) {
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "wave",
 			MaxConcurrentFailovers: 4,
+			PrimarySite:            "dc-west",
+			SecondarySite:          "dc-east",
 		},
 	}
 

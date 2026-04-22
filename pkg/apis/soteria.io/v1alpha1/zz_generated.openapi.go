@@ -710,8 +710,24 @@ func schema_pkg_apis_soteriaio_v1alpha1_DRPlanSpec(ref common.ReferenceCallback)
 							Format:      "int32",
 						},
 					},
+					"primarySite": {
+						SchemaProps: spec.SchemaProps{
+							Description: "PrimarySite is the cluster name that originally owns the active workloads. Immutable after creation.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"secondarySite": {
+						SchemaProps: spec.SchemaProps{
+							Description: "SecondarySite is the cluster name that serves as the DR target. Immutable after creation. Must differ from PrimarySite.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 				},
-				Required: []string{"waveLabel", "maxConcurrentFailovers"},
+				Required: []string{"waveLabel", "maxConcurrentFailovers", "primarySite", "secondarySite"},
 			},
 		},
 	}
@@ -726,6 +742,13 @@ func schema_pkg_apis_soteriaio_v1alpha1_DRPlanStatus(ref common.ReferenceCallbac
 					"phase": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Phase represents the current DR lifecycle state. Valid values: SteadyState, FailingOver, FailedOver, Reprotecting, DRedSteadyState, FailingBack, FailedBack, ReprotectingBack",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"activeSite": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ActiveSite tracks which cluster currently owns the active workloads. Set to PrimarySite on creation; flipped to SecondarySite on failover completion and back to PrimarySite on failback completion.",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -893,6 +916,27 @@ func schema_pkg_apis_soteriaio_v1alpha1_PreflightReport(ref common.ReferenceCall
 				Description: "PreflightReport is the pre-flight composition summary for a DRPlan. It assembles discovery, consistency, chunking, and storage backend data into a single user-facing structure that shows exactly how the plan would execute.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
+					"primarySite": {
+						SchemaProps: spec.SchemaProps{
+							Description: "PrimarySite is the declared primary cluster for this plan.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"secondarySite": {
+						SchemaProps: spec.SchemaProps{
+							Description: "SecondarySite is the declared secondary (DR target) cluster.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"activeSite": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ActiveSite is the cluster currently owning the active workloads.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 					"waves": {
 						VendorExtensible: spec.VendorExtensible{
 							Extensions: spec.Extensions{

@@ -70,12 +70,22 @@ type DRPlanSpec struct {
 	WaveLabel string `json:"waveLabel"`
 	// MaxConcurrentFailovers limits concurrent VM failovers per wave chunk.
 	MaxConcurrentFailovers int `json:"maxConcurrentFailovers"`
+	// PrimarySite is the cluster name that originally owns the active workloads.
+	// Immutable after creation.
+	PrimarySite string `json:"primarySite"`
+	// SecondarySite is the cluster name that serves as the DR target.
+	// Immutable after creation. Must differ from PrimarySite.
+	SecondarySite string `json:"secondarySite"`
 }
 
 type DRPlanStatus struct {
 	// Phase represents the current DR lifecycle state.
 	// Valid values: SteadyState, FailingOver, FailedOver, Reprotecting, DRedSteadyState, FailingBack, FailedBack, ReprotectingBack
 	Phase string `json:"phase,omitempty"`
+	// ActiveSite tracks which cluster currently owns the active workloads.
+	// Set to PrimarySite on creation; flipped to SecondarySite on failover
+	// completion and back to PrimarySite on failback completion.
+	ActiveSite string `json:"activeSite,omitempty"`
 	// Conditions represent the latest observations of the DRPlan's state.
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 	// ObservedGeneration is the most recent generation observed.
@@ -94,6 +104,12 @@ type DRPlanStatus struct {
 // assembles discovery, consistency, chunking, and storage backend data into
 // a single user-facing structure that shows exactly how the plan would execute.
 type PreflightReport struct {
+	// PrimarySite is the declared primary cluster for this plan.
+	PrimarySite string `json:"primarySite,omitempty"`
+	// SecondarySite is the declared secondary (DR target) cluster.
+	SecondarySite string `json:"secondarySite,omitempty"`
+	// ActiveSite is the cluster currently owning the active workloads.
+	ActiveSite string `json:"activeSite,omitempty"`
 	// Waves contains per-wave composition summaries.
 	// +listType=atomic
 	Waves []PreflightWave `json:"waves,omitempty"`

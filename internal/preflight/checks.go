@@ -56,6 +56,12 @@ func ComposeReport(input CompositionInput, now metav1.Time) *soteriav1alpha1.Pre
 		GeneratedAt: ptr.To(now),
 	}
 
+	if input.Plan != nil {
+		report.PrimarySite = input.Plan.Spec.PrimarySite
+		report.SecondarySite = input.Plan.Spec.SecondarySite
+		report.ActiveSite = input.Plan.Status.ActiveSite
+	}
+
 	if input.DiscoveryResult != nil {
 		report.TotalVMs = input.DiscoveryResult.TotalVMs
 

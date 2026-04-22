@@ -40,12 +40,37 @@ func ValidateDRPlan(plan *DRPlan) field.ErrorList {
 		))
 	}
 
+	if plan.Spec.PrimarySite == "" {
+		allErrs = append(allErrs, field.Required(specPath.Child("primarySite"), ""))
+	}
+	if plan.Spec.SecondarySite == "" {
+		allErrs = append(allErrs, field.Required(specPath.Child("secondarySite"), ""))
+	}
+	if plan.Spec.PrimarySite != "" && plan.Spec.PrimarySite == plan.Spec.SecondarySite {
+		allErrs = append(allErrs, field.Invalid(
+			specPath.Child("secondarySite"),
+			plan.Spec.SecondarySite,
+			"must differ from primarySite",
+		))
+	}
+
 	return allErrs
 }
 
 // ValidateDRPlanUpdate validates an update to a DRPlan.
-func ValidateDRPlanUpdate(newPlan, _ *DRPlan) field.ErrorList {
-	return ValidateDRPlan(newPlan)
+// PrimarySite and SecondarySite are immutable after creation.
+func ValidateDRPlanUpdate(newPlan, oldPlan *DRPlan) field.ErrorList {
+	allErrs := ValidateDRPlan(newPlan)
+	specPath := field.NewPath("spec")
+
+	if newPlan.Spec.PrimarySite != oldPlan.Spec.PrimarySite {
+		allErrs = append(allErrs, field.Forbidden(specPath.Child("primarySite"), "field is immutable"))
+	}
+	if newPlan.Spec.SecondarySite != oldPlan.Spec.SecondarySite {
+		allErrs = append(allErrs, field.Forbidden(specPath.Child("secondarySite"), "field is immutable"))
+	}
+
+	return allErrs
 }
 
 // ValidateDRExecution validates per-object field constraints on a DRExecution.

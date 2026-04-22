@@ -385,6 +385,20 @@ func waitForVMCount(ctx context.Context, name, namespace string, count int, time
 	return nil, fmt.Errorf("timed out waiting for DiscoveredVMCount=%d on %s/%s", count, namespace, name)
 }
 
+// newTestDRPlan constructs a DRPlan with the given site topology, reducing
+// boilerplate across integration tests that only need a valid plan skeleton.
+func newTestDRPlan(name, primarySite, secondarySite string) *soteriav1alpha1.DRPlan {
+	return &soteriav1alpha1.DRPlan{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Spec: soteriav1alpha1.DRPlanSpec{
+			PrimarySite:            primarySite,
+			SecondarySite:          secondarySite,
+			WaveLabel:              "soteria.io/wave",
+			MaxConcurrentFailovers: 5,
+		},
+	}
+}
+
 // setPlanPhase sets the DRPlan's status.phase with a retry loop to handle
 // conflicts from concurrent DRPlan controller reconciliation and cache lag.
 func setPlanPhase(ctx context.Context, name, phase string) error {
@@ -396,6 +410,7 @@ func setPlanPhase(ctx context.Context, name, phase string) error {
 			continue
 		}
 		plan.Status.Phase = phase
+		plan.Status.ActiveSite = engine.ActiveSiteForPhase(phase, plan.Spec.PrimarySite, plan.Spec.SecondarySite)
 		if err := testClient.Status().Update(ctx, &plan); err != nil {
 			time.Sleep(200 * time.Millisecond)
 			continue

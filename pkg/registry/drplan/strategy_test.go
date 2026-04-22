@@ -17,6 +17,7 @@ limitations under the License.
 package drplan
 
 import (
+	"context"
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -82,5 +83,57 @@ func TestMatchDRPlan_UsesGetAttrs(t *testing.T) {
 	pred := MatchDRPlan(nil, nil)
 	if pred.GetAttrs == nil {
 		t.Error("MatchDRPlan predicate must have GetAttrs set")
+	}
+}
+
+func TestPrepareForCreate_SetsActiveSiteToPrimarySite(t *testing.T) {
+	plan := &soteriav1alpha1.DRPlan{
+		Spec: soteriav1alpha1.DRPlanSpec{
+			WaveLabel:              "soteria.io/wave",
+			MaxConcurrentFailovers: 4,
+			PrimarySite:            "dc-west",
+			SecondarySite:          "dc-east",
+		},
+	}
+
+	Strategy.PrepareForCreate(context.Background(), plan)
+
+	if plan.Status.ActiveSite != "dc-west" {
+		t.Errorf("expected activeSite = %q, got %q", "dc-west", plan.Status.ActiveSite)
+	}
+	if plan.Status.Phase != soteriav1alpha1.PhaseSteadyState {
+		t.Errorf("expected phase = %q, got %q", soteriav1alpha1.PhaseSteadyState, plan.Status.Phase)
+	}
+}
+
+func TestPrepareForUpdate_PreservesStatus(t *testing.T) {
+	oldPlan := &soteriav1alpha1.DRPlan{
+		Spec: soteriav1alpha1.DRPlanSpec{
+			WaveLabel:              "soteria.io/wave",
+			MaxConcurrentFailovers: 4,
+			PrimarySite:            "dc-west",
+			SecondarySite:          "dc-east",
+		},
+		Status: soteriav1alpha1.DRPlanStatus{
+			Phase:      soteriav1alpha1.PhaseFailedOver,
+			ActiveSite: "dc-east",
+		},
+	}
+	newPlan := &soteriav1alpha1.DRPlan{
+		Spec: soteriav1alpha1.DRPlanSpec{
+			WaveLabel:              "soteria.io/wave",
+			MaxConcurrentFailovers: 8,
+			PrimarySite:            "dc-west",
+			SecondarySite:          "dc-east",
+		},
+	}
+
+	Strategy.PrepareForUpdate(context.Background(), newPlan, oldPlan)
+
+	if newPlan.Status.ActiveSite != "dc-east" {
+		t.Errorf("expected activeSite preserved as %q, got %q", "dc-east", newPlan.Status.ActiveSite)
+	}
+	if newPlan.Status.Phase != soteriav1alpha1.PhaseFailedOver {
+		t.Errorf("expected phase preserved as %q, got %q", soteriav1alpha1.PhaseFailedOver, newPlan.Status.Phase)
 	}
 }

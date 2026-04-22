@@ -938,11 +938,13 @@ func (e *WaveExecutor) finishExecution(
 		} else {
 			planPatch := client.MergeFrom(plan.DeepCopy())
 			plan.Status.Phase = newPhase
+			plan.Status.ActiveSite = ActiveSiteForPhase(newPhase, plan.Spec.PrimarySite, plan.Spec.SecondarySite)
 			if err := e.Client.Status().Patch(ctx, plan, planPatch); err != nil {
 				logger.Error(err, "Failed to advance DRPlan phase", "plan", plan.Name, "targetPhase", newPhase)
 				return fmt.Errorf("advancing DRPlan phase: %w", err)
 			}
-			logger.Info("Advanced DRPlan phase", "plan", plan.Name, "from", previousPhase, "to", newPhase)
+			logger.Info("Advanced DRPlan phase", "plan", plan.Name, "from", previousPhase, "to", newPhase,
+				"activeSite", plan.Status.ActiveSite)
 		}
 	}
 

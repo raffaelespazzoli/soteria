@@ -440,3 +440,30 @@ func TestCollectWarnings(t *testing.T) {
 		})
 	}
 }
+
+func TestComposeReport_SiteTopologyFields(t *testing.T) {
+	now := metav1.Now()
+	input := CompositionInput{
+		Plan: &soteriav1alpha1.DRPlan{
+			Spec: soteriav1alpha1.DRPlanSpec{
+				PrimarySite:   "dc-west",
+				SecondarySite: "dc-east",
+			},
+			Status: soteriav1alpha1.DRPlanStatus{
+				ActiveSite: "dc-west",
+			},
+		},
+	}
+
+	report := ComposeReport(input, now)
+
+	if report.PrimarySite != "dc-west" {
+		t.Errorf("PrimarySite = %q, want %q", report.PrimarySite, "dc-west")
+	}
+	if report.SecondarySite != "dc-east" {
+		t.Errorf("SecondarySite = %q, want %q", report.SecondarySite, "dc-east")
+	}
+	if report.ActiveSite != "dc-west" {
+		t.Errorf("ActiveSite = %q, want %q", report.ActiveSite, "dc-west")
+	}
+}

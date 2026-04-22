@@ -40,8 +40,13 @@ func newReprotectInput(vgs []VolumeGroupEntry) ReprotectInput {
 		},
 		Plan: &soteriav1alpha1.DRPlan{
 			ObjectMeta: metav1.ObjectMeta{Name: "plan-1"},
+			Spec: soteriav1alpha1.DRPlanSpec{
+				PrimarySite:   "dc-west",
+				SecondarySite: "dc-east",
+			},
 			Status: soteriav1alpha1.DRPlanStatus{
-				Phase: soteriav1alpha1.PhaseReprotecting,
+				Phase:      soteriav1alpha1.PhaseReprotecting,
+				ActiveSite: "dc-east",
 			},
 		},
 		VolumeGroups: vgs,

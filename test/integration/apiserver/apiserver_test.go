@@ -115,6 +115,8 @@ func TestAPIServer_DRPlan_CRUD(t *testing.T) {
 			"spec": map[string]any{
 				"waveLabel":              "wave",
 				"maxConcurrentFailovers": int64(2),
+				"primarySite":            "dc-west",
+				"secondarySite":          "dc-east",
 			},
 		},
 	}
@@ -143,6 +145,11 @@ func TestAPIServer_DRPlan_CRUD(t *testing.T) {
 	status, _, _ := unstructured.NestedString(got.Object, "status", "phase")
 	if status != soteriav1alpha1.PhaseSteadyState {
 		t.Errorf("expected status phase %s, got %s", soteriav1alpha1.PhaseSteadyState, status)
+	}
+	// Verify activeSite was set to primarySite by PrepareForCreate
+	activeSite, _, _ := unstructured.NestedString(got.Object, "status", "activeSite")
+	if activeSite != "dc-west" {
+		t.Errorf("expected status activeSite dc-west, got %s", activeSite)
 	}
 
 	// List
@@ -191,6 +198,8 @@ func TestAPIServer_DRPlan_StatusSubresource(t *testing.T) {
 			"spec": map[string]any{
 				"waveLabel":              "wave",
 				"maxConcurrentFailovers": int64(1),
+				"primarySite":            "dc-west",
+				"secondarySite":          "dc-east",
 			},
 		},
 	}
@@ -202,7 +211,8 @@ func TestAPIServer_DRPlan_StatusSubresource(t *testing.T) {
 
 	// Update status subresource
 	created.Object["status"] = map[string]any{
-		"phase": soteriav1alpha1.PhaseFailingOver,
+		"phase":      soteriav1alpha1.PhaseFailingOver,
+		"activeSite": "dc-west",
 	}
 	statusUpdated, err := client.Resource(drplanGVR()).UpdateStatus(ctx, created, metav1.UpdateOptions{})
 	if err != nil {
@@ -511,6 +521,8 @@ func TestAPIServer_DRPlan_Watch(t *testing.T) {
 			"spec": map[string]any{
 				"waveLabel":              "wave",
 				"maxConcurrentFailovers": int64(1),
+				"primarySite":            "dc-west",
+				"secondarySite":          "dc-east",
 			},
 		},
 	}

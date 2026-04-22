@@ -1,6 +1,6 @@
 # Story 4.9: Site Topology Fields for DRPlan
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -109,6 +109,12 @@ The DRPlan's 8-phase state machine uses directional names (`SteadyState` vs `DRe
   - [ ] 11.2 `make manifests` — regenerate CRDs if markers changed
   - [ ] 11.3 `make lint-fix` — auto-fix style
   - [ ] 11.4 `make test` — all unit + integration tests pass
+
+### Review Findings
+
+- [x] [Review][Patch] Add the missing shared `newTestDRPlan` helper required by AC10 [`test/integration/controller/suite_test.go:388`]
+- [x] [Review][Patch] Add webhook integration coverage for missing/equal site validation and site immutability [`test/integration/admission/drplan_webhook_test.go:76`]
+- [x] [Review][Patch] Add coverage proving reprotect completion preserves `activeSite` as required by AC11(f) [`pkg/engine/statemachine_test.go`]
 
 ## Dev Notes
 

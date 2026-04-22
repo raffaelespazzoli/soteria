@@ -114,3 +114,23 @@ func ValidStartingPhases(mode soteriav1alpha1.ExecutionMode) []string {
 func IsTerminalPhase(phase string) bool {
 	return terminalPhases[phase]
 }
+
+// ActiveSiteForPhase returns the expected activeSite for a given lifecycle
+// phase. Phases where workloads reside on the primary site return primarySite;
+// phases where workloads reside on the secondary site return secondarySite.
+func ActiveSiteForPhase(phase, primarySite, secondarySite string) string {
+	switch phase {
+	case soteriav1alpha1.PhaseSteadyState,
+		soteriav1alpha1.PhaseFailingOver,
+		soteriav1alpha1.PhaseFailedBack,
+		soteriav1alpha1.PhaseReprotectingBack:
+		return primarySite
+	case soteriav1alpha1.PhaseFailedOver,
+		soteriav1alpha1.PhaseReprotecting,
+		soteriav1alpha1.PhaseDRedSteadyState,
+		soteriav1alpha1.PhaseFailingBack:
+		return secondarySite
+	default:
+		return ""
+	}
+}

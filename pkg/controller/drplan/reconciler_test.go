@@ -82,9 +82,12 @@ func newTestPlan() *soteriav1alpha1.DRPlan {
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 5,
+			PrimarySite:            "dc-west",
+			SecondarySite:          "dc-east",
 		},
 		Status: soteriav1alpha1.DRPlanStatus{
-			Phase: soteriav1alpha1.PhaseSteadyState,
+			Phase:      soteriav1alpha1.PhaseSteadyState,
+			ActiveSite: "dc-west",
 		},
 	}
 }

@@ -395,3 +395,85 @@ func TestIsTerminalPhase(t *testing.T) {
 		})
 	}
 }
+
+func TestActiveSiteForPhase_All8Phases(t *testing.T) {
+	const primary = "dc-west"
+	const secondary = "dc-east"
+
+	tests := []struct {
+		phase    string
+		wantSite string
+	}{
+		{soteriav1alpha1.PhaseSteadyState, primary},
+		{soteriav1alpha1.PhaseFailingOver, primary},
+		{soteriav1alpha1.PhaseFailedOver, secondary},
+		{soteriav1alpha1.PhaseReprotecting, secondary},
+		{soteriav1alpha1.PhaseDRedSteadyState, secondary},
+		{soteriav1alpha1.PhaseFailingBack, secondary},
+		{soteriav1alpha1.PhaseFailedBack, primary},
+		{soteriav1alpha1.PhaseReprotectingBack, primary},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.phase, func(t *testing.T) {
+			got := ActiveSiteForPhase(tt.phase, primary, secondary)
+			if got != tt.wantSite {
+				t.Errorf("ActiveSiteForPhase(%q) = %q, want %q", tt.phase, got, tt.wantSite)
+			}
+		})
+	}
+}
+
+func TestActiveSiteForPhase_ReprotectPreservesActiveSite(t *testing.T) {
+	const primary = "dc-west"
+	const secondary = "dc-east"
+
+	tests := []struct {
+		name       string
+		fromPhase  string
+		toPhase    string
+		wantBefore string
+		wantAfter  string
+	}{
+		{
+			name:       "Reprotecting → DRedSteadyState stays on secondary",
+			fromPhase:  soteriav1alpha1.PhaseReprotecting,
+			toPhase:    soteriav1alpha1.PhaseDRedSteadyState,
+			wantBefore: secondary,
+			wantAfter:  secondary,
+		},
+		{
+			name:       "ReprotectingBack → SteadyState stays on primary",
+			fromPhase:  soteriav1alpha1.PhaseReprotectingBack,
+			toPhase:    soteriav1alpha1.PhaseSteadyState,
+			wantBefore: primary,
+			wantAfter:  primary,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			before := ActiveSiteForPhase(tt.fromPhase, primary, secondary)
+			after := ActiveSiteForPhase(tt.toPhase, primary, secondary)
+			if before != tt.wantBefore {
+				t.Errorf("before: ActiveSiteForPhase(%q) = %q, want %q",
+					tt.fromPhase, before, tt.wantBefore)
+			}
+			if after != tt.wantAfter {
+				t.Errorf("after: ActiveSiteForPhase(%q) = %q, want %q",
+					tt.toPhase, after, tt.wantAfter)
+			}
+			if before != after {
+				t.Errorf("activeSite must NOT change on reprotect: %q → %q",
+					before, after)
+			}
+		})
+	}
+}
+
+func TestActiveSiteForPhase_UnknownPhase_ReturnsEmpty(t *testing.T) {
+	got := ActiveSiteForPhase("Unknown", "dc-west", "dc-east")
+	if got != "" {
+		t.Errorf("ActiveSiteForPhase(Unknown) = %q, want empty", got)
+	}
+}

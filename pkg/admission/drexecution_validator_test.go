@@ -94,11 +94,24 @@ func TestDRExecutionValidator_ValidCREATE_Accepted(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			activeSite := "dc-west"
+			switch tt.planPhase {
+			case soteriav1alpha1.PhaseFailedOver, soteriav1alpha1.PhaseReprotecting,
+				soteriav1alpha1.PhaseDRedSteadyState, soteriav1alpha1.PhaseFailingBack:
+				activeSite = "dc-east"
+			}
 			reader := &stubReader{
 				plans: map[string]*soteriav1alpha1.DRPlan{
 					"my-plan": {
 						ObjectMeta: metav1.ObjectMeta{Name: "my-plan"},
-						Status:     soteriav1alpha1.DRPlanStatus{Phase: tt.planPhase},
+						Spec: soteriav1alpha1.DRPlanSpec{
+							PrimarySite:   "dc-west",
+							SecondarySite: "dc-east",
+						},
+						Status: soteriav1alpha1.DRPlanStatus{
+							Phase:      tt.planPhase,
+							ActiveSite: activeSite,
+						},
 					},
 				},
 			}
@@ -194,7 +207,14 @@ func TestDRExecutionValidator_PlanInWrongPhase_Denied(t *testing.T) {
 		plans: map[string]*soteriav1alpha1.DRPlan{
 			"my-plan": {
 				ObjectMeta: metav1.ObjectMeta{Name: "my-plan"},
-				Status:     soteriav1alpha1.DRPlanStatus{Phase: soteriav1alpha1.PhaseFailedOver},
+				Spec: soteriav1alpha1.DRPlanSpec{
+					PrimarySite:   "dc-west",
+					SecondarySite: "dc-east",
+				},
+				Status: soteriav1alpha1.DRPlanStatus{
+					Phase:      soteriav1alpha1.PhaseFailedOver,
+					ActiveSite: "dc-east",
+				},
 			},
 		},
 	}

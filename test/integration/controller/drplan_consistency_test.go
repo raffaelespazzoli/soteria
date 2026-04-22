@@ -50,6 +50,8 @@ func createDRPlanWithThrottle(t *testing.T, ctx context.Context, name, waveLabel
 			Name: name,
 		},
 		Spec: soteriav1alpha1.DRPlanSpec{
+			PrimarySite:            "dc-west",
+			SecondarySite:          "dc-east",
 			WaveLabel:              waveLabel,
 			MaxConcurrentFailovers: maxConcurrent,
 		},

@@ -45,6 +45,7 @@ func (drplanStrategy) PrepareForCreate(_ context.Context, obj runtime.Object) {
 	plan := obj.(*soteriav1alpha1.DRPlan)
 	plan.Status = soteriav1alpha1.DRPlanStatus{}
 	plan.Status.Phase = soteriav1alpha1.PhaseSteadyState
+	plan.Status.ActiveSite = plan.Spec.PrimarySite
 	plan.Generation = 1
 }
 

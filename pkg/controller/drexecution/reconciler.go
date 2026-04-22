@@ -376,13 +376,15 @@ func (r *DRExecutionReconciler) reconcileReprotect(
 		} else {
 			planPatch := client.MergeFrom(planPreExec)
 			plan.Status.Phase = newPhase
+			plan.Status.ActiveSite = engine.ActiveSiteForPhase(newPhase, plan.Spec.PrimarySite, plan.Spec.SecondarySite)
 			if err := r.Status().Patch(ctx, plan, planPatch); err != nil {
 				logger.Error(err, "Failed to advance DRPlan phase",
 					"plan", plan.Name, "targetPhase", newPhase)
 				return ctrl.Result{}, err
 			}
 			logger.Info("Advanced DRPlan phase",
-				"plan", plan.Name, "from", previousPhase, "to", newPhase)
+				"plan", plan.Name, "from", previousPhase, "to", newPhase,
+				"activeSite", plan.Status.ActiveSite)
 		}
 	}
 

@@ -34,6 +34,7 @@ import (
 	"k8s.io/apiserver/pkg/storage"
 
 	v1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
+	"github.com/soteria-project/soteria/pkg/engine"
 	scyllastore "github.com/soteria-project/soteria/pkg/storage/scylladb"
 )
 
@@ -536,6 +537,8 @@ func newDRPlan(name string) *v1alpha1.DRPlan {
 			Name: name,
 		},
 		Spec: v1alpha1.DRPlanSpec{
+			PrimarySite:            "dc-west",
+			SecondarySite:          "dc-east",
 			WaveLabel:              "wave",
 			MaxConcurrentFailovers: 2,
 		},
@@ -545,6 +548,7 @@ func newDRPlan(name string) *v1alpha1.DRPlan {
 func newDRPlanWithPhase(name, phase string) *v1alpha1.DRPlan {
 	p := newDRPlan(name)
 	p.Status.Phase = phase
+	p.Status.ActiveSite = engine.ActiveSiteForPhase(phase, p.Spec.PrimarySite, p.Spec.SecondarySite)
 	return p
 }
 
@@ -615,6 +619,7 @@ func updatePhase(store *scyllastore.Store, ctx context.Context, name, phase stri
 		nil, func(existing runtime.Object, _ storage.ResponseMeta) (runtime.Object, *uint64, error) {
 			plan := existing.(*v1alpha1.DRPlan)
 			plan.Status.Phase = phase
+			plan.Status.ActiveSite = engine.ActiveSiteForPhase(phase, plan.Spec.PrimarySite, plan.Spec.SecondarySite)
 			return plan, nil, nil
 		}, nil)
 }

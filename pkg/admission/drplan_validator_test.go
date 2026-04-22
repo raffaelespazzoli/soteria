@@ -92,7 +92,10 @@ func TestDRPlanValidator_FieldValidation(t *testing.T) {
 			name: "valid plan CREATE — allowed",
 			plan: &soteriav1alpha1.DRPlan{
 				ObjectMeta: metav1.ObjectMeta{Name: "plan-ok"},
-				Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
+				Spec: soteriav1alpha1.DRPlanSpec{
+					WaveLabel: "wave", MaxConcurrentFailovers: 4,
+					PrimarySite: "dc-west", SecondarySite: "dc-east",
+				},
 			},
 			op:          admissionv1.Create,
 			wantAllowed: true,
@@ -101,7 +104,10 @@ func TestDRPlanValidator_FieldValidation(t *testing.T) {
 			name: "missing waveLabel — denied",
 			plan: &soteriav1alpha1.DRPlan{
 				ObjectMeta: metav1.ObjectMeta{Name: "plan-no-wave"},
-				Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "", MaxConcurrentFailovers: 4},
+				Spec: soteriav1alpha1.DRPlanSpec{
+					WaveLabel: "", MaxConcurrentFailovers: 4,
+					PrimarySite: "dc-west", SecondarySite: "dc-east",
+				},
 			},
 			op:          admissionv1.Create,
 			wantAllowed: false,
@@ -111,17 +117,62 @@ func TestDRPlanValidator_FieldValidation(t *testing.T) {
 			name: "invalid maxConcurrentFailovers — denied",
 			plan: &soteriav1alpha1.DRPlan{
 				ObjectMeta: metav1.ObjectMeta{Name: "plan-bad-max"},
-				Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 0},
+				Spec: soteriav1alpha1.DRPlanSpec{
+					WaveLabel: "wave", MaxConcurrentFailovers: 0,
+					PrimarySite: "dc-west", SecondarySite: "dc-east",
+				},
 			},
 			op:          admissionv1.Create,
 			wantAllowed: false,
 			wantMessage: "maxConcurrentFailovers",
 		},
 		{
+			name: "missing primarySite — denied",
+			plan: &soteriav1alpha1.DRPlan{
+				ObjectMeta: metav1.ObjectMeta{Name: "plan-no-primary"},
+				Spec: soteriav1alpha1.DRPlanSpec{
+					WaveLabel: "wave", MaxConcurrentFailovers: 4,
+					PrimarySite: "", SecondarySite: "dc-east",
+				},
+			},
+			op:          admissionv1.Create,
+			wantAllowed: false,
+			wantMessage: "primarySite",
+		},
+		{
+			name: "missing secondarySite — denied",
+			plan: &soteriav1alpha1.DRPlan{
+				ObjectMeta: metav1.ObjectMeta{Name: "plan-no-secondary"},
+				Spec: soteriav1alpha1.DRPlanSpec{
+					WaveLabel: "wave", MaxConcurrentFailovers: 4,
+					PrimarySite: "dc-west", SecondarySite: "",
+				},
+			},
+			op:          admissionv1.Create,
+			wantAllowed: false,
+			wantMessage: "secondarySite",
+		},
+		{
+			name: "equal sites — denied",
+			plan: &soteriav1alpha1.DRPlan{
+				ObjectMeta: metav1.ObjectMeta{Name: "plan-same-site"},
+				Spec: soteriav1alpha1.DRPlanSpec{
+					WaveLabel: "wave", MaxConcurrentFailovers: 4,
+					PrimarySite: "dc-west", SecondarySite: "dc-west",
+				},
+			},
+			op:          admissionv1.Create,
+			wantAllowed: false,
+			wantMessage: "secondarySite",
+		},
+		{
 			name: "valid plan UPDATE — allowed",
 			plan: &soteriav1alpha1.DRPlan{
 				ObjectMeta: metav1.ObjectMeta{Name: "plan-update"},
-				Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 8},
+				Spec: soteriav1alpha1.DRPlanSpec{
+					WaveLabel: "wave", MaxConcurrentFailovers: 8,
+					PrimarySite: "dc-west", SecondarySite: "dc-east",
+				},
 			},
 			op:          admissionv1.Update,
 			wantAllowed: true,
@@ -130,7 +181,10 @@ func TestDRPlanValidator_FieldValidation(t *testing.T) {
 			name: "invalid UPDATE (zero maxConcurrent) — denied",
 			plan: &soteriav1alpha1.DRPlan{
 				ObjectMeta: metav1.ObjectMeta{Name: "plan-bad-update"},
-				Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: -1},
+				Spec: soteriav1alpha1.DRPlanSpec{
+					WaveLabel: "wave", MaxConcurrentFailovers: -1,
+					PrimarySite: "dc-west", SecondarySite: "dc-east",
+				},
 			},
 			op:          admissionv1.Update,
 			wantAllowed: false,
@@ -140,7 +194,10 @@ func TestDRPlanValidator_FieldValidation(t *testing.T) {
 			name: "DELETE operation — allowed",
 			plan: &soteriav1alpha1.DRPlan{
 				ObjectMeta: metav1.ObjectMeta{Name: "plan-del"},
-				Spec:       soteriav1alpha1.DRPlanSpec{WaveLabel: "wave", MaxConcurrentFailovers: 4},
+				Spec: soteriav1alpha1.DRPlanSpec{
+					WaveLabel: "wave", MaxConcurrentFailovers: 4,
+					PrimarySite: "dc-west", SecondarySite: "dc-east",
+				},
 			},
 			op:          admissionv1.Delete,
 			wantAllowed: true,
@@ -166,5 +223,48 @@ func TestDRPlanValidator_FieldValidation(t *testing.T) {
 				t.Errorf("expected message containing %q, got %q", tt.wantMessage, msg)
 			}
 		})
+	}
+}
+
+func TestDRPlanValidator_SiteImmutability(t *testing.T) {
+	scheme := buildScheme()
+	v := &DRPlanValidator{decoder: admission.NewDecoder(scheme)}
+
+	oldPlan := &soteriav1alpha1.DRPlan{
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-immutable"},
+		Spec: soteriav1alpha1.DRPlanSpec{
+			WaveLabel: "wave", MaxConcurrentFailovers: 4,
+			PrimarySite: "dc-west", SecondarySite: "dc-east",
+		},
+	}
+	newPlan := &soteriav1alpha1.DRPlan{
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-immutable"},
+		Spec: soteriav1alpha1.DRPlanSpec{
+			WaveLabel: "wave", MaxConcurrentFailovers: 4,
+			PrimarySite: "dc-north", SecondarySite: "dc-east",
+		},
+	}
+
+	oldRaw, _ := json.Marshal(oldPlan)
+	newRaw, _ := json.Marshal(newPlan)
+	req := admission.Request{
+		AdmissionRequest: admissionv1.AdmissionRequest{
+			Operation: admissionv1.Update,
+			Name:      "plan-immutable",
+			Object:    runtime.RawExtension{Raw: newRaw},
+			OldObject: runtime.RawExtension{Raw: oldRaw},
+		},
+	}
+
+	resp := v.Handle(context.Background(), req)
+	if resp.Allowed {
+		t.Error("expected denial when primarySite changes on update")
+	}
+	if resp.Result == nil || !strings.Contains(resp.Result.Message, "primarySite") {
+		msg := ""
+		if resp.Result != nil {
+			msg = resp.Result.Message
+		}
+		t.Errorf("expected message containing 'primarySite', got %q", msg)
 	}
 }

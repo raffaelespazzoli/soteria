@@ -377,6 +377,8 @@ metadata:
 spec:
   waveLabel: dr-wave
   maxConcurrentFailovers: 5
+  primarySite: etl6
+  secondarySite: etl7
 EOF
 
 echo "  DRPlan 'payments-dr' → ${CTX_ETL7}..."
@@ -389,6 +391,8 @@ metadata:
 spec:
   waveLabel: failover-wave
   maxConcurrentFailovers: 2
+  primarySite: etl7
+  secondarySite: etl6
 EOF
 
 sleep 2
@@ -508,6 +512,8 @@ metadata:
 spec:
   waveLabel: soteria.io/wave
   maxConcurrentFailovers: 2
+  primarySite: etl6
+  secondarySite: etl7
 EOF
 done
 

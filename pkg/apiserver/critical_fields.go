@@ -52,7 +52,8 @@ func detectDRPlanCriticalFields(old, updated runtime.Object) bool {
 	if !ok {
 		return false
 	}
-	return oldPlan.Status.Phase != newPlan.Status.Phase
+	return oldPlan.Status.Phase != newPlan.Status.Phase ||
+		oldPlan.Status.ActiveSite != newPlan.Status.ActiveSite
 }
 
 // detectDRExecutionCriticalFields returns true when the DRExecution result

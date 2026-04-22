@@ -148,9 +148,12 @@ func newTestPlan(name string) *soteriav1alpha1.DRPlan {
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 4,
+			PrimarySite:            "dc-west",
+			SecondarySite:          "dc-east",
 		},
 		Status: soteriav1alpha1.DRPlanStatus{
-			Phase: soteriav1alpha1.PhaseFailingOver,
+			Phase:      soteriav1alpha1.PhaseFailingOver,
+			ActiveSite: "dc-west",
 		},
 	}
 }
@@ -1097,6 +1100,99 @@ func TestWaveExecutor_CompleteTransition_NotCalledOnFailed(t *testing.T) {
 	}
 	if updatedPlan.Status.Phase != soteriav1alpha1.PhaseFailingOver {
 		t.Errorf("plan phase should NOT advance on Failed: got %q, want FailingOver", updatedPlan.Status.Phase)
+	}
+}
+
+func TestWaveExecutor_ActiveSiteFlip(t *testing.T) {
+	const primary = "dc-west"
+	const secondary = "dc-east"
+
+	tests := []struct {
+		name           string
+		startPhase     string
+		startSite      string
+		wantPhase      string
+		wantActiveSite string
+	}{
+		{
+			name:           "failover: FailingOver→FailedOver flips to secondary",
+			startPhase:     soteriav1alpha1.PhaseFailingOver,
+			startSite:      primary,
+			wantPhase:      soteriav1alpha1.PhaseFailedOver,
+			wantActiveSite: secondary,
+		},
+		{
+			name:           "failback: FailingBack→FailedBack flips to primary",
+			startPhase:     soteriav1alpha1.PhaseFailingBack,
+			startSite:      secondary,
+			wantPhase:      soteriav1alpha1.PhaseFailedBack,
+			wantActiveSite: primary,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			plan := newTestPlan("plan-as")
+			plan.Status.Phase = tt.startPhase
+			plan.Status.ActiveSite = tt.startSite
+			exec := newTestExecution("exec-as", "plan-as")
+			vms := makeVMs([]string{"vm-1"}, "alpha")
+			cl := newFakeClient(vms, plan, exec)
+
+			executor := newTestExecutor(cl, &mockVMDiscoverer{vms: vms},
+				&mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{
+					"ns-1": soteriav1alpha1.ConsistencyLevelVM,
+				}})
+
+			_ = executor.Execute(context.Background(), ExecuteInput{
+				Execution: exec, Plan: plan, Handler: &NoOpHandler{},
+			})
+
+			var updatedPlan soteriav1alpha1.DRPlan
+			if err := cl.Get(context.Background(),
+				client.ObjectKey{Name: "plan-as"}, &updatedPlan); err != nil {
+				t.Fatalf("getting plan: %v", err)
+			}
+			if updatedPlan.Status.Phase != tt.wantPhase {
+				t.Fatalf("phase = %q, want %q", updatedPlan.Status.Phase, tt.wantPhase)
+			}
+			if updatedPlan.Status.ActiveSite != tt.wantActiveSite {
+				t.Errorf("activeSite = %q, want %q",
+					updatedPlan.Status.ActiveSite, tt.wantActiveSite)
+			}
+		})
+	}
+}
+
+func TestWaveExecutor_ActiveSiteUnchanged_OnFailed(t *testing.T) {
+	plan := newTestPlan("plan-as-fail")
+	plan.Status.Phase = soteriav1alpha1.PhaseFailingOver
+	plan.Status.ActiveSite = plan.Spec.PrimarySite
+	plan.Spec.MaxConcurrentFailovers = 1
+	exec := newTestExecution("exec-as-fail", "plan-as-fail")
+	vms := makeVMs([]string{"vm-1"}, "alpha")
+	cl := newFakeClient(vms, plan, exec)
+
+	handler := &mockHandler{
+		failOn: map[string]error{"wave-alpha-group-0": fmt.Errorf("boom")},
+	}
+	executor := newTestExecutor(cl, &mockVMDiscoverer{vms: vms},
+		&mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{
+			"ns-1": soteriav1alpha1.ConsistencyLevelVM,
+		}})
+
+	_ = executor.Execute(context.Background(), ExecuteInput{
+		Execution: exec, Plan: plan, Handler: handler,
+	})
+
+	var updatedPlan soteriav1alpha1.DRPlan
+	if err := cl.Get(context.Background(),
+		client.ObjectKey{Name: "plan-as-fail"}, &updatedPlan); err != nil {
+		t.Fatalf("getting plan: %v", err)
+	}
+	if updatedPlan.Status.ActiveSite != plan.Spec.PrimarySite {
+		t.Errorf("activeSite should NOT change on failure: got %q, want %q",
+			updatedPlan.Status.ActiveSite, plan.Spec.PrimarySite)
 	}
 }
 

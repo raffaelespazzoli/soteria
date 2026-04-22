@@ -69,6 +69,8 @@ func createDRPlan(t *testing.T, ctx context.Context, name, waveLabel string) *so
 			Name: name,
 		},
 		Spec: soteriav1alpha1.DRPlanSpec{
+			PrimarySite:            "dc-west",
+			SecondarySite:          "dc-east",
 			WaveLabel:              waveLabel,
 			MaxConcurrentFailovers: 5,
 		},

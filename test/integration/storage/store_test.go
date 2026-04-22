@@ -145,6 +145,8 @@ func newDRPlan(name string) *v1alpha1.DRPlan {
 			UID:  types.UID(gocql.TimeUUID().String()),
 		},
 		Spec: v1alpha1.DRPlanSpec{
+			PrimarySite:            "dc-west",
+			SecondarySite:          "dc-east",
 			WaveLabel:              "wave",
 			MaxConcurrentFailovers: 2,
 		},
@@ -521,6 +523,8 @@ func TestStore_GuaranteedUpdate_IgnoreNotFound_Creates(t *testing.T) {
 		func(input runtime.Object, _ storage.ResponseMeta) (runtime.Object, *uint64, error) {
 			p := input.(*v1alpha1.DRPlan)
 			p.Name = "update-create"
+			p.Spec.PrimarySite = "dc-west"
+			p.Spec.SecondarySite = "dc-east"
 			p.Spec.WaveLabel = "wave"
 			return p, nil, nil
 		}, nil)

@@ -81,9 +81,12 @@ func TestDRExecutionReconciler_ResumeInProgress_EmitsEvent(t *testing.T) {
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 4,
+			PrimarySite:            "dc-west",
+			SecondarySite:          "dc-east",
 		},
 		Status: soteriav1alpha1.DRPlanStatus{
-			Phase: soteriav1alpha1.PhaseFailingOver,
+			Phase:      soteriav1alpha1.PhaseFailingOver,
+			ActiveSite: "dc-west",
 		},
 	}
 
@@ -166,9 +169,12 @@ func TestDRExecutionReconciler_NewExecution_NormalPath(t *testing.T) {
 		Spec: soteriav1alpha1.DRPlanSpec{
 			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 4,
+			PrimarySite:            "dc-west",
+			SecondarySite:          "dc-east",
 		},
 		Status: soteriav1alpha1.DRPlanStatus{
-			Phase: soteriav1alpha1.PhaseSteadyState,
+			Phase:      soteriav1alpha1.PhaseSteadyState,
+			ActiveSite: "dc-west",
 		},
 	}
 
