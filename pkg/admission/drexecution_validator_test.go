@@ -245,6 +245,81 @@ func TestDRExecutionValidator_PlanInWrongPhase_Denied(t *testing.T) {
 	}
 }
 
+func TestDRExecutionValidator_ActiveExecution_Denied(t *testing.T) {
+	reader := &stubReader{
+		plans: map[string]*soteriav1alpha1.DRPlan{
+			"my-plan": {
+				ObjectMeta: metav1.ObjectMeta{Name: "my-plan"},
+				Spec: soteriav1alpha1.DRPlanSpec{
+					PrimarySite:   "dc-west",
+					SecondarySite: "dc-east",
+				},
+				Status: soteriav1alpha1.DRPlanStatus{
+					Phase:           soteriav1alpha1.PhaseSteadyState,
+					ActiveSite:      "dc-west",
+					ActiveExecution: "existing-exec",
+				},
+			},
+		},
+	}
+
+	v := &DRExecutionValidator{reader: reader}
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "new-exec"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "my-plan",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+	}
+
+	resp := v.Handle(context.Background(), makeExecRequest(exec, admissionv1.Create))
+	if resp.Allowed {
+		t.Error("expected denied when ActiveExecution is set, got allowed")
+	}
+	msg := ""
+	if resp.Result != nil {
+		msg = resp.Result.Message
+	}
+	if !strings.Contains(msg, "existing-exec") {
+		t.Errorf("expected message containing active execution name, got %q", msg)
+	}
+	if !strings.Contains(msg, "concurrent") {
+		t.Errorf("expected message mentioning concurrent, got %q", msg)
+	}
+}
+
+func TestDRExecutionValidator_EmptyActiveExecution_Allowed(t *testing.T) {
+	reader := &stubReader{
+		plans: map[string]*soteriav1alpha1.DRPlan{
+			"my-plan": {
+				ObjectMeta: metav1.ObjectMeta{Name: "my-plan"},
+				Spec: soteriav1alpha1.DRPlanSpec{
+					PrimarySite:   "dc-west",
+					SecondarySite: "dc-east",
+				},
+				Status: soteriav1alpha1.DRPlanStatus{
+					Phase:      soteriav1alpha1.PhaseSteadyState,
+					ActiveSite: "dc-west",
+				},
+			},
+		},
+	}
+
+	v := &DRExecutionValidator{reader: reader}
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "new-exec"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "my-plan",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+	}
+
+	resp := v.Handle(context.Background(), makeExecRequest(exec, admissionv1.Create))
+	if !resp.Allowed {
+		t.Errorf("expected allowed when ActiveExecution is empty, got denied: %v", resp.Result)
+	}
+}
+
 func TestDRExecutionValidator_NonCreateOperation_Allowed(t *testing.T) {
 	v := &DRExecutionValidator{reader: &stubReader{}}
 	exec := &soteriav1alpha1.DRExecution{

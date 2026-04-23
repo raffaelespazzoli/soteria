@@ -144,6 +144,22 @@ func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 					exec.Spec.Mode, previousPhase, plan.Name, strings.Join(validPhases, ", ")))
 		}
 
+		// Set the concurrency guard on the plan BEFORE marking StartTime on the
+		// execution. If the plan patch fails, StartTime remains nil and the next
+		// reconcile retries setup from scratch. If the plan patch succeeds but
+		// the exec patch fails, the guard is already in place and the next
+		// reconcile re-enters setup idempotently.
+		planPatch := client.MergeFrom(plan.DeepCopy())
+		plan.Status.ActiveExecution = exec.Name
+		plan.Status.ActiveExecutionMode = exec.Spec.Mode
+		if err := r.Status().Patch(ctx, &plan, planPatch); err != nil {
+			logger.Error(err, "Failed to set ActiveExecution on DRPlan", "plan", plan.Name)
+			return ctrl.Result{}, err
+		}
+
+		logger.Info("Set ActiveExecution on DRPlan",
+			"plan", plan.Name, "activeExecution", exec.Name, "phase", previousPhase)
+
 		now := metav1.Now()
 		execPatch := client.MergeFrom(exec.DeepCopy())
 		exec.Status.StartTime = &now
@@ -160,16 +176,6 @@ func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			return ctrl.Result{}, err
 		}
 
-		planPatch := client.MergeFrom(plan.DeepCopy())
-		plan.Status.Phase = targetPhase
-		if err := r.Status().Patch(ctx, &plan, planPatch); err != nil {
-			logger.Error(err, "Failed to update DRPlan phase", "plan", plan.Name, "targetPhase", targetPhase)
-			return ctrl.Result{}, err
-		}
-
-		logger.Info("Transitioned DRPlan phase",
-			"plan", plan.Name, "from", previousPhase, "to", targetPhase)
-
 		eventReason, eventAction, eventVerb := "FailoverStarted", "FailoverAction", "Failover"
 		switch targetPhase {
 		case soteriav1alpha1.PhaseFailingBack:
@@ -184,7 +190,7 @@ func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 				eventVerb, plan.Name, exec.Spec.Mode, exec.Name))
 
 		logger.Info("DRExecution setup complete",
-			"plan", plan.Name, "mode", exec.Spec.Mode, "targetPhase", targetPhase)
+			"plan", plan.Name, "mode", exec.Spec.Mode, "effectivePhase", targetPhase)
 	}
 
 	// Re-protect dispatch: storage-only, not wave-based.
@@ -196,7 +202,7 @@ func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if r.WaveExecutor != nil {
 		handler, err := r.resolveHandler(exec.Spec.Mode)
 		if err != nil {
-			return r.failExecution(ctx, &exec, "HandlerResolutionFailed", err.Error())
+			return r.failExecution(ctx, &exec, "HandlerResolutionFailed", err.Error(), &plan)
 		}
 		execInput := engine.ExecuteInput{
 			Execution: &exec,
@@ -216,14 +222,14 @@ func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 				if err != nil {
 					logger.Error(err, "Failed to build execution groups for pre-execution")
 					return r.failExecution(ctx, &exec, "PreExecutionFailed",
-						fmt.Sprintf("building execution groups: %v", err))
+						fmt.Sprintf("building execution groups: %v", err), &plan)
 				}
 				if err := ph.PreExecute(ctx, allGroups); err != nil {
 					logger.Error(err, "Pre-execution (Step 0) failed")
 					r.event(&exec, corev1.EventTypeWarning, "Step0Failed", "PlannedMigration",
 						fmt.Sprintf("Step 0 failed: %v", err))
 					return r.failExecution(ctx, &exec, "PreExecutionFailed",
-						fmt.Sprintf("pre-execution failed: %v", err))
+						fmt.Sprintf("pre-execution failed: %v", err), &plan)
 				}
 
 				execPatch := client.MergeFrom(exec.DeepCopy())
@@ -267,7 +273,7 @@ func (r *DRExecutionReconciler) reconcileReprotect(
 
 	if r.ReprotectHandler == nil {
 		return r.failExecution(ctx, exec, "ReprotectNotConfigured",
-			"ReprotectHandler not configured")
+			"ReprotectHandler not configured", plan)
 	}
 
 	r.event(exec, corev1.EventTypeNormal, "ReprotectStarted", "Dispatch",
@@ -281,7 +287,7 @@ func (r *DRExecutionReconciler) reconcileReprotect(
 	if err != nil {
 		logger.Error(err, "Failed to build volume group entries for re-protect")
 		return r.failExecution(ctx, exec, "VolumeGroupResolutionFailed",
-			fmt.Sprintf("discovering volume groups for re-protect: %v", err))
+			fmt.Sprintf("discovering volume groups for re-protect: %v", err), plan)
 	}
 	if len(vgEntries) == 0 {
 		r.event(exec, corev1.EventTypeWarning, "NoVolumeGroups", "Dispatch",
@@ -305,7 +311,7 @@ func (r *DRExecutionReconciler) reconcileReprotect(
 	if execErr != nil && result == nil {
 		logger.Error(execErr, "Re-protect execution failed")
 		return r.failExecution(ctx, exec, "ReprotectFailed",
-			fmt.Sprintf("re-protect failed: %v", execErr))
+			fmt.Sprintf("re-protect failed: %v", execErr), plan)
 	}
 
 	// Context cancellation (leader election loss, shutdown): do NOT write a
@@ -366,16 +372,20 @@ func (r *DRExecutionReconciler) reconcileReprotect(
 			fmt.Sprintf("All %d volume groups report healthy replication", result.HealthyVGs))
 	}
 
-	// Advance DRPlan phase on success or partial success (AC6: timeout still advances).
+	// Advance DRPlan phase and clear ActiveExecution on success or partial
+	// success (AC6: timeout still advances). On failure, clear ActiveExecution
+	// only — phase stays at the current rest state (self-healing).
 	if execResult == soteriav1alpha1.ExecutionResultSucceeded ||
 		execResult == soteriav1alpha1.ExecutionResultPartiallySucceeded {
 		previousPhase := plan.Status.Phase
-		newPhase, err := engine.CompleteTransition(plan.Status.Phase)
+		newPhase, err := engine.RestStateAfterCompletion(plan.Status.Phase, exec.Spec.Mode)
 		if err != nil {
 			logger.Error(err, "Could not complete phase transition", "currentPhase", plan.Status.Phase)
 		} else {
 			planPatch := client.MergeFrom(planPreExec)
 			plan.Status.Phase = newPhase
+			plan.Status.ActiveExecution = ""
+			plan.Status.ActiveExecutionMode = ""
 			plan.Status.ActiveSite = engine.ActiveSiteForPhase(newPhase, plan.Spec.PrimarySite, plan.Spec.SecondarySite)
 			if err := r.Status().Patch(ctx, plan, planPatch); err != nil {
 				logger.Error(err, "Failed to advance DRPlan phase",
@@ -386,6 +396,18 @@ func (r *DRExecutionReconciler) reconcileReprotect(
 				"plan", plan.Name, "from", previousPhase, "to", newPhase,
 				"activeSite", plan.Status.ActiveSite)
 		}
+	}
+
+	// Always clear ActiveExecution when it wasn't already cleared above.
+	if plan.Status.ActiveExecution != "" {
+		planPatch := client.MergeFrom(planPreExec)
+		plan.Status.ActiveExecution = ""
+		plan.Status.ActiveExecutionMode = ""
+		if err := r.Status().Patch(ctx, plan, planPatch); err != nil {
+			logger.Error(err, "Failed to clear ActiveExecution on DRPlan", "plan", plan.Name)
+			return ctrl.Result{}, err
+		}
+		logger.Info("Cleared ActiveExecution on DRPlan", "plan", plan.Name)
 	}
 
 	return ctrl.Result{}, nil
@@ -453,6 +475,12 @@ func (r *DRExecutionReconciler) reconcileReprotectResume(
 				fmt.Sprintf("DRPlan %q not found during re-protect resume", exec.Spec.PlanName))
 		}
 		return ctrl.Result{}, err
+	}
+
+	if plan.Status.ActiveExecution != exec.Name {
+		return r.failExecution(ctx, exec, "StaleExecution",
+			fmt.Sprintf("execution %q is not the active execution for plan %q (active: %q)",
+				exec.Name, plan.Name, plan.Status.ActiveExecution))
 	}
 
 	r.event(exec, corev1.EventTypeNormal, "ReprotectResumed", "Checkpoint",
@@ -544,10 +572,16 @@ func (r *DRExecutionReconciler) reconcileResume(
 		return ctrl.Result{}, err
 	}
 
+	if plan.Status.ActiveExecution != exec.Name {
+		return r.failExecution(ctx, exec, "StaleExecution",
+			fmt.Sprintf("execution %q is not the active execution for plan %q (active: %q)",
+				exec.Name, plan.Name, plan.Status.ActiveExecution))
+	}
+
 	// Resolve handler for the execution mode.
 	handler, err := r.resolveHandler(exec.Spec.Mode)
 	if err != nil {
-		return r.failExecution(ctx, exec, "HandlerResolutionFailed", err.Error())
+		return r.failExecution(ctx, exec, "HandlerResolutionFailed", err.Error(), &plan)
 	}
 
 	// Build the set of groups to skip in the resume wave (completed + failed).
@@ -606,10 +640,14 @@ func (r *DRExecutionReconciler) resetInFlightGroup(
 }
 
 // failExecution marks a DRExecution as Failed with a descriptive condition.
+// When plan is non-nil and its ActiveExecution matches exec.Name, clears the
+// pointer so the plan returns to its rest state — this is the self-healing
+// property that prevents stuck transient phases.
 func (r *DRExecutionReconciler) failExecution(
 	ctx context.Context,
 	exec *soteriav1alpha1.DRExecution,
 	reason, message string,
+	plan ...*soteriav1alpha1.DRPlan,
 ) (ctrl.Result, error) {
 	logger := log.FromContext(ctx).WithValues("drexecution", exec.Name, "reason", reason)
 
@@ -631,6 +669,18 @@ func (r *DRExecutionReconciler) failExecution(
 	if err := r.Status().Patch(ctx, exec, patch); err != nil {
 		logger.Error(err, "Failed to update DRExecution failure status")
 		return ctrl.Result{}, err
+	}
+
+	// Clear ActiveExecution on the plan if this execution owns the pointer.
+	if len(plan) > 0 && plan[0] != nil && plan[0].Status.ActiveExecution == exec.Name {
+		planPatch := client.MergeFrom(plan[0].DeepCopy())
+		plan[0].Status.ActiveExecution = ""
+		plan[0].Status.ActiveExecutionMode = ""
+		if err := r.Status().Patch(ctx, plan[0], planPatch); err != nil {
+			logger.Error(err, "Failed to clear ActiveExecution on DRPlan", "plan", plan[0].Name)
+			return ctrl.Result{}, err
+		}
+		logger.Info("Cleared ActiveExecution on DRPlan", "plan", plan[0].Name)
 	}
 
 	return ctrl.Result{}, nil

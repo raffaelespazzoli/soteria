@@ -40,6 +40,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/client-go/util/retry"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -928,16 +929,19 @@ func (e *WaveExecutor) finishExecution(
 	failed, total := e.countGroups(exec)
 	e.emitResultEvent(exec, plan, result, failed, total, message)
 
-	// Advance DRPlan phase on success or partial success.
+	// Advance DRPlan phase and clear ActiveExecution on success/partial success.
+	// On failure, clear ActiveExecution only — phase stays at current rest state.
 	if result == soteriav1alpha1.ExecutionResultSucceeded ||
 		result == soteriav1alpha1.ExecutionResultPartiallySucceeded {
 		previousPhase := plan.Status.Phase
-		newPhase, err := CompleteTransition(plan.Status.Phase)
+		newPhase, err := RestStateAfterCompletion(plan.Status.Phase, exec.Spec.Mode)
 		if err != nil {
 			logger.Error(err, "Could not complete phase transition", "currentPhase", plan.Status.Phase)
 		} else {
 			planPatch := client.MergeFrom(plan.DeepCopy())
 			plan.Status.Phase = newPhase
+			plan.Status.ActiveExecution = ""
+			plan.Status.ActiveExecutionMode = ""
 			plan.Status.ActiveSite = ActiveSiteForPhase(newPhase, plan.Spec.PrimarySite, plan.Spec.SecondarySite)
 			if err := e.Client.Status().Patch(ctx, plan, planPatch); err != nil {
 				logger.Error(err, "Failed to advance DRPlan phase", "plan", plan.Name, "targetPhase", newPhase)
@@ -946,6 +950,18 @@ func (e *WaveExecutor) finishExecution(
 			logger.Info("Advanced DRPlan phase", "plan", plan.Name, "from", previousPhase, "to", newPhase,
 				"activeSite", plan.Status.ActiveSite)
 		}
+	}
+
+	// Always clear ActiveExecution when it wasn't already cleared above.
+	if plan.Status.ActiveExecution != "" {
+		planPatch := client.MergeFrom(plan.DeepCopy())
+		plan.Status.ActiveExecution = ""
+		plan.Status.ActiveExecutionMode = ""
+		if err := e.Client.Status().Patch(ctx, plan, planPatch); err != nil {
+			logger.Error(err, "Failed to clear ActiveExecution on DRPlan", "plan", plan.Name)
+			return fmt.Errorf("clearing ActiveExecution: %w", err)
+		}
+		logger.Info("Cleared ActiveExecution on DRPlan", "plan", plan.Name)
 	}
 
 	return nil
@@ -966,17 +982,20 @@ func (e *WaveExecutor) countGroups(exec *soteriav1alpha1.DRExecution) (failed, t
 
 // persistStatus serializes status writes to prevent concurrent goroutines from
 // racing on the DRExecution status subresource. Re-fetches before update to
-// ensure the latest resourceVersion.
+// ensure the latest resourceVersion and retries on conflict (the informer
+// cache may lag behind the API server after a recent Patch).
 func (e *WaveExecutor) persistStatus(ctx context.Context, exec *soteriav1alpha1.DRExecution) error {
 	e.statusMu.Lock()
 	defer e.statusMu.Unlock()
 
 	statusCopy := exec.Status.DeepCopy()
-	if err := e.Client.Get(ctx, client.ObjectKeyFromObject(exec), exec); err != nil {
-		return fmt.Errorf("re-fetching DRExecution before status update: %w", err)
-	}
-	exec.Status = *statusCopy
-	return e.Client.Status().Update(ctx, exec)
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := e.Client.Get(ctx, client.ObjectKeyFromObject(exec), exec); err != nil {
+			return fmt.Errorf("re-fetching DRExecution before status update: %w", err)
+		}
+		exec.Status = *statusCopy
+		return e.Client.Status().Update(ctx, exec)
+	})
 }
 
 // setGroupStatus updates a single DRGroup's status in memory and persists it.

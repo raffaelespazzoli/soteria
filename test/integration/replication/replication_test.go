@@ -424,11 +424,11 @@ func TestConflict_ConcurrentPhaseTransition_LWTPreventsDuplicate(t *testing.T) {
 
 	go func() {
 		defer wg.Done()
-		dc1Err = updatePhase(dc1Store, ctx, plan.Name, v1alpha1.PhaseFailingOver)
+		dc1Err = updatePhase(dc1Store, ctx, plan.Name, v1alpha1.PhaseFailedOver)
 	}()
 	go func() {
 		defer wg.Done()
-		dc2Err = updatePhase(dc2Store, ctx, plan.Name, v1alpha1.PhaseFailingOver)
+		dc2Err = updatePhase(dc2Store, ctx, plan.Name, v1alpha1.PhaseFailedOver)
 	}()
 	wg.Wait()
 
@@ -447,9 +447,9 @@ func TestConflict_ConcurrentPhaseTransition_LWTPreventsDuplicate(t *testing.T) {
 	if err := dc1Store.Get(ctx, planKey(plan.Name), storage.GetOptions{}, final); err != nil {
 		t.Fatalf("Final Get: %v", err)
 	}
-	if final.Status.Phase != v1alpha1.PhaseFailingOver {
+	if final.Status.Phase != v1alpha1.PhaseFailedOver {
 		t.Errorf("expected phase %q after concurrent transitions, got %q",
-			v1alpha1.PhaseFailingOver, final.Status.Phase)
+			v1alpha1.PhaseFailedOver, final.Status.Phase)
 	}
 }
 
@@ -464,12 +464,12 @@ func TestConflict_LWT_StalePhaseRejected(t *testing.T) {
 	}
 
 	// First update succeeds.
-	if err := updatePhase(store, ctx, plan.Name, v1alpha1.PhaseFailingOver); err != nil {
+	if err := updatePhase(store, ctx, plan.Name, v1alpha1.PhaseFailedOver); err != nil {
 		t.Fatalf("First phase update: %v", err)
 	}
 
 	// Second update with a different phase should also succeed (CAS on resourceVersion).
-	if err := updatePhase(store, ctx, plan.Name, v1alpha1.PhaseFailedOver); err != nil {
+	if err := updatePhase(store, ctx, plan.Name, v1alpha1.PhaseDRedSteadyState); err != nil {
 		t.Fatalf("Second phase update: %v", err)
 	}
 
@@ -478,8 +478,8 @@ func TestConflict_LWT_StalePhaseRejected(t *testing.T) {
 	if err := store.Get(ctx, planKey(plan.Name), storage.GetOptions{}, got); err != nil {
 		t.Fatalf("Get: %v", err)
 	}
-	if got.Status.Phase != v1alpha1.PhaseFailedOver {
-		t.Errorf("expected phase %q, got %q", v1alpha1.PhaseFailedOver, got.Status.Phase)
+	if got.Status.Phase != v1alpha1.PhaseDRedSteadyState {
+		t.Errorf("expected phase %q, got %q", v1alpha1.PhaseDRedSteadyState, got.Status.Phase)
 	}
 }
 
@@ -493,10 +493,10 @@ func TestConflict_LWT_TableDriven(t *testing.T) {
 		updatePhase  string
 		expectErr    bool
 	}{
-		{"SteadyState to FailingOver", v1alpha1.PhaseSteadyState, v1alpha1.PhaseFailingOver, false},
-		{"FailingOver to FailedOver", v1alpha1.PhaseFailingOver, v1alpha1.PhaseFailedOver, false},
-		{"FailedOver to Reprotecting", v1alpha1.PhaseFailedOver, v1alpha1.PhaseReprotecting, false},
-		{"Reprotecting to DRedSteadyState", v1alpha1.PhaseReprotecting, v1alpha1.PhaseDRedSteadyState, false},
+		{"SteadyState to FailedOver", v1alpha1.PhaseSteadyState, v1alpha1.PhaseFailedOver, false},
+		{"FailedOver to DRedSteadyState", v1alpha1.PhaseFailedOver, v1alpha1.PhaseDRedSteadyState, false},
+		{"DRedSteadyState to FailedBack", v1alpha1.PhaseDRedSteadyState, v1alpha1.PhaseFailedBack, false},
+		{"FailedBack to SteadyState", v1alpha1.PhaseFailedBack, v1alpha1.PhaseSteadyState, false},
 	}
 
 	for i, tc := range tests {

@@ -477,3 +477,162 @@ func TestActiveSiteForPhase_UnknownPhase_ReturnsEmpty(t *testing.T) {
 		t.Errorf("ActiveSiteForPhase(Unknown) = %q, want empty", got)
 	}
 }
+
+func TestEffectivePhase_IdleReturnsRestPhase(t *testing.T) {
+	restPhases := []string{
+		soteriav1alpha1.PhaseSteadyState,
+		soteriav1alpha1.PhaseFailedOver,
+		soteriav1alpha1.PhaseDRedSteadyState,
+		soteriav1alpha1.PhaseFailedBack,
+	}
+	for _, phase := range restPhases {
+		t.Run(phase, func(t *testing.T) {
+			got := EffectivePhase(phase, "")
+			if got != phase {
+				t.Errorf("EffectivePhase(%q, \"\") = %q, want %q", phase, got, phase)
+			}
+		})
+	}
+}
+
+func TestEffectivePhase_AllRestStateModeCombinations(t *testing.T) {
+	tests := []struct {
+		name      string
+		restPhase string
+		mode      soteriav1alpha1.ExecutionMode
+		want      string
+	}{
+		{
+			"SteadyState+planned_migration",
+			soteriav1alpha1.PhaseSteadyState,
+			soteriav1alpha1.ExecutionModePlannedMigration,
+			soteriav1alpha1.PhaseFailingOver,
+		},
+		{
+			"SteadyState+disaster",
+			soteriav1alpha1.PhaseSteadyState,
+			soteriav1alpha1.ExecutionModeDisaster,
+			soteriav1alpha1.PhaseFailingOver,
+		},
+		{
+			"FailedOver+reprotect",
+			soteriav1alpha1.PhaseFailedOver,
+			soteriav1alpha1.ExecutionModeReprotect,
+			soteriav1alpha1.PhaseReprotecting,
+		},
+		{
+			"DRedSteadyState+planned_migration",
+			soteriav1alpha1.PhaseDRedSteadyState,
+			soteriav1alpha1.ExecutionModePlannedMigration,
+			soteriav1alpha1.PhaseFailingBack,
+		},
+		{
+			"DRedSteadyState+disaster",
+			soteriav1alpha1.PhaseDRedSteadyState,
+			soteriav1alpha1.ExecutionModeDisaster,
+			soteriav1alpha1.PhaseFailingBack,
+		},
+		{
+			"FailedBack+reprotect",
+			soteriav1alpha1.PhaseFailedBack,
+			soteriav1alpha1.ExecutionModeReprotect,
+			soteriav1alpha1.PhaseReprotectingBack,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := EffectivePhase(tt.restPhase, tt.mode)
+			if got != tt.want {
+				t.Errorf("EffectivePhase(%q, %q) = %q, want %q",
+					tt.restPhase, tt.mode, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEffectivePhase_InvalidCombinationReturnsRest(t *testing.T) {
+	tests := []struct {
+		name      string
+		restPhase string
+		mode      soteriav1alpha1.ExecutionMode
+	}{
+		{"SteadyState+reprotect", soteriav1alpha1.PhaseSteadyState, soteriav1alpha1.ExecutionModeReprotect},
+		{"FailedOver+planned_migration", soteriav1alpha1.PhaseFailedOver, soteriav1alpha1.ExecutionModePlannedMigration},
+		{"Unknown+disaster", "Unknown", soteriav1alpha1.ExecutionModeDisaster},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := EffectivePhase(tt.restPhase, tt.mode)
+			if got != tt.restPhase {
+				t.Errorf("EffectivePhase(%q, %q) = %q, want %q (rest phase)", tt.restPhase, tt.mode, got, tt.restPhase)
+			}
+		})
+	}
+}
+
+func TestRestStateAfterCompletion_ValidTransitions(t *testing.T) {
+	tests := []struct {
+		name      string
+		restPhase string
+		mode      soteriav1alpha1.ExecutionMode
+		want      string
+	}{
+		{
+			"SteadyState+planned_migration→FailedOver",
+			soteriav1alpha1.PhaseSteadyState,
+			soteriav1alpha1.ExecutionModePlannedMigration,
+			soteriav1alpha1.PhaseFailedOver,
+		},
+		{
+			"SteadyState+disaster→FailedOver",
+			soteriav1alpha1.PhaseSteadyState,
+			soteriav1alpha1.ExecutionModeDisaster,
+			soteriav1alpha1.PhaseFailedOver,
+		},
+		{
+			"FailedOver+reprotect→DRedSteadyState",
+			soteriav1alpha1.PhaseFailedOver,
+			soteriav1alpha1.ExecutionModeReprotect,
+			soteriav1alpha1.PhaseDRedSteadyState,
+		},
+		{
+			"DRedSteadyState+planned_migration→FailedBack",
+			soteriav1alpha1.PhaseDRedSteadyState,
+			soteriav1alpha1.ExecutionModePlannedMigration,
+			soteriav1alpha1.PhaseFailedBack,
+		},
+		{
+			"DRedSteadyState+disaster→FailedBack",
+			soteriav1alpha1.PhaseDRedSteadyState,
+			soteriav1alpha1.ExecutionModeDisaster,
+			soteriav1alpha1.PhaseFailedBack,
+		},
+		{
+			"FailedBack+reprotect→SteadyState",
+			soteriav1alpha1.PhaseFailedBack,
+			soteriav1alpha1.ExecutionModeReprotect,
+			soteriav1alpha1.PhaseSteadyState,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := RestStateAfterCompletion(tt.restPhase, tt.mode)
+			if err != nil {
+				t.Fatalf("RestStateAfterCompletion() unexpected error: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("RestStateAfterCompletion(%q, %q) = %q, want %q", tt.restPhase, tt.mode, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRestStateAfterCompletion_InvalidTransition_ReturnsError(t *testing.T) {
+	_, err := RestStateAfterCompletion(soteriav1alpha1.PhaseSteadyState, soteriav1alpha1.ExecutionModeReprotect)
+	if err == nil {
+		t.Fatal("RestStateAfterCompletion() expected error, got nil")
+	}
+	if !errors.Is(err, ErrInvalidPhaseTransition) {
+		t.Errorf("RestStateAfterCompletion() error = %v, want ErrInvalidPhaseTransition", err)
+	}
+}

@@ -741,7 +741,21 @@ func schema_pkg_apis_soteriaio_v1alpha1_DRPlanStatus(ref common.ReferenceCallbac
 				Properties: map[string]spec.Schema{
 					"phase": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Phase represents the current DR lifecycle state. Valid values: SteadyState, FailingOver, FailedOver, Reprotecting, DRedSteadyState, FailingBack, FailedBack, ReprotectingBack",
+							Description: "Phase represents the current DR lifecycle rest state. Only rest-state values are persisted; transient phases are derived at runtime via engine.EffectivePhase(Phase, ActiveExecution mode). Valid values: SteadyState, FailedOver, DRedSteadyState, FailedBack",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"activeExecution": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ActiveExecution is the name of the in-progress DRExecution, or empty when no execution is running. Set by the reconciler on execution start and cleared on completion or failure. Acts as an explicit concurrency guard — the admission webhook rejects new executions while non-empty.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"activeExecutionMode": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ActiveExecutionMode is the mode of the active execution, stored alongside ActiveExecution so the table convertor can compute the effective phase without an extra DRExecution GET.",
 							Type:        []string{"string"},
 							Format:      "",
 						},
@@ -933,6 +947,13 @@ func schema_pkg_apis_soteriaio_v1alpha1_PreflightReport(ref common.ReferenceCall
 					"activeSite": {
 						SchemaProps: spec.SchemaProps{
 							Description: "ActiveSite is the cluster currently owning the active workloads.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"activeExecution": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ActiveExecution is the name of the in-progress DRExecution, or empty when idle. When non-empty, a warning is added to the report.",
 							Type:        []string{"string"},
 							Format:      "",
 						},

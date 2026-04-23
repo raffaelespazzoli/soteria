@@ -152,8 +152,10 @@ func newTestPlan(name string) *soteriav1alpha1.DRPlan {
 			SecondarySite:          "dc-east",
 		},
 		Status: soteriav1alpha1.DRPlanStatus{
-			Phase:      soteriav1alpha1.PhaseFailingOver,
-			ActiveSite: "dc-west",
+			Phase:               soteriav1alpha1.PhaseSteadyState,
+			ActiveSite:          "dc-west",
+			ActiveExecution:     "test-exec",
+			ActiveExecutionMode: soteriav1alpha1.ExecutionModePlannedMigration,
 		},
 	}
 }
@@ -739,14 +741,18 @@ func TestWaveExecutor_AllGroupsFail_ResultFailed(t *testing.T) {
 		t.Errorf("expected result %q, got %q", soteriav1alpha1.ExecutionResultFailed, exec.Status.Result)
 	}
 
-	// Verify plan was NOT advanced (all-fail should leave plan in FailingOver).
+	// Verify plan stays at rest state and ActiveExecution is cleared on failure.
 	var updatedPlan soteriav1alpha1.DRPlan
 	if err := cl.Get(context.Background(), client.ObjectKey{Name: "plan-allfail"}, &updatedPlan); err != nil {
 		t.Fatalf("getting plan: %v", err)
 	}
-	if updatedPlan.Status.Phase != soteriav1alpha1.PhaseFailingOver {
-		t.Errorf("expected plan phase unchanged %q, got %q",
-			soteriav1alpha1.PhaseFailingOver, updatedPlan.Status.Phase)
+	if updatedPlan.Status.Phase != soteriav1alpha1.PhaseSteadyState {
+		t.Errorf("expected plan phase unchanged at rest %q, got %q",
+			soteriav1alpha1.PhaseSteadyState, updatedPlan.Status.Phase)
+	}
+	if updatedPlan.Status.ActiveExecution != "" {
+		t.Errorf("expected ActiveExecution cleared, got %q",
+			updatedPlan.Status.ActiveExecution)
 	}
 }
 
@@ -1098,8 +1104,11 @@ func TestWaveExecutor_CompleteTransition_NotCalledOnFailed(t *testing.T) {
 	if err := cl.Get(context.Background(), client.ObjectKey{Name: "plan-ct"}, &updatedPlan); err != nil {
 		t.Fatalf("getting plan: %v", err)
 	}
-	if updatedPlan.Status.Phase != soteriav1alpha1.PhaseFailingOver {
-		t.Errorf("plan phase should NOT advance on Failed: got %q, want FailingOver", updatedPlan.Status.Phase)
+	if updatedPlan.Status.Phase != soteriav1alpha1.PhaseSteadyState {
+		t.Errorf("plan phase should NOT advance on Failed: got %q, want SteadyState", updatedPlan.Status.Phase)
+	}
+	if updatedPlan.Status.ActiveExecution != "" {
+		t.Errorf("ActiveExecution should be cleared on failure, got %q", updatedPlan.Status.ActiveExecution)
 	}
 }
 
@@ -1111,20 +1120,23 @@ func TestWaveExecutor_ActiveSiteFlip(t *testing.T) {
 		name           string
 		startPhase     string
 		startSite      string
+		execMode       soteriav1alpha1.ExecutionMode
 		wantPhase      string
 		wantActiveSite string
 	}{
 		{
-			name:           "failover: FailingOver→FailedOver flips to secondary",
-			startPhase:     soteriav1alpha1.PhaseFailingOver,
+			name:           "failover: SteadyState→FailedOver flips to secondary",
+			startPhase:     soteriav1alpha1.PhaseSteadyState,
 			startSite:      primary,
+			execMode:       soteriav1alpha1.ExecutionModePlannedMigration,
 			wantPhase:      soteriav1alpha1.PhaseFailedOver,
 			wantActiveSite: secondary,
 		},
 		{
-			name:           "failback: FailingBack→FailedBack flips to primary",
-			startPhase:     soteriav1alpha1.PhaseFailingBack,
+			name:           "failback: DRedSteadyState→FailedBack flips to primary",
+			startPhase:     soteriav1alpha1.PhaseDRedSteadyState,
 			startSite:      secondary,
+			execMode:       soteriav1alpha1.ExecutionModePlannedMigration,
 			wantPhase:      soteriav1alpha1.PhaseFailedBack,
 			wantActiveSite: primary,
 		},
@@ -1135,7 +1147,9 @@ func TestWaveExecutor_ActiveSiteFlip(t *testing.T) {
 			plan := newTestPlan("plan-as")
 			plan.Status.Phase = tt.startPhase
 			plan.Status.ActiveSite = tt.startSite
+			plan.Status.ActiveExecutionMode = tt.execMode
 			exec := newTestExecution("exec-as", "plan-as")
+			exec.Spec.Mode = tt.execMode
 			vms := makeVMs([]string{"vm-1"}, "alpha")
 			cl := newFakeClient(vms, plan, exec)
 
@@ -1166,7 +1180,7 @@ func TestWaveExecutor_ActiveSiteFlip(t *testing.T) {
 
 func TestWaveExecutor_ActiveSiteUnchanged_OnFailed(t *testing.T) {
 	plan := newTestPlan("plan-as-fail")
-	plan.Status.Phase = soteriav1alpha1.PhaseFailingOver
+	plan.Status.Phase = soteriav1alpha1.PhaseSteadyState
 	plan.Status.ActiveSite = plan.Spec.PrimarySite
 	plan.Spec.MaxConcurrentFailovers = 1
 	exec := newTestExecution("exec-as-fail", "plan-as-fail")

@@ -19,15 +19,18 @@ package drplan
 import (
 	"context"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/duration"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/apiserver/pkg/storage"
 	"k8s.io/apiserver/pkg/storage/names"
 
 	soteriainstall "github.com/soteria-project/soteria/pkg/apis/soteria.io/install"
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
+	"github.com/soteria-project/soteria/pkg/engine"
 )
 
 type drplanStrategy struct {
@@ -46,6 +49,8 @@ func (drplanStrategy) PrepareForCreate(_ context.Context, obj runtime.Object) {
 	plan.Status = soteriav1alpha1.DRPlanStatus{}
 	plan.Status.Phase = soteriav1alpha1.PhaseSteadyState
 	plan.Status.ActiveSite = plan.Spec.PrimarySite
+	plan.Status.ActiveExecution = ""
+	plan.Status.ActiveExecutionMode = ""
 	plan.Generation = 1
 }
 
@@ -108,4 +113,60 @@ func (drplanStatusStrategy) PrepareForUpdate(_ context.Context, obj, old runtime
 
 func (drplanStatusStrategy) ValidateUpdate(_ context.Context, _, _ runtime.Object) field.ErrorList {
 	return field.ErrorList{}
+}
+
+// ---------- Custom table convertor ----------
+
+// DRPlanTableConvertor converts DRPlan objects to table rows with custom
+// columns: PHASE, EFFECTIVE PHASE, ACTIVE SITE, VMs, ACTIVE EXECUTION.
+type DRPlanTableConvertor struct{}
+
+var tableColumns = []metav1.TableColumnDefinition{
+	{Name: "Name", Type: "string", Format: "name"},
+	{Name: "Phase", Type: "string"},
+	{Name: "Effective Phase", Type: "string"},
+	{Name: "Active Site", Type: "string"},
+	{Name: "VMs", Type: "integer"},
+	{Name: "Active Execution", Type: "string"},
+	{Name: "Age", Type: "string"},
+}
+
+func (DRPlanTableConvertor) ConvertToTable(
+	ctx context.Context, object runtime.Object, tableOptions runtime.Object,
+) (*metav1.Table, error) {
+	table := &metav1.Table{ColumnDefinitions: tableColumns}
+
+	switch obj := object.(type) {
+	case *soteriav1alpha1.DRPlan:
+		table.Rows = append(table.Rows, planToRow(obj))
+	case *soteriav1alpha1.DRPlanList:
+		for i := range obj.Items {
+			table.Rows = append(table.Rows, planToRow(&obj.Items[i]))
+		}
+	}
+
+	return table, nil
+}
+
+func planToRow(plan *soteriav1alpha1.DRPlan) metav1.TableRow {
+	effectivePhase := engine.EffectivePhase(plan.Status.Phase, plan.Status.ActiveExecutionMode)
+	return metav1.TableRow{
+		Object: runtime.RawExtension{Object: plan},
+		Cells: []any{
+			plan.Name,
+			plan.Status.Phase,
+			effectivePhase,
+			plan.Status.ActiveSite,
+			plan.Status.DiscoveredVMCount,
+			plan.Status.ActiveExecution,
+			translateTimestampSince(plan.CreationTimestamp),
+		},
+	}
+}
+
+func translateTimestampSince(timestamp metav1.Time) string {
+	if timestamp.IsZero() {
+		return "<unknown>"
+	}
+	return duration.HumanDuration(metav1.Now().Sub(timestamp.Time))
 }

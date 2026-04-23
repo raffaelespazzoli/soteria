@@ -85,8 +85,9 @@ func TestDRExecutionReconciler_ResumeInProgress_EmitsEvent(t *testing.T) {
 			SecondarySite:          "dc-east",
 		},
 		Status: soteriav1alpha1.DRPlanStatus{
-			Phase:      soteriav1alpha1.PhaseFailingOver,
-			ActiveSite: "dc-west",
+			Phase:           soteriav1alpha1.PhaseSteadyState,
+			ActiveSite:      "dc-west",
+			ActiveExecution: "exec-resume",
 		},
 	}
 
@@ -204,13 +205,20 @@ func TestDRExecutionReconciler_NewExecution_NormalPath(t *testing.T) {
 		t.Error("expected StartTime to be set for new execution")
 	}
 
-	// Verify plan phase was advanced to FailingOver (from SteadyState).
+	// Verify plan phase stays at rest state and ActiveExecution is set.
 	var updatedPlan soteriav1alpha1.DRPlan
 	if err := cl.Get(context.Background(), client.ObjectKey{Name: "plan-1"}, &updatedPlan); err != nil {
 		t.Fatalf("fetching plan: %v", err)
 	}
-	if updatedPlan.Status.Phase != soteriav1alpha1.PhaseFailingOver {
-		t.Errorf("expected plan phase FailingOver, got %q", updatedPlan.Status.Phase)
+	if updatedPlan.Status.Phase != soteriav1alpha1.PhaseSteadyState {
+		t.Errorf("expected plan phase SteadyState (rest), got %q", updatedPlan.Status.Phase)
+	}
+	if updatedPlan.Status.ActiveExecution != "exec-new" {
+		t.Errorf("expected ActiveExecution %q, got %q", "exec-new", updatedPlan.Status.ActiveExecution)
+	}
+	if updatedPlan.Status.ActiveExecutionMode != soteriav1alpha1.ExecutionModePlannedMigration {
+		t.Errorf("expected ActiveExecutionMode %q, got %q",
+			soteriav1alpha1.ExecutionModePlannedMigration, updatedPlan.Status.ActiveExecutionMode)
 	}
 }
 

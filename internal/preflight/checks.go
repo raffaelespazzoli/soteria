@@ -60,6 +60,7 @@ func ComposeReport(input CompositionInput, now metav1.Time) *soteriav1alpha1.Pre
 		report.PrimarySite = input.Plan.Spec.PrimarySite
 		report.SecondarySite = input.Plan.Spec.SecondarySite
 		report.ActiveSite = input.Plan.Status.ActiveSite
+		report.ActiveExecution = input.Plan.Status.ActiveExecution
 	}
 
 	if input.DiscoveryResult != nil {
@@ -151,6 +152,11 @@ func buildChunkIndex(cr *engine.ChunkResult) map[string][]engine.DRGroupChunk {
 
 func collectWarnings(input CompositionInput) []string {
 	var warnings []string
+
+	if input.Plan != nil && input.Plan.Status.ActiveExecution != "" {
+		warnings = append(warnings, fmt.Sprintf(
+			"execution %s is active; new execution blocked", input.Plan.Status.ActiveExecution))
+	}
 
 	for key, backend := range input.StorageBackends {
 		switch backend {

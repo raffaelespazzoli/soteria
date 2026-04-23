@@ -27,7 +27,7 @@ func TestDetectDRPlanCriticalFields_PhaseChange(t *testing.T) {
 		Status: soteriav1alpha1.DRPlanStatus{Phase: soteriav1alpha1.PhaseSteadyState, ActiveSite: "dc-west"},
 	}
 	updated := &soteriav1alpha1.DRPlan{
-		Status: soteriav1alpha1.DRPlanStatus{Phase: soteriav1alpha1.PhaseFailingOver, ActiveSite: "dc-west"},
+		Status: soteriav1alpha1.DRPlanStatus{Phase: soteriav1alpha1.PhaseFailedOver, ActiveSite: "dc-west"},
 	}
 	if !detectDRPlanCriticalFields(old, updated) {
 		t.Error("expected critical=true when phase changes")
@@ -43,6 +43,25 @@ func TestDetectDRPlanCriticalFields_ActiveSiteChange(t *testing.T) {
 	}
 	if !detectDRPlanCriticalFields(old, updated) {
 		t.Error("expected critical=true when activeSite changes")
+	}
+}
+
+func TestDetectDRPlanCriticalFields_ActiveExecutionChange(t *testing.T) {
+	old := &soteriav1alpha1.DRPlan{
+		Status: soteriav1alpha1.DRPlanStatus{
+			Phase:      soteriav1alpha1.PhaseSteadyState,
+			ActiveSite: "dc-west",
+		},
+	}
+	updated := &soteriav1alpha1.DRPlan{
+		Status: soteriav1alpha1.DRPlanStatus{
+			Phase:           soteriav1alpha1.PhaseSteadyState,
+			ActiveSite:      "dc-west",
+			ActiveExecution: "exec-failover-1",
+		},
+	}
+	if !detectDRPlanCriticalFields(old, updated) {
+		t.Error("expected critical=true when ActiveExecution changes")
 	}
 }
 

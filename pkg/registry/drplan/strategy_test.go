@@ -106,6 +106,26 @@ func TestPrepareForCreate_SetsActiveSiteToPrimarySite(t *testing.T) {
 	}
 }
 
+func TestPrepareForCreate_InitializesActiveExecution(t *testing.T) {
+	plan := &soteriav1alpha1.DRPlan{
+		Spec: soteriav1alpha1.DRPlanSpec{
+			WaveLabel:              "soteria.io/wave",
+			MaxConcurrentFailovers: 4,
+			PrimarySite:            "dc-west",
+			SecondarySite:          "dc-east",
+		},
+	}
+
+	Strategy.PrepareForCreate(context.Background(), plan)
+
+	if plan.Status.ActiveExecution != "" {
+		t.Errorf("expected ActiveExecution = \"\", got %q", plan.Status.ActiveExecution)
+	}
+	if plan.Status.ActiveExecutionMode != "" {
+		t.Errorf("expected ActiveExecutionMode = \"\", got %q", plan.Status.ActiveExecutionMode)
+	}
+}
+
 func TestPrepareForUpdate_PreservesStatus(t *testing.T) {
 	oldPlan := &soteriav1alpha1.DRPlan{
 		Spec: soteriav1alpha1.DRPlanSpec{

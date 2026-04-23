@@ -42,7 +42,7 @@ func NewREST(
 		CreateStrategy: Strategy,
 		UpdateStrategy: Strategy,
 		DeleteStrategy: Strategy,
-		TableConvertor: rest.NewDefaultTableConvertor(soteriav1alpha1.Resource("drplans")),
+		TableConvertor: DRPlanTableConvertor{},
 	}
 
 	options := &generic.StoreOptions{

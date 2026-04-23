@@ -17,6 +17,7 @@ limitations under the License.
 package preflight
 
 import (
+	"slices"
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -465,5 +466,59 @@ func TestComposeReport_SiteTopologyFields(t *testing.T) {
 	}
 	if report.ActiveSite != "dc-west" {
 		t.Errorf("ActiveSite = %q, want %q", report.ActiveSite, "dc-west")
+	}
+}
+
+func TestComposeReport_ActiveExecution(t *testing.T) {
+	now := metav1.Now()
+	input := CompositionInput{
+		Plan: &soteriav1alpha1.DRPlan{
+			Spec: soteriav1alpha1.DRPlanSpec{
+				PrimarySite:   "dc-west",
+				SecondarySite: "dc-east",
+			},
+			Status: soteriav1alpha1.DRPlanStatus{
+				ActiveSite:      "dc-west",
+				ActiveExecution: "exec-failover-1",
+			},
+		},
+	}
+
+	report := ComposeReport(input, now)
+
+	if report.ActiveExecution != "exec-failover-1" {
+		t.Errorf("ActiveExecution = %q, want %q", report.ActiveExecution, "exec-failover-1")
+	}
+
+	hasWarning := slices.Contains(report.Warnings, "execution exec-failover-1 is active; new execution blocked")
+	if !hasWarning {
+		t.Errorf("expected active execution warning, got %v", report.Warnings)
+	}
+}
+
+func TestComposeReport_NoActiveExecution_NoWarning(t *testing.T) {
+	now := metav1.Now()
+	input := CompositionInput{
+		Plan: &soteriav1alpha1.DRPlan{
+			Spec: soteriav1alpha1.DRPlanSpec{
+				PrimarySite:   "dc-west",
+				SecondarySite: "dc-east",
+			},
+			Status: soteriav1alpha1.DRPlanStatus{
+				ActiveSite: "dc-west",
+			},
+		},
+	}
+
+	report := ComposeReport(input, now)
+
+	if report.ActiveExecution != "" {
+		t.Errorf("ActiveExecution = %q, want empty", report.ActiveExecution)
+	}
+
+	for _, w := range report.Warnings {
+		if w == "execution  is active; new execution blocked" {
+			t.Error("should not emit active execution warning when no active execution")
+		}
 	}
 }

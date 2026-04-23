@@ -115,6 +115,37 @@ func IsTerminalPhase(phase string) bool {
 	return terminalPhases[phase]
 }
 
+// EffectivePhase derives the transient phase from a rest state and the active
+// execution mode. When mode is empty (idle), returns the rest phase unchanged.
+// When mode is non-empty, looks up the transient phase via validTransitions.
+// Returns restPhase if the combination is unknown.
+func EffectivePhase(restPhase string, activeExecMode soteriav1alpha1.ExecutionMode) string {
+	if activeExecMode == "" {
+		return restPhase
+	}
+	modes, ok := validTransitions[restPhase]
+	if !ok {
+		return restPhase
+	}
+	transient, ok := modes[activeExecMode]
+	if !ok {
+		return restPhase
+	}
+	return transient
+}
+
+// RestStateAfterCompletion chains Transition + CompleteTransition to go directly
+// from a rest state to the next rest state given an execution mode. This avoids
+// exposing transient phases outside the state machine — callers never need to
+// know the intermediate transient phase.
+func RestStateAfterCompletion(currentRestPhase string, mode soteriav1alpha1.ExecutionMode) (string, error) {
+	transient, err := Transition(currentRestPhase, mode)
+	if err != nil {
+		return "", err
+	}
+	return CompleteTransition(transient)
+}
+
 // ActiveSiteForPhase returns the expected activeSite for a given lifecycle
 // phase. Phases where workloads reside on the primary site return primarySite;
 // phases where workloads reside on the secondary site return secondarySite.

@@ -211,8 +211,8 @@ func TestAPIServer_DRPlan_StatusSubresource(t *testing.T) {
 
 	// Update status subresource
 	created.Object["status"] = map[string]any{
-		"phase":      soteriav1alpha1.PhaseFailingOver,
-		"activeSite": "dc-west",
+		"phase":      soteriav1alpha1.PhaseFailedOver,
+		"activeSite": "dc-east",
 	}
 	statusUpdated, err := client.Resource(drplanGVR()).UpdateStatus(ctx, created, metav1.UpdateOptions{})
 	if err != nil {
@@ -220,8 +220,8 @@ func TestAPIServer_DRPlan_StatusSubresource(t *testing.T) {
 	}
 
 	phase, _, _ := unstructured.NestedString(statusUpdated.Object, "status", "phase")
-	if phase != soteriav1alpha1.PhaseFailingOver {
-		t.Errorf("expected phase %s, got %s", soteriav1alpha1.PhaseFailingOver, phase)
+	if phase != soteriav1alpha1.PhaseFailedOver {
+		t.Errorf("expected phase %s, got %s", soteriav1alpha1.PhaseFailedOver, phase)
 	}
 
 	// Verify spec was preserved during status update

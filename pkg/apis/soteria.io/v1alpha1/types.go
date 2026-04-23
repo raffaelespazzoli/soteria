@@ -79,9 +79,20 @@ type DRPlanSpec struct {
 }
 
 type DRPlanStatus struct {
-	// Phase represents the current DR lifecycle state.
-	// Valid values: SteadyState, FailingOver, FailedOver, Reprotecting, DRedSteadyState, FailingBack, FailedBack, ReprotectingBack
+	// Phase represents the current DR lifecycle rest state. Only rest-state
+	// values are persisted; transient phases are derived at runtime via
+	// engine.EffectivePhase(Phase, ActiveExecution mode).
+	// Valid values: SteadyState, FailedOver, DRedSteadyState, FailedBack
 	Phase string `json:"phase,omitempty"`
+	// ActiveExecution is the name of the in-progress DRExecution, or empty
+	// when no execution is running. Set by the reconciler on execution start
+	// and cleared on completion or failure. Acts as an explicit concurrency
+	// guard — the admission webhook rejects new executions while non-empty.
+	ActiveExecution string `json:"activeExecution,omitempty"`
+	// ActiveExecutionMode is the mode of the active execution, stored
+	// alongside ActiveExecution so the table convertor can compute the
+	// effective phase without an extra DRExecution GET.
+	ActiveExecutionMode ExecutionMode `json:"activeExecutionMode,omitempty"`
 	// ActiveSite tracks which cluster currently owns the active workloads.
 	// Set to PrimarySite on creation; flipped to SecondarySite on failover
 	// completion and back to PrimarySite on failback completion.
@@ -110,6 +121,9 @@ type PreflightReport struct {
 	SecondarySite string `json:"secondarySite,omitempty"`
 	// ActiveSite is the cluster currently owning the active workloads.
 	ActiveSite string `json:"activeSite,omitempty"`
+	// ActiveExecution is the name of the in-progress DRExecution, or empty
+	// when idle. When non-empty, a warning is added to the report.
+	ActiveExecution string `json:"activeExecution,omitempty"`
 	// Waves contains per-wave composition summaries.
 	// +listType=atomic
 	Waves []PreflightWave `json:"waves,omitempty"`
