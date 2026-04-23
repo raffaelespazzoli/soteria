@@ -69,6 +69,7 @@ type DRPlanSpec struct {
 	// WaveLabel is the label key used to assign VMs to execution waves.
 	WaveLabel string `json:"waveLabel"`
 	// MaxConcurrentFailovers limits concurrent VM failovers per wave chunk.
+	// +kubebuilder:validation:Minimum=1
 	MaxConcurrentFailovers int `json:"maxConcurrentFailovers"`
 	// PrimarySite is the cluster name that originally owns the active workloads.
 	// Immutable after creation.
@@ -83,6 +84,7 @@ type DRPlanStatus struct {
 	// values are persisted; transient phases are derived at runtime via
 	// engine.EffectivePhase(Phase, ActiveExecution mode).
 	// Valid values: SteadyState, FailedOver, DRedSteadyState, FailedBack
+	// +kubebuilder:validation:Enum=SteadyState;FailedOver;DRedSteadyState;FailedBack
 	Phase string `json:"phase,omitempty"`
 	// ActiveExecution is the name of the in-progress DRExecution, or empty
 	// when no execution is running. Set by the reconciler on execution start
@@ -92,6 +94,7 @@ type DRPlanStatus struct {
 	// ActiveExecutionMode is the mode of the active execution, stored
 	// alongside ActiveExecution so the table convertor can compute the
 	// effective phase without an extra DRExecution GET.
+	// +kubebuilder:validation:Enum=planned_migration;disaster;reprotect
 	ActiveExecutionMode ExecutionMode `json:"activeExecutionMode,omitempty"`
 	// ActiveSite tracks which cluster currently owns the active workloads.
 	// Set to PrimarySite on creation; flipped to SecondarySite on failover
@@ -215,6 +218,7 @@ type VolumeGroupHealth struct {
 	// Namespace is the Kubernetes namespace for VMs in this group.
 	Namespace string `json:"namespace"`
 	// Health is the replication health status.
+	// +kubebuilder:validation:Enum=Healthy;Degraded;Syncing;Error;Unknown
 	Health VolumeGroupHealthStatus `json:"health"`
 	// LastSyncTime is when data was last successfully synchronized.
 	LastSyncTime *metav1.Time `json:"lastSyncTime,omitempty"`
@@ -246,6 +250,7 @@ type VolumeGroupInfo struct {
 	// Namespace is the Kubernetes namespace for VMs in this group.
 	Namespace string `json:"namespace"`
 	// ConsistencyLevel indicates whether this is a namespace- or VM-level group.
+	// +kubebuilder:validation:Enum=namespace;vm
 	ConsistencyLevel ConsistencyLevel `json:"consistencyLevel"`
 	// VMNames lists the VMs belonging to this volume group.
 	// +kubebuilder:validation:MinItems=1
@@ -315,11 +320,13 @@ type DRExecutionSpec struct {
 	// PlanName references the DRPlan being executed.
 	PlanName string `json:"planName"`
 	// Mode specifies the execution type — chosen at runtime, not on the plan.
+	// +kubebuilder:validation:Enum=planned_migration;disaster;reprotect
 	Mode ExecutionMode `json:"mode"`
 }
 
 type DRExecutionStatus struct {
 	// Result is the overall execution outcome.
+	// +kubebuilder:validation:Enum=Succeeded;PartiallySucceeded;Failed
 	Result ExecutionResult `json:"result,omitempty"`
 	// Waves contains per-wave execution status.
 	Waves []WaveStatus `json:"waves,omitempty"`
@@ -346,6 +353,7 @@ type DRGroupExecutionStatus struct {
 	// Name identifies this DRGroup within the wave.
 	Name string `json:"name"`
 	// Result is the outcome of this DRGroup.
+	// +kubebuilder:validation:Enum=Pending;InProgress;Completed;Failed
 	Result DRGroupResult `json:"result,omitempty"`
 	// VMNames lists VMs in this DRGroup.
 	VMNames []string `json:"vmNames,omitempty"`
@@ -393,6 +401,7 @@ type DRGroupStatusSpec struct {
 
 type DRGroupStatusState struct {
 	// Phase is the current processing state.
+	// +kubebuilder:validation:Enum=Pending;InProgress;Completed;Failed
 	Phase DRGroupResult `json:"phase,omitempty"`
 	// Conditions represent the latest observations.
 	Conditions []metav1.Condition `json:"conditions,omitempty"`

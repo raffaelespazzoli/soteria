@@ -4,7 +4,7 @@ user_name: 'Raffa'
 date: '2026-04-06'
 sections_completed: ['technology_stack', 'language_rules', 'framework_rules', 'testing_rules', 'code_quality', 'workflow_rules', 'critical_rules']
 status: 'complete'
-rule_count: 82
+rule_count: 88
 optimized_for_llm: true
 ---
 
@@ -77,6 +77,13 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 - No in-memory state across reconcile calls — use CRD status or ScyllaDB
 - CRD status conditions: always `metav1.Condition` — no custom condition types
 - CRD JSON fields: camelCase — `waveLabel`, `maxConcurrentFailovers`
+- CRD field markers — defaulting, validation, and optionality:
+  - Zero-value defaults (empty string, 0, false): no `+kubebuilder:default`, use `omitempty` — Go zero value is the default
+  - Non-zero defaults: use `+kubebuilder:default=<value>`, no `omitempty` — field always appears in serialized output
+  - Enumerated string fields: add `+kubebuilder:validation:Enum` listing all valid values
+  - Numeric ranges / string lengths: use `+kubebuilder:validation:Minimum`/`Maximum` or `MinLength`/`MaxLength`
+  - Regex-constrained strings: use `+kubebuilder:validation:Pattern`
+  - Mandatory fields without defaults: use `+kubebuilder:validation:Required` — exception: Spec struct fields are implicitly required (no `omitempty`, programmatic validation in `validation.go`)
 - Labels/annotations: `soteria.io/<key>` kebab-case — `soteria.io/drplan`, `soteria.io/wave`
 - Event reasons: PascalCase past-tense — `FailoverStarted`, `WaveCompleted`, `GroupFailed`
 - RBAC: Kubernetes-native only — no custom authorization logic
@@ -303,4 +310,4 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 - Review periodically for outdated rules
 - Remove rules that become obvious over time
 
-Last Updated: 2026-04-20
+Last Updated: 2026-04-23
