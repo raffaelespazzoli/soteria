@@ -1,0 +1,109 @@
+# Example DRExecution: a completed planned migration for the erp-full-stack plan.
+#
+# DRExecution is an immutable audit record. Once created, the spec cannot change.
+# Once the result reaches Succeeded or Failed, the status is frozen and the record
+# cannot be deleted — it serves as compliance evidence (FR41).
+#
+# The soteria.io/plan-name label is set by the controller at execution start,
+# enabling history queries: kubectl get drexecutions -l soteria.io/plan-name=erp-full-stack
+apiVersion: soteria.io/v1alpha1
+kind: DRExecution
+metadata:
+  name: erp-full-stack-planned-20260420
+  labels:
+    # Set by the DRExecution controller; enables per-plan history queries (FR42).
+    soteria.io/plan-name: erp-full-stack
+spec:
+  # References the DRPlan being executed. Immutable after creation.
+  planName: erp-full-stack
+  # Execution mode: planned_migration, disaster, or reprotect.
+  mode: planned_migration
+status:
+  # Overall outcome: Succeeded, PartiallySucceeded, or Failed.
+  result: Succeeded
+  startTime: "2026-04-20T10:00:00Z"
+  completionTime: "2026-04-20T10:02:35Z"
+  waves:
+    - waveIndex: 0
+      startTime: "2026-04-20T10:00:01Z"
+      completionTime: "2026-04-20T10:01:15Z"
+      groups:
+        - name: ns-erp-database
+          result: Completed
+          vmNames: ["db-primary", "db-replica"]
+          retryCount: 0
+          startTime: "2026-04-20T10:00:01Z"
+          completionTime: "2026-04-20T10:01:10Z"
+          steps:
+            - name: StopReplication
+              status: Completed
+              timestamp: "2026-04-20T10:00:05Z"
+            - name: PromoteVolume
+              status: Completed
+              timestamp: "2026-04-20T10:00:30Z"
+            - name: StartVM
+              status: Completed
+              timestamp: "2026-04-20T10:01:10Z"
+        - name: ns-erp-cache
+          result: Completed
+          vmNames: ["cache-01"]
+          retryCount: 0
+          startTime: "2026-04-20T10:00:01Z"
+          completionTime: "2026-04-20T10:00:50Z"
+          steps:
+            - name: StopReplication
+              status: Completed
+              timestamp: "2026-04-20T10:00:03Z"
+            - name: PromoteVolume
+              status: Completed
+              timestamp: "2026-04-20T10:00:25Z"
+            - name: StartVM
+              status: Completed
+              timestamp: "2026-04-20T10:00:50Z"
+    - waveIndex: 1
+      startTime: "2026-04-20T10:01:16Z"
+      completionTime: "2026-04-20T10:02:35Z"
+      groups:
+        - name: ns-erp-appserver
+          result: Completed
+          vmNames: ["app-01", "app-02"]
+          retryCount: 0
+          startTime: "2026-04-20T10:01:16Z"
+          completionTime: "2026-04-20T10:02:30Z"
+          steps:
+            - name: StopReplication
+              status: Completed
+              timestamp: "2026-04-20T10:01:20Z"
+            - name: PromoteVolume
+              status: Completed
+              timestamp: "2026-04-20T10:01:50Z"
+            - name: StartVM
+              status: Completed
+              timestamp: "2026-04-20T10:02:30Z"
+        - name: ns-erp-webserver
+          result: Completed
+          vmNames: ["web-01"]
+          retryCount: 0
+          startTime: "2026-04-20T10:01:16Z"
+          completionTime: "2026-04-20T10:02:00Z"
+          steps:
+            - name: StopReplication
+              status: Completed
+              timestamp: "2026-04-20T10:01:18Z"
+            - name: PromoteVolume
+              status: Completed
+              timestamp: "2026-04-20T10:01:40Z"
+            - name: StartVM
+              status: Completed
+              timestamp: "2026-04-20T10:02:00Z"
+  conditions:
+    - type: Progressing
+      status: "True"
+      reason: ExecutionStarted
+      message: "Execution started for plan erp-full-stack in planned_migration mode"
+      lastTransitionTime: "2026-04-20T10:00:00Z"
+    - type: Step0Complete
+      status: "True"
+      reason: PreExecutionCompleted
+      message: "Step 0 completed successfully"
+      lastTransitionTime: "2026-04-20T10:00:01Z"

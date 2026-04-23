@@ -21,6 +21,8 @@ import (
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/apimachinery/pkg/labels"
 
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
 )
@@ -165,5 +167,60 @@ func TestStatusStrategy_EmptyResult_AllowsUpdate(t *testing.T) {
 	errs := StatusStrategy.ValidateUpdate(context.Background(), newExec, oldExec)
 	if len(errs) != 0 {
 		t.Errorf("expected no errors for empty result → update (execution in progress), got: %v", errs)
+	}
+}
+
+// --- Field selector tests (Story 5.4) ---
+
+func TestGetAttrs_IncludesSpecPlanName(t *testing.T) {
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "exec-fs"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "erp-full-stack",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+	}
+
+	_, flds, err := GetAttrs(exec)
+	if err != nil {
+		t.Fatalf("GetAttrs returned error: %v", err)
+	}
+
+	if flds["spec.planName"] != "erp-full-stack" {
+		t.Errorf("expected spec.planName=erp-full-stack, got %q", flds["spec.planName"])
+	}
+}
+
+func TestMatchDRExecution_FieldSelector_PlanName(t *testing.T) {
+	execA := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "exec-a"},
+		Spec:       soteriav1alpha1.DRExecutionSpec{PlanName: "plan-a"},
+	}
+	execB := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "exec-b"},
+		Spec:       soteriav1alpha1.DRExecutionSpec{PlanName: "plan-b"},
+	}
+
+	sel, err := fields.ParseSelector("spec.planName=plan-a")
+	if err != nil {
+		t.Fatalf("parsing field selector: %v", err)
+	}
+
+	pred := MatchDRExecution(labels.Everything(), sel)
+
+	matchA, err := pred.Matches(execA)
+	if err != nil {
+		t.Fatalf("matching exec-a: %v", err)
+	}
+	if !matchA {
+		t.Error("exec-a should match spec.planName=plan-a")
+	}
+
+	matchB, err := pred.Matches(execB)
+	if err != nil {
+		t.Fatalf("matching exec-b: %v", err)
+	}
+	if matchB {
+		t.Error("exec-b should not match spec.planName=plan-a")
 	}
 }

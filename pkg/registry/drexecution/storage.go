@@ -18,9 +18,13 @@ package drexecution
 
 import (
 	"context"
+	"fmt"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metainternalversion "k8s.io/apimachinery/pkg/apis/meta/internalversion"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/duration"
 	"k8s.io/apiserver/pkg/registry/generic"
 	genericregistry "k8s.io/apiserver/pkg/registry/generic/registry"
 	"k8s.io/apiserver/pkg/registry/rest"
@@ -32,7 +36,8 @@ import (
 // NewREST creates the REST storage for DRExecution.
 func NewREST(
 	scheme *runtime.Scheme, optsGetter generic.RESTOptionsGetter,
-) (*genericregistry.Store, *StatusREST, error) {
+) (*AuditProtectedREST, *StatusREST, error) {
+	tc := DRExecutionTableConvertor{}
 	store := &genericregistry.Store{
 		NewFunc:                   func() runtime.Object { return &soteriav1alpha1.DRExecution{} },
 		NewListFunc:               func() runtime.Object { return &soteriav1alpha1.DRExecutionList{} },
@@ -42,7 +47,7 @@ func NewREST(
 		CreateStrategy: Strategy,
 		UpdateStrategy: Strategy,
 		DeleteStrategy: Strategy,
-		TableConvertor: rest.NewDefaultTableConvertor(soteriav1alpha1.Resource("drexecutions")),
+		TableConvertor: tc,
 	}
 
 	options := &generic.StoreOptions{
@@ -56,7 +61,59 @@ func NewREST(
 	statusStore := *store
 	statusStore.UpdateStrategy = StatusStrategy
 
-	return store, &StatusREST{store: &statusStore}, nil
+	return &AuditProtectedREST{Store: store}, &StatusREST{store: &statusStore}, nil
+}
+
+// AuditProtectedREST wraps the generic store to block deletion of completed
+// DRExecution audit records. Completed executions (Succeeded, Failed, or
+// PartiallySucceeded) cannot be deleted — they serve as compliance evidence
+// (FR41). In-progress executions (Result == "") can be deleted for cleanup.
+type AuditProtectedREST struct {
+	*genericregistry.Store
+}
+
+func (r *AuditProtectedREST) Delete(
+	ctx context.Context, name string,
+	deleteValidation rest.ValidateObjectFunc, options *metav1.DeleteOptions,
+) (runtime.Object, bool, error) {
+	wrappedValidation := wrapAuditValidation(deleteValidation)
+	return r.Store.Delete(ctx, name, wrappedValidation, options)
+}
+
+func (r *AuditProtectedREST) DeleteCollection(
+	ctx context.Context, deleteValidation rest.ValidateObjectFunc,
+	options *metav1.DeleteOptions, listOptions *metainternalversion.ListOptions,
+) (runtime.Object, error) {
+	wrappedValidation := wrapAuditValidation(deleteValidation)
+	return r.Store.DeleteCollection(ctx, wrappedValidation, options, listOptions)
+}
+
+// wrapAuditValidation chains the caller-supplied deleteValidation (may be nil)
+// with the audit-record guard. The resulting function runs inside the store's
+// delete transaction, eliminating the TOCTOU window that would exist with a
+// separate pre-check Get.
+func wrapAuditValidation(deleteValidation rest.ValidateObjectFunc) rest.ValidateObjectFunc {
+	return rest.ValidateObjectFunc(func(ctx context.Context, obj runtime.Object) error {
+		if deleteValidation != nil {
+			if err := deleteValidation(ctx, obj); err != nil {
+				return err
+			}
+		}
+		return validateAuditDelete(obj)
+	})
+}
+
+func validateAuditDelete(obj runtime.Object) error {
+	exec, ok := obj.(*soteriav1alpha1.DRExecution)
+	if !ok {
+		return nil
+	}
+	if exec.Status.Result != "" {
+		return apierrors.NewForbidden(
+			soteriav1alpha1.Resource("drexecutions"), exec.Name,
+			fmt.Errorf("completed DRExecution audit records cannot be deleted (FR41)"))
+	}
+	return nil
 }
 
 // StatusREST implements the REST endpoint for the DRExecution status subresource.
@@ -88,4 +145,67 @@ func (r *StatusREST) ConvertToTable(
 	ctx context.Context, object runtime.Object, tableOptions runtime.Object,
 ) (*metav1.Table, error) {
 	return r.store.ConvertToTable(ctx, object, tableOptions)
+}
+
+// ---------- Custom table convertor ----------
+
+// DRExecutionTableConvertor produces rich kubectl columns:
+// NAME, PLAN, MODE, RESULT, DURATION, AGE.
+type DRExecutionTableConvertor struct{}
+
+var execTableColumns = []metav1.TableColumnDefinition{
+	{Name: "Name", Type: "string", Format: "name"},
+	{Name: "Plan", Type: "string"},
+	{Name: "Mode", Type: "string"},
+	{Name: "Result", Type: "string"},
+	{Name: "Duration", Type: "string"},
+	{Name: "Age", Type: "string"},
+}
+
+func (DRExecutionTableConvertor) ConvertToTable(
+	_ context.Context, object runtime.Object, _ runtime.Object,
+) (*metav1.Table, error) {
+	table := &metav1.Table{ColumnDefinitions: execTableColumns}
+
+	switch obj := object.(type) {
+	case *soteriav1alpha1.DRExecution:
+		table.Rows = append(table.Rows, execToRow(obj))
+	case *soteriav1alpha1.DRExecutionList:
+		for i := range obj.Items {
+			table.Rows = append(table.Rows, execToRow(&obj.Items[i]))
+		}
+	}
+
+	return table, nil
+}
+
+func execToRow(exec *soteriav1alpha1.DRExecution) metav1.TableRow {
+	return metav1.TableRow{
+		Object: runtime.RawExtension{Object: exec},
+		Cells: []any{
+			exec.Name,
+			exec.Spec.PlanName,
+			string(exec.Spec.Mode),
+			string(exec.Status.Result),
+			execDuration(exec),
+			translateTimestampSince(exec.CreationTimestamp),
+		},
+	}
+}
+
+func execDuration(exec *soteriav1alpha1.DRExecution) string {
+	if exec.Status.StartTime == nil || exec.Status.CompletionTime == nil {
+		return ""
+	}
+	d := exec.Status.CompletionTime.Sub(exec.Status.StartTime.Time)
+	return duration.HumanDuration(d)
+}
+
+const unknownTimestamp = "<unknown>"
+
+func translateTimestampSince(timestamp metav1.Time) string {
+	if timestamp.IsZero() {
+		return unknownTimestamp
+	}
+	return duration.HumanDuration(metav1.Now().Sub(timestamp.Time))
 }

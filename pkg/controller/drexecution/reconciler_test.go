@@ -289,3 +289,118 @@ func TestResetInFlightGroup_OutOfBounds(t *testing.T) {
 	// Should not panic on out-of-bounds wave index.
 	r.resetInFlightGroup(exec, 5, "nonexistent")
 }
+
+func TestDRExecutionReconciler_PlanNameLabel_SetOnFirstReconcile(t *testing.T) {
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "exec-label"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "erp-full-stack",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+	}
+
+	plan := &soteriav1alpha1.DRPlan{
+		ObjectMeta: metav1.ObjectMeta{Name: "erp-full-stack"},
+		Spec: soteriav1alpha1.DRPlanSpec{
+			WaveLabel:              "soteria.io/wave",
+			MaxConcurrentFailovers: 4,
+			PrimarySite:            "dc-west",
+			SecondarySite:          "dc-east",
+		},
+		Status: soteriav1alpha1.DRPlanStatus{
+			Phase:      soteriav1alpha1.PhaseSteadyState,
+			ActiveSite: "dc-west",
+		},
+	}
+
+	cl := newTestClient(exec, plan)
+
+	r := &DRExecutionReconciler{
+		Client:         cl,
+		Scheme:         newTestScheme(),
+		ResumeAnalyzer: &engine.ResumeAnalyzer{},
+		Handler:        &engine.NoOpHandler{},
+	}
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "exec-label"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var fetched soteriav1alpha1.DRExecution
+	if err := cl.Get(context.Background(), client.ObjectKey{Name: "exec-label"}, &fetched); err != nil {
+		t.Fatalf("fetching execution: %v", err)
+	}
+
+	if fetched.Labels == nil {
+		t.Fatal("expected labels map to be non-nil")
+	}
+	got := fetched.Labels["soteria.io/plan-name"]
+	if got != "erp-full-stack" {
+		t.Errorf("expected label soteria.io/plan-name=erp-full-stack, got %q", got)
+	}
+	if fetched.Status.StartTime == nil {
+		t.Error("expected StartTime to be set")
+	}
+}
+
+func TestDRExecutionReconciler_PlanNameLabel_Idempotent(t *testing.T) {
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "exec-label-idem",
+			Labels: map[string]string{
+				"soteria.io/plan-name": "erp-full-stack",
+			},
+		},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "erp-full-stack",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+	}
+
+	plan := &soteriav1alpha1.DRPlan{
+		ObjectMeta: metav1.ObjectMeta{Name: "erp-full-stack"},
+		Spec: soteriav1alpha1.DRPlanSpec{
+			WaveLabel:              "soteria.io/wave",
+			MaxConcurrentFailovers: 4,
+			PrimarySite:            "dc-west",
+			SecondarySite:          "dc-east",
+		},
+		Status: soteriav1alpha1.DRPlanStatus{
+			Phase:      soteriav1alpha1.PhaseSteadyState,
+			ActiveSite: "dc-west",
+		},
+	}
+
+	cl := newTestClient(exec, plan)
+
+	r := &DRExecutionReconciler{
+		Client:         cl,
+		Scheme:         newTestScheme(),
+		ResumeAnalyzer: &engine.ResumeAnalyzer{},
+		Handler:        &engine.NoOpHandler{},
+	}
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "exec-label-idem"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// The reconciler should still complete setup without issuing a redundant
+	// metadata update. Verify the label is unchanged and StartTime is set.
+	var fetched soteriav1alpha1.DRExecution
+	if err := cl.Get(context.Background(), client.ObjectKey{Name: "exec-label-idem"}, &fetched); err != nil {
+		t.Fatalf("fetching execution: %v", err)
+	}
+
+	if fetched.Labels["soteria.io/plan-name"] != "erp-full-stack" {
+		t.Errorf("label should remain erp-full-stack, got %q", fetched.Labels["soteria.io/plan-name"])
+	}
+	if fetched.Status.StartTime == nil {
+		t.Error("expected StartTime to be set")
+	}
+}

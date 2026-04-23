@@ -113,6 +113,7 @@ func GetAttrs(obj runtime.Object) (labels.Set, fields.Set, error) {
 	}
 	return exec.Labels, fields.Set{
 		"metadata.name": exec.Name,
+		"spec.planName": exec.Spec.PlanName,
 	}, nil
 }
 

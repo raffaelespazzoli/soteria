@@ -161,6 +161,10 @@ func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		logger.Info("Set ActiveExecution on DRPlan",
 			"plan", plan.Name, "activeExecution", exec.Name, "phase", previousPhase)
 
+		if err := r.ensurePlanNameLabel(ctx, &exec, req.NamespacedName); err != nil {
+			return ctrl.Result{}, err
+		}
+
 		now := metav1.Now()
 		execPatch := client.MergeFrom(exec.DeepCopy())
 		exec.Status.StartTime = &now
@@ -177,18 +181,10 @@ func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			return ctrl.Result{}, err
 		}
 
-		eventReason, eventAction, eventVerb := "FailoverStarted", "FailoverAction", "Failover"
-		switch targetPhase {
-		case soteriav1alpha1.PhaseFailingBack:
-			eventReason, eventAction, eventVerb = "FailbackStarted", "FailbackAction", "Failback"
-		case soteriav1alpha1.PhaseReprotecting:
-			eventReason, eventAction, eventVerb = "ReprotectStarted", "ReprotectAction", "Reprotect"
-		case soteriav1alpha1.PhaseReprotectingBack:
-			eventReason, eventAction, eventVerb = "RestoreStarted", "RestoreAction", "Restore"
-		}
-		r.event(&plan, corev1.EventTypeNormal, eventReason, eventAction,
+		reason, action, verb := startEventFields(targetPhase)
+		r.event(&plan, corev1.EventTypeNormal, reason, action,
 			fmt.Sprintf("%s started for plan %s in %s mode via execution %s",
-				eventVerb, plan.Name, exec.Spec.Mode, exec.Name))
+				verb, plan.Name, exec.Spec.Mode, exec.Name))
 
 		logger.Info("DRExecution setup complete",
 			"plan", plan.Name, "mode", exec.Spec.Mode, "effectivePhase", targetPhase)
@@ -930,6 +926,45 @@ func (r *DRExecutionReconciler) recordExecutionMetrics(exec *soteriav1alpha1.DRE
 	durationSeconds := exec.Status.CompletionTime.Sub(exec.Status.StartTime.Time).Seconds()
 	metrics.RecordExecutionCompletion(
 		string(exec.Spec.Mode), string(exec.Status.Result), durationSeconds)
+}
+
+func startEventFields(phase string) (reason, action, verb string) {
+	switch phase {
+	case soteriav1alpha1.PhaseFailingBack:
+		return "FailbackStarted", "FailbackAction", "Failback"
+	case soteriav1alpha1.PhaseReprotecting:
+		return "ReprotectStarted", "ReprotectAction", "Reprotect"
+	case soteriav1alpha1.PhaseReprotectingBack:
+		return "RestoreStarted", "RestoreAction", "Restore"
+	default:
+		return "FailoverStarted", "FailoverAction", "Failover"
+	}
+}
+
+// ensurePlanNameLabel sets soteria.io/plan-name on the DRExecution for
+// history queries (FR42). The label is metadata, updated via r.Update,
+// then re-fetched to pick up the new resourceVersion before the status
+// update that sets StartTime. Skips the update if the label already matches.
+func (r *DRExecutionReconciler) ensurePlanNameLabel(
+	ctx context.Context, exec *soteriav1alpha1.DRExecution, key client.ObjectKey,
+) error {
+	if exec.Labels != nil && exec.Labels["soteria.io/plan-name"] == exec.Spec.PlanName {
+		return nil
+	}
+	logger := log.FromContext(ctx).WithValues("drexecution", exec.Name)
+	if exec.Labels == nil {
+		exec.Labels = make(map[string]string)
+	}
+	exec.Labels["soteria.io/plan-name"] = exec.Spec.PlanName
+	if err := r.Update(ctx, exec); err != nil {
+		logger.Error(err, "Failed to set plan-name label", "label", "soteria.io/plan-name")
+		return err
+	}
+	if err := r.Get(ctx, key, exec); err != nil {
+		return err
+	}
+	logger.Info("Set plan-name label", "label", "soteria.io/plan-name", "value", exec.Spec.PlanName)
+	return nil
 }
 
 func (r *DRExecutionReconciler) event(
