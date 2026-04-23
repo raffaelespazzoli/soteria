@@ -47,6 +47,7 @@ import (
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
 	"github.com/soteria-project/soteria/pkg/drivers"
 	"github.com/soteria-project/soteria/pkg/engine"
+	"github.com/soteria-project/soteria/pkg/metrics"
 )
 
 // +kubebuilder:rbac:groups=soteria.io,resources=drexecutions,verbs=get;list;watch;update;patch
@@ -254,6 +255,8 @@ func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 			return ctrl.Result{}, err
 		}
 
+		r.recordExecutionMetrics(&exec)
+
 		r.event(&exec, corev1.EventTypeNormal, "ExecutionCompleted", "WaveExecution",
 			fmt.Sprintf("Execution completed: %s", exec.Status.Result))
 		r.event(&plan, corev1.EventTypeNormal, "ExecutionCompleted", "WaveExecution",
@@ -357,6 +360,8 @@ func (r *DRExecutionReconciler) reconcileReprotect(
 		logger.Error(err, "Failed to update DRExecution result after re-protect")
 		return ctrl.Result{}, err
 	}
+
+	r.recordExecutionMetrics(exec)
 
 	// Emit completion events.
 	r.event(exec, corev1.EventTypeNormal, "ReprotectRoleSetupComplete", "RoleSetup",
@@ -616,6 +621,8 @@ func (r *DRExecutionReconciler) reconcileResume(
 			}
 		}
 
+		r.recordExecutionMetrics(exec)
+
 		r.event(exec, corev1.EventTypeNormal, "ExecutionCompleted", "WaveExecution",
 			fmt.Sprintf("Resumed execution completed: %s", exec.Status.Result))
 	}
@@ -670,6 +677,8 @@ func (r *DRExecutionReconciler) failExecution(
 		logger.Error(err, "Failed to update DRExecution failure status")
 		return ctrl.Result{}, err
 	}
+
+	r.recordExecutionMetrics(exec)
 
 	// Clear ActiveExecution on the plan if this execution owns the pointer.
 	if len(plan) > 0 && plan[0] != nil && plan[0].Status.ActiveExecution == exec.Name {
@@ -910,6 +919,17 @@ func (r *DRExecutionReconciler) resolveVMNamespace(
 		}
 	}
 	return ""
+}
+
+// recordExecutionMetrics observes the failover duration histogram and increments
+// the execution counter when a DRExecution reaches a terminal state.
+func (r *DRExecutionReconciler) recordExecutionMetrics(exec *soteriav1alpha1.DRExecution) {
+	if exec.Status.StartTime == nil || exec.Status.CompletionTime == nil || exec.Status.Result == "" {
+		return
+	}
+	durationSeconds := exec.Status.CompletionTime.Sub(exec.Status.StartTime.Time).Seconds()
+	metrics.RecordExecutionCompletion(
+		string(exec.Spec.Mode), string(exec.Status.Result), durationSeconds)
 }
 
 func (r *DRExecutionReconciler) event(

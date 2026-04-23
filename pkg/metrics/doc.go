@@ -15,4 +15,30 @@ limitations under the License.
 */
 
 // Package metrics exposes Prometheus metrics for Soteria operations.
+//
+// All metrics use the soteria_ prefix, snake_case names, and standard unit
+// suffixes (_total, _seconds) per OpenShift monitoring conventions.
+//
+// # Checkpoint metrics (instrumented by pkg/engine/checkpoint.go)
+//
+//   - soteria_checkpoint_writes_total       CounterVec  (execution, result)   — checkpoint write operations
+//   - soteria_checkpoint_write_duration_seconds  Histogram                    — checkpoint write latency
+//   - soteria_checkpoint_retries_total      Counter                           — checkpoint write retry attempts
+//
+// # Re-protect metrics (instrumented by pkg/engine/reprotect.go)
+//
+//   - soteria_reprotect_duration_seconds          Histogram                   — total re-protect execution time
+//   - soteria_reprotect_vg_setup_duration_seconds Histogram                   — role setup phase duration
+//   - soteria_reprotect_health_polls_total         Counter                    — health poll iterations
+//
+// # DRPlan metrics (instrumented by pkg/controller/drplan)
+//
+//   - soteria_drplan_vms_total              GaugeVec    (plan)                — VMs discovered per DRPlan
+//   - soteria_replication_lag_seconds       GaugeVec    (plan, volume_group)  — estimated RPO per volume group
+//   - soteria_unprotected_vms_total         Gauge                             — cluster-wide unprotected VM count
+//
+// # DRExecution metrics (instrumented by pkg/controller/drexecution)
+//
+//   - soteria_failover_duration_seconds     HistogramVec (mode)               — DR execution duration
+//   - soteria_execution_total               CounterVec   (mode, result)       — completed DR execution count
 package metrics

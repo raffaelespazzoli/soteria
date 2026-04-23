@@ -59,6 +59,7 @@ import (
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
 	"github.com/soteria-project/soteria/pkg/drivers"
 	"github.com/soteria-project/soteria/pkg/engine"
+	"github.com/soteria-project/soteria/pkg/metrics"
 
 	"github.com/soteria-project/soteria/internal/preflight"
 )
@@ -114,6 +115,7 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	if err := r.Get(ctx, req.NamespacedName, &plan); err != nil {
 		if errors.IsNotFound(err) {
 			logger.V(1).Info("DRPlan not found, likely deleted")
+			metrics.DeletePlanMetrics(req.Name)
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
@@ -668,6 +670,20 @@ func (r *DRPlanReconciler) updateStatus(
 		return ctrl.Result{}, err
 	}
 
+	// Record Prometheus metrics after a successful status patch.
+	metrics.RecordPlanVMs(plan.Name, totalVMs)
+	if replicationHealth != nil {
+		entries := buildReplicationLagEntries(replicationHealth)
+		metrics.RecordPlanReplicationHealth(plan.Name, entries)
+	} else {
+		// Health was cleared (e.g. active execution owns drivers) — remove
+		// stale lag series so they don't linger in Prometheus.
+		metrics.RecordPlanReplicationHealth(plan.Name, nil)
+	}
+	if unprotected != nil {
+		metrics.RecordUnprotectedVMs(unprotected.count)
+	}
+
 	if wavesChanged {
 		logger.Info("Discovery completed", "totalVMs", totalVMs, "waves", len(waves))
 		r.event(plan, "Normal", "DiscoveryCompleted",
@@ -735,6 +751,28 @@ func preflightReportChanged(old, new *soteriav1alpha1.PreflightReport) bool {
 	oldCopy.GeneratedAt = nil
 	newCopy.GeneratedAt = nil
 	return !reflect.DeepEqual(oldCopy, newCopy)
+}
+
+// buildReplicationLagEntries converts VolumeGroupHealth slices to metric entries
+// by parsing EstimatedRPO as a Go duration or falling back to time.Since(LastSyncTime).
+func buildReplicationLagEntries(health []soteriav1alpha1.VolumeGroupHealth) []metrics.ReplicationLagEntry {
+	var entries []metrics.ReplicationLagEntry
+	for _, vg := range health {
+		lagSeconds := float64(-1)
+		if d, err := time.ParseDuration(vg.EstimatedRPO); err == nil {
+			lagSeconds = d.Seconds()
+		} else if vg.LastSyncTime != nil {
+			lagSeconds = time.Since(vg.LastSyncTime.Time).Seconds()
+		}
+		if lagSeconds < 0 {
+			continue
+		}
+		entries = append(entries, metrics.ReplicationLagEntry{
+			VolumeGroup: vg.Name,
+			LagSeconds:  lagSeconds,
+		})
+	}
+	return entries
 }
 
 // vmRelevantChangePredicate filters VM events to only those that affect DRPlan

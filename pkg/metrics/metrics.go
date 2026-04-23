@@ -80,7 +80,63 @@ var (
 			Help: "Total number of re-protect health poll iterations",
 		},
 	)
+
+	// DRPlanVMsTotal reports the number of VMs discovered under each DRPlan.
+	DRPlanVMsTotal = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "soteria_drplan_vms_total",
+			Help: "Number of VMs discovered under each DRPlan",
+		},
+		[]string{"plan"},
+	)
+
+	// FailoverDurationSeconds records the duration of DR execution operations.
+	// Buckets span from 1 second to 1 hour.
+	FailoverDurationSeconds = prometheus.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name:    "soteria_failover_duration_seconds",
+			Help:    "Duration of DR execution operations in seconds",
+			Buckets: []float64{1, 5, 10, 30, 60, 120, 300, 600, 1800, 3600},
+		},
+		[]string{"mode"},
+	)
+
+	// ReplicationLagSeconds reports the estimated replication lag (RPO) per
+	// volume group in seconds. Stale series are cleaned via DeletePartialMatch
+	// when volume groups change or a DRPlan is deleted.
+	ReplicationLagSeconds = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "soteria_replication_lag_seconds",
+			Help: "Estimated replication lag (RPO) per volume group in seconds",
+		},
+		[]string{"plan", "volume_group"},
+	)
+
+	// ExecutionTotal counts the total number of completed DR executions.
+	ExecutionTotal = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "soteria_execution_total",
+			Help: "Total number of completed DR executions",
+		},
+		[]string{"mode", "result"},
+	)
+
+	// UnprotectedVMsTotal reports the cluster-wide count of VMs not covered
+	// by any DRPlan.
+	UnprotectedVMsTotal = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "soteria_unprotected_vms_total",
+			Help: "Number of VMs not covered by any DRPlan",
+		},
+	)
 )
+
+// ReplicationLagEntry holds a single volume group's lag for
+// RecordPlanReplicationHealth.
+type ReplicationLagEntry struct {
+	VolumeGroup string
+	LagSeconds  float64
+}
 
 func init() {
 	metrics.Registry.MustRegister(
@@ -90,5 +146,44 @@ func init() {
 		ReprotectDuration,
 		ReprotectVGSetupDuration,
 		ReprotectHealthPollsTotal,
+		DRPlanVMsTotal,
+		FailoverDurationSeconds,
+		ReplicationLagSeconds,
+		ExecutionTotal,
+		UnprotectedVMsTotal,
 	)
+}
+
+// RecordPlanVMs sets the VM count gauge for the given DRPlan.
+func RecordPlanVMs(planName string, count int) {
+	DRPlanVMsTotal.WithLabelValues(planName).Set(float64(count))
+}
+
+// RecordExecutionCompletion observes the execution duration histogram and
+// increments the execution counter for the given mode and result.
+func RecordExecutionCompletion(mode, result string, durationSeconds float64) {
+	FailoverDurationSeconds.WithLabelValues(mode).Observe(durationSeconds)
+	ExecutionTotal.WithLabelValues(mode, result).Inc()
+}
+
+// RecordPlanReplicationHealth deletes stale VG gauge series for the plan,
+// then re-sets each current entry. The delete-and-reset pattern prevents
+// leftover series when volume groups are added or removed.
+func RecordPlanReplicationHealth(planName string, entries []ReplicationLagEntry) {
+	ReplicationLagSeconds.DeletePartialMatch(prometheus.Labels{"plan": planName})
+	for _, e := range entries {
+		ReplicationLagSeconds.WithLabelValues(planName, e.VolumeGroup).Set(e.LagSeconds)
+	}
+}
+
+// RecordUnprotectedVMs sets the cluster-wide unprotected VM gauge.
+func RecordUnprotectedVMs(count int) {
+	UnprotectedVMsTotal.Set(float64(count))
+}
+
+// DeletePlanMetrics removes all gauge series associated with a deleted DRPlan.
+// Counters and histograms accumulate and never need cleanup.
+func DeletePlanMetrics(planName string) {
+	DRPlanVMsTotal.DeletePartialMatch(prometheus.Labels{"plan": planName})
+	ReplicationLagSeconds.DeletePartialMatch(prometheus.Labels{"plan": planName})
 }
