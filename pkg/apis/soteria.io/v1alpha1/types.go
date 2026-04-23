@@ -109,6 +109,10 @@ type DRPlanStatus struct {
 	// every reconcile to give platform engineers visibility into plan structure
 	// before execution.
 	Preflight *PreflightReport `json:"preflight,omitempty"`
+	// ReplicationHealth reports per-volume-group replication status and RPO,
+	// populated by polling storage drivers on each reconcile cycle.
+	// +listType=atomic
+	ReplicationHealth []VolumeGroupHealth `json:"replicationHealth,omitempty"`
 }
 
 // PreflightReport is the pre-flight composition summary for a DRPlan. It
@@ -176,6 +180,41 @@ type PreflightChunk struct {
 	// VolumeGroups lists the volume group names in this chunk.
 	// +listType=atomic
 	VolumeGroups []string `json:"volumeGroups,omitempty"`
+}
+
+// VolumeGroupHealthStatus classifies replication health for a volume group.
+// These values are higher-level than the driver's ReplicationHealth enum:
+// HealthStatusError maps from a Go error returned by GetReplicationStatus,
+// not from a driver health constant.
+type VolumeGroupHealthStatus string
+
+const (
+	HealthStatusHealthy  VolumeGroupHealthStatus = "Healthy"
+	HealthStatusDegraded VolumeGroupHealthStatus = "Degraded"
+	HealthStatusSyncing  VolumeGroupHealthStatus = "Syncing"
+	HealthStatusError    VolumeGroupHealthStatus = "Error"
+	HealthStatusUnknown  VolumeGroupHealthStatus = "Unknown"
+)
+
+// VolumeGroupHealth reports the replication health and RPO for a single
+// volume group within a DRPlan. Populated by the DRPlan controller on each
+// reconcile cycle from storage driver polling.
+type VolumeGroupHealth struct {
+	// Name is the volume group identifier (e.g. "ns-erp-database").
+	Name string `json:"name"`
+	// Namespace is the Kubernetes namespace for VMs in this group.
+	Namespace string `json:"namespace"`
+	// Health is the replication health status.
+	Health VolumeGroupHealthStatus `json:"health"`
+	// LastSyncTime is when data was last successfully synchronized.
+	LastSyncTime *metav1.Time `json:"lastSyncTime,omitempty"`
+	// EstimatedRPO is the estimated recovery point objective as a duration
+	// string (e.g. "47s", "2m30s", "unknown").
+	EstimatedRPO string `json:"estimatedRPO"`
+	// LastChecked is when this health status was last polled.
+	LastChecked metav1.Time `json:"lastChecked"`
+	// Message contains an optional error or informational message.
+	Message string `json:"message,omitempty"`
 }
 
 // DiscoveredVM identifies a VM discovered by a DRPlan's label selector.

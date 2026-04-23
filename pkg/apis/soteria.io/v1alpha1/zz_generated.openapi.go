@@ -50,6 +50,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightVM":            schema_pkg_apis_soteriaio_v1alpha1_PreflightVM(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightWave":          schema_pkg_apis_soteriaio_v1alpha1_PreflightWave(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.StepStatus":             schema_pkg_apis_soteriaio_v1alpha1_StepStatus(ref),
+		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.VolumeGroupHealth":      schema_pkg_apis_soteriaio_v1alpha1_VolumeGroupHealth(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.VolumeGroupInfo":        schema_pkg_apis_soteriaio_v1alpha1_VolumeGroupInfo(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.WaveInfo":               schema_pkg_apis_soteriaio_v1alpha1_WaveInfo(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.WaveStatus":             schema_pkg_apis_soteriaio_v1alpha1_WaveStatus(ref),
@@ -815,11 +816,30 @@ func schema_pkg_apis_soteriaio_v1alpha1_DRPlanStatus(ref common.ReferenceCallbac
 							Ref:         ref("github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightReport"),
 						},
 					},
+					"replicationHealth": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "atomic",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "ReplicationHealth reports per-volume-group replication status and RPO, populated by polling storage drivers on each reconcile cycle.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: map[string]interface{}{},
+										Ref:     ref("github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.VolumeGroupHealth"),
+									},
+								},
+							},
+						},
+					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightReport", "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.WaveInfo", v1.Condition{}.OpenAPIModelName()},
+			"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightReport", "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.VolumeGroupHealth", "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.WaveInfo", v1.Condition{}.OpenAPIModelName()},
 	}
 }
 
@@ -1180,6 +1200,73 @@ func schema_pkg_apis_soteriaio_v1alpha1_StepStatus(ref common.ReferenceCallback)
 					},
 				},
 				Required: []string{"name"},
+			},
+		},
+		Dependencies: []string{
+			v1.Time{}.OpenAPIModelName()},
+	}
+}
+
+func schema_pkg_apis_soteriaio_v1alpha1_VolumeGroupHealth(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "VolumeGroupHealth reports the replication health and RPO for a single volume group within a DRPlan. Populated by the DRPlan controller on each reconcile cycle from storage driver polling.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"name": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Name is the volume group identifier (e.g. \"ns-erp-database\").",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"namespace": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Namespace is the Kubernetes namespace for VMs in this group.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"health": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Health is the replication health status.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"lastSyncTime": {
+						SchemaProps: spec.SchemaProps{
+							Description: "LastSyncTime is when data was last successfully synchronized.",
+							Ref:         ref(v1.Time{}.OpenAPIModelName()),
+						},
+					},
+					"estimatedRPO": {
+						SchemaProps: spec.SchemaProps{
+							Description: "EstimatedRPO is the estimated recovery point objective as a duration string (e.g. \"47s\", \"2m30s\", \"unknown\").",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"lastChecked": {
+						SchemaProps: spec.SchemaProps{
+							Description: "LastChecked is when this health status was last polled.",
+							Ref:         ref(v1.Time{}.OpenAPIModelName()),
+						},
+					},
+					"message": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Message contains an optional error or informational message.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"name", "namespace", "health", "estimatedRPO", "lastChecked"},
 			},
 		},
 		Dependencies: []string{

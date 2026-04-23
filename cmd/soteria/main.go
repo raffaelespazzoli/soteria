@@ -251,6 +251,14 @@ func main() {
 		SCLister:   scLister,
 	}
 
+	var pvcResolver engine.PVCResolver
+	if noopFallback {
+		pvcResolver = engine.NoOpPVCResolver{}
+		setupLog.Info("Using NoOpPVCResolver for dev/CI (noop-fallback enabled)")
+	} else {
+		pvcResolver = &engine.KubeVirtPVCResolver{Client: mgr.GetClient()}
+	}
+
 	eventBroadcaster := events.NewEventBroadcasterAdapterWithContext(ctx, clientset)
 	defer eventBroadcaster.Shutdown()
 	eventBroadcaster.StartRecordingToSink(ctx.Done())
@@ -263,20 +271,15 @@ func main() {
 		NamespaceLookup: nsLookup,
 		StorageResolver: storageResolver,
 		Recorder:        eventRecorder,
+		Registry:        drivers.DefaultRegistry,
+		SCLister:        scLister,
+		PVCResolver:     pvcResolver,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "DRPlan")
 		os.Exit(1)
 	}
 
 	drexecRecorder := eventBroadcaster.NewRecorder("drexecution-controller")
-
-	var pvcResolver engine.PVCResolver
-	if noopFallback {
-		pvcResolver = engine.NoOpPVCResolver{}
-		setupLog.Info("Using NoOpPVCResolver for dev/CI (noop-fallback enabled)")
-	} else {
-		pvcResolver = &engine.KubeVirtPVCResolver{Client: mgr.GetClient()}
-	}
 
 	var vmHealthValidator engine.VMHealthValidator
 	if noopFallback {

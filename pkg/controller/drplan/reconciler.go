@@ -57,6 +57,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
+	"github.com/soteria-project/soteria/pkg/drivers"
 	"github.com/soteria-project/soteria/pkg/engine"
 
 	"github.com/soteria-project/soteria/internal/preflight"
@@ -93,6 +94,11 @@ type DRPlanReconciler struct {
 	NamespaceLookup engine.NamespaceLookup
 	StorageResolver preflight.StorageBackendResolver
 	Recorder        events.EventRecorder
+	// Registry resolves CSI provisioner → StorageProvider for health polling.
+	// When nil, replication health monitoring is skipped (backward compat).
+	Registry    *drivers.Registry
+	SCLister    drivers.StorageClassLister
+	PVCResolver engine.PVCResolver
 }
 
 func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -122,7 +128,7 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			Reason:             reasonError,
 			Message:            err.Error(),
 			ObservedGeneration: plan.Generation,
-		})
+		}, nil)
 		if statusErr != nil {
 			logger.Error(statusErr, "Failed to update status after discovery error")
 		}
@@ -154,7 +160,7 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			Reason:             reasonNoVMs,
 			Message:            "No VMs have the soteria.io/drplan label for this plan",
 			ObservedGeneration: plan.Generation,
-		})
+		}, nil)
 	}
 
 	// Resolve volume group consistency from namespace annotations.
@@ -170,7 +176,7 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			Reason:             reasonError,
 			Message:            fmt.Sprintf("Volume group resolution failed: %v", err),
 			ObservedGeneration: plan.Generation,
-		})
+		}, nil)
 	}
 
 	if len(consistency.WaveConflicts) > 0 {
@@ -184,7 +190,7 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			Reason:             reasonWaveConflict,
 			Message:            msg,
 			ObservedGeneration: plan.Generation,
-		})
+		}, nil)
 	}
 
 	// Populate volume groups on each wave.
@@ -220,7 +226,7 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			Reason:             reasonGroupExceedsThrottle,
 			Message:            msg,
 			ObservedGeneration: plan.Generation,
-		})
+		}, nil)
 	}
 
 	r.event(&plan, "Normal", "ConsistencyResolved",
@@ -232,13 +238,24 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	logger.Info("Preflight report generated",
 		"totalVMs", report.TotalVMs, "warnings", len(report.Warnings))
 
-	return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, report, metav1.Condition{
+	// Poll replication health when the driver infrastructure is wired and no
+	// execution is active (the engine owns driver interactions during execution).
+	var replicationHealth []soteriav1alpha1.VolumeGroupHealth
+	if r.Registry != nil && plan.Status.ActiveExecution == "" {
+		replicationHealth = r.pollReplicationHealth(ctx, &plan, waves)
+		logger.V(1).Info("Replication health polled",
+			"totalVGs", len(replicationHealth))
+	}
+
+	readyCond := metav1.Condition{
 		Type:               conditionTypeReady,
 		Status:             metav1.ConditionTrue,
 		Reason:             reasonDiscovered,
 		Message:            "VMs discovered and grouped into waves",
 		ObservedGeneration: plan.Generation,
-	})
+	}
+
+	return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, report, readyCond, replicationHealth)
 }
 
 func (r *DRPlanReconciler) event(
@@ -493,6 +510,7 @@ func (r *DRPlanReconciler) updateStatus(
 	totalVMs int,
 	preflightReport *soteriav1alpha1.PreflightReport,
 	condition metav1.Condition,
+	replicationHealth []soteriav1alpha1.VolumeGroupHealth,
 ) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
@@ -511,11 +529,20 @@ func (r *DRPlanReconciler) updateStatus(
 	countChanged := plan.Status.DiscoveredVMCount != totalVMs
 	genChanged := plan.Status.ObservedGeneration != plan.Generation
 	reportChanged := preflightReportChanged(plan.Status.Preflight, preflightReport)
+	healthChanged := replicationHealthChanged(plan.Status.ReplicationHealth, replicationHealth)
 
-	if !conditionChanged && !wavesChanged && !countChanged && !genChanged && !reportChanged {
+	if !conditionChanged && !wavesChanged && !countChanged && !genChanged && !reportChanged && !healthChanged {
 		logger.V(1).Info("Status unchanged, skipping patch")
-		return ctrl.Result{RequeueAfter: requeueInterval}, nil
+		requeue := requeueInterval
+		if anyNonHealthy(plan.Status.ReplicationHealth) {
+			requeue = degradedRequeueInterval
+		}
+		return ctrl.Result{RequeueAfter: requeue}, nil
 	}
+
+	// Detect health transitions for event emission before mutating status.
+	degradedVGs, recoveredVGs := detectHealthTransitions(
+		plan.Status.ReplicationHealth, replicationHealth)
 
 	patch := client.MergeFrom(plan.DeepCopy())
 
@@ -524,6 +551,16 @@ func (r *DRPlanReconciler) updateStatus(
 	plan.Status.ObservedGeneration = plan.Generation
 	plan.Status.Preflight = preflightReport
 	meta.SetStatusCondition(&plan.Status.Conditions, condition)
+
+	if replicationHealth != nil {
+		plan.Status.ReplicationHealth = replicationHealth
+		if replCond := computeReplicationCondition(replicationHealth, plan.Generation); replCond != nil {
+			meta.SetStatusCondition(&plan.Status.Conditions, *replCond)
+		}
+	} else if plan.Status.ReplicationHealth != nil {
+		plan.Status.ReplicationHealth = nil
+		meta.RemoveStatusCondition(&plan.Status.Conditions, conditionTypeReplicationHealthy)
+	}
 
 	if err := r.Status().Patch(ctx, plan, patch); err != nil {
 		logger.Error(err, "Failed to patch DRPlan status")
@@ -536,7 +573,48 @@ func (r *DRPlanReconciler) updateStatus(
 			fmt.Sprintf("Discovered %d VMs across %d waves", totalVMs, len(waves)))
 	}
 
-	return ctrl.Result{RequeueAfter: requeueInterval}, nil
+	// Emit events on health transitions (only when previous state existed).
+	for _, vg := range degradedVGs {
+		r.event(plan, "Warning", "ReplicationDegraded",
+			fmt.Sprintf("Volume group %s/%s replication health changed to %s",
+				vg.Namespace, vg.Name, vg.Health))
+	}
+	if len(recoveredVGs) > 0 && allHealthy(replicationHealth) {
+		r.event(plan, "Normal", "ReplicationHealthy",
+			"All volume groups returned to healthy replication")
+	}
+
+	requeue := requeueInterval
+	if anyNonHealthy(replicationHealth) {
+		requeue = degradedRequeueInterval
+	}
+	return ctrl.Result{RequeueAfter: requeue}, nil
+}
+
+// replicationHealthChanged compares two VolumeGroupHealth slices, ignoring
+// LastChecked timestamps to avoid infinite requeue loops.
+func replicationHealthChanged(old, new []soteriav1alpha1.VolumeGroupHealth) bool {
+	if len(old) != len(new) {
+		return true
+	}
+	for i := range old {
+		if old[i].Name != new[i].Name ||
+			old[i].Namespace != new[i].Namespace ||
+			old[i].Health != new[i].Health ||
+			old[i].EstimatedRPO != new[i].EstimatedRPO ||
+			old[i].Message != new[i].Message {
+			return true
+		}
+		oldSync := old[i].LastSyncTime
+		newSync := new[i].LastSyncTime
+		if (oldSync == nil) != (newSync == nil) {
+			return true
+		}
+		if oldSync != nil && !oldSync.Equal(newSync) {
+			return true
+		}
+	}
+	return false
 }
 
 // preflightReportChanged compares two preflight reports ignoring the

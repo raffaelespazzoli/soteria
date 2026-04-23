@@ -123,6 +123,7 @@ func TestMain(m *testing.M) {
 	eventBroadcaster.StartRecordingToSink(ctx.Done())
 	eventRecorder := eventBroadcaster.NewRecorder("drplan-controller")
 
+	testPVCResolver := engine.NoOpPVCResolver{}
 	if err := (&drplan.DRPlanReconciler{
 		Client:          mgr.GetClient(),
 		Scheme:          mgr.GetScheme(),
@@ -130,6 +131,9 @@ func TestMain(m *testing.M) {
 		NamespaceLookup: nsLookup,
 		StorageResolver: storageResolver,
 		Recorder:        eventRecorder,
+		Registry:        testRegistry,
+		SCLister:        scLister,
+		PVCResolver:     testPVCResolver,
 	}).SetupWithManager(mgr); err != nil {
 		panic(fmt.Sprintf("setting up DRPlan controller: %v", err))
 	}
