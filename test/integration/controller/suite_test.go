@@ -125,15 +125,16 @@ func TestMain(m *testing.M) {
 
 	testPVCResolver := engine.NoOpPVCResolver{}
 	if err := (&drplan.DRPlanReconciler{
-		Client:          mgr.GetClient(),
-		Scheme:          mgr.GetScheme(),
-		VMDiscoverer:    vmDiscoverer,
-		NamespaceLookup: nsLookup,
-		StorageResolver: storageResolver,
-		Recorder:        eventRecorder,
-		Registry:        testRegistry,
-		SCLister:        scLister,
-		PVCResolver:     testPVCResolver,
+		Client:                  mgr.GetClient(),
+		Scheme:                  mgr.GetScheme(),
+		VMDiscoverer:            vmDiscoverer,
+		NamespaceLookup:         nsLookup,
+		StorageResolver:         storageResolver,
+		Recorder:                eventRecorder,
+		Registry:                testRegistry,
+		SCLister:                scLister,
+		PVCResolver:             testPVCResolver,
+		UnprotectedVMDiscoverer: vmDiscoverer,
 	}).SetupWithManager(mgr); err != nil {
 		panic(fmt.Sprintf("setting up DRPlan controller: %v", err))
 	}
@@ -473,6 +474,23 @@ func waitForPlanPhase(ctx context.Context, name, phase string, timeout time.Dura
 		time.Sleep(200 * time.Millisecond)
 	}
 	return nil, fmt.Errorf("timed out waiting for phase=%s on DRPlan %q", phase, name)
+}
+
+// waitForUnprotectedVMCount polls until the DRPlan's UnprotectedVMCount matches.
+func waitForUnprotectedVMCount(ctx context.Context, name string, count int, timeout time.Duration) (*soteriav1alpha1.DRPlan, error) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		var plan soteriav1alpha1.DRPlan
+		if err := testClient.Get(ctx, client.ObjectKey{Name: name}, &plan); err != nil {
+			time.Sleep(200 * time.Millisecond)
+			continue
+		}
+		if plan.Status.UnprotectedVMCount == count {
+			return &plan, nil
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	return nil, fmt.Errorf("timed out waiting for UnprotectedVMCount=%d on DRPlan %q", count, name)
 }
 
 // waitForPreflight polls until the DRPlan has a populated preflight report.

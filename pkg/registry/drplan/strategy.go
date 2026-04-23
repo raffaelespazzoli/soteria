@@ -127,6 +127,7 @@ var tableColumns = []metav1.TableColumnDefinition{
 	{Name: "Effective Phase", Type: "string"},
 	{Name: "Active Site", Type: "string"},
 	{Name: "VMs", Type: "integer"},
+	{Name: "Unprotected", Type: "integer"},
 	{Name: "Active Execution", Type: "string"},
 	{Name: "Age", Type: "string"},
 }
@@ -158,6 +159,7 @@ func planToRow(plan *soteriav1alpha1.DRPlan) metav1.TableRow {
 			effectivePhase,
 			plan.Status.ActiveSite,
 			plan.Status.DiscoveredVMCount,
+			plan.Status.UnprotectedVMCount,
 			plan.Status.ActiveExecution,
 			translateTimestampSince(plan.CreationTimestamp),
 		},

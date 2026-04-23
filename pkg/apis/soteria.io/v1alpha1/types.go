@@ -113,6 +113,11 @@ type DRPlanStatus struct {
 	// populated by polling storage drivers on each reconcile cycle.
 	// +listType=atomic
 	ReplicationHealth []VolumeGroupHealth `json:"replicationHealth,omitempty"`
+	// UnprotectedVMCount is the cluster-wide count of VMs not belonging to
+	// any DRPlan (lacking the soteria.io/drplan label). Always present in
+	// JSON output — a zero value means "all VMs protected", which is
+	// semantically distinct from "not yet computed" (field absent).
+	UnprotectedVMCount int `json:"unprotectedVMCount"`
 }
 
 // PreflightReport is the pre-flight composition summary for a DRPlan. It
@@ -133,6 +138,11 @@ type PreflightReport struct {
 	Waves []PreflightWave `json:"waves,omitempty"`
 	// TotalVMs is the total number of VMs in the plan.
 	TotalVMs int `json:"totalVMs"`
+	// UnprotectedVMs lists VMs cluster-wide that lack the soteria.io/drplan
+	// label, capped at 100 entries sorted by namespace/name. When all VMs
+	// are protected, this field is empty.
+	// +listType=atomic
+	UnprotectedVMs []DiscoveredVM `json:"unprotectedVMs,omitempty"`
 	// Warnings contains non-blocking validation issues (e.g., unknown storage backend).
 	// +listType=atomic
 	Warnings []string `json:"warnings,omitempty"`

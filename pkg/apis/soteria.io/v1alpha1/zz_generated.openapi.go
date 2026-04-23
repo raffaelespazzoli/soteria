@@ -835,7 +835,16 @@ func schema_pkg_apis_soteriaio_v1alpha1_DRPlanStatus(ref common.ReferenceCallbac
 							},
 						},
 					},
+					"unprotectedVMCount": {
+						SchemaProps: spec.SchemaProps{
+							Description: "UnprotectedVMCount is the cluster-wide count of VMs not belonging to any DRPlan (lacking the soteria.io/drplan label). Always present in JSON output — a zero value means \"all VMs protected\", which is semantically distinct from \"not yet computed\" (field absent).",
+							Default:     0,
+							Type:        []string{"integer"},
+							Format:      "int32",
+						},
+					},
 				},
+				Required: []string{"unprotectedVMCount"},
 			},
 		},
 		Dependencies: []string{
@@ -1005,6 +1014,25 @@ func schema_pkg_apis_soteriaio_v1alpha1_PreflightReport(ref common.ReferenceCall
 							Format:      "int32",
 						},
 					},
+					"unprotectedVMs": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "atomic",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "UnprotectedVMs lists VMs cluster-wide that lack the soteria.io/drplan label, capped at 100 entries sorted by namespace/name. When all VMs are protected, this field is empty.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: map[string]interface{}{},
+										Ref:     ref("github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DiscoveredVM"),
+									},
+								},
+							},
+						},
+					},
 					"warnings": {
 						VendorExtensible: spec.VendorExtensible{
 							Extensions: spec.Extensions{
@@ -1036,7 +1064,7 @@ func schema_pkg_apis_soteriaio_v1alpha1_PreflightReport(ref common.ReferenceCall
 			},
 		},
 		Dependencies: []string{
-			"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightWave", v1.Time{}.OpenAPIModelName()},
+			"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DiscoveredVM", "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightWave", v1.Time{}.OpenAPIModelName()},
 	}
 }
 

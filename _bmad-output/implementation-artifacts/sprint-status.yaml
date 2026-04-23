@@ -185,7 +185,7 @@ development_status:
   epic-5: in-progress
   5-0-rest-state-only-drplan-active-execution-pointer: done
   5-1-replication-health-monitoring-rpo-tracking: done
-  5-2-unprotected-vm-detection: ready-for-dev
+  5-2-unprotected-vm-detection: done
   5-3-prometheus-metrics: ready-for-dev
   5-4-drexecution-as-immutable-audit-record: ready-for-dev
   epic-5-retrospective: optional

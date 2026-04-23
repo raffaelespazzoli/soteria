@@ -32,6 +32,7 @@ import (
 	"sort"
 
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/selection"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -128,8 +129,66 @@ func (d *TypedVMDiscoverer) DiscoverVMs(ctx context.Context, planName string) ([
 	return refs, nil
 }
 
-// Compile-time interface check.
+// UnprotectedVMDiscoverer lists VMs cluster-wide that are not covered by any
+// DRPlan (i.e. lack the soteria.io/drplan label key entirely). Kept separate
+// from VMDiscoverer so mock injection is independent.
+type UnprotectedVMDiscoverer interface {
+	ListUnprotectedVMs(ctx context.Context) ([]VMReference, error)
+}
+
+// ListUnprotectedVMs returns all kubevirt VMs not covered by any DRPlan.
+// A VM is unprotected when the soteria.io/drplan label key is absent OR
+// present with an empty value (the admission webhook and enqueueForVM both
+// treat empty values as "no plan"). Two selector passes are needed because
+// Kubernetes ANDs requirements within a single selector.
+func (d *TypedVMDiscoverer) ListUnprotectedVMs(ctx context.Context) ([]VMReference, error) {
+	absentReq, err := labels.NewRequirement(soteriav1alpha1.DRPlanLabel, selection.DoesNotExist, nil)
+	if err != nil {
+		return nil, err
+	}
+	emptyReq, err := labels.NewRequirement(soteriav1alpha1.DRPlanLabel, selection.In, []string{""})
+	if err != nil {
+		return nil, err
+	}
+
+	var refs []VMReference
+	for _, sel := range []labels.Selector{
+		labels.NewSelector().Add(*absentReq),
+		labels.NewSelector().Add(*emptyReq),
+	} {
+		var vmList kubevirtv1.VirtualMachineList
+		if err := d.Reader.List(ctx, &vmList, &client.ListOptions{
+			LabelSelector: sel,
+		}); err != nil {
+			return nil, err
+		}
+		for i := range vmList.Items {
+			vm := &vmList.Items[i]
+			ref := VMReference{
+				Name:      vm.Name,
+				Namespace: vm.Namespace,
+			}
+			if len(vm.Labels) > 0 {
+				ref.Labels = make(map[string]string, len(vm.Labels))
+				maps.Copy(ref.Labels, vm.Labels)
+			}
+			refs = append(refs, ref)
+		}
+	}
+
+	sort.Slice(refs, func(i, j int) bool {
+		if refs[i].Namespace != refs[j].Namespace {
+			return refs[i].Namespace < refs[j].Namespace
+		}
+		return refs[i].Name < refs[j].Name
+	})
+
+	return refs, nil
+}
+
+// Compile-time interface checks.
 var _ VMDiscoverer = (*TypedVMDiscoverer)(nil)
+var _ UnprotectedVMDiscoverer = (*TypedVMDiscoverer)(nil)
 
 // NewTypedVMDiscoverer returns a VMDiscoverer backed by a controller-runtime Reader.
 func NewTypedVMDiscoverer(reader client.Reader) *TypedVMDiscoverer {

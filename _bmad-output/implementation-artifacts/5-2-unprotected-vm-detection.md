@@ -1,6 +1,6 @@
 # Story 5.2: Unprotected VM Detection
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -49,55 +49,55 @@ FR34 requires the orchestrator to detect VMs that are not covered by any DRPlan.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Add API types (AC: #1, #2)
-  - [ ] 1.1 Add `UnprotectedVMCount int` field to `DRPlanStatus` with `json:"unprotectedVMCount"` tag (no omitempty — always present, even when 0)
-  - [ ] 1.2 Add `UnprotectedVMs []DiscoveredVM` field to `PreflightReport` with `json:"unprotectedVMs,omitempty"` tag and `+listType=atomic` marker
-  - [ ] 1.3 Run `make generate` to regenerate deepcopy + openapi
+- [x] Task 1: Add API types (AC: #1, #2)
+  - [x] 1.1 Add `UnprotectedVMCount int` field to `DRPlanStatus` with `json:"unprotectedVMCount"` tag (no omitempty — always present, even when 0)
+  - [x] 1.2 Add `UnprotectedVMs []DiscoveredVM` field to `PreflightReport` with `json:"unprotectedVMs,omitempty"` tag and `+listType=atomic` marker
+  - [x] 1.3 Run `make generate` to regenerate deepcopy + openapi
 
-- [ ] Task 2: Implement ListUnprotectedVMs (AC: #3)
-  - [ ] 2.1 Add `ListUnprotectedVMs(ctx context.Context) ([]VMReference, error)` method to `TypedVMDiscoverer` in `pkg/engine/discovery.go`
-  - [ ] 2.2 Implementation: use `labels.NewRequirement(soteriav1alpha1.DRPlanLabel, selection.DoesNotExist, nil)` to build a label selector that matches VMs without the label key
-  - [ ] 2.3 Sort results by namespace then name for deterministic output
-  - [ ] 2.4 Add `UnprotectedVMDiscoverer` interface alongside `VMDiscoverer`: `ListUnprotectedVMs(ctx context.Context) ([]VMReference, error)` — keep it separate from `VMDiscoverer` so mock injection is independent
-  - [ ] 2.5 Implement `UnprotectedVMDiscoverer` on `TypedVMDiscoverer` (same struct, new method)
+- [x] Task 2: Implement ListUnprotectedVMs (AC: #3)
+  - [x] 2.1 Add `ListUnprotectedVMs(ctx context.Context) ([]VMReference, error)` method to `TypedVMDiscoverer` in `pkg/engine/discovery.go`
+  - [x] 2.2 Implementation: use `labels.NewRequirement(soteriav1alpha1.DRPlanLabel, selection.DoesNotExist, nil)` to build a label selector that matches VMs without the label key
+  - [x] 2.3 Sort results by namespace then name for deterministic output
+  - [x] 2.4 Add `UnprotectedVMDiscoverer` interface alongside `VMDiscoverer`: `ListUnprotectedVMs(ctx context.Context) ([]VMReference, error)` — keep it separate from `VMDiscoverer` so mock injection is independent
+  - [x] 2.5 Implement `UnprotectedVMDiscoverer` on `TypedVMDiscoverer` (same struct, new method)
 
-- [ ] Task 3: Integrate into DRPlan reconciler (AC: #4, #5, #6)
-  - [ ] 3.1 Add `UnprotectedVMDiscoverer engine.UnprotectedVMDiscoverer` field to `DRPlanReconciler` struct (optional — when nil, skip unprotected VM detection for backward compat)
-  - [ ] 3.2 In `Reconcile`, after per-plan discovery and before `updateStatus`: call `r.UnprotectedVMDiscoverer.ListUnprotectedVMs(ctx)`. On error: log at V(1), set count to -1 or skip update (do NOT fail the reconcile)
-  - [ ] 3.3 Convert `[]VMReference` to `[]DiscoveredVM` for status storage; truncate to 100 entries sorted by namespace/name; add preflight warning if truncated
-  - [ ] 3.4 Extend `updateStatus` signature: add `unprotectedVMs []soteriav1alpha1.DiscoveredVM` and `unprotectedVMCount int` parameters
-  - [ ] 3.5 In `updateStatus`: add `unprotectedChanged := plan.Status.UnprotectedVMCount != unprotectedVMCount` to the change detection logic; persist `plan.Status.UnprotectedVMCount` and `preflightReport.UnprotectedVMs`
-  - [ ] 3.6 Add event transition detection: compare old `plan.Status.UnprotectedVMCount` with new count. Emit `UnprotectedVMsDetected` (Warning) when old=0 and new>0. Emit `AllVMsProtected` (Normal) when old>0 and new=0. Skip on first reconcile (old count == 0 and no previous reconcile — use `ObservedGeneration == 0` as heuristic for first reconcile)
+- [x] Task 3: Integrate into DRPlan reconciler (AC: #4, #5, #6)
+  - [x] 3.1 Add `UnprotectedVMDiscoverer engine.UnprotectedVMDiscoverer` field to `DRPlanReconciler` struct (optional — when nil, skip unprotected VM detection for backward compat)
+  - [x] 3.2 In `Reconcile`, after per-plan discovery and before `updateStatus`: call `r.UnprotectedVMDiscoverer.ListUnprotectedVMs(ctx)`. On error: log at V(1), set count to -1 or skip update (do NOT fail the reconcile)
+  - [x] 3.3 Convert `[]VMReference` to `[]DiscoveredVM` for status storage; truncate to 100 entries sorted by namespace/name; add preflight warning if truncated
+  - [x] 3.4 Extend `updateStatus` signature: add `unprotectedVMs []soteriav1alpha1.DiscoveredVM` and `unprotectedVMCount int` parameters
+  - [x] 3.5 In `updateStatus`: add `unprotectedChanged := plan.Status.UnprotectedVMCount != unprotectedVMCount` to the change detection logic; persist `plan.Status.UnprotectedVMCount` and `preflightReport.UnprotectedVMs`
+  - [x] 3.6 Add event transition detection: compare old `plan.Status.UnprotectedVMCount` with new count. Emit `UnprotectedVMsDetected` (Warning) when old=0 and new>0. Emit `AllVMsProtected` (Normal) when old>0 and new=0. Skip on first reconcile (old count == 0 and no previous reconcile — use `ObservedGeneration == 0` as heuristic for first reconcile)
 
-- [ ] Task 4: Add printer column (AC: #7)
-  - [ ] 4.1 In `pkg/registry/drplan/storage.go`: replace `rest.NewDefaultTableConvertor` with a custom `TableConvertor` implementation that adds an `UNPROTECTED` column reading from `plan.Status.UnprotectedVMCount`
-  - [ ] 4.2 Follow the pattern from `k8s.io/apiserver/pkg/registry/rest` `TableConvertor` interface: implement `ConvertToTable(ctx, object, tableOptions)` returning column definitions + rows
-  - [ ] 4.3 Include existing default columns (NAME, AGE) plus `UNPROTECTED` and `PHASE` columns
+- [x] Task 4: Add printer column (AC: #7)
+  - [x] 4.1 In `pkg/registry/drplan/storage.go`: replace `rest.NewDefaultTableConvertor` with a custom `TableConvertor` implementation that adds an `UNPROTECTED` column reading from `plan.Status.UnprotectedVMCount`
+  - [x] 4.2 Follow the pattern from `k8s.io/apiserver/pkg/registry/rest` `TableConvertor` interface: implement `ConvertToTable(ctx, object, tableOptions)` returning column definitions + rows
+  - [x] 4.3 Include existing default columns (NAME, AGE) plus `UNPROTECTED` and `PHASE` columns
 
-- [ ] Task 5: Wire in main.go (AC: #4)
-  - [ ] 5.1 Update `cmd/soteria/main.go`: inject `UnprotectedVMDiscoverer: vmDiscoverer` into `DRPlanReconciler` — the existing `TypedVMDiscoverer` implements both `VMDiscoverer` and `UnprotectedVMDiscoverer`
-  - [ ] 5.2 No new dependencies needed — reuses the existing `mgr.GetClient()` reader
+- [x] Task 5: Wire in main.go (AC: #4)
+  - [x] 5.1 Update `cmd/soteria/main.go`: inject `UnprotectedVMDiscoverer: vmDiscoverer` into `DRPlanReconciler` — the existing `TypedVMDiscoverer` implements both `VMDiscoverer` and `UnprotectedVMDiscoverer`
+  - [x] 5.2 No new dependencies needed — reuses the existing `mgr.GetClient()` reader
 
-- [ ] Task 6: Unit tests (AC: #8a–f)
-  - [ ] 6.1 Test `ListUnprotectedVMs`: create VMs with and without `soteria.io/drplan` label using fake client → verify only unlabeled VMs returned, sorted by namespace/name
-  - [ ] 6.2 Test reconciler: mock `UnprotectedVMDiscoverer` returning various counts → verify `UnprotectedVMCount` and `PreflightReport.UnprotectedVMs` populated correctly
-  - [ ] 6.3 Test truncation: mock returns 150 VMs → verify list truncated to 100, warning added
-  - [ ] 6.4 Test event transitions: first reconcile (no event), 0→5 (Warning event), 5→3 (no event — still unprotected), 3→0 (Normal event)
-  - [ ] 6.5 Test error handling: `ListUnprotectedVMs` returns error → verify reconcile succeeds, count unchanged, no crash
-  - [ ] 6.6 Test backward compat: `UnprotectedVMDiscoverer` nil → verify no unprotected fields set, no crash
-  - [ ] 6.7 Add `mockUnprotectedVMDiscoverer` to test helpers
+- [x] Task 6: Unit tests (AC: #8a–f)
+  - [x] 6.1 Test `ListUnprotectedVMs`: create VMs with and without `soteria.io/drplan` label using fake client → verify only unlabeled VMs returned, sorted by namespace/name
+  - [x] 6.2 Test reconciler: mock `UnprotectedVMDiscoverer` returning various counts → verify `UnprotectedVMCount` and `PreflightReport.UnprotectedVMs` populated correctly
+  - [x] 6.3 Test truncation: mock returns 150 VMs → verify list truncated to 100, warning added
+  - [x] 6.4 Test event transitions: first reconcile (no event), 0→5 (Warning event), 5→3 (no event — still unprotected), 3→0 (Normal event)
+  - [x] 6.5 Test error handling: `ListUnprotectedVMs` returns error → verify reconcile succeeds, count unchanged, no crash
+  - [x] 6.6 Test backward compat: `UnprotectedVMDiscoverer` nil → verify no unprotected fields set, no crash
+  - [x] 6.7 Add `mockUnprotectedVMDiscoverer` to test helpers
 
-- [ ] Task 7: Integration test (AC: #8g)
-  - [ ] 7.1 Add integration test in `test/integration/controller/drplan_unprotected_test.go`: create DRPlan + VMs (some with label, some without) → reconcile → verify `UnprotectedVMCount` matches count of unlabeled VMs
-  - [ ] 7.2 Then add label to an unprotected VM → trigger reconcile → verify count decreases
-  - [ ] 7.3 Then remove label from a protected VM → trigger reconcile → verify count increases
-  - [ ] 7.4 Wire `UnprotectedVMDiscoverer` in integration test `suite_test.go` setup
+- [x] Task 7: Integration test (AC: #8g)
+  - [x] 7.1 Add integration test in `test/integration/controller/drplan_unprotected_test.go`: create DRPlan + VMs (some with label, some without) → reconcile → verify `UnprotectedVMCount` matches count of unlabeled VMs
+  - [x] 7.2 Then add label to an unprotected VM → trigger reconcile → verify count decreases
+  - [x] 7.3 Then remove label from a protected VM → trigger reconcile → verify count increases
+  - [x] 7.4 Wire `UnprotectedVMDiscoverer` in integration test `suite_test.go` setup
 
-- [ ] Task 8: Run full test suite
-  - [ ] 8.1 `make generate` — regenerate deepcopy + openapi
-  - [ ] 8.2 `make manifests` — regenerate CRDs if markers changed
-  - [ ] 8.3 `make lint-fix` — auto-fix style
-  - [ ] 8.4 `make test` — all unit + integration tests pass
+- [x] Task 8: Run full test suite
+  - [x] 8.1 `make generate` — regenerate deepcopy + openapi
+  - [x] 8.2 `make manifests` — regenerate CRDs if markers changed
+  - [x] 8.3 `make lint-fix` — auto-fix style
+  - [x] 8.4 `make test` — all unit + integration tests pass
 
 ## Dev Notes
 
@@ -171,10 +171,49 @@ FR34 requires the orchestrator to detect VMs that are not covered by any DRPlan.
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4.6
 
 ### Debug Log References
 
+- Fixed lint: cyclomatic complexity in updateStatus — extracted `emitUnprotectedVMEvents` helper and refactored change detection into `anyChanged` bool
+- Fixed lint: line length > 120 chars on combined condition check
+- Integration test: removed duplicate `testTimeout` constant already declared in `drplan_test.go`
+
 ### Completion Notes List
 
+- All 8 acceptance criteria satisfied
+- `UnprotectedVMCount` always present in JSON (no omitempty), set to 0 when all VMs protected
+- `PreflightReport.UnprotectedVMs` capped at 100 entries with truncation warning
+- Event spam prevention: only 0↔N transitions emit events, not every count change
+- First reconcile (ObservedGeneration==0) suppresses events to avoid startup noise
+- `ListUnprotectedVMs` error does not fail reconcile — logged at V(1) and skipped
+- Backward compat: nil `UnprotectedVMDiscoverer` is safe — no crash, no unprotected fields set
+- Used `unprotectedVMResult` struct to bundle params for `updateStatus` instead of adding more positional args
+- DRPlan controller coverage increased from 83.4% to 85.0%
+- No new dependencies — reuses existing `TypedVMDiscoverer` and `mgr.GetClient()` reader
+
+### Change Log
+
+- 2026-04-23: Story 5.2 implemented — unprotected VM detection, status fields, printer column, events, tests
+
 ### File List
+
+| File | Change |
+|------|--------|
+| `pkg/apis/soteria.io/v1alpha1/types.go` | Added `UnprotectedVMCount` to `DRPlanStatus`, `UnprotectedVMs` to `PreflightReport` |
+| `pkg/apis/soteria.io/v1alpha1/zz_generated.deepcopy.go` | Auto-generated deepcopy for new fields |
+| `pkg/apis/soteria.io/v1alpha1/zz_generated.openapi.go` | Auto-generated openapi for new fields |
+| `pkg/engine/discovery.go` | Added `UnprotectedVMDiscoverer` interface, `ListUnprotectedVMs` on `TypedVMDiscoverer` |
+| `pkg/engine/discovery_test.go` | Added `TestListUnprotectedVMs` with 4 subtests |
+| `pkg/controller/drplan/reconciler.go` | Added `UnprotectedVMDiscoverer` field, `detectUnprotectedVMs`, `emitUnprotectedVMEvents`, extended `updateStatus` |
+| `pkg/controller/drplan/reconciler_test.go` | Added 6 unit tests: count population, preflight, truncation, event transitions, error handling, backward compat |
+| `pkg/registry/drplan/strategy.go` | Added `Unprotected` column to table convertor |
+| `cmd/soteria/main.go` | Wired `UnprotectedVMDiscoverer: vmDiscoverer` into `DRPlanReconciler` |
+| `test/integration/controller/suite_test.go` | Wired `UnprotectedVMDiscoverer` in integration test setup, added `waitForUnprotectedVMCount` helper |
+| `test/integration/controller/drplan_unprotected_test.go` | New file: 3 integration tests for detection, label-add, label-remove scenarios |
+
+### Review Findings
+
+- [x] [Review][Patch] Unprotected VM detection is skipped on non-ready reconcile paths [`pkg/controller/drplan/reconciler.go:173`]
+- [x] [Review][Patch] Empty `soteria.io/drplan` labels are excluded from unprotected detection [`pkg/engine/discovery.go:143`]
+- [x] [Review][Patch] Event-transition tests never assert emitted events [`pkg/controller/drplan/reconciler_test.go:1318`]
