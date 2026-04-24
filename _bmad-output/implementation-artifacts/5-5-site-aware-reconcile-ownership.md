@@ -1,6 +1,6 @@
 # Story 5.5: Site-Aware Reconcile Ownership
 
-Status: ready-for-dev
+Status: closed
 
 ## Story
 
@@ -204,3 +204,10 @@ Story 5.6 adds the VM readiness gate between waves. This story adds the site own
 ### Completion Notes List
 
 ### File List
+
+### Review Findings
+
+- [x] [Review][Decision] Required `--site-name` breaks default startup paths — resolved: keep required, added `--site-name=$(SITE_NAME)` to `config/manager/manager.yaml` and `Makefile run`.
+- [x] [Review][Decision] DRPlan site-awareness intent is contradictory — resolved: implement AC8 literally. Each Soteria instance only talks to its local kube-apiserver and ScyllaDB. VM discovery and health polling gated on `LocalSite == ActiveSite` in `pkg/controller/drplan/reconciler.go`.
+- [x] [Review][Patch] `dispatchByRole` now returns `(ctrl.Result, bool, error)` and propagates `reconcileStep0` errors to the caller.
+- [x] [Review][Patch] AC11 integration test rewritten with two explicit-`LocalSite` reconcilers (east=source no-op, west=target with full WaveExecutor).

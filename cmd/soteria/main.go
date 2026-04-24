@@ -86,6 +86,7 @@ func main() {
 	var secureMetrics bool
 	var enableHTTP2 bool
 	var noopFallback bool
+	var siteName string
 	var tlsOpts []func(*tls.Config)
 
 	// Aggregated API server + ScyllaDB flags are registered via SoteriaServerOptions.
@@ -121,6 +122,9 @@ func main() {
 		"When enabled, uses no-op implementations for PVC resolution, VM health validation, and VM management. "+
 			"Intended for dev/CI environments without real KubeVirt infrastructure. "+
 			"Note: unregistered CSI provisioners always fall back to the noop storage driver.")
+	fs.StringVar(&siteName, "site-name", "",
+		"The site name identifying this controller instance (required). "+
+			"Must match either primarySite or secondarySite of the DRPlans this controller reconciles.")
 
 	zapOpts := zap.Options{Development: true}
 	goFS := flag.NewFlagSet("", flag.ExitOnError)
@@ -133,6 +137,12 @@ func main() {
 	}
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&zapOpts)))
+
+	if siteName == "" {
+		setupLog.Error(nil, "--site-name is required")
+		os.Exit(1)
+	}
+	setupLog.Info("Site identity configured", "siteName", siteName)
 
 	// Disable HTTP/2 to mitigate HTTP/2 Stream Cancellation and Rapid Reset CVEs.
 	// See: https://github.com/advisories/GHSA-qppj-fm5r-hxr3
@@ -275,6 +285,7 @@ func main() {
 		SCLister:                scLister,
 		PVCResolver:             pvcResolver,
 		UnprotectedVMDiscoverer: vmDiscoverer,
+		LocalSite:               siteName,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "DRPlan")
 		os.Exit(1)
@@ -337,6 +348,7 @@ func main() {
 		VMManager:        vmManager,
 		ResumeAnalyzer:   resumeAnalyzer,
 		ReprotectHandler: reprotectHandler,
+		LocalSite:        siteName,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "DRExecution")
 		os.Exit(1)

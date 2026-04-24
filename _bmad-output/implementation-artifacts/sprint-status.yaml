@@ -36,7 +36,7 @@
 
 generated: 2026-04-06
 last_updated: 2026-04-23
-# 5.5 created: Site-Aware Reconcile Ownership — --site-name flag, ReconcileRole pure function (RoleOwner/RoleStep0/RoleNone), DRExecution reconciler gating per transition phase, serialized Step 0 handoff via Step0Complete condition, misconfiguration guard, DRPlan reconciler site-scoped discovery (~6 prod files, ~4 test files). Prerequisite for Story 5.6.
+# 5.5 review: Site-Aware Reconcile Ownership — --site-name flag, ReconcileRole pure function (RoleOwner/RoleStep0/RoleNone), DRExecution reconciler gating per transition phase, serialized Step 0 handoff via Step0Complete condition, misconfiguration guard, DRPlan reconciler site-scoped discovery, backward-compat mode for empty LocalSite; 10 new unit tests + comprehensive table-driven engine tests + 1 site-aware integration test, 0 lint issues, all unit+integration tests pass
 # 5.6 created: Event-Driven Wave Gate with VM Readiness Verification — VMReadyTimeout on DRPlanSpec (default 5m), WaitingForVMReady group state, IsVMReady on VMManager, VM watch on DRExecution controller, reconcileWaveProgress state machine, mode-dependent timeout policy (disaster=fail-forward, planned_migration=fail-fast), WaitVMReady step recording, checkpoint/resume compat (~9 prod files, ~6 test files)
 # 5.4 review: DRExecution as Immutable Audit Record — soteria.io/plan-name label (FR42), custom TableConvertor (6 columns: NAME/PLAN/MODE/RESULT/DURATION/AGE), spec.planName field selector, AuditProtectedREST delete protection (FR41), sample YAML, doc.go, 25 new tests, 0 lint issues, 0 regressions
 # 5.3 review: Prometheus Metrics — 5 new metrics (drplan_vms_total GaugeVec, failover_duration_seconds HistogramVec, replication_lag_seconds GaugeVec, execution_total CounterVec, unprotected_vms_total Gauge), helper functions with stale-series cleanup (DeletePartialMatch), DRPlan reconciler instrumentation (VM count, replication lag, unprotected VMs, deletion cleanup), DRExecution reconciler instrumentation (wave execution, reprotect, failExecution), 7 unit tests with 100% pkg/metrics coverage, 0 regressions
@@ -192,7 +192,7 @@ development_status:
   5-2-unprotected-vm-detection: done
   5-3-prometheus-metrics: done
   5-4-drexecution-as-immutable-audit-record: done
-  5-5-site-aware-reconcile-ownership: ready-for-dev
+  5-5-site-aware-reconcile-ownership: closed
   5-6-event-driven-wave-gate-vm-readiness: ready-for-dev
   epic-5-retrospective: optional
 

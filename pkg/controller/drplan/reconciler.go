@@ -106,6 +106,10 @@ type DRPlanReconciler struct {
 	// soteria.io/drplan label. When nil, unprotected VM detection is
 	// skipped (backward compat).
 	UnprotectedVMDiscoverer engine.UnprotectedVMDiscoverer
+	// LocalSite is the --site-name flag value identifying which cluster
+	// this controller instance runs on. Used to optimize VM discovery
+	// and health polling to the local site.
+	LocalSite string
 }
 
 func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -119,6 +123,29 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
+	}
+
+	if r.LocalSite != "" {
+		// Determine which site currently owns the VMs. Default to
+		// PrimarySite when ActiveSite has not been set yet (initial state).
+		activeSite := plan.Status.ActiveSite
+		if activeSite == "" {
+			activeSite = plan.Spec.PrimarySite
+		}
+		logger.V(1).Info("Site-aware DRPlan reconciliation",
+			"localSite", r.LocalSite,
+			"activeSite", activeSite,
+			"primarySite", plan.Spec.PrimarySite,
+			"secondarySite", plan.Spec.SecondarySite)
+
+		// Each Soteria instance only talks to its local kube-apiserver
+		// and local ScyllaDB. VMs exist exclusively on the active site,
+		// so discovery on the non-active site returns 0 VMs and would
+		// overwrite the correct plan status via ScyllaDB replication.
+		if r.LocalSite != activeSite {
+			logger.V(1).Info("Skipping discovery and health polling, not the active site")
+			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+		}
 	}
 
 	logger.Info("Starting reconciliation")

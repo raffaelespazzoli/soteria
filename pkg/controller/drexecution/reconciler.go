@@ -81,6 +81,11 @@ type DRExecutionReconciler struct {
 	VMManager        engine.VMManager
 	ResumeAnalyzer   *engine.ResumeAnalyzer
 	ReprotectHandler *engine.ReprotectHandler
+	// LocalSite is the --site-name flag value identifying which cluster this
+	// controller instance runs on. Used to compute the reconcile role
+	// (Owner/Step0/None) for each DRExecution based on the transition phase
+	// and the plan's primarySite/secondarySite.
+	LocalSite string
 }
 
 func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -101,6 +106,24 @@ func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, nil
 	}
 
+	// Fetch the referenced DRPlan early — needed for site-aware role gating.
+	var plan soteriav1alpha1.DRPlan
+	if err := r.Get(ctx, client.ObjectKey{Name: exec.Spec.PlanName}, &plan); err != nil {
+		if errors.IsNotFound(err) {
+			logger.Info("Referenced DRPlan not found", "plan", exec.Spec.PlanName)
+			return r.failExecution(ctx, &exec, "PlanNotFound",
+				fmt.Sprintf("DRPlan %q not found", exec.Spec.PlanName))
+		}
+		return ctrl.Result{}, err
+	}
+
+	// Site-aware reconcile ownership: compute the role and dispatch.
+	if r.LocalSite != "" {
+		if result, done, err := r.dispatchByRole(ctx, &exec, &plan); done || err != nil {
+			return result, err
+		}
+	}
+
 	// Resume path: in-progress execution needs resume after restart.
 	// StartTime != nil means the controller already dispatched this execution.
 	// Result == "" (empty) means execution is still in-progress (not terminal).
@@ -116,82 +139,13 @@ func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return r.reconcileRetry(ctx, &exec)
 	}
 
-	// Fetch the referenced DRPlan (needed by both setup and executor paths).
-	var plan soteriav1alpha1.DRPlan
-	if err := r.Get(ctx, client.ObjectKey{Name: exec.Spec.PlanName}, &plan); err != nil {
-		if errors.IsNotFound(err) {
-			logger.Info("Referenced DRPlan not found", "plan", exec.Spec.PlanName)
-			return r.failExecution(ctx, &exec, "PlanNotFound",
-				fmt.Sprintf("DRPlan %q not found", exec.Spec.PlanName))
-		}
-		return ctrl.Result{}, err
-	}
-
 	// Setup phase: validate, set startTime, transition the plan.
 	// Gated on startTime so these steps never repeat on re-reconcile.
 	if exec.Status.StartTime == nil {
-		if exec.Spec.Mode != soteriav1alpha1.ExecutionModePlannedMigration &&
-			exec.Spec.Mode != soteriav1alpha1.ExecutionModeDisaster &&
-			exec.Spec.Mode != soteriav1alpha1.ExecutionModeReprotect {
-			return r.failExecution(ctx, &exec, "InvalidMode",
-				fmt.Sprintf("unsupported execution mode %q", exec.Spec.Mode))
+		result, done, err := r.reconcileSetup(ctx, &exec, &plan, req.NamespacedName)
+		if err != nil || done {
+			return result, err
 		}
-
-		previousPhase := plan.Status.Phase
-		targetPhase, err := engine.Transition(previousPhase, exec.Spec.Mode)
-		if err != nil {
-			validPhases := engine.ValidStartingPhases(exec.Spec.Mode)
-			sort.Strings(validPhases)
-			logger.Info("Invalid phase transition",
-				"plan", plan.Name, "currentPhase", previousPhase, "mode", exec.Spec.Mode)
-			return r.failExecution(ctx, &exec, "InvalidPhaseTransition",
-				fmt.Sprintf("cannot %s from phase %q on plan %q; valid starting phases: %s",
-					exec.Spec.Mode, previousPhase, plan.Name, strings.Join(validPhases, ", ")))
-		}
-
-		// Set the concurrency guard on the plan BEFORE marking StartTime on the
-		// execution. If the plan patch fails, StartTime remains nil and the next
-		// reconcile retries setup from scratch. If the plan patch succeeds but
-		// the exec patch fails, the guard is already in place and the next
-		// reconcile re-enters setup idempotently.
-		planPatch := client.MergeFrom(plan.DeepCopy())
-		plan.Status.ActiveExecution = exec.Name
-		plan.Status.ActiveExecutionMode = exec.Spec.Mode
-		if err := r.Status().Patch(ctx, &plan, planPatch); err != nil {
-			logger.Error(err, "Failed to set ActiveExecution on DRPlan", "plan", plan.Name)
-			return ctrl.Result{}, err
-		}
-
-		logger.Info("Set ActiveExecution on DRPlan",
-			"plan", plan.Name, "activeExecution", exec.Name, "phase", previousPhase)
-
-		if err := r.ensurePlanNameLabel(ctx, &exec, req.NamespacedName); err != nil {
-			return ctrl.Result{}, err
-		}
-
-		now := metav1.Now()
-		execPatch := client.MergeFrom(exec.DeepCopy())
-		exec.Status.StartTime = &now
-		meta.SetStatusCondition(&exec.Status.Conditions, metav1.Condition{
-			Type:               "Progressing",
-			Status:             metav1.ConditionTrue,
-			Reason:             "ExecutionStarted",
-			Message:            fmt.Sprintf("Execution started for plan %s in %s mode", plan.Name, exec.Spec.Mode),
-			ObservedGeneration: exec.Generation,
-		})
-
-		if err := r.Status().Patch(ctx, &exec, execPatch); err != nil {
-			logger.Error(err, "Failed to update DRExecution status")
-			return ctrl.Result{}, err
-		}
-
-		reason, action, verb := startEventFields(targetPhase)
-		r.event(&plan, corev1.EventTypeNormal, reason, action,
-			fmt.Sprintf("%s started for plan %s in %s mode via execution %s",
-				verb, plan.Name, exec.Spec.Mode, exec.Name))
-
-		logger.Info("DRExecution setup complete",
-			"plan", plan.Name, "mode", exec.Spec.Mode, "effectivePhase", targetPhase)
 	}
 
 	// Re-protect dispatch: storage-only, not wave-based.
@@ -216,6 +170,15 @@ func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		// and must not create Step0Complete conditions or planned-migration events.
 		step0Done := meta.IsStatusConditionTrue(exec.Status.Conditions, "Step0Complete")
 		if exec.Spec.Mode == soteriav1alpha1.ExecutionModePlannedMigration && !step0Done {
+			if r.LocalSite != "" {
+				// Site-aware mode: the source site runs Step 0 via
+				// reconcileStep0 and sets Step0Complete. The target (Owner)
+				// site waits for it by requeuing.
+				logger.V(1).Info("Waiting for source site to complete Step 0")
+				return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+			}
+
+			// Legacy single-site mode: run Step 0 locally.
 			if ph, ok := handler.(interface {
 				PreExecute(ctx context.Context, groups []engine.ExecutionGroup) error
 			}); ok {
@@ -979,6 +942,190 @@ func (r *DRExecutionReconciler) ensurePlanNameLabel(
 	}
 	logger.Info("Set plan-name label", "label", "soteria.io/plan-name", "value", exec.Spec.PlanName)
 	return nil
+}
+
+// reconcileSetup validates the execution mode, transitions the DRPlan phase,
+// sets the concurrency guard, and initializes the execution's StartTime.
+// Returns (result, done=true, err) when the caller should return immediately
+// (either because of an error or because the execution was failed).
+func (r *DRExecutionReconciler) reconcileSetup(
+	ctx context.Context,
+	exec *soteriav1alpha1.DRExecution,
+	plan *soteriav1alpha1.DRPlan,
+	key client.ObjectKey,
+) (ctrl.Result, bool, error) {
+	logger := log.FromContext(ctx).WithValues("drexecution", exec.Name)
+
+	if exec.Spec.Mode != soteriav1alpha1.ExecutionModePlannedMigration &&
+		exec.Spec.Mode != soteriav1alpha1.ExecutionModeDisaster &&
+		exec.Spec.Mode != soteriav1alpha1.ExecutionModeReprotect {
+		result, err := r.failExecution(ctx, exec, "InvalidMode",
+			fmt.Sprintf("unsupported execution mode %q", exec.Spec.Mode))
+		return result, true, err
+	}
+
+	previousPhase := plan.Status.Phase
+	targetPhase, err := engine.Transition(previousPhase, exec.Spec.Mode)
+	if err != nil {
+		validPhases := engine.ValidStartingPhases(exec.Spec.Mode)
+		sort.Strings(validPhases)
+		logger.Info("Invalid phase transition",
+			"plan", plan.Name, "currentPhase", previousPhase, "mode", exec.Spec.Mode)
+		result, fErr := r.failExecution(ctx, exec, "InvalidPhaseTransition",
+			fmt.Sprintf("cannot %s from phase %q on plan %q; valid starting phases: %s",
+				exec.Spec.Mode, previousPhase, plan.Name, strings.Join(validPhases, ", ")))
+		return result, true, fErr
+	}
+
+	planPatch := client.MergeFrom(plan.DeepCopy())
+	plan.Status.ActiveExecution = exec.Name
+	plan.Status.ActiveExecutionMode = exec.Spec.Mode
+	if err := r.Status().Patch(ctx, plan, planPatch); err != nil {
+		logger.Error(err, "Failed to set ActiveExecution on DRPlan", "plan", plan.Name)
+		return ctrl.Result{}, true, err
+	}
+
+	logger.Info("Set ActiveExecution on DRPlan",
+		"plan", plan.Name, "activeExecution", exec.Name, "phase", previousPhase)
+
+	if err := r.ensurePlanNameLabel(ctx, exec, key); err != nil {
+		return ctrl.Result{}, true, err
+	}
+
+	now := metav1.Now()
+	execPatch := client.MergeFrom(exec.DeepCopy())
+	exec.Status.StartTime = &now
+	meta.SetStatusCondition(&exec.Status.Conditions, metav1.Condition{
+		Type:               "Progressing",
+		Status:             metav1.ConditionTrue,
+		Reason:             "ExecutionStarted",
+		Message:            fmt.Sprintf("Execution started for plan %s in %s mode", plan.Name, exec.Spec.Mode),
+		ObservedGeneration: exec.Generation,
+	})
+
+	if err := r.Status().Patch(ctx, exec, execPatch); err != nil {
+		logger.Error(err, "Failed to update DRExecution status")
+		return ctrl.Result{}, true, err
+	}
+
+	reason, action, verb := startEventFields(targetPhase)
+	r.event(plan, corev1.EventTypeNormal, reason, action,
+		fmt.Sprintf("%s started for plan %s in %s mode via execution %s",
+			verb, plan.Name, exec.Spec.Mode, exec.Name))
+
+	logger.Info("DRExecution setup complete",
+		"plan", plan.Name, "mode", exec.Spec.Mode, "effectivePhase", targetPhase)
+	return ctrl.Result{}, false, nil
+}
+
+// dispatchByRole computes the reconcile role for this controller instance and
+// dispatches accordingly. Returns (result, done=true, err) if the role was
+// handled (RoleNone or RoleStep0), or (_, false, nil) if the caller should
+// continue with the normal Owner path.
+func (r *DRExecutionReconciler) dispatchByRole(
+	ctx context.Context,
+	exec *soteriav1alpha1.DRExecution,
+	plan *soteriav1alpha1.DRPlan,
+) (ctrl.Result, bool, error) {
+	logger := log.FromContext(ctx).WithValues("drexecution", exec.Name)
+
+	if r.LocalSite != plan.Spec.PrimarySite && r.LocalSite != plan.Spec.SecondarySite {
+		logger.Error(nil, "LocalSite does not match plan topology, skipping reconcile",
+			"localSite", r.LocalSite,
+			"primarySite", plan.Spec.PrimarySite,
+			"secondarySite", plan.Spec.SecondarySite)
+		return ctrl.Result{}, true, nil
+	}
+
+	effectivePhase := engine.EffectivePhase(plan.Status.Phase, exec.Spec.Mode)
+	role := engine.ReconcileRole(effectivePhase, exec.Spec.Mode,
+		r.LocalSite, plan.Spec.PrimarySite, plan.Spec.SecondarySite)
+	logger.V(1).Info("Computed reconcile role",
+		"role", role, "effectivePhase", effectivePhase,
+		"localSite", r.LocalSite, "mode", exec.Spec.Mode)
+
+	switch role {
+	case engine.RoleNone:
+		logger.V(1).Info("Skipping reconcile, not the owning site")
+		return ctrl.Result{}, true, nil
+	case engine.RoleStep0:
+		result, err := r.reconcileStep0(ctx, exec, plan)
+		return result, true, err
+	default:
+		return ctrl.Result{}, false, nil
+	}
+}
+
+// reconcileStep0 runs the source site's Step 0 for planned migration:
+// stop VMs, stop replication, wait for sync. Once complete, it sets the
+// Step0Complete condition on the DRExecution status so the target site
+// (watching with RequeueAfter) can proceed with wave execution. This
+// method is idempotent — if Step0Complete is already set, it returns
+// immediately without touching the DRExecution again.
+func (r *DRExecutionReconciler) reconcileStep0(
+	ctx context.Context,
+	exec *soteriav1alpha1.DRExecution,
+	plan *soteriav1alpha1.DRPlan,
+) (ctrl.Result, error) {
+	logger := log.FromContext(ctx).WithValues("drexecution", exec.Name, "role", "Step0")
+
+	// Idempotent: if Step0Complete already set, source site's job is done.
+	if meta.IsStatusConditionTrue(exec.Status.Conditions, "Step0Complete") {
+		logger.V(1).Info("Step0Complete already set, source site work is done")
+		return ctrl.Result{}, nil
+	}
+
+	// Guard: Step 0 only applies to in-progress planned migration executions.
+	if exec.Status.StartTime == nil {
+		logger.V(1).Info("Execution not yet started, waiting for target site setup")
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	}
+
+	logger.Info("Running Step 0 (source site planned migration)")
+
+	// Step 0 logic: stop VMs → stop replication → wait for sync.
+	// This reuses the existing PreExecute path from the FailoverHandler.
+	handler, err := r.resolveHandler(exec.Spec.Mode)
+	if err != nil {
+		logger.Error(err, "Failed to resolve handler for Step 0")
+		return ctrl.Result{}, err
+	}
+
+	if ph, ok := handler.(interface {
+		PreExecute(ctx context.Context, groups []engine.ExecutionGroup) error
+	}); ok && r.WaveExecutor != nil {
+		allGroups, err := r.WaveExecutor.BuildExecutionGroups(ctx, plan)
+		if err != nil {
+			logger.Error(err, "Failed to build execution groups for Step 0")
+			return ctrl.Result{}, err
+		}
+		if err := ph.PreExecute(ctx, allGroups); err != nil {
+			logger.Error(err, "Step 0 pre-execution failed")
+			r.event(exec, corev1.EventTypeWarning, "Step0Failed", "PlannedMigration",
+				fmt.Sprintf("Step 0 failed on source site: %v", err))
+			return ctrl.Result{}, err
+		}
+	}
+
+	// Mark Step0Complete so the target site can proceed with waves.
+	execPatch := client.MergeFrom(exec.DeepCopy())
+	meta.SetStatusCondition(&exec.Status.Conditions, metav1.Condition{
+		Type:               "Step0Complete",
+		Status:             metav1.ConditionTrue,
+		Reason:             "SourceSiteStep0Completed",
+		Message:            "Source site completed Step 0 (stop VMs, stop replication, sync wait)",
+		ObservedGeneration: exec.Generation,
+	})
+	if err := r.Status().Patch(ctx, exec, execPatch); err != nil {
+		logger.Error(err, "Failed to set Step0Complete condition")
+		return ctrl.Result{}, err
+	}
+
+	r.event(exec, corev1.EventTypeNormal, "Step0Completed", "PlannedMigration",
+		fmt.Sprintf("Source site Step 0 completed for plan %s", plan.Name))
+
+	logger.Info("Step 0 completed, source site work is done")
+	return ctrl.Result{}, nil
 }
 
 func (r *DRExecutionReconciler) event(

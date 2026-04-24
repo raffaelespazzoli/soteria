@@ -538,8 +538,8 @@ cat <<SUMMARY
    Cross-DC: Submariner MCS (soteria-scylladb-client.${NAMESPACE}.svc.clusterset.local)
 
  Soteria API servers:
-   etl6 : APIService v1alpha1.soteria.io (--scylladb-local-dc=etl6)
-   etl7 : APIService v1alpha1.soteria.io (--scylladb-local-dc=etl7)
+   etl6 : APIService v1alpha1.soteria.io (--scylladb-local-dc=etl6, --site-name=etl6)
+   etl7 : APIService v1alpha1.soteria.io (--scylladb-local-dc=etl7, --site-name=etl7)
 
  Sample data:
    DRPlans:      finance-dr (via ${CTX_ETL6}), payments-dr (via ${CTX_ETL7})

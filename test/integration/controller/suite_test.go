@@ -56,10 +56,11 @@ import (
 )
 
 var (
-	testClient client.Client
-	testScheme *runtime.Scheme
-	testEnv    *envtest.Environment
-	cancelFunc context.CancelFunc
+	testClient    client.Client
+	testScheme    *runtime.Scheme
+	testEnv       *envtest.Environment
+	testClientset *kubernetes.Clientset
+	cancelFunc    context.CancelFunc
 )
 
 func TestMain(m *testing.M) {
@@ -100,15 +101,15 @@ func TestMain(m *testing.M) {
 
 	vmDiscoverer := engine.NewTypedVMDiscoverer(mgr.GetClient())
 
-	clientset, err := kubernetes.NewForConfig(cfg)
+	testClientset, err = kubernetes.NewForConfig(cfg)
 	if err != nil {
 		panic(fmt.Sprintf("creating kubernetes clientset: %v", err))
 	}
+	clientset := testClientset
 	nsLookup := &engine.DefaultNamespaceLookup{Client: clientset.CoreV1()}
 
-	testRegistry := drivers.NewRegistry()
-	testRegistry.RegisterDriver(noop.ProvisionerName, func() drivers.StorageProvider { return noop.New() })
-	testRegistry.SetFallbackDriver(func() drivers.StorageProvider { return noop.New() })
+	testReg := newNoopRegistry()
+	testRegistry := testReg
 	scLister := &preflight.KubeStorageClassLister{Client: clientset.StorageV1()}
 	storageResolver := &preflight.TypedStorageBackendResolver{
 		Client:     mgr.GetClient(),
@@ -508,4 +509,14 @@ func waitForPreflight(ctx context.Context, name, namespace string, timeout time.
 		time.Sleep(200 * time.Millisecond)
 	}
 	return nil, fmt.Errorf("timed out waiting for preflight report on %s/%s", namespace, name)
+}
+
+// newNoopRegistry creates a driver registry with only the noop driver
+// registered and set as the fallback. Reusable across suite setup and
+// individual test reconcilers.
+func newNoopRegistry() *drivers.Registry {
+	reg := drivers.NewRegistry()
+	reg.RegisterDriver(noop.ProvisionerName, func() drivers.StorageProvider { return noop.New() })
+	reg.SetFallbackDriver(func() drivers.StorageProvider { return noop.New() })
+	return reg
 }

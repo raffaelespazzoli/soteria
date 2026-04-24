@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
@@ -403,4 +404,370 @@ func TestDRExecutionReconciler_PlanNameLabel_Idempotent(t *testing.T) {
 	if fetched.Status.StartTime == nil {
 		t.Error("expected StartTime to be set")
 	}
+}
+
+// --- Site-aware reconcile ownership tests ---
+
+func newSiteAwarePlan(name, primary, secondary, phase string) *soteriav1alpha1.DRPlan {
+	return &soteriav1alpha1.DRPlan{
+		ObjectMeta: metav1.ObjectMeta{Name: name},
+		Spec: soteriav1alpha1.DRPlanSpec{
+			WaveLabel:              "soteria.io/wave",
+			MaxConcurrentFailovers: 4,
+			PrimarySite:            primary,
+			SecondarySite:          secondary,
+		},
+		Status: soteriav1alpha1.DRPlanStatus{
+			Phase:      phase,
+			ActiveSite: primary,
+		},
+	}
+}
+
+// reconcileAndAssertStartTime is a helper that reconciles and checks whether
+// StartTime was set (expectSet=true) or remained nil (expectSet=false).
+func reconcileAndAssertStartTime(
+	t *testing.T, cl client.Client, r *DRExecutionReconciler, execName string, expectSet bool,
+) ctrl.Result {
+	t.Helper()
+	result, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: execName},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var fetched soteriav1alpha1.DRExecution
+	if err := cl.Get(context.Background(), client.ObjectKey{Name: execName}, &fetched); err != nil {
+		t.Fatalf("fetching execution: %v", err)
+	}
+	if expectSet && fetched.Status.StartTime == nil {
+		t.Error("expected StartTime to be set")
+	}
+	if !expectSet && fetched.Status.StartTime != nil {
+		t.Error("expected StartTime to remain nil")
+	}
+	return result
+}
+
+func TestDRExecutionReconciler_RoleNone_SkipsReconcile(t *testing.T) {
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "exec-disaster"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-1",
+			Mode:     soteriav1alpha1.ExecutionModeDisaster,
+		},
+	}
+	plan := newSiteAwarePlan("plan-1", "east", "west", soteriav1alpha1.PhaseSteadyState)
+	cl := newTestClient(exec, plan)
+
+	r := &DRExecutionReconciler{
+		Client:         cl,
+		Scheme:         newTestScheme(),
+		LocalSite:      "east",
+		ResumeAnalyzer: &engine.ResumeAnalyzer{},
+		Handler:        &engine.NoOpHandler{},
+	}
+
+	result := reconcileAndAssertStartTime(t, cl, r, "exec-disaster", false)
+	if result.RequeueAfter != 0 {
+		t.Errorf("expected no requeue for RoleNone, got %v", result.RequeueAfter)
+	}
+}
+
+func TestDRExecutionReconciler_RoleOwner_ProceedsNormally(t *testing.T) {
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "exec-owner"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-1",
+			Mode:     soteriav1alpha1.ExecutionModeDisaster,
+		},
+	}
+	plan := newSiteAwarePlan("plan-1", "east", "west", soteriav1alpha1.PhaseSteadyState)
+	cl := newTestClient(exec, plan)
+
+	r := &DRExecutionReconciler{
+		Client:         cl,
+		Scheme:         newTestScheme(),
+		LocalSite:      "west",
+		ResumeAnalyzer: &engine.ResumeAnalyzer{},
+		Handler:        &engine.NoOpHandler{},
+	}
+
+	reconcileAndAssertStartTime(t, cl, r, "exec-owner", true)
+}
+
+func TestDRExecutionReconciler_RoleStep0_PlannedMigration(t *testing.T) {
+	// Planned migration: source site (east) should get RoleStep0.
+	now := metav1.Now()
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "exec-step0"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-1",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+		Status: soteriav1alpha1.DRExecutionStatus{
+			StartTime: &now,
+		},
+	}
+	plan := newSiteAwarePlan("plan-1", "east", "west", soteriav1alpha1.PhaseSteadyState)
+	plan.Status.ActiveExecution = "exec-step0"
+	plan.Status.ActiveExecutionMode = soteriav1alpha1.ExecutionModePlannedMigration
+	cl := newTestClient(exec, plan)
+
+	r := &DRExecutionReconciler{
+		Client:         cl,
+		Scheme:         newTestScheme(),
+		LocalSite:      "east", // Source site — gets Step0
+		ResumeAnalyzer: &engine.ResumeAnalyzer{},
+		Handler:        &engine.NoOpHandler{},
+	}
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "exec-step0"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify Step0Complete was set.
+	var fetched soteriav1alpha1.DRExecution
+	if err := cl.Get(context.Background(), client.ObjectKey{Name: "exec-step0"}, &fetched); err != nil {
+		t.Fatalf("fetching execution: %v", err)
+	}
+	if !meta.IsStatusConditionTrue(fetched.Status.Conditions, "Step0Complete") {
+		t.Error("expected Step0Complete condition to be set")
+	}
+}
+
+func TestDRExecutionReconciler_RoleStep0_Idempotent(t *testing.T) {
+	// If Step0Complete is already set, reconcileStep0 returns immediately.
+	now := metav1.Now()
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "exec-step0-idem"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-1",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+		Status: soteriav1alpha1.DRExecutionStatus{
+			StartTime: &now,
+			Conditions: []metav1.Condition{
+				{
+					Type:   "Step0Complete",
+					Status: metav1.ConditionTrue,
+					Reason: "SourceSiteStep0Completed",
+				},
+			},
+		},
+	}
+	plan := newSiteAwarePlan("plan-1", "east", "west", soteriav1alpha1.PhaseSteadyState)
+	plan.Status.ActiveExecution = "exec-step0-idem"
+	plan.Status.ActiveExecutionMode = soteriav1alpha1.ExecutionModePlannedMigration
+	cl := newTestClient(exec, plan)
+
+	r := &DRExecutionReconciler{
+		Client:    cl,
+		Scheme:    newTestScheme(),
+		LocalSite: "east",
+	}
+
+	result, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "exec-step0-idem"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.RequeueAfter != 0 {
+		t.Errorf("expected no requeue for idempotent Step0, got %v", result.RequeueAfter)
+	}
+}
+
+func TestDRExecutionReconciler_MisconfigurationGuard(t *testing.T) {
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "exec-misconfig"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-1",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+	}
+	plan := newSiteAwarePlan("plan-1", "north", "south", soteriav1alpha1.PhaseSteadyState)
+	cl := newTestClient(exec, plan)
+
+	r := &DRExecutionReconciler{
+		Client:         cl,
+		Scheme:         newTestScheme(),
+		LocalSite:      "east", // Doesn't match north or south
+		ResumeAnalyzer: &engine.ResumeAnalyzer{},
+	}
+
+	reconcileAndAssertStartTime(t, cl, r, "exec-misconfig", false)
+}
+
+func TestDRExecutionReconciler_PlannedMigration_OwnerWaitsForStep0(t *testing.T) {
+	// Target site (west) is Owner for planned migration. Step0Complete not set
+	// yet — after setup, the Owner should wait with RequeueAfter(5s).
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "exec-wait-new"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-2",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+	}
+	plan := newSiteAwarePlan("plan-2", "east", "west", soteriav1alpha1.PhaseSteadyState)
+	cl := newTestClient(exec, plan)
+
+	r := &DRExecutionReconciler{
+		Client:         cl,
+		Scheme:         newTestScheme(),
+		LocalSite:      "west",
+		WaveExecutor:   &engine.WaveExecutor{},
+		ResumeAnalyzer: &engine.ResumeAnalyzer{},
+		Handler:        &engine.NoOpHandler{},
+	}
+
+	result, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "exec-wait-new"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// After setup completes, the Owner should hit the Step0Complete wait
+	// and return RequeueAfter(5s).
+	if result.RequeueAfter != 5*time.Second {
+		t.Errorf("expected RequeueAfter 5s for Step0Complete wait, got %v", result.RequeueAfter)
+	}
+}
+
+func TestDRExecutionReconciler_PlannedMigration_OwnerProceedsAfterStep0(t *testing.T) {
+	// Target site (west) is Owner for planned migration. Step0Complete IS set.
+	// Should proceed with wave execution (no wait).
+	now := metav1.Now()
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "exec-proceed",
+			Labels: map[string]string{"soteria.io/plan-name": "plan-1"},
+		},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-1",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+		Status: soteriav1alpha1.DRExecutionStatus{
+			StartTime: &now,
+			Conditions: []metav1.Condition{
+				{
+					Type:   "Step0Complete",
+					Status: metav1.ConditionTrue,
+					Reason: "SourceSiteStep0Completed",
+				},
+				{
+					Type:   "Progressing",
+					Status: metav1.ConditionTrue,
+					Reason: "ExecutionStarted",
+				},
+			},
+		},
+	}
+	plan := newSiteAwarePlan("plan-1", "east", "west", soteriav1alpha1.PhaseSteadyState)
+	plan.Status.ActiveExecution = "exec-proceed"
+	plan.Status.ActiveExecutionMode = soteriav1alpha1.ExecutionModePlannedMigration
+	cl := newTestClient(exec, plan)
+
+	r := &DRExecutionReconciler{
+		Client:         cl,
+		Scheme:         newTestScheme(),
+		LocalSite:      "west",
+		ResumeAnalyzer: &engine.ResumeAnalyzer{},
+		Handler:        &engine.NoOpHandler{},
+		// No WaveExecutor — resume path with no waves will be a no-op.
+	}
+
+	result, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "exec-proceed"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// With Step0Complete set and no WaveExecutor, it should proceed through
+	// resume (no-op) and return without requeue.
+	if result.RequeueAfter == 5*time.Second {
+		t.Error("should NOT requeue with 5s when Step0Complete is already present")
+	}
+}
+
+func TestDRExecutionReconciler_DisasterMode_SourceExitsImmediately(t *testing.T) {
+	// AC6: disaster mode, source site → RoleNone → return without action.
+	now := metav1.Now()
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "exec-disaster-source"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-1",
+			Mode:     soteriav1alpha1.ExecutionModeDisaster,
+		},
+		Status: soteriav1alpha1.DRExecutionStatus{
+			StartTime: &now,
+		},
+	}
+	plan := newSiteAwarePlan("plan-1", "east", "west", soteriav1alpha1.PhaseSteadyState)
+	plan.Status.ActiveExecution = "exec-disaster-source"
+	plan.Status.ActiveExecutionMode = soteriav1alpha1.ExecutionModeDisaster
+	cl := newTestClient(exec, plan)
+
+	r := &DRExecutionReconciler{
+		Client:         cl,
+		Scheme:         newTestScheme(),
+		LocalSite:      "east", // Source site in disaster mode → RoleNone
+		ResumeAnalyzer: &engine.ResumeAnalyzer{},
+	}
+
+	result, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "exec-disaster-source"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.RequeueAfter != 0 {
+		t.Errorf("expected no requeue for disaster source, got %v", result.RequeueAfter)
+	}
+}
+
+func TestDRExecutionReconciler_NoLocalSite_BackwardCompat(t *testing.T) {
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "exec-legacy"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-1",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+	}
+	plan := newSiteAwarePlan("plan-1", "dc-alpha", "dc-beta", soteriav1alpha1.PhaseSteadyState)
+	cl := newTestClient(exec, plan)
+
+	r := &DRExecutionReconciler{
+		Client:         cl,
+		Scheme:         newTestScheme(),
+		LocalSite:      "",
+		ResumeAnalyzer: &engine.ResumeAnalyzer{},
+		Handler:        &engine.NoOpHandler{},
+	}
+
+	reconcileAndAssertStartTime(t, cl, r, "exec-legacy", true)
+}
+
+func TestDRExecutionReconciler_ReprotectOwnership(t *testing.T) {
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "exec-reprotect"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-1",
+			Mode:     soteriav1alpha1.ExecutionModeReprotect,
+		},
+	}
+	plan := newSiteAwarePlan("plan-1", "dc-primary", "dc-secondary", soteriav1alpha1.PhaseFailedOver)
+	cl := newTestClient(exec, plan)
+
+	r := &DRExecutionReconciler{
+		Client:         cl,
+		Scheme:         newTestScheme(),
+		LocalSite:      "dc-primary", // Source in Reprotecting → RoleNone
+		ResumeAnalyzer: &engine.ResumeAnalyzer{},
+	}
+
+	reconcileAndAssertStartTime(t, cl, r, "exec-reprotect", false)
 }

@@ -1,3 +1,6 @@
 - op: add
   path: /spec/template/spec/containers/0/args/-
   value: --scylladb-local-dc=etl7
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --site-name=etl7
