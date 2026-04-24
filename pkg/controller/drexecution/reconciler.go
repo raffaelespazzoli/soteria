@@ -40,9 +40,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/events"
+	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
 	"github.com/soteria-project/soteria/pkg/drivers"
@@ -942,9 +946,8 @@ func startEventFields(phase string) (reason, action, verb string) {
 }
 
 // ensurePlanNameLabel sets soteria.io/plan-name on the DRExecution for
-// history queries (FR42). The label is metadata, updated via r.Update,
-// then re-fetched to pick up the new resourceVersion before the status
-// update that sets StartTime. Skips the update if the label already matches.
+// history queries (FR42). Uses retry.RetryOnConflict to handle concurrent
+// resourceVersion bumps from status patches or informer replays.
 func (r *DRExecutionReconciler) ensurePlanNameLabel(
 	ctx context.Context, exec *soteriav1alpha1.DRExecution, key client.ObjectKey,
 ) error {
@@ -952,14 +955,25 @@ func (r *DRExecutionReconciler) ensurePlanNameLabel(
 		return nil
 	}
 	logger := log.FromContext(ctx).WithValues("drexecution", exec.Name)
-	if exec.Labels == nil {
-		exec.Labels = make(map[string]string)
-	}
-	exec.Labels["soteria.io/plan-name"] = exec.Spec.PlanName
-	if err := r.Update(ctx, exec); err != nil {
+
+	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		if err := r.Get(ctx, key, exec); err != nil {
+			return err
+		}
+		if exec.Labels != nil && exec.Labels["soteria.io/plan-name"] == exec.Spec.PlanName {
+			return nil
+		}
+		if exec.Labels == nil {
+			exec.Labels = make(map[string]string)
+		}
+		exec.Labels["soteria.io/plan-name"] = exec.Spec.PlanName
+		return r.Update(ctx, exec)
+	})
+	if err != nil {
 		logger.Error(err, "Failed to set plan-name label", "label", "soteria.io/plan-name")
 		return err
 	}
+
 	if err := r.Get(ctx, key, exec); err != nil {
 		return err
 	}
@@ -975,8 +989,44 @@ func (r *DRExecutionReconciler) event(
 	}
 }
 
+// specOrAnnotationChanged is a predicate that suppresses reconciles triggered
+// by status-only or label-only updates on DRExecution. During execution the
+// wave executor and checkpointer write status frequently; without this filter
+// each write re-enqueues the reconciler, creating a self-contention storm that
+// exhausts checkpoint retries on wave-1.
+//
+// We still trigger on annotation changes so that the retry annotation
+// (soteria.io/retry-groups) is picked up promptly.
+func specOrAnnotationChanged() predicate.Predicate {
+	return predicate.Funcs{
+		CreateFunc: func(_ event.CreateEvent) bool { return true },
+		DeleteFunc: func(_ event.DeleteEvent) bool { return true },
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			if e.ObjectOld == nil || e.ObjectNew == nil {
+				return true
+			}
+			if e.ObjectOld.GetGeneration() != e.ObjectNew.GetGeneration() {
+				return true
+			}
+			oldAnnotations := e.ObjectOld.GetAnnotations()
+			newAnnotations := e.ObjectNew.GetAnnotations()
+			if len(oldAnnotations) != len(newAnnotations) {
+				return true
+			}
+			for k, v := range oldAnnotations {
+				if newAnnotations[k] != v {
+					return true
+				}
+			}
+			return false
+		},
+		GenericFunc: func(_ event.GenericEvent) bool { return true },
+	}
+}
+
 func (r *DRExecutionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&soteriav1alpha1.DRExecution{}).
+		For(&soteriav1alpha1.DRExecution{},
+			builder.WithPredicates(specOrAnnotationChanged())).
 		Complete(r)
 }
