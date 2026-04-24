@@ -192,7 +192,7 @@ development_status:
   5-2-unprotected-vm-detection: done
   5-3-prometheus-metrics: done
   5-4-drexecution-as-immutable-audit-record: done
-  5-5-site-aware-reconcile-ownership: closed
+  5-5-site-aware-reconcile-ownership: done
   5-6-event-driven-wave-gate-vm-readiness: ready-for-dev
   epic-5-retrospective: optional
 

@@ -1,6 +1,6 @@
 # Story 5.5: Site-Aware Reconcile Ownership
 
-Status: closed
+Status: done
 
 ## Story
 
