@@ -53,6 +53,7 @@ const (
 	StepStopReplication = "StopReplication"
 	StepSetSource       = "SetSource"
 	StepStartVM         = "StartVM"
+	StepWaitVMReady     = "WaitVMReady"
 
 	defaultSyncPollInterval = 2 * time.Second
 	defaultSyncTimeout      = 10 * time.Minute

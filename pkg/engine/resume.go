@@ -76,7 +76,7 @@ func (a *ResumeAnalyzer) AnalyzeExecution(exec *soteriav1alpha1.DRExecution) Res
 	}
 
 	// Walk waves to find the resume point: the first wave that has any
-	// non-terminal group (InProgress or Pending).
+	// non-terminal group (InProgress, Pending, or WaitingForVMReady).
 	for i, wave := range exec.Status.Waves {
 		var completed, failed, inFlight, pending []string
 
@@ -88,6 +88,11 @@ func (a *ResumeAnalyzer) AnalyzeExecution(exec *soteriav1alpha1.DRExecution) Res
 				failed = append(failed, group.Name)
 			case soteriav1alpha1.DRGroupResultInProgress:
 				inFlight = append(inFlight, group.Name)
+			case soteriav1alpha1.DRGroupResultWaitingForVMReady:
+				// WaitingForVMReady groups are treated as completed for
+				// skip purposes — their handler already ran successfully.
+				// The reconciler will pick up readiness checking.
+				completed = append(completed, group.Name)
 			default:
 				// Pending or empty result — not started.
 				pending = append(pending, group.Name)

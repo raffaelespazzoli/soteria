@@ -39,14 +39,18 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/events"
 	"k8s.io/client-go/util/retry"
+	kubevirtv1 "kubevirt.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
 	"github.com/soteria-project/soteria/pkg/drivers"
@@ -131,6 +135,21 @@ func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		if exec.Spec.Mode == soteriav1alpha1.ExecutionModeReprotect {
 			return r.reconcileReprotectResume(ctx, &exec)
 		}
+
+		// Wave progress path: if any wave has WaitingForVMReady groups, drive
+		// the readiness state machine instead of re-executing handler operations.
+		if hasWaitingForVMReady(&exec) {
+			return r.reconcileWaveProgress(ctx, &exec, &plan)
+		}
+
+		// Wave-by-wave continuation: if waves are initialized and no groups
+		// are InProgress (no crash recovery needed), continue through the
+		// wave execution pipeline so the VM readiness gate is enforced
+		// between every pair of waves — not just wave 0.
+		if len(exec.Status.Waves) > 0 && !hasInProgressGroups(&exec) {
+			return r.reconcileWaveExecution(ctx, &exec, &plan)
+		}
+
 		return r.reconcileResume(ctx, &exec)
 	}
 
@@ -153,80 +172,401 @@ func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return r.reconcileReprotect(ctx, &exec, &plan)
 	}
 
-	// Dispatch (or re-dispatch) the wave executor.
-	if r.WaveExecutor != nil {
-		handler, err := r.resolveHandler(exec.Spec.Mode)
-		if err != nil {
-			return r.failExecution(ctx, &exec, "HandlerResolutionFailed", err.Error(), &plan)
-		}
-		execInput := engine.ExecuteInput{
-			Execution: &exec,
-			Plan:      &plan,
-			Handler:   handler,
-		}
+	// Wave-by-wave execution with VM readiness gates.
+	return r.reconcileWaveExecution(ctx, &exec, &plan)
+}
 
-		// Step 0 is only part of planned migration. Disaster failover uses the
-		// same FailoverHandler type, but its PreExecute is intentionally a no-op
-		// and must not create Step0Complete conditions or planned-migration events.
-		step0Done := meta.IsStatusConditionTrue(exec.Status.Conditions, "Step0Complete")
-		if exec.Spec.Mode == soteriav1alpha1.ExecutionModePlannedMigration && !step0Done {
-			if r.LocalSite != "" {
-				// Site-aware mode: the source site runs Step 0 via
-				// reconcileStep0 and sets Step0Complete. The target (Owner)
-				// site waits for it by requeuing.
-				logger.V(1).Info("Waiting for source site to complete Step 0")
-				return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
-			}
+// defaultVMReadyTimeout is applied when DRPlan.Spec.VMReadyTimeout is nil.
+const defaultVMReadyTimeout = 5 * time.Minute
 
-			// Legacy single-site mode: run Step 0 locally.
-			if ph, ok := handler.(interface {
-				PreExecute(ctx context.Context, groups []engine.ExecutionGroup) error
-			}); ok {
-				allGroups, err := r.WaveExecutor.BuildExecutionGroups(ctx, &plan)
-				if err != nil {
-					logger.Error(err, "Failed to build execution groups for pre-execution")
-					return r.failExecution(ctx, &exec, "PreExecutionFailed",
-						fmt.Sprintf("building execution groups: %v", err), &plan)
-				}
-				if err := ph.PreExecute(ctx, allGroups); err != nil {
-					logger.Error(err, "Pre-execution (Step 0) failed")
-					r.event(&exec, corev1.EventTypeWarning, "Step0Failed", "PlannedMigration",
-						fmt.Sprintf("Step 0 failed: %v", err))
-					return r.failExecution(ctx, &exec, "PreExecutionFailed",
-						fmt.Sprintf("pre-execution failed: %v", err), &plan)
-				}
+// vmReadySafetyRequeue is the safety-net poll interval for VM readiness when
+// no VM watch event arrives. Ensures progress even with missed watch events.
+const vmReadySafetyRequeue = 10 * time.Second
 
-				execPatch := client.MergeFrom(exec.DeepCopy())
-				meta.SetStatusCondition(&exec.Status.Conditions, metav1.Condition{
-					Type:               "Step0Complete",
-					Status:             metav1.ConditionTrue,
-					Reason:             "PreExecutionCompleted",
-					Message:            "Step 0 completed successfully",
-					ObservedGeneration: exec.Generation,
-				})
-				if err := r.Status().Patch(ctx, &exec, execPatch); err != nil {
-					return ctrl.Result{}, err
-				}
+// reconcileWaveExecution drives the wave-by-wave execution pipeline with VM
+// readiness gates between waves. On each reconcile it either: (a) initializes
+// waves, (b) executes the current wave's handler ops, (c) checks VM readiness
+// for a WaitingForVMReady wave, or (d) finishes the execution.
+func (r *DRExecutionReconciler) reconcileWaveExecution(
+	ctx context.Context, exec *soteriav1alpha1.DRExecution, plan *soteriav1alpha1.DRPlan,
+) (ctrl.Result, error) {
+	logger := log.FromContext(ctx).WithValues("drexecution", exec.Name)
 
-				r.event(&exec, corev1.EventTypeNormal, "PlannedMigrationStarted", "PlannedMigration",
-					fmt.Sprintf("Planned migration Step 0 completed for plan %s", plan.Name))
-			}
-		}
-
-		if err := r.WaveExecutor.Execute(ctx, execInput); err != nil {
-			logger.Error(err, "Wave execution failed", "plan", plan.Name, "execution", exec.Name)
-			return ctrl.Result{}, err
-		}
-
-		r.recordExecutionMetrics(&exec)
-
-		r.event(&exec, corev1.EventTypeNormal, "ExecutionCompleted", "WaveExecution",
-			fmt.Sprintf("Execution completed: %s", exec.Status.Result))
-		r.event(&plan, corev1.EventTypeNormal, "ExecutionCompleted", "WaveExecution",
-			fmt.Sprintf("Execution completed for plan %s: %s", plan.Name, exec.Status.Result))
+	if r.WaveExecutor == nil {
+		return ctrl.Result{}, nil
 	}
 
+	hdl, err := r.resolveHandler(exec.Spec.Mode)
+	if err != nil {
+		return r.failExecution(ctx, exec, "HandlerResolutionFailed", err.Error(), plan)
+	}
+
+	// Step 0 for planned migration.
+	step0Done := meta.IsStatusConditionTrue(exec.Status.Conditions, "Step0Complete")
+	if exec.Spec.Mode == soteriav1alpha1.ExecutionModePlannedMigration && !step0Done {
+		if r.LocalSite != "" {
+			logger.V(1).Info("Waiting for source site to complete Step 0")
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		}
+		if ph, ok := hdl.(interface {
+			PreExecute(ctx context.Context, groups []engine.ExecutionGroup) error
+		}); ok {
+			allGroups, err := r.WaveExecutor.BuildExecutionGroups(ctx, plan)
+			if err != nil {
+				logger.Error(err, "Failed to build execution groups for pre-execution")
+				return r.failExecution(ctx, exec, "PreExecutionFailed",
+					fmt.Sprintf("building execution groups: %v", err), plan)
+			}
+			if err := ph.PreExecute(ctx, allGroups); err != nil {
+				logger.Error(err, "Pre-execution (Step 0) failed")
+				r.event(exec, corev1.EventTypeWarning, "Step0Failed", "PlannedMigration",
+					fmt.Sprintf("Step 0 failed: %v", err))
+				return r.failExecution(ctx, exec, "PreExecutionFailed",
+					fmt.Sprintf("pre-execution failed: %v", err), plan)
+			}
+			execPatch := client.MergeFrom(exec.DeepCopy())
+			meta.SetStatusCondition(&exec.Status.Conditions, metav1.Condition{
+				Type:               "Step0Complete",
+				Status:             metav1.ConditionTrue,
+				Reason:             "PreExecutionCompleted",
+				Message:            "Step 0 completed successfully",
+				ObservedGeneration: exec.Generation,
+			})
+			if err := r.Status().Patch(ctx, exec, execPatch); err != nil {
+				return ctrl.Result{}, err
+			}
+			r.event(exec, corev1.EventTypeNormal, "PlannedMigrationStarted", "PlannedMigration",
+				fmt.Sprintf("Planned migration Step 0 completed for plan %s", plan.Name))
+		}
+	}
+
+	// Initialize waves if not yet done.
+	if len(exec.Status.Waves) == 0 {
+		if err := r.WaveExecutor.InitializeWaves(ctx, exec, plan); err != nil {
+			logger.Error(err, "Wave initialization failed")
+			return ctrl.Result{}, err
+		}
+		// If InitializeWaves already finished (0 VMs), return.
+		if exec.Status.Result != "" {
+			r.recordExecutionMetrics(exec)
+			return ctrl.Result{}, nil
+		}
+	}
+
+	// Find the current wave: first wave with non-terminal groups.
+	waveIdx := r.findCurrentWave(exec)
+	if waveIdx < 0 {
+		return r.finishWaveExecution(ctx, exec, plan)
+	}
+
+	wave := &exec.Status.Waves[waveIdx]
+
+	// If this wave has WaitingForVMReady groups, check readiness.
+	if waveHasWaitingForVMReady(wave) {
+		return r.reconcileWaveProgress(ctx, exec, plan)
+	}
+
+	// Execute handler operations for pending groups in this wave.
+	r.WaveExecutor.ExecuteWaveHandler(ctx, waveIdx, hdl, exec, plan)
+
+	// Post-process: convert Completed → WaitingForVMReady for failover modes.
+	if exec.Spec.Mode != soteriav1alpha1.ExecutionModeReprotect {
+		if err := r.convertToWaitingForVMReady(ctx, exec, waveIdx); err != nil {
+			logger.Error(err, "Failed to persist WaitingForVMReady transition")
+			return ctrl.Result{}, err
+		}
+	}
+
+	// If the wave now has WaitingForVMReady groups, yield and requeue.
+	if waveHasWaitingForVMReady(wave) {
+		logger.Info("Wave handler complete, waiting for VM readiness",
+			"wave", waveIdx)
+		return ctrl.Result{RequeueAfter: vmReadySafetyRequeue}, nil
+	}
+
+	// If all groups terminal (no VMs to wait for — e.g., all failed), advance.
+	if r.findCurrentWave(exec) < 0 {
+		return r.finishWaveExecution(ctx, exec, plan)
+	}
+
+	// More waves to process — requeue immediately.
+	return ctrl.Result{RequeueAfter: 1 * time.Millisecond}, nil
+}
+
+// convertToWaitingForVMReady changes Completed groups in a wave to
+// WaitingForVMReady and sets VMReadyStartTime on the wave. Returns an error
+// if the status persistence fails so the caller can retry on the next reconcile
+// instead of proceeding with an unpersisted state transition.
+func (r *DRExecutionReconciler) convertToWaitingForVMReady(
+	ctx context.Context, exec *soteriav1alpha1.DRExecution, waveIdx int,
+) error {
+	wave := &exec.Status.Waves[waveIdx]
+	anyConverted := false
+	for i := range wave.Groups {
+		if wave.Groups[i].Result == soteriav1alpha1.DRGroupResultCompleted {
+			wave.Groups[i].Result = soteriav1alpha1.DRGroupResultWaitingForVMReady
+			wave.Groups[i].CompletionTime = nil
+			anyConverted = true
+		}
+	}
+	if anyConverted {
+		now := metav1.Now()
+		wave.VMReadyStartTime = &now
+		wave.CompletionTime = nil
+		if err := r.WaveExecutor.PersistStatus(ctx, exec); err != nil {
+			return fmt.Errorf("persisting WaitingForVMReady status for wave %d: %w", waveIdx, err)
+		}
+	}
+	return nil
+}
+
+// reconcileWaveProgress checks VM readiness for groups in the WaitingForVMReady
+// state. When all VMs in a group are ready, the group transitions to Completed.
+// When the timeout expires, the group transitions to Failed with mode-dependent
+// policy (AC4): disaster=fail-forward, planned_migration=fail-fast.
+func (r *DRExecutionReconciler) reconcileWaveProgress(
+	ctx context.Context, exec *soteriav1alpha1.DRExecution, plan *soteriav1alpha1.DRPlan,
+) (ctrl.Result, error) {
+	logger := log.FromContext(ctx).WithValues("drexecution", exec.Name)
+
+	if r.VMManager == nil {
+		// No VMManager — treat all WaitingForVMReady as ready.
+		r.markAllWaitingAsReady(exec)
+		if err := r.WaveExecutor.PersistStatus(ctx, exec); err != nil {
+			return ctrl.Result{}, err
+		}
+		return r.continueAfterWaveReady(ctx, exec, plan)
+	}
+
+	timeout := defaultVMReadyTimeout
+	if plan.Spec.VMReadyTimeout != nil {
+		timeout = plan.Spec.VMReadyTimeout.Duration
+	}
+
+	waveIdx := r.findWaveWithWaiting(exec)
+	if waveIdx < 0 {
+		return r.continueAfterWaveReady(ctx, exec, plan)
+	}
+
+	wave := &exec.Status.Waves[waveIdx]
+	allReady := true
+	anyTimedOut := false
+
+	for i := range wave.Groups {
+		group := &wave.Groups[i]
+		if group.Result != soteriav1alpha1.DRGroupResultWaitingForVMReady {
+			continue
+		}
+
+		groupReady := true
+		for _, vmName := range group.VMNames {
+			ns := r.resolveVMNamespaceFromPlan(plan, waveIdx, vmName)
+			if ns == "" {
+				logger.Info("Could not resolve namespace for VM, treating as not ready",
+					"vm", vmName, "wave", waveIdx)
+				groupReady = false
+				continue
+			}
+			ready, err := r.VMManager.IsVMReady(ctx, vmName, ns)
+			if err != nil {
+				logger.V(1).Info("IsVMReady check failed, will retry",
+					"vm", vmName, "namespace", ns, "error", err)
+				groupReady = false
+				continue
+			}
+			if !ready {
+				groupReady = false
+			}
+		}
+
+		if groupReady {
+			now := metav1.Now()
+			group.Result = soteriav1alpha1.DRGroupResultCompleted
+			group.CompletionTime = &now
+			var duration string
+			if wave.VMReadyStartTime != nil {
+				duration = now.Sub(wave.VMReadyStartTime.Time).Truncate(time.Second).String()
+			}
+			for _, vmName := range group.VMNames {
+				msg := fmt.Sprintf("VM %s reached Running", vmName)
+				if duration != "" {
+					msg += " in " + duration
+				}
+				group.Steps = append(group.Steps, soteriav1alpha1.StepStatus{
+					Name:      engine.StepWaitVMReady,
+					Status:    "Succeeded",
+					Message:   msg,
+					Timestamp: &now,
+				})
+			}
+			logger.Info("Group VMs ready", "wave", waveIdx, "group", group.Name)
+			continue
+		}
+
+		// Check timeout.
+		if wave.VMReadyStartTime != nil && time.Since(wave.VMReadyStartTime.Time) > timeout {
+			now := metav1.Now()
+			group.Result = soteriav1alpha1.DRGroupResultFailed
+			group.CompletionTime = &now
+			group.Error = "VM did not reach Running state within timeout"
+			for _, vmName := range group.VMNames {
+				group.Steps = append(group.Steps, soteriav1alpha1.StepStatus{
+					Name:      engine.StepWaitVMReady,
+					Status:    "Failed",
+					Message:   fmt.Sprintf("VM %s did not reach Running within %s", vmName, timeout),
+					Timestamp: &now,
+				})
+			}
+			logger.Info("Group VM readiness timed out",
+				"wave", waveIdx, "group", group.Name, "timeout", timeout)
+			anyTimedOut = true
+			continue
+		}
+
+		allReady = false
+	}
+
+	if err := r.WaveExecutor.PersistStatus(ctx, exec); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	// Mode-dependent timeout policy (AC4).
+	if anyTimedOut && exec.Spec.Mode == soteriav1alpha1.ExecutionModePlannedMigration {
+		logger.Info("Planned migration fail-fast: aborting execution due to VM readiness timeout")
+		return r.failExecution(ctx, exec, "VMReadyTimeout",
+			"VM readiness timeout in planned_migration mode — aborting execution", plan)
+	}
+
+	if !allReady {
+		return ctrl.Result{RequeueAfter: vmReadySafetyRequeue}, nil
+	}
+
+	// All groups in the wave are now terminal — set wave completion time.
+	now := metav1.Now()
+	wave.CompletionTime = &now
+	if err := r.WaveExecutor.PersistStatus(ctx, exec); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	return r.continueAfterWaveReady(ctx, exec, plan)
+}
+
+// continueAfterWaveReady checks if more waves remain and either advances to
+// the next wave or finishes the execution.
+func (r *DRExecutionReconciler) continueAfterWaveReady(
+	ctx context.Context, exec *soteriav1alpha1.DRExecution, plan *soteriav1alpha1.DRPlan,
+) (ctrl.Result, error) {
+	if r.findCurrentWave(exec) < 0 {
+		return r.finishWaveExecution(ctx, exec, plan)
+	}
+	return ctrl.Result{RequeueAfter: 1 * time.Millisecond}, nil
+}
+
+// finishWaveExecution computes the final result, records metrics, and emits events.
+func (r *DRExecutionReconciler) finishWaveExecution(
+	ctx context.Context, exec *soteriav1alpha1.DRExecution, plan *soteriav1alpha1.DRPlan,
+) (ctrl.Result, error) {
+	result := r.WaveExecutor.ComputeResult(exec)
+	if err := r.WaveExecutor.FinishExecution(ctx, exec, plan, result, ""); err != nil {
+		return ctrl.Result{}, err
+	}
+	r.recordExecutionMetrics(exec)
+	r.event(exec, corev1.EventTypeNormal, "ExecutionCompleted", "WaveExecution",
+		fmt.Sprintf("Execution completed: %s", exec.Status.Result))
+	r.event(plan, corev1.EventTypeNormal, "ExecutionCompleted", "WaveExecution",
+		fmt.Sprintf("Execution completed for plan %s: %s", plan.Name, exec.Status.Result))
 	return ctrl.Result{}, nil
+}
+
+// findCurrentWave returns the index of the first wave with non-terminal groups
+// (Pending, InProgress, or WaitingForVMReady). Returns -1 if all waves are terminal.
+func (r *DRExecutionReconciler) findCurrentWave(exec *soteriav1alpha1.DRExecution) int {
+	for i, wave := range exec.Status.Waves {
+		for _, group := range wave.Groups {
+			switch group.Result {
+			case soteriav1alpha1.DRGroupResultPending,
+				soteriav1alpha1.DRGroupResultInProgress,
+				soteriav1alpha1.DRGroupResultWaitingForVMReady:
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// findWaveWithWaiting returns the index of the first wave with WaitingForVMReady groups.
+func (r *DRExecutionReconciler) findWaveWithWaiting(exec *soteriav1alpha1.DRExecution) int {
+	for i, wave := range exec.Status.Waves {
+		for _, group := range wave.Groups {
+			if group.Result == soteriav1alpha1.DRGroupResultWaitingForVMReady {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// hasInProgressGroups returns true if any group in any wave is InProgress,
+// indicating an in-flight operation that was interrupted (crash recovery).
+func hasInProgressGroups(exec *soteriav1alpha1.DRExecution) bool {
+	for _, wave := range exec.Status.Waves {
+		for _, group := range wave.Groups {
+			if group.Result == soteriav1alpha1.DRGroupResultInProgress {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// hasWaitingForVMReady returns true if any wave has groups in WaitingForVMReady state.
+func hasWaitingForVMReady(exec *soteriav1alpha1.DRExecution) bool {
+	for _, wave := range exec.Status.Waves {
+		if waveHasWaitingForVMReady(&wave) {
+			return true
+		}
+	}
+	return false
+}
+
+// waveHasWaitingForVMReady returns true if any group in the wave is WaitingForVMReady.
+func waveHasWaitingForVMReady(wave *soteriav1alpha1.WaveStatus) bool {
+	for _, group := range wave.Groups {
+		if group.Result == soteriav1alpha1.DRGroupResultWaitingForVMReady {
+			return true
+		}
+	}
+	return false
+}
+
+// markAllWaitingAsReady converts all WaitingForVMReady groups to Completed.
+// Used when VMManager is nil (tests without KubeVirt).
+func (r *DRExecutionReconciler) markAllWaitingAsReady(exec *soteriav1alpha1.DRExecution) {
+	now := metav1.Now()
+	for wi := range exec.Status.Waves {
+		for gi := range exec.Status.Waves[wi].Groups {
+			g := &exec.Status.Waves[wi].Groups[gi]
+			if g.Result == soteriav1alpha1.DRGroupResultWaitingForVMReady {
+				g.Result = soteriav1alpha1.DRGroupResultCompleted
+				g.CompletionTime = &now
+			}
+		}
+	}
+}
+
+// resolveVMNamespaceFromPlan finds the namespace for a VM by searching the
+// plan's wave status.
+func (r *DRExecutionReconciler) resolveVMNamespaceFromPlan(
+	plan *soteriav1alpha1.DRPlan, waveIdx int, vmName string,
+) string {
+	if waveIdx < len(plan.Status.Waves) {
+		for _, dvm := range plan.Status.Waves[waveIdx].VMs {
+			if dvm.Name == vmName {
+				return dvm.Namespace
+			}
+		}
+	}
+	return ""
 }
 
 // reconcileReprotect dispatches the ReprotectHandler for re-protect and restore
@@ -547,7 +887,7 @@ func (r *DRExecutionReconciler) reconcileResume(
 	}
 
 	// Resolve handler for the execution mode.
-	handler, err := r.resolveHandler(exec.Spec.Mode)
+	drHandler, err := r.resolveHandler(exec.Spec.Mode)
 	if err != nil {
 		return r.failExecution(ctx, exec, "HandlerResolutionFailed", err.Error(), &plan)
 	}
@@ -567,7 +907,7 @@ func (r *DRExecutionReconciler) reconcileResume(
 		execInput := engine.ExecuteInput{
 			Execution: exec,
 			Plan:      &plan,
-			Handler:   handler,
+			Handler:   drHandler,
 		}
 
 		if len(exec.Status.Waves) == 0 {
@@ -771,7 +1111,7 @@ func (r *DRExecutionReconciler) reconcileRetry(
 	}
 
 	// Resolve handler.
-	handler, err := r.resolveHandler(exec.Spec.Mode)
+	drHandler, err := r.resolveHandler(exec.Spec.Mode)
 	if err != nil {
 		logger.Error(err, "Failed to resolve handler for retry")
 		r.removeRetryAnnotation(ctx, exec)
@@ -792,7 +1132,7 @@ func (r *DRExecutionReconciler) reconcileRetry(
 	retryInput := engine.RetryInput{
 		Execution:    exec,
 		Plan:         &plan,
-		Handler:      handler,
+		Handler:      drHandler,
 		RetryTargets: targets,
 	}
 	if err := r.WaveExecutor.ExecuteRetry(ctx, retryInput); err != nil {
@@ -1085,13 +1425,13 @@ func (r *DRExecutionReconciler) reconcileStep0(
 
 	// Step 0 logic: stop VMs → stop replication → wait for sync.
 	// This reuses the existing PreExecute path from the FailoverHandler.
-	handler, err := r.resolveHandler(exec.Spec.Mode)
+	drHandler, err := r.resolveHandler(exec.Spec.Mode)
 	if err != nil {
 		logger.Error(err, "Failed to resolve handler for Step 0")
 		return ctrl.Result{}, err
 	}
 
-	if ph, ok := handler.(interface {
+	if ph, ok := drHandler.(interface {
 		PreExecute(ctx context.Context, groups []engine.ExecutionGroup) error
 	}); ok && r.WaveExecutor != nil {
 		allGroups, err := r.WaveExecutor.BuildExecutionGroups(ctx, plan)
@@ -1172,8 +1512,63 @@ func specOrAnnotationChanged() predicate.Predicate {
 }
 
 func (r *DRExecutionReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
+	bld := ctrl.NewControllerManagedBy(mgr).
 		For(&soteriav1alpha1.DRExecution{},
-			builder.WithPredicates(specOrAnnotationChanged())).
-		Complete(r)
+			builder.WithPredicates(specOrAnnotationChanged()))
+
+	// Watch VirtualMachines for printableStatus changes so the wave gate can
+	// detect when VMs reach Running. The mapper routes VM events to the
+	// active DRExecution via the soteria.io/drplan label → DRPlan.ActiveExecution.
+	if r.VMManager != nil {
+		bld = bld.Watches(
+			&kubevirtv1.VirtualMachine{},
+			handler.EnqueueRequestsFromMapFunc(r.mapVMToDRExecution),
+			builder.WithPredicates(vmPrintableStatusChanged()),
+		)
+	}
+
+	return bld.Complete(r)
+}
+
+// vmPrintableStatusChanged filters VM update events to only those where
+// status.printableStatus changed. This prevents reconcile noise from frequent
+// VM condition updates that don't indicate a readiness state change.
+func vmPrintableStatusChanged() predicate.Predicate {
+	return predicate.Funcs{
+		CreateFunc:  func(_ event.CreateEvent) bool { return false },
+		DeleteFunc:  func(_ event.DeleteEvent) bool { return false },
+		GenericFunc: func(_ event.GenericEvent) bool { return false },
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			oldVM, ok1 := e.ObjectOld.(*kubevirtv1.VirtualMachine)
+			newVM, ok2 := e.ObjectNew.(*kubevirtv1.VirtualMachine)
+			if !ok1 || !ok2 {
+				return false
+			}
+			return oldVM.Status.PrintableStatus != newVM.Status.PrintableStatus
+		},
+	}
+}
+
+// mapVMToDRExecution maps a VirtualMachine event to the active DRExecution
+// (if any) by reading the soteria.io/drplan label → DRPlan → ActiveExecution.
+func (r *DRExecutionReconciler) mapVMToDRExecution(
+	ctx context.Context, obj client.Object,
+) []reconcile.Request {
+	planName := obj.GetLabels()[soteriav1alpha1.DRPlanLabel]
+	if planName == "" {
+		return nil
+	}
+
+	var plan soteriav1alpha1.DRPlan
+	if err := r.Get(ctx, types.NamespacedName{Name: planName}, &plan); err != nil {
+		return nil
+	}
+
+	if plan.Status.ActiveExecution == "" {
+		return nil
+	}
+
+	return []reconcile.Request{{
+		NamespacedName: types.NamespacedName{Name: plan.Status.ActiveExecution},
+	}}
 }

@@ -1,6 +1,6 @@
 # Story 5.6: Event-Driven Wave Gate with VM Readiness Verification
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 

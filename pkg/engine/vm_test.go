@@ -151,6 +151,52 @@ func TestKubeVirtVMManager_IsVMRunning(t *testing.T) {
 	}
 }
 
+func TestKubeVirtVMManager_IsVMReady(t *testing.T) {
+	tests := []struct {
+		name      string
+		vmName    string
+		namespace string
+		status    kubevirtv1.VirtualMachinePrintableStatus
+		want      bool
+	}{
+		{"Running is ready", "vm-running", "ns1", kubevirtv1.VirtualMachineStatusRunning, true},
+		{"Stopped is not ready", "vm-stopped", "ns1", kubevirtv1.VirtualMachineStatusStopped, false},
+		{"Starting is not ready", "vm-starting", "ns1", kubevirtv1.VirtualMachineStatusStarting, false},
+		{"Empty status is not ready", "vm-empty", "ns1", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			vm := &kubevirtv1.VirtualMachine{
+				ObjectMeta: metav1.ObjectMeta{Name: tt.vmName, Namespace: tt.namespace},
+				Status: kubevirtv1.VirtualMachineStatus{
+					PrintableStatus: tt.status,
+				},
+			}
+			cl := fake.NewClientBuilder().WithScheme(newTestScheme()).WithObjects(vm).Build()
+			mgr := &KubeVirtVMManager{Client: cl}
+
+			got, err := mgr.IsVMReady(context.Background(), tt.vmName, tt.namespace)
+			if err != nil {
+				t.Fatalf("IsVMReady failed: %v", err)
+			}
+			if got != tt.want {
+				t.Errorf("IsVMReady = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestKubeVirtVMManager_IsVMReady_NotFound(t *testing.T) {
+	cl := fake.NewClientBuilder().WithScheme(newTestScheme()).Build()
+	mgr := &KubeVirtVMManager{Client: cl}
+
+	_, err := mgr.IsVMReady(context.Background(), "missing-vm", "ns1")
+	if err == nil {
+		t.Fatal("IsVMReady should fail for non-existent VM")
+	}
+}
+
 func TestNoOpVMManager_AllMethods(t *testing.T) {
 	mgr := &NoOpVMManager{}
 	ctx := context.Background()
@@ -167,5 +213,40 @@ func TestNoOpVMManager_AllMethods(t *testing.T) {
 	}
 	if running {
 		t.Error("IsVMRunning should return false")
+	}
+}
+
+func TestNoOpVMManager_IsVMReady_DefaultTrue(t *testing.T) {
+	mgr := &NoOpVMManager{}
+	ready, err := mgr.IsVMReady(context.Background(), "vm", "ns")
+	if err != nil {
+		t.Fatalf("IsVMReady error: %v", err)
+	}
+	if !ready {
+		t.Error("default NoOpVMManager should report VMs as ready")
+	}
+}
+
+func TestNoOpVMManager_IsVMReady_ConfigurableFalse(t *testing.T) {
+	f := false
+	mgr := &NoOpVMManager{VMsReady: &f}
+	ready, err := mgr.IsVMReady(context.Background(), "vm", "ns")
+	if err != nil {
+		t.Fatalf("IsVMReady error: %v", err)
+	}
+	if ready {
+		t.Error("NoOpVMManager with VMsReady=false should report VMs as not ready")
+	}
+}
+
+func TestNoOpVMManager_IsVMReady_ConfigurableTrue(t *testing.T) {
+	tr := true
+	mgr := &NoOpVMManager{VMsReady: &tr}
+	ready, err := mgr.IsVMReady(context.Background(), "vm", "ns")
+	if err != nil {
+		t.Fatalf("IsVMReady error: %v", err)
+	}
+	if !ready {
+		t.Error("NoOpVMManager with VMsReady=true should report VMs as ready")
 	}
 }

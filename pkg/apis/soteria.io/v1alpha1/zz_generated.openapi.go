@@ -727,10 +727,18 @@ func schema_pkg_apis_soteriaio_v1alpha1_DRPlanSpec(ref common.ReferenceCallback)
 							Format:      "",
 						},
 					},
+					"vmReadyTimeout": {
+						SchemaProps: spec.SchemaProps{
+							Description: "VMReadyTimeout is the maximum duration to wait for all VMs in a wave to reach Running state after StartVM before declaring a timeout. Per-wave, starts when all StartVM operations in the wave complete. Default: 5m.",
+							Ref:         ref(v1.Duration{}.OpenAPIModelName()),
+						},
+					},
 				},
 				Required: []string{"waveLabel", "maxConcurrentFailovers", "primarySite", "secondarySite"},
 			},
 		},
+		Dependencies: []string{
+			v1.Duration{}.OpenAPIModelName()},
 	}
 }
 
@@ -1449,6 +1457,12 @@ func schema_pkg_apis_soteriaio_v1alpha1_WaveStatus(ref common.ReferenceCallback)
 					"completionTime": {
 						SchemaProps: spec.SchemaProps{
 							Description: "CompletionTime is when this wave finished.",
+							Ref:         ref(v1.Time{}.OpenAPIModelName()),
+						},
+					},
+					"vmReadyStartTime": {
+						SchemaProps: spec.SchemaProps{
+							Description: "VMReadyStartTime is when the wave entered the WaitingForVMReady state (all handler operations complete, now waiting for VMs to reach Running). Used as the base for VMReadyTimeout calculation.",
 							Ref:         ref(v1.Time{}.OpenAPIModelName()),
 						},
 					},

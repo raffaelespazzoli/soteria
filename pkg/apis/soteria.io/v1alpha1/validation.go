@@ -54,6 +54,14 @@ func ValidateDRPlan(plan *DRPlan) field.ErrorList {
 		))
 	}
 
+	if plan.Spec.VMReadyTimeout != nil && plan.Spec.VMReadyTimeout.Duration <= 0 {
+		allErrs = append(allErrs, field.Invalid(
+			specPath.Child("vmReadyTimeout"),
+			plan.Spec.VMReadyTimeout.Duration.String(),
+			"must be a positive duration",
+		))
+	}
+
 	return allErrs
 }
 

@@ -11,6 +11,9 @@ spec:
   # Immutable after creation.
   primarySite: dc-west
   secondarySite: dc-east
+  # Maximum time to wait for VMs in a wave to reach Running state after StartVM.
+  # Default: 5m. Set higher for VMs with slow boot (e.g., database servers).
+  vmReadyTimeout: 5m
 # VMs are associated to this plan by setting the label:
 #   soteria.io/drplan: erp-full-stack
 # on each VirtualMachine resource. See vm_with_drplan_label.yaml for an example.

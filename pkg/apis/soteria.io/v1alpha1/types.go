@@ -77,6 +77,12 @@ type DRPlanSpec struct {
 	// SecondarySite is the cluster name that serves as the DR target.
 	// Immutable after creation. Must differ from PrimarySite.
 	SecondarySite string `json:"secondarySite"`
+	// VMReadyTimeout is the maximum duration to wait for all VMs in a wave to
+	// reach Running state after StartVM before declaring a timeout. Per-wave,
+	// starts when all StartVM operations in the wave complete. Default: 5m.
+	// +optional
+	// +kubebuilder:default="5m"
+	VMReadyTimeout *metav1.Duration `json:"vmReadyTimeout,omitempty"`
 }
 
 type DRPlanStatus struct {
@@ -301,10 +307,11 @@ const (
 type DRGroupResult string
 
 const (
-	DRGroupResultPending    DRGroupResult = "Pending"
-	DRGroupResultInProgress DRGroupResult = "InProgress"
-	DRGroupResultCompleted  DRGroupResult = "Completed"
-	DRGroupResultFailed     DRGroupResult = "Failed"
+	DRGroupResultPending           DRGroupResult = "Pending"
+	DRGroupResultInProgress        DRGroupResult = "InProgress"
+	DRGroupResultCompleted         DRGroupResult = "Completed"
+	DRGroupResultFailed            DRGroupResult = "Failed"
+	DRGroupResultWaitingForVMReady DRGroupResult = "WaitingForVMReady"
 )
 
 // DRExecution records an immutable execution of a DRPlan.
@@ -347,13 +354,17 @@ type WaveStatus struct {
 	StartTime *metav1.Time `json:"startTime,omitempty"`
 	// CompletionTime is when this wave finished.
 	CompletionTime *metav1.Time `json:"completionTime,omitempty"`
+	// VMReadyStartTime is when the wave entered the WaitingForVMReady state
+	// (all handler operations complete, now waiting for VMs to reach Running).
+	// Used as the base for VMReadyTimeout calculation.
+	VMReadyStartTime *metav1.Time `json:"vmReadyStartTime,omitempty"`
 }
 
 type DRGroupExecutionStatus struct {
 	// Name identifies this DRGroup within the wave.
 	Name string `json:"name"`
 	// Result is the outcome of this DRGroup.
-	// +kubebuilder:validation:Enum=Pending;InProgress;Completed;Failed
+	// +kubebuilder:validation:Enum=Pending;InProgress;Completed;Failed;WaitingForVMReady
 	Result DRGroupResult `json:"result,omitempty"`
 	// VMNames lists VMs in this DRGroup.
 	VMNames []string `json:"vmNames,omitempty"`
@@ -401,7 +412,7 @@ type DRGroupStatusSpec struct {
 
 type DRGroupStatusState struct {
 	// Phase is the current processing state.
-	// +kubebuilder:validation:Enum=Pending;InProgress;Completed;Failed
+	// +kubebuilder:validation:Enum=Pending;InProgress;Completed;Failed;WaitingForVMReady
 	Phase DRGroupResult `json:"phase,omitempty"`
 	// Conditions represent the latest observations.
 	Conditions []metav1.Condition `json:"conditions,omitempty"`

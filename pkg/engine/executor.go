@@ -182,8 +182,9 @@ type ExecuteInput struct {
 }
 
 // Execute runs the full execution pipeline: discover → group → chunk → execute
-// waves → compute result. It delegates to ExecuteFromWave with startWaveIndex=0
-// and no skip groups for backward compatibility.
+// waves → compute result. This method runs all waves synchronously and is used
+// by the existing retry/resume paths. The reconciler's reconcileWaveExecution
+// drives wave-by-wave execution with VM readiness gates.
 func (e *WaveExecutor) Execute(ctx context.Context, input ExecuteInput) error {
 	logger := log.FromContext(ctx)
 	exec := input.Execution
@@ -191,24 +192,18 @@ func (e *WaveExecutor) Execute(ctx context.Context, input ExecuteInput) error {
 
 	logger.Info("Starting wave execution", "plan", plan.Name, "execution", exec.Name)
 
-	// Step 1: Discover VMs at execution time — do NOT rely on stale plan status.
 	vms, err := e.VMDiscoverer.DiscoverVMs(ctx, plan.Name)
 	if err != nil {
 		logger.Error(err, "VM discovery failed during execution")
 		return e.finishExecution(ctx, exec, plan, soteriav1alpha1.ExecutionResultFailed,
 			fmt.Sprintf("VM discovery failed: %v", err))
 	}
-
-	// Empty plan: no VMs → Succeeded with zero waves.
 	if len(vms) == 0 {
 		logger.Info("No VMs discovered, completing with Succeeded")
 		return e.finishExecution(ctx, exec, plan, soteriav1alpha1.ExecutionResultSucceeded, "")
 	}
 
-	// Step 2: Group by wave.
 	discovery := GroupByWave(vms, plan.Spec.WaveLabel)
-
-	// Step 3: Resolve volume groups.
 	consistency, err := ResolveVolumeGroups(ctx, vms, plan.Spec.WaveLabel, e.NamespaceLookup)
 	if err != nil {
 		logger.Error(err, "Volume group resolution failed during execution")
@@ -216,11 +211,9 @@ func (e *WaveExecutor) Execute(ctx context.Context, input ExecuteInput) error {
 			fmt.Sprintf("Volume group resolution failed: %v", err))
 	}
 
-	// Step 4: Chunk waves using existing chunker.
 	chunkInput := buildChunkInput(discovery, consistency, vms, plan.Spec.WaveLabel)
 	chunkResult := ChunkWaves(chunkInput, plan.Spec.MaxConcurrentFailovers)
 
-	// Step 5: Initialize DRExecution.Status.Waves with Pending entries.
 	exec.Status.Waves = make([]soteriav1alpha1.WaveStatus, len(chunkResult.Waves))
 	for i, wc := range chunkResult.Waves {
 		groups := make([]soteriav1alpha1.DRGroupExecutionStatus, len(wc.Chunks))
@@ -244,7 +237,6 @@ func (e *WaveExecutor) Execute(ctx context.Context, input ExecuteInput) error {
 		return fmt.Errorf("writing initial wave status: %w", err)
 	}
 
-	// Step 6: Execute waves sequentially.
 	for i, wc := range chunkResult.Waves {
 		if ctx.Err() != nil {
 			logger.Info("Context cancelled, stopping execution")
@@ -253,10 +245,83 @@ func (e *WaveExecutor) Execute(ctx context.Context, input ExecuteInput) error {
 		e.executeWave(ctx, i, wc.Chunks, input.Handler, exec)
 	}
 
-	// Step 7: Compute overall result and complete.
 	result := e.computeResult(exec)
 	logger.Info("Wave execution completed", "result", result)
 	return e.finishExecution(ctx, exec, plan, result, "")
+}
+
+// InitializeWaves discovers VMs, groups them by wave, chunks them, and writes
+// the initial Pending wave status entries to DRExecution. This separates the
+// discovery/chunking pipeline from execution so the reconciler can drive waves
+// one at a time with VM readiness gates.
+func (e *WaveExecutor) InitializeWaves(
+	ctx context.Context, exec *soteriav1alpha1.DRExecution, plan *soteriav1alpha1.DRPlan,
+) error {
+	logger := log.FromContext(ctx)
+
+	vms, err := e.VMDiscoverer.DiscoverVMs(ctx, plan.Name)
+	if err != nil {
+		logger.Error(err, "VM discovery failed during execution")
+		return e.finishExecution(ctx, exec, plan, soteriav1alpha1.ExecutionResultFailed,
+			fmt.Sprintf("VM discovery failed: %v", err))
+	}
+
+	if len(vms) == 0 {
+		logger.Info("No VMs discovered, completing with Succeeded")
+		return e.finishExecution(ctx, exec, plan, soteriav1alpha1.ExecutionResultSucceeded, "")
+	}
+
+	discovery := GroupByWave(vms, plan.Spec.WaveLabel)
+	consistency, err := ResolveVolumeGroups(ctx, vms, plan.Spec.WaveLabel, e.NamespaceLookup)
+	if err != nil {
+		logger.Error(err, "Volume group resolution failed during execution")
+		return e.finishExecution(ctx, exec, plan, soteriav1alpha1.ExecutionResultFailed,
+			fmt.Sprintf("Volume group resolution failed: %v", err))
+	}
+
+	chunkInput := buildChunkInput(discovery, consistency, vms, plan.Spec.WaveLabel)
+	chunkResult := ChunkWaves(chunkInput, plan.Spec.MaxConcurrentFailovers)
+
+	exec.Status.Waves = make([]soteriav1alpha1.WaveStatus, len(chunkResult.Waves))
+	for i, wc := range chunkResult.Waves {
+		groups := make([]soteriav1alpha1.DRGroupExecutionStatus, len(wc.Chunks))
+		for j, chunk := range wc.Chunks {
+			vmNames := make([]string, len(chunk.VMs))
+			for k, vm := range chunk.VMs {
+				vmNames[k] = vm.Name
+			}
+			groups[j] = soteriav1alpha1.DRGroupExecutionStatus{
+				Name:    chunk.Name,
+				Result:  soteriav1alpha1.DRGroupResultPending,
+				VMNames: vmNames,
+			}
+		}
+		exec.Status.Waves[i] = soteriav1alpha1.WaveStatus{
+			WaveIndex: i,
+			Groups:    groups,
+		}
+	}
+	return e.persistStatus(ctx, exec)
+}
+
+// ExecuteWaveHandler runs handler operations for a single wave: creates
+// DRGroupStatus resources, resolves drivers, and executes groups concurrently.
+// Unlike executeWave, this is exported for the reconciler to drive wave-by-wave
+// execution with VM readiness gates.
+func (e *WaveExecutor) ExecuteWaveHandler(
+	ctx context.Context, waveIdx int, handler DRGroupHandler,
+	exec *soteriav1alpha1.DRExecution, plan *soteriav1alpha1.DRPlan,
+) {
+	wave := exec.Status.Waves[waveIdx]
+	var chunks []DRGroupChunk
+	for _, group := range wave.Groups {
+		if group.Result == soteriav1alpha1.DRGroupResultPending {
+			chunks = append(chunks, e.reconstructChunkFromStatus(group, plan, waveIdx))
+		}
+	}
+	if len(chunks) > 0 {
+		e.executeWave(ctx, waveIdx, chunks, handler, exec)
+	}
 }
 
 // ExecuteFromWave starts execution from a specific wave index, skipping groups
@@ -848,9 +913,10 @@ func (e *WaveExecutor) resolveVGStorageClass(
 }
 
 // computeResult scans all groups across all waves and determines the overall
-// execution result. Groups still in Pending or InProgress (e.g. after context
-// cancellation) are treated as incomplete — if any exist alongside completed
-// groups, the result is PartiallySucceeded; if no group completed, Failed.
+// execution result. Groups still in Pending, InProgress, or WaitingForVMReady
+// (e.g. after context cancellation) are treated as incomplete — if any exist
+// alongside completed groups, the result is PartiallySucceeded; if no group
+// completed, Failed.
 func (e *WaveExecutor) computeResult(exec *soteriav1alpha1.DRExecution) soteriav1alpha1.ExecutionResult {
 	var completed, failed, pending, total int
 	for _, wave := range exec.Status.Waves {
@@ -876,6 +942,26 @@ func (e *WaveExecutor) computeResult(exec *soteriav1alpha1.DRExecution) soteriav
 		return soteriav1alpha1.ExecutionResultPartiallySucceeded
 	}
 	return soteriav1alpha1.ExecutionResultSucceeded
+}
+
+// FinishExecution is an exported wrapper around finishExecution for the
+// reconciler to call when driving wave-by-wave execution.
+func (e *WaveExecutor) FinishExecution(
+	ctx context.Context, exec *soteriav1alpha1.DRExecution,
+	plan *soteriav1alpha1.DRPlan, result soteriav1alpha1.ExecutionResult,
+	message string,
+) error {
+	return e.finishExecution(ctx, exec, plan, result, message)
+}
+
+// ComputeResult is an exported wrapper around computeResult for the reconciler.
+func (e *WaveExecutor) ComputeResult(exec *soteriav1alpha1.DRExecution) soteriav1alpha1.ExecutionResult {
+	return e.computeResult(exec)
+}
+
+// PersistStatus is an exported wrapper around persistStatus for the reconciler.
+func (e *WaveExecutor) PersistStatus(ctx context.Context, exec *soteriav1alpha1.DRExecution) error {
+	return e.persistStatus(ctx, exec)
 }
 
 // finishExecution sets the final result, completion time, and conditions on the

@@ -26,6 +26,7 @@ import (
 )
 
 const testGroup1 = "group-1"
+const testGroup2 = "group-2"
 
 func newResumeTestExec(
 	waves []soteriav1alpha1.WaveStatus, result soteriav1alpha1.ExecutionResult,
@@ -58,7 +59,7 @@ func TestResumeAnalyzer_MidWave_IdentifiesResumePoint(t *testing.T) {
 		{
 			WaveIndex: 1,
 			Groups: []soteriav1alpha1.DRGroupExecutionStatus{
-				{Name: "group-2", Result: soteriav1alpha1.DRGroupResultCompleted},
+				{Name: testGroup2, Result: soteriav1alpha1.DRGroupResultCompleted},
 				{Name: "group-3", Result: soteriav1alpha1.DRGroupResultInProgress},
 			},
 		},
@@ -75,7 +76,7 @@ func TestResumeAnalyzer_MidWave_IdentifiesResumePoint(t *testing.T) {
 	if len(rp.InFlightGroups) != 1 || rp.InFlightGroups[0] != "group-3" {
 		t.Errorf("expected 1 in-flight group (group-3), got %v", rp.InFlightGroups)
 	}
-	if len(rp.CompletedGroups) != 1 || rp.CompletedGroups[0] != "group-2" {
+	if len(rp.CompletedGroups) != 1 || rp.CompletedGroups[0] != testGroup2 {
 		t.Errorf("expected 1 completed group (group-2), got %v", rp.CompletedGroups)
 	}
 }
@@ -180,7 +181,7 @@ func TestResumeAnalyzer_MultipleInFlightGroups_AllRetried(t *testing.T) {
 			Groups: []soteriav1alpha1.DRGroupExecutionStatus{
 				{Name: "group-0", Result: soteriav1alpha1.DRGroupResultInProgress},
 				{Name: testGroup1, Result: soteriav1alpha1.DRGroupResultInProgress},
-				{Name: "group-2", Result: soteriav1alpha1.DRGroupResultInProgress},
+				{Name: testGroup2, Result: soteriav1alpha1.DRGroupResultInProgress},
 			},
 		},
 	}, "")
@@ -208,7 +209,7 @@ func TestResumeAnalyzer_MixedWaveStates(t *testing.T) {
 		{
 			WaveIndex: 1,
 			Groups: []soteriav1alpha1.DRGroupExecutionStatus{
-				{Name: "group-2", Result: soteriav1alpha1.DRGroupResultCompleted},
+				{Name: testGroup2, Result: soteriav1alpha1.DRGroupResultCompleted},
 				{Name: "group-3", Result: soteriav1alpha1.DRGroupResultInProgress},
 				{Name: "group-4", Result: soteriav1alpha1.DRGroupResultPending},
 			},
@@ -261,6 +262,61 @@ func TestResumeAnalyzer_FailedResult_IsComplete(t *testing.T) {
 
 	if !rp.IsComplete {
 		t.Error("expected IsComplete for Failed result")
+	}
+}
+
+func TestResumeAnalyzer_WaitingForVMReady_TreatedAsCompleted(t *testing.T) {
+	analyzer := &ResumeAnalyzer{}
+	exec := newResumeTestExec([]soteriav1alpha1.WaveStatus{
+		{
+			WaveIndex: 0,
+			Groups: []soteriav1alpha1.DRGroupExecutionStatus{
+				{Name: "group-0", Result: soteriav1alpha1.DRGroupResultWaitingForVMReady},
+				{Name: testGroup1, Result: soteriav1alpha1.DRGroupResultWaitingForVMReady},
+			},
+		},
+		{
+			WaveIndex: 1,
+			Groups: []soteriav1alpha1.DRGroupExecutionStatus{
+				{Name: testGroup2, Result: soteriav1alpha1.DRGroupResultPending},
+			},
+		},
+	}, "")
+
+	rp := analyzer.AnalyzeExecution(exec)
+
+	if rp.IsComplete {
+		t.Fatal("expected resume needed — wave 1 has pending groups")
+	}
+	// WaitingForVMReady groups should be treated as Completed for resume skip logic.
+	if rp.WaveIndex != 1 {
+		t.Errorf("expected WaveIndex=1, got %d", rp.WaveIndex)
+	}
+	if len(rp.PendingGroups) != 1 || rp.PendingGroups[0] != testGroup2 {
+		t.Errorf("expected 1 pending group (group-2), got %v", rp.PendingGroups)
+	}
+}
+
+func TestResumeAnalyzer_WaitingForVMReady_AllWaves_NeedsResume(t *testing.T) {
+	analyzer := &ResumeAnalyzer{}
+	exec := newResumeTestExec([]soteriav1alpha1.WaveStatus{
+		{
+			WaveIndex: 0,
+			Groups: []soteriav1alpha1.DRGroupExecutionStatus{
+				{Name: "group-0", Result: soteriav1alpha1.DRGroupResultWaitingForVMReady},
+			},
+		},
+	}, "")
+
+	rp := analyzer.AnalyzeExecution(exec)
+
+	// Single wave with only WaitingForVMReady — it's "completed" for skip
+	// logic, and the reconciler will re-check readiness on next reconcile.
+	// The resume analyzer should see this as complete (all terminal) but
+	// Result is empty, so it should return IsComplete=false to trigger
+	// result recomputation.
+	if rp.IsComplete {
+		t.Fatal("expected IsComplete=false when Result is empty")
 	}
 }
 

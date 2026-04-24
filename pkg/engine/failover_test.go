@@ -75,6 +75,13 @@ func (m *mockVMManager) IsVMRunning(_ context.Context, name, namespace string) (
 	return m.running[key], nil
 }
 
+func (m *mockVMManager) IsVMReady(_ context.Context, name, namespace string) (bool, error) {
+	key := namespace + "/" + name
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.running[key], nil
+}
+
 func (m *mockVMManager) getStops() []string {
 	m.mu.Lock()
 	defer m.mu.Unlock()

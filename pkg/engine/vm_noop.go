@@ -19,12 +19,23 @@ package engine
 import "context"
 
 // NoOpVMManager implements VMManager as a no-op for testing and dev/CI
-// environments where KubeVirt is not available.
-type NoOpVMManager struct{}
+// environments where KubeVirt is not available. VMsReady controls IsVMReady
+// behavior: when true (the default after a nil check), VMs are immediately
+// reported as ready. Tests can set VMsReady=false to simulate delayed readiness.
+type NoOpVMManager struct {
+	// VMsReady controls IsVMReady return value. Nil means true (ready).
+	VMsReady *bool
+}
 
 func (m *NoOpVMManager) StopVM(_ context.Context, _, _ string) error              { return nil }
 func (m *NoOpVMManager) StartVM(_ context.Context, _, _ string) error             { return nil }
 func (m *NoOpVMManager) IsVMRunning(_ context.Context, _, _ string) (bool, error) { return false, nil }
+func (m *NoOpVMManager) IsVMReady(_ context.Context, _, _ string) (bool, error) {
+	if m.VMsReady != nil {
+		return *m.VMsReady, nil
+	}
+	return true, nil
+}
 
 // Compile-time interface check.
 var _ VMManager = (*NoOpVMManager)(nil)

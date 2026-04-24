@@ -34,6 +34,10 @@ type VMManager interface {
 	StopVM(ctx context.Context, name, namespace string) error
 	StartVM(ctx context.Context, name, namespace string) error
 	IsVMRunning(ctx context.Context, name, namespace string) (bool, error)
+	// IsVMReady returns true when the VM has reached Running state
+	// (status.printableStatus == Running). Unlike IsVMRunning which checks
+	// spec.runStrategy, this checks the actual observed VM state.
+	IsVMReady(ctx context.Context, name, namespace string) (bool, error)
 }
 
 // KubeVirtVMManager implements VMManager using a controller-runtime client to
@@ -90,6 +94,14 @@ func (m *KubeVirtVMManager) IsVMRunning(ctx context.Context, name, namespace str
 	}
 
 	return false, nil
+}
+
+func (m *KubeVirtVMManager) IsVMReady(ctx context.Context, name, namespace string) (bool, error) {
+	var vm kubevirtv1.VirtualMachine
+	if err := m.Client.Get(ctx, types.NamespacedName{Name: name, Namespace: namespace}, &vm); err != nil {
+		return false, fmt.Errorf("fetching VM %s/%s: %w", namespace, name, err)
+	}
+	return vm.Status.PrintableStatus == kubevirtv1.VirtualMachineStatusRunning, nil
 }
 
 func (m *KubeVirtVMManager) patchRunStrategy(
