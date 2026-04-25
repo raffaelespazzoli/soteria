@@ -21,6 +21,7 @@ package controller_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -88,9 +89,18 @@ func TestIntegration_UnprotectedVMs_DetectedOnReconcile(t *testing.T) {
 		t.Fatalf("DRPlan did not become Ready: %v", err)
 	}
 
+	// Poll for UnprotectedVMCount; the reconciler may need an additional
+	// cycle after Ready=True to populate the unprotected count.
+	deadline := time.Now().Add(testTimeout)
 	var updated soteriav1alpha1.DRPlan
-	if err := testClient.Get(ctx, client.ObjectKey{Name: "unprotected-plan"}, &updated); err != nil {
-		t.Fatalf("Failed to get plan: %v", err)
+	for time.Now().Before(deadline) {
+		if err := testClient.Get(ctx, client.ObjectKey{Name: "unprotected-plan"}, &updated); err != nil {
+			t.Fatalf("Failed to get plan: %v", err)
+		}
+		if updated.Status.DiscoveredVMCount >= 1 && updated.Status.UnprotectedVMCount >= 1 {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 
 	if updated.Status.DiscoveredVMCount != 1 {

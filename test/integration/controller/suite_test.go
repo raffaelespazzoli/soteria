@@ -150,11 +150,12 @@ func TestMain(m *testing.M) {
 		SCLister:        scLister,
 	}
 	if err := (&drexecution.DRExecutionReconciler{
-		Client:       mgr.GetClient(),
-		Scheme:       mgr.GetScheme(),
-		Recorder:     drexecRecorder,
-		WaveExecutor: waveExecutor,
-		Handler:      &engine.NoOpHandler{},
+		Client:          mgr.GetClient(),
+		Scheme:          mgr.GetScheme(),
+		Recorder:        drexecRecorder,
+		WaveExecutor:    waveExecutor,
+		Handler:         &engine.NoOpHandler{},
+		ResumeAnalyzer:  &engine.ResumeAnalyzer{},
 	}).SetupWithManager(mgr); err != nil {
 		panic(fmt.Sprintf("setting up DRExecution controller: %v", err))
 	}
