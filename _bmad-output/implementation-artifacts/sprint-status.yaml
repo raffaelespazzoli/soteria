@@ -195,7 +195,7 @@ development_status:
   5-4-drexecution-as-immutable-audit-record: done
   5-5-site-aware-reconcile-ownership: done
   5-6-event-driven-wave-gate-vm-readiness: done
-  5-7-driver-interface-simplification-workflow-symmetry: ready-for-dev
+  5-7-driver-interface-simplification-workflow-symmetry: done
   epic-5-retrospective: optional
 
   # Epic 6: OCP Console — Dashboard & Plan Management
