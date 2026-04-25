@@ -13,16 +13,36 @@
       "id": "dr-dashboard",
       "name": "Dashboard",
       "href": "/disaster-recovery",
+      "section": "disaster-recovery",
       "perspective": "admin",
-      "section": "disaster-recovery"
+      "startsWith": ["/disaster-recovery"]
     }
   },
   {
     "type": "console.page/route",
     "properties": {
+      "path": "/disaster-recovery/executions/:name",
       "exact": true,
+      "component": { "$codeRef": "ExecutionDetailPage" },
+      "perspective": "admin"
+    }
+  },
+  {
+    "type": "console.page/route",
+    "properties": {
+      "path": "/disaster-recovery/plans/:name",
+      "exact": true,
+      "component": { "$codeRef": "DRPlanDetailPage" },
+      "perspective": "admin"
+    }
+  },
+  {
+    "type": "console.page/route",
+    "properties": {
       "path": "/disaster-recovery",
-      "component": { "$codeRef": "DRDashboard" }
+      "exact": true,
+      "component": { "$codeRef": "DRDashboardPage" },
+      "perspective": "admin"
     }
   }
 ]

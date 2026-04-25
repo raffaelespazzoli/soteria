@@ -9,6 +9,7 @@ const config: Config = {
         tsconfig: {
           esModuleInterop: true,
           jsx: 'react-jsx',
+          types: ['jest', '@testing-library/jest-dom', 'jest-axe'],
         },
       },
     ],
