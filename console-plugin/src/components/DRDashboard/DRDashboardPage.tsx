@@ -2,10 +2,7 @@ import { useEffect } from 'react';
 import { DocumentTitle } from '@openshift-console/dynamic-plugin-sdk';
 import { PageSection, Title } from '@patternfly/react-core';
 import DRDashboard from './DRDashboard';
-import {
-  restoreDashboardState,
-  saveDashboardState,
-} from '../../hooks/useDashboardState';
+import { restoreDashboardState } from '../../hooks/useDashboardState';
 
 const DRDashboardPage: React.FC = () => {
   useEffect(() => {
@@ -13,14 +10,6 @@ const DRDashboardPage: React.FC = () => {
     if (saved) {
       window.scrollTo(0, saved.scrollTop);
     }
-
-    return () => {
-      saveDashboardState({
-        scrollTop: window.scrollY,
-        filters: {},
-        searchText: '',
-      });
-    };
   }, []);
 
   return (

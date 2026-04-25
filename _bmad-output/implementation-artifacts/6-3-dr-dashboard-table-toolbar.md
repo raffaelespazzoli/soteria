@@ -1,6 +1,6 @@
 # Story 6.3: DR Dashboard Table & Toolbar
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -32,65 +32,71 @@ So that I can assess DR posture for 500+ plans at a glance.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create DRDashboard table component (AC: #1)
-  - [ ] 1.1 Create `src/components/DRDashboard/DRDashboard.tsx` — replace the placeholder from Story 6.1 with a PatternFly `Table` (composable API, compact variant) that renders DRPlan data from `useDRPlans()`
-  - [ ] 1.2 Define column definitions: Name, Phase, Active On, Protected, Last Execution, Actions
-  - [ ] 1.3 Wire the Name column as a `Link` to `/disaster-recovery/plans/:name`
-  - [ ] 1.4 Integrate `DRDashboardPage.tsx` from Story 6.2 to render the `DRDashboard` component
+- [x] Task 1: Create DRDashboard table component (AC: #1)
+  - [x] 1.1 Create `src/components/DRDashboard/DRDashboard.tsx` — replace the placeholder from Story 6.1 with a PatternFly `Table` (composable API, compact variant) that renders DRPlan data from `useDRPlans()`
+  - [x] 1.2 Define column definitions: Name, Phase, Active On, Protected, Last Execution, Actions
+  - [x] 1.3 Wire the Name column as a `Link` to `/disaster-recovery/plans/:name`
+  - [x] 1.4 Integrate `DRDashboardPage.tsx` from Story 6.2 to render the `DRDashboard` component
 
-- [ ] Task 2: Create ReplicationHealthIndicator compact component (AC: #5)
-  - [ ] 2.1 Create `src/components/shared/ReplicationHealthIndicator.tsx` — compact variant rendering icon + health label + "RPO Ns" inline
-  - [ ] 2.2 Map health states to PatternFly icons: `CheckCircleIcon` (Healthy/green), `ExclamationTriangleIcon` (Degraded/yellow), `ExclamationCircleIcon` (Error/red), `QuestionCircleIcon` (Unknown/gray)
-  - [ ] 2.3 Use PatternFly CSS custom properties exclusively for colors: `--pf-v5-global--success-color--100`, `--pf-v5-global--warning-color--100`, `--pf-v5-global--danger-color--100`, `--pf-v5-global--disabled-color--100`
-  - [ ] 2.4 Add `aria-label` with full status string: "Replication healthy, RPO 12 seconds"
+- [x] Task 2: Create ReplicationHealthIndicator compact component (AC: #5)
+  - [x] 2.1 Create `src/components/shared/ReplicationHealthIndicator.tsx` — compact variant rendering icon + health label + "RPO Ns" inline
+  - [x] 2.2 Map health states to PatternFly icons: `CheckCircleIcon` (Healthy/green), `ExclamationTriangleIcon` (Degraded/yellow), `ExclamationCircleIcon` (Error/red), `QuestionCircleIcon` (Unknown/gray)
+  - [x] 2.3 Use PatternFly CSS custom properties exclusively for colors: `--pf-t--global--icon--color--status--success--default`, `--pf-t--global--icon--color--status--warning--default`, `--pf-t--global--icon--color--status--danger--default`, `--pf-t--global--icon--color--disabled` (PF6 tokens)
+  - [x] 2.4 Add `aria-label` with full status string: "Replication healthy, RPO 12s"
 
-- [ ] Task 3: Create status badge components (AC: #1, #9)
-  - [ ] 3.1 Create `src/components/shared/PhaseBadge.tsx` — PatternFly `Label` with DR-specific color mapping: SteadyState/DRedSteadyState = green solid, FailedOver/FailedBack = blue solid, transient phases = blue outlined + spinner icon
-  - [ ] 3.2 Create `src/components/shared/ExecutionResultBadge.tsx` — PatternFly `Label` for Succeeded (green), PartiallySucceeded (yellow), Failed (red)
-  - [ ] 3.3 Add icon + text on all badges (never color alone)
+- [x] Task 3: Create status badge components (AC: #1, #9)
+  - [x] 3.1 Create `src/components/shared/PhaseBadge.tsx` — PatternFly `Label` with DR-specific color mapping: SteadyState/DRedSteadyState = status="success" solid, FailedOver/FailedBack = color="blue" solid, transient phases = color="blue" outlined + Spinner icon
+  - [x] 3.2 Create `src/components/shared/ExecutionResultBadge.tsx` — PatternFly `Label` for Succeeded (status="success"), PartiallySucceeded (status="warning"), Failed (status="danger")
+  - [x] 3.3 Add icon + text on all badges (never color alone)
 
-- [ ] Task 4: Implement sorting (AC: #2)
-  - [ ] 4.1 Add `useSortable` hook or implement sort state with `React.useState` for active column + direction
-  - [ ] 4.2 Implement custom sort comparator for Protected column: Error (0) > Degraded (1) > Unknown (2) > Healthy (3)
-  - [ ] 4.3 Set default sort to Protected column ascending (worst-first)
-  - [ ] 4.4 Wire `Th` sortParams for all sortable columns (all except Actions)
+- [x] Task 4: Implement sorting (AC: #2)
+  - [x] 4.1 Implement sort state with `React.useState` for active column + direction
+  - [x] 4.2 Implement custom sort comparator for Protected column: Error (0) > Degraded (1) > Unknown (2) > Healthy (3)
+  - [x] 4.3 Set default sort to Protected column ascending (worst-first)
+  - [x] 4.4 Wire `Th` sortParams for all sortable columns (all except Actions)
 
-- [ ] Task 5: Implement toolbar with filters (AC: #3, #4)
-  - [ ] 5.1 Create `src/components/DRDashboard/DRDashboardToolbar.tsx` — PatternFly `Toolbar` + `ToolbarContent` + `ToolbarFilter` + `ToolbarItem`
-  - [ ] 5.2 Add text search `TextInput` with 300ms debounce for plan name filtering
-  - [ ] 5.3 Add `Select` (multi-select variant) dropdowns for Phase, Active On, Protected, Last Execution
-  - [ ] 5.4 Phase filter options: SteadyState, FailedOver, FailingOver, Reprotecting, DRedSteadyState, FailingBack, FailedBack, Restoring
-  - [ ] 5.5 Active On filter: dynamically populated from plan data (unique `status.activeSite` values)
-  - [ ] 5.6 Protected filter options: Healthy, Degraded, Error, Unknown
-  - [ ] 5.7 Last Execution filter options: Succeeded, PartiallySucceeded, Failed, Never
-  - [ ] 5.8 Render active filter chips below toolbar with individual clear and "Clear all"
-  - [ ] 5.9 Display "Showing N of M plans" count
+- [x] Task 5: Implement toolbar with filters (AC: #3, #4)
+  - [x] 5.1 Create `src/components/DRDashboard/DRDashboardToolbar.tsx` — PatternFly `Toolbar` + `ToolbarContent` + `ToolbarFilter` + `ToolbarItem`
+  - [x] 5.2 Add text search `SearchInput` with 300ms debounce for plan name filtering
+  - [x] 5.3 Add PF6 composable `Select` (multi-select with checkbox) dropdowns for Phase, Active On, Protected, Last Execution
+  - [x] 5.4 Phase filter options: SteadyState, FailedOver, FailingOver, Reprotecting, DRedSteadyState, FailingBack, FailedBack, Restoring
+  - [x] 5.5 Active On filter: dynamically populated from plan data (unique `status.activeSite` values)
+  - [x] 5.6 Protected filter options: Healthy, Degraded, Error, Unknown
+  - [x] 5.7 Last Execution filter options: Succeeded, PartiallySucceeded, Failed, Never
+  - [x] 5.8 Render active filter labels below toolbar with individual clear and "Clear all" (PF6 uses `labels`/`deleteLabel` API)
+  - [x] 5.9 Display "Showing N of M plans" count
 
-- [ ] Task 6: URL filter synchronization (AC: #4)
-  - [ ] 6.1 Create `src/hooks/useFilterParams.ts` — syncs filter state to/from URL search params using `useLocation` and `useNavigate` from `react-router`
-  - [ ] 6.2 On filter change → update URL params (replace, not push — avoid polluting browser history)
-  - [ ] 6.3 On mount → parse URL params and pre-populate filters
-  - [ ] 6.4 Integrate with `useDashboardState` from Story 6.2 for scroll/filter preservation on navigation
+- [x] Task 6: URL filter synchronization (AC: #4)
+  - [x] 6.1 Create `src/hooks/useFilterParams.ts` — syncs filter state to/from URL search params using `useLocation` and `useNavigate` from `react-router`
+  - [x] 6.2 On filter change → update URL params (replace, not push — avoid polluting browser history)
+  - [x] 6.3 On mount → parse URL params and pre-populate filters
+  - [x] 6.4 Integrate with `useDashboardState` from Story 6.2 for scroll/filter preservation on navigation
 
-- [ ] Task 7: Actions kebab menu (AC: #6)
-  - [ ] 7.1 Create `src/components/DRDashboard/DRPlanActions.tsx` — PatternFly `Dropdown` with `KebabToggle` per row
-  - [ ] 7.2 Implement `getValidActions(plan)` utility in `src/utils/drPlanActions.ts` that returns valid transitions based on effective phase (EffectivePhase logic from project-context.md)
-  - [ ] 7.3 SteadyState → [Failover, Planned Migration]; FailedOver → [Reprotect]; DRedSteadyState → [Failback]; FailedBack → [Restore]; transient phases → [] (no actions)
-  - [ ] 7.4 Menu items are stubs: `console.log('Action:', action, 'Plan:', plan.metadata.name)` — Story 7.1 wires to pre-flight modal
+- [x] Task 7: Actions kebab menu (AC: #6)
+  - [x] 7.1 Create `src/components/DRDashboard/DRPlanActions.tsx` — PatternFly PF6 `Dropdown` with `MenuToggle` (plain variant, EllipsisVIcon) per row
+  - [x] 7.2 Implement `getValidActions(plan)` utility in `src/utils/drPlanActions.ts` that returns valid transitions based on effective phase
+  - [x] 7.3 SteadyState → [Failover, Planned Migration]; FailedOver → [Reprotect]; DRedSteadyState → [Failback]; FailedBack → [Restore]; transient phases → [] (no actions)
+  - [x] 7.4 Menu items are stubs: `console.log('Action:', action, 'Plan:', plan.metadata.name)` — Story 7.1 wires to pre-flight modal
 
-- [ ] Task 8: Utility functions (AC: #1, #2, #5)
-  - [ ] 8.1 Create `src/utils/formatters.ts` with: `formatRPO(seconds)` → "RPO 12s", `formatDuration(start, end)` → "2m 34s", `formatRelativeTime(date)` → "5 min ago"
-  - [ ] 8.2 Create `src/utils/drPlanUtils.ts` with: `getEffectivePhase(plan)` → derives transient phase from activeExecution/activeExecutionMode, `getReplicationHealth(plan)` → extracts health from conditions, `getLastExecution(executions, planName)` → finds most recent execution
+- [x] Task 8: Utility functions (AC: #1, #2, #5)
+  - [x] 8.1 Create `src/utils/formatters.ts` with: `formatRPO(seconds)` → "RPO 12s", `formatDuration(start, end)` → "2m 34s", `formatRelativeTime(date)` → "5 min ago"
+  - [x] 8.2 Create `src/utils/drPlanUtils.ts` with: `getEffectivePhase(plan)`, `getReplicationHealth(plan)`, `getLastExecution(executions, planName)`, `HEALTH_SORT_ORDER`
 
-- [ ] Task 9: Tests (AC: #1–#9)
-  - [ ] 9.1 Create `tests/components/DRDashboard.test.tsx` — table renders with mock plan data, columns present, plan name links to detail
-  - [ ] 9.2 Create `tests/components/ReplicationHealthIndicator.test.tsx` — all 4 health states render correct icon/color/label, accessibility string present
-  - [ ] 9.3 Create `tests/components/PhaseBadge.test.tsx` — all 8 phases render correct color variant and icon
-  - [ ] 9.4 Create `tests/components/DRDashboardToolbar.test.tsx` — filters render, filter chips appear on selection, clear all works, result count updates
-  - [ ] 9.5 Create `tests/components/DRPlanActions.test.tsx` — valid actions appear per phase, no actions for transient phases
-  - [ ] 9.6 Create `tests/utils/drPlanUtils.test.ts` — getEffectivePhase, getReplicationHealth, getLastExecution
-  - [ ] 9.7 Run `jest-axe` on DRDashboard, ReplicationHealthIndicator, PhaseBadge — zero violations
-  - [ ] 9.8 Verify `yarn build` succeeds with all new components
+- [x] Task 9: Tests (AC: #1–#9)
+  - [x] 9.1 Rewrite `tests/components/DRDashboard.test.tsx` — table renders with mock plan data, columns present, plan name links to detail, default sort by Protected worst-first, accessibility
+  - [x] 9.2 Create `tests/components/ReplicationHealthIndicator.test.tsx` — all 4 health states render correct icon/label, RPO formatting, accessibility string, jest-axe
+  - [x] 9.3 Create `tests/components/PhaseBadge.test.tsx` — all 8 phases render correct label, transient "(in progress)" screen reader text, jest-axe for all phases
+  - [x] 9.4 Create `tests/components/DRDashboardToolbar.test.tsx` — filters render, search input works, filter labels appear, result count, jest-axe
+  - [x] 9.5 Create `tests/components/DRPlanActions.test.tsx` — valid actions per phase, empty for transient, console.log stub, jest-axe
+  - [x] 9.6 Create `tests/utils/drPlanUtils.test.ts` — getEffectivePhase (7 cases), getReplicationHealth (5 cases), getLastExecution (3 cases), HEALTH_SORT_ORDER, getValidActions (5 cases), isTransientPhase, formatRPO, formatDuration, formatRelativeTime
+  - [x] 9.7 Run `jest-axe` on DRDashboard, ReplicationHealthIndicator, PhaseBadge, DRDashboardToolbar, DRPlanActions — zero violations
+  - [x] 9.8 Verify `npx webpack --mode production` succeeds with all new components
+
+### Review Findings
+
+- [x] [Review][Patch] Saved dashboard state overrides URL filters on mount — Fixed: mount effect now checks if URL already has filter params and skips saved-state restore when it does (AC4 shareable links)
+- [x] [Review][Patch] In-progress executions are misclassified as `Never` in the Last Execution filter — Fixed: `getLastExecResult` now returns `'InProgress'` when an execution exists but has no terminal result; added `InProgress` to filter options
+- [x] [Review][Patch] Per-plan latest execution lookup rescans and sorts the full execution list, putting 500-plan responsiveness at risk — Fixed: added `buildLatestExecutionMap` (single O(E) pass) to `drPlanUtils.ts`; `enrichPlans` now uses the pre-indexed map instead of per-plan `getLastExecution`
 
 ## Dev Notes
 
@@ -490,10 +496,63 @@ All recent work is Go backend. Stories 6.1 and 6.2 are ready-for-dev but not yet
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+claude-opus-4-20250514
 
 ### Debug Log References
 
+- PF6 ToolbarFilter uses `labels`/`deleteLabel` (not PF5 `chips`/`deleteChip`)
+- PF6 Select uses composable API: `Select` + `SelectList` + `SelectOption` with `MenuToggle` toggle
+- PF6 Dropdown uses composable API: `Dropdown` + `DropdownList` + `DropdownItem` with `MenuToggle`
+- PF6 Label has `status` prop (`success`/`warning`/`danger`/`info`/`custom`) and `color` prop (`blue`/`green`/etc.)
+- PF6 CSS custom properties use `--pf-t--global--icon--color--status--{status}--default` naming convention (not v5 `--pf-v5-global--*`)
+- react-router type shim updated to add `useNavigate` for React Router v7 (Console shell runtime)
+- Pre-existing TS2303 circular reference in react-router.d.ts (useLocation re-export from react-router-dom) — not introduced by this story
+- DRDashboardPage.tsx updated to delegate saveDashboardState to DRDashboard (state owner knows current filter/search state)
+
 ### Completion Notes List
 
+- Rewrote `DRDashboard.tsx` from placeholder to full composable PatternFly Table with 6 columns
+- Created `ReplicationHealthIndicator` compact component with PF6 status icon color tokens
+- Created `PhaseBadge` and `ExecutionResultBadge` using PF6 Label with status/color props
+- Created `DRDashboardToolbar` with SearchInput + 4 multi-select filter dropdowns using PF6 composable Select API
+- Created `DRPlanActions` kebab menu using PF6 composable Dropdown with valid-transition-only menu items
+- Created `useFilterParams` hook for bidirectional URL ↔ filter state synchronization (replace, not push)
+- Created utility modules: `formatters.ts` (formatRPO/formatDuration/formatRelativeTime), `drPlanUtils.ts` (getEffectivePhase/getReplicationHealth/getLastExecution/HEALTH_SORT_ORDER), `drPlanActions.ts` (getValidActions/isTransientPhase)
+- Default sort: Protected column ascending (Error → Degraded → Unknown → Healthy)
+- 300ms debounced text search via custom `useDebounce` hook
+- All filtering client-side with `useMemo` for 500-plan performance
+- 135 tests across 10 suites (105 new), all passing, zero jest-axe violations
+- Webpack production build succeeds (1 warning: PF table chunk >244 KiB — expected)
+- Updated existing DRDashboardPage test for delegated state management
+- No regressions in Go backend tests
+
 ### File List
+
+**New files (9 source + 5 test):**
+- `console-plugin/src/utils/formatters.ts`
+- `console-plugin/src/utils/drPlanUtils.ts`
+- `console-plugin/src/utils/drPlanActions.ts`
+- `console-plugin/src/components/shared/ReplicationHealthIndicator.tsx`
+- `console-plugin/src/components/shared/PhaseBadge.tsx`
+- `console-plugin/src/components/shared/ExecutionResultBadge.tsx`
+- `console-plugin/src/components/DRDashboard/DRDashboardToolbar.tsx`
+- `console-plugin/src/components/DRDashboard/DRPlanActions.tsx`
+- `console-plugin/src/hooks/useFilterParams.ts`
+- `console-plugin/tests/components/ReplicationHealthIndicator.test.tsx`
+- `console-plugin/tests/components/PhaseBadge.test.tsx`
+- `console-plugin/tests/components/DRDashboardToolbar.test.tsx`
+- `console-plugin/tests/components/DRPlanActions.test.tsx`
+- `console-plugin/tests/utils/drPlanUtils.test.ts`
+
+**Modified files (4 source + 2 test + 1 planning):**
+- `console-plugin/src/components/DRDashboard/DRDashboard.tsx` — rewrote from placeholder to full table
+- `console-plugin/src/components/DRDashboard/DRDashboardPage.tsx` — delegated saveDashboardState to DRDashboard
+- `console-plugin/src/typings/react-router.d.ts` — added useNavigate type declaration for React Router v7
+- `console-plugin/tests/components/DRDashboard.test.tsx` — rewrote for table component with proper mocks
+- `console-plugin/tests/components/DRDashboardPage.test.tsx` — updated for delegated state management
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — status updated
+
+## Change Log
+
+- 2026-04-26: Implemented Story 6.3 — DR Dashboard Table & Toolbar (9 new src files, 5 new test files, 4 modified src files, 2 modified test files, 131 tests all pass)
+- 2026-04-26: Code review — 3 patch findings identified, all fixed: (1) URL params now take precedence over saved state on mount, (2) in-progress executions correctly classified with new InProgress filter option, (3) O(E) buildLatestExecutionMap replaces O(P*E log E) per-plan lookup. 135 tests all pass.

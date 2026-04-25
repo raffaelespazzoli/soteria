@@ -57,18 +57,10 @@ describe('DRDashboardPage', () => {
     expect(mockRestore).toHaveBeenCalledTimes(1);
   });
 
-  it('calls saveDashboardState on unmount', () => {
+  it('does not call saveDashboardState directly (delegated to DRDashboard)', () => {
     render(<DRDashboardPage />);
-    expect(mockSave).not.toHaveBeenCalled();
     cleanup();
-    expect(mockSave).toHaveBeenCalledTimes(1);
-    expect(mockSave).toHaveBeenCalledWith(
-      expect.objectContaining({
-        scrollTop: expect.any(Number),
-        filters: expect.any(Object),
-        searchText: expect.any(String),
-      }),
-    );
+    expect(mockSave).not.toHaveBeenCalled();
   });
 
   it('calls window.scrollTo when restoreDashboardState returns saved state', () => {

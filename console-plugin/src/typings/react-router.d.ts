@@ -27,4 +27,9 @@ declare module 'react-router' {
     useParams,
     useRouteMatch,
   } from 'react-router-dom';
+
+  type NavigateTo = string | { pathname?: string; search?: string; hash?: string };
+  type NavigateOptions = { replace?: boolean; state?: unknown };
+  type NavigateFunction = (to: NavigateTo, options?: NavigateOptions) => void;
+  export function useNavigate(): NavigateFunction;
 }
