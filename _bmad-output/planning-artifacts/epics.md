@@ -1474,6 +1474,34 @@ So that `kubectl get drexecutions` is all I need for compliance evidence.
 **Then** the structured data satisfies general compliance needs (SOX, ISO 22301, SOC 2) without manual assembly
 **And** no credentials or sensitive information appear in any field (NFR14)
 
+### Story 5.7: Driver Interface Simplification & Workflow Symmetry
+
+As a storage vendor engineer and DR operator,
+I want the StorageProvider interface to contain only the methods the orchestrator actually uses, with no force-flag leaking implementation concerns into the engine,
+So that driver implementations are simpler, the failover/failback code paths are truly symmetric, and the system is easier to reason about and test.
+
+**Acceptance Criteria:**
+
+**Given** the current `StorageProvider` interface with `SetTarget`
+**When** reviewing engine handler usage
+**Then** `SetTarget` is never called — remove it from the interface, fake driver, no-op driver, and conformance suite
+
+**Given** the `Force` field on `SetSourceOptions`, `SetTargetOptions`, and `StopReplicationOptions`
+**When** reviewing the orchestrator's responsibilities
+**Then** peer-unreachable handling is the driver's internal concern — remove `Force` from all Options structs (or the structs entirely if empty)
+
+**Given** the current `FailoverHandler.ExecuteGroup` with branching on `GracefulShutdown`
+**When** `StopReplication` is idempotent (no-op when already NonReplicated)
+**Then** both planned and disaster per-group paths use the same code: `StopReplication → StartVM`
+
+**Given** the current `PreExecute` with StopVM + StopReplication + sync wait
+**When** per-group execution always calls `StopReplication`
+**Then** Step 0 is reduced to `StopVM` only — replication stop and sync wait are removed
+
+**Given** `FailoverConfig{GracefulShutdown, Force}`
+**When** `Force` is removed from the driver interface
+**Then** `FailoverConfig` simplifies to `{GracefulShutdown bool}` — the controller maps `planned_migration → true`, `disaster → false`
+
 ---
 
 ## Epic 6: OCP Console — Dashboard & Plan Management
