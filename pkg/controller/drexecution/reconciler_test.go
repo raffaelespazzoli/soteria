@@ -196,7 +196,9 @@ func TestDRExecutionReconciler_NewExecution_NormalPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	_ = result
+	if result.RequeueAfter == 0 {
+		t.Error("expected RequeueAfter > 0 after setup (yield for fresh resourceVersion)")
+	}
 
 	// Verify StartTime was set (new execution setup phase).
 	var fetched soteriav1alpha1.DRExecution
@@ -324,11 +326,14 @@ func TestDRExecutionReconciler_PlanNameLabel_SetOnFirstReconcile(t *testing.T) {
 		Handler:        &engine.NoOpHandler{},
 	}
 
-	_, err := r.Reconcile(context.Background(), ctrl.Request{
+	result, err := r.Reconcile(context.Background(), ctrl.Request{
 		NamespacedName: types.NamespacedName{Name: "exec-label"},
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.RequeueAfter == 0 {
+		t.Error("expected RequeueAfter > 0 after setup (yield for fresh resourceVersion)")
 	}
 
 	var fetched soteriav1alpha1.DRExecution
@@ -427,6 +432,8 @@ func newSiteAwarePlan(name, primary, secondary, phase string) *soteriav1alpha1.D
 
 // reconcileAndAssertStartTime is a helper that reconciles and checks whether
 // StartTime was set (expectSet=true) or remained nil (expectSet=false).
+// When setup runs (expectSet=true), the reconciler yields with Requeue=true
+// to allow the informer cache to settle before wave execution.
 func reconcileAndAssertStartTime(
 	t *testing.T, cl client.Client, r *DRExecutionReconciler, execName string, expectSet bool,
 ) ctrl.Result {
@@ -446,6 +453,9 @@ func reconcileAndAssertStartTime(
 	}
 	if !expectSet && fetched.Status.StartTime != nil {
 		t.Error("expected StartTime to remain nil")
+	}
+	if expectSet && result.RequeueAfter == 0 {
+		t.Error("expected RequeueAfter > 0 after setup (yield for fresh resourceVersion)")
 	}
 	return result
 }
@@ -625,14 +635,23 @@ func TestDRExecutionReconciler_PlannedMigration_OwnerWaitsForStep0(t *testing.T)
 		Handler:        &engine.NoOpHandler{},
 	}
 
-	result, err := r.Reconcile(context.Background(), ctrl.Request{
-		NamespacedName: types.NamespacedName{Name: "exec-wait-new"},
-	})
+	req := ctrl.Request{NamespacedName: types.NamespacedName{Name: "exec-wait-new"}}
+
+	// First reconcile: setup yields with immediate requeue.
+	result, err := r.Reconcile(context.Background(), req)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("setup reconcile: unexpected error: %v", err)
 	}
-	// After setup completes, the Owner should hit the Step0Complete wait
-	// and return RequeueAfter(5s).
+	if result.RequeueAfter == 0 {
+		t.Error("expected RequeueAfter > 0 after setup (yield for fresh resourceVersion)")
+	}
+
+	// Second reconcile: StartTime is set, enters wave execution path,
+	// hits the Step0Complete wait.
+	result, err = r.Reconcile(context.Background(), req)
+	if err != nil {
+		t.Fatalf("wave reconcile: unexpected error: %v", err)
+	}
 	if result.RequeueAfter != 5*time.Second {
 		t.Errorf("expected RequeueAfter 5s for Step0Complete wait, got %v", result.RequeueAfter)
 	}

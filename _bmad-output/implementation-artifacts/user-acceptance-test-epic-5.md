@@ -436,3 +436,298 @@ All 5 VMs running on etl7. No `SetSource` steps in the execution status.
 | `make test` | Pass |
 | `make lint-fix` | 0 issues |
 | Live disaster failover | Succeeded with correct `StopReplication` steps |
+
+---
+
+## Run 4: Clean Planned Migration Cycle (Post-Bugfix Validation)
+
+**Date:** 2026-04-25
+**Image:** `quay.io/raffaelespazzoli/soteria:latest` (fresh build with all Run 1–3 fixes)
+**Starting state:** Phase=`SteadyState`, activeSite=`etl6`
+
+### Objective
+
+Validate a full 4-step planned migration cycle on a freshly deployed image with all previous bugfixes. Environment was cleaned: `finance-dr` and `payments-dr` DRPlans removed from both clusters and from `hack/stretched-local-test.sh`. Only `fedora-app` remains.
+
+### Pre-test Cleanup
+
+- Rebuilt and pushed `quay.io/raffaelespazzoli/soteria:latest`
+- Rolling restart on both etl6 and etl7
+- Deleted `finance-dr` and `payments-dr` DRPlans from both clusters (executions `finance-failover-001` and `payments-disaster-001` retained as immutable audit records per FR41)
+- Reset `fedora-app` from `FailedOver` to `SteadyState` via 3-step cycle: reprotect → planned_migration → reprotect
+- Removed sample data sections from `hack/stretched-local-test.sh`
+
+### Step 1 — Planned Migration (SteadyState → FailedOver)
+
+| Field | Value |
+|-------|-------|
+| DRExecution | `run4-failover` |
+| Mode | `planned_migration` |
+| Result | **Succeeded** |
+| Duration | 41s |
+| Plan phase after | `FailedOver` (activeSite: `etl7`) |
+
+Per-group steps (unified path: StopReplication → StartVM):
+
+```
+wave-1-group-0: StopReplication=Succeeded StartVM=Succeeded
+wave-2-group-0: StopReplication=Succeeded StopReplication=Succeeded StartVM=Succeeded StartVM=Succeeded
+wave-3-group-0: StopReplication=Succeeded StopReplication=Succeeded StartVM=Succeeded StartVM=Succeeded
+```
+
+Step0Complete condition preserved correctly across sites.
+
+### Step 2 — Reprotect (FailedOver → DRedSteadyState)
+
+| Field | Value |
+|-------|-------|
+| DRExecution | `run4-reprotect1` |
+| Mode | `reprotect` |
+| Result | **Succeeded** |
+| Duration | 35s |
+| Plan phase after | `DRedSteadyState` |
+
+### Step 3 — Failback / Planned Migration (DRedSteadyState → FailedBack)
+
+| Field | Value |
+|-------|-------|
+| DRExecution | `run4-failback` |
+| Mode | `planned_migration` |
+| Result | **Succeeded** |
+| Duration | 45s |
+| Plan phase after | `FailedBack` (activeSite: `etl6`) |
+
+Per-group steps identical to Step 1 (StopReplication → StartVM per group). Step0Complete gate worked correctly.
+
+### Step 4 — Reprotect Back (FailedBack → SteadyState)
+
+| Field | Value |
+|-------|-------|
+| DRExecution | `run4-reprotect2` |
+| Mode | `reprotect` |
+| Result | **Succeeded** |
+| Duration | 35s |
+| Plan phase after | `SteadyState` (activeSite: `etl6`) |
+
+### Final State
+
+| Resource | Value |
+|----------|-------|
+| DRPlan phase | `SteadyState` |
+| activeSite | `etl6` |
+| etl6 VMs | All 5 Running |
+| etl7 VMs | All 5 Stopped |
+| Cross-site consistency | Both sites agree on phase, activeSite, all 4 execution results |
+| Total cycle time | ~2.6 minutes |
+
+### Anomalies Found
+
+| # | Severity | Finding |
+|---|----------|---------|
+| A1 | **Medium** | `persistStatus` write conflicts on every wave group across both clusters (~5–10 ERROR-level logs per execution). "The object has been modified; please apply your changes to the latest version and try again." Retries succeed but the noise is significant. Root cause: ScyllaDB eventual consistency causes stale `resourceVersion` on re-fetch inside `persistStatus`. The `mergeConditions` fix (Run 1) prevents condition loss but doesn't eliminate the underlying contention. |
+| A2 | **Low** | "Full re-execution failed after resume with no waves" errors on both sites during planned migrations. The reconciler enters the resume path, hits a write conflict persisting initial wave status, logs ERROR, then retries successfully on next reconcile. Transient but noisy. |
+| A3 | **Info** | Per-group steps use the unified `StopReplication → StartVM` path for both planned and disaster modes. `StopReplication` is idempotent when volumes are already NonReplicated from Step 0. This is by design per the current `failover.go` architecture. |
+
+### Run 4 Summary
+
+| Metric | Value |
+|--------|-------|
+| Steps executed | 4/4 |
+| Steps passed (clean) | 4/4 |
+| Bugs found | 0 |
+| Functional regressions | 0 |
+| Anomalies | 1 medium (write conflicts), 1 low (resume path noise), 1 informational |
+| Step0Complete gate | Correct on both planned migrations |
+| Cross-site consistency | Verified — both sites agree on all state |
+
+---
+
+## Run 5: Disaster Failover with Network Partition (Soteria Down, ScyllaDB Up)
+
+**Date:** 2026-04-25
+**Image:** `quay.io/raffaelespazzoli/soteria:latest` (same as Run 4)
+**Starting state:** Phase=`SteadyState`, activeSite=`etl6`
+
+### Objective
+
+Test disaster failover with a more realistic partial failure simulation: Soteria controller is down on etl6 and network-isolated from etl7, but ScyllaDB cross-DC replication remains active. This differs from Run 3 (where ScyllaDB was also scaled to 0) and tests whether the surviving site can complete the failover while the shared storage layer is still functioning.
+
+### Simulation Setup
+
+1. **Scaled `soteria-controller-manager` to 0 replicas on etl6** — no Soteria controller running
+2. **Created `NetworkPolicy` on etl7** (`block-etl6-soteria` in namespace `soteria`) targeting pods with `control-plane=controller-manager`:
+   - Ingress: allow all EXCEPT from `10.128.0.0/14` (etl6 pod CIDR) and `172.30.0.0/16` (etl6 service CIDR)
+   - Egress: allow all EXCEPT to `10.128.0.0/14` and `172.30.0.0/16`
+3. **ScyllaDB left running** on both clusters (2 members per DC, cross-DC replication active)
+
+### Pre-test Verification
+
+| Check | Status |
+|-------|--------|
+| etl6 Soteria pods | 0 (confirmed empty) |
+| etl7 Soteria pods | 1 Running |
+| etl7 APIService v1alpha1.soteria.io | Available=True |
+| etl7 ScyllaDB | 2 members ready |
+| NetworkPolicy active | `block-etl6-soteria` targeting `control-plane=controller-manager` |
+| DRPlan | `SteadyState`, activeSite=`etl6` |
+
+### Execution: Disaster Failover
+
+| Field | Value |
+|-------|-------|
+| DRExecution | `run5-disaster` |
+| Mode | `disaster` |
+| Submitted via | `etl7` |
+| Result | **Succeeded** |
+| Duration | 33s |
+| Plan phase after | `FailedOver` (activeSite: `etl7`) |
+
+**No Step0** — correct for disaster mode (source site assumed unreachable).
+
+**Per-group steps:**
+
+```
+wave-1-group-0: StopReplication=Succeeded StartVM=Succeeded
+wave-2-group-0: StopReplication=Succeeded StopReplication=Succeeded StartVM=Succeeded StartVM=Succeeded
+wave-3-group-0: StopReplication=Succeeded StopReplication=Succeeded StartVM=Succeeded StartVM=Succeeded
+```
+
+All 5 VMs running on etl7. Wave ordering respected.
+
+### Post-Failover State
+
+| Resource | etl6 | etl7 |
+|----------|------|------|
+| VMs | **All 5 still Running** | All 5 Running |
+| Soteria controller | Down (0 replicas) | Running |
+| DRPlan phase | `FailedOver` | `FailedOver` |
+| activeSite | `etl7` | `etl7` |
+
+### Post-Restore Verification
+
+After removing the NetworkPolicy and scaling etl6 Soteria back to 1 replica:
+
+| Check | Result |
+|-------|--------|
+| Cross-site DRPlan agreement | Both sites: `FailedOver`, activeSite=`etl7` |
+| Cross-site execution agreement | Both sites: `run5-disaster` Succeeded, 33s |
+| etl6 VMs after controller restart + 30s | **Still Running** (not stopped) |
+
+### Anomalies Found
+
+| # | Severity | Finding |
+|---|----------|---------|
+| A1 | **High** | **Split-brain VMs after disaster failover.** etl6 VMs remain Running even after the etl6 controller restarted and saw the plan in `FailedOver` state (activeSite=`etl7`). There is no mechanism in the DRPlan or DRExecution reconciler to stop stale VMs on the non-active site after disaster failover. In a real total site failure this is invisible (site is down), but in a partial failure (controller down, site recovers) VMs run on both sites simultaneously until reprotect. |
+| A2 | **Medium** | **Severe write contention at execution startup.** 34 ERROR-level log entries for a single 33s execution. Breakdown: 5× "Failed to set plan-name label", 2× "Wave initialization failed", 3× "Full re-execution failed after resume with no waves", 6× "Failed to persist group status update", 18× "Reconciler error" (wrappers). The label-setting step is particularly susceptible — 5 consecutive conflict-retry cycles before succeeding. |
+| A3 | **Info** | ScyllaDB cross-DC replication remaining active during the disaster failover did not interfere with the execution. The surviving site's controller operated entirely on its local DC data. |
+
+### Run 5 Summary
+
+| Metric | Value |
+|--------|-------|
+| Disaster failover | Succeeded (33s) |
+| Bugs found | 0 new functional bugs |
+| Anomalies | 1 high (split-brain VMs), 1 medium (write contention), 1 informational |
+| Wave ordering | Correct (1 → 2 → 3) |
+| StopReplication steps | Correct (`force=true` for disaster) |
+| Cross-site consistency after restore | Verified — both sites agree |
+| Split-brain VMs | Yes — etl6 VMs still Running after controller restart |
+
+---
+
+## Run 6: Post Write-Contention Fixes — Full Planned Migration Cycle
+
+**Date**: 2026-04-25
+**Objective**: Validate that the write-contention mitigation changes eliminate the "thundering herd" errors observed in Runs 4 and 5.
+
+### Code Changes Applied
+
+Four targeted changes to address ScyllaDB eventual-consistency write contention:
+
+1. **`ensurePlanNameLabel`: `Update` → `MergeFrom` patch** (`pkg/controller/drexecution/reconciler.go`)
+   - Replaced `r.Update(ctx, exec)` with `r.Patch(ctx, exec, client.MergeFrom(...))` to send only the label delta, reducing the conflict surface.
+
+2. **`reconcileSetup`: yield after setup** (`pkg/controller/drexecution/reconciler.go`)
+   - Changed return from `ctrl.Result{}, false, nil` (continue to wave execution) to `ctrl.Result{RequeueAfter: 1ms}, nil` (yield).
+   - Forces a fresh `resourceVersion` fetch before wave initialization, breaking the chain of rapid sequential writes.
+   - Simplified the function signature by removing the `bool` return value (always yields).
+
+3. **ScyllaDB-tuned retry backoff** (`pkg/engine/executor.go`)
+   - Introduced `engine.ScyllaRetry`: `{Steps: 8, Duration: 200ms, Factor: 2.0, Jitter: 0.3}`.
+   - Applied to `persistStatus` (replaces `retry.DefaultRetry` with its 10ms/5-step policy).
+   - Applied to `ensurePlanNameLabel` retry loop.
+   - Applied to `KubeCheckpointer.WriteCheckpoint` (`pkg/engine/checkpoint.go`).
+
+4. **`fetchPlanWithActiveExecCheck`: consistency-safe plan re-fetch** (`pkg/controller/drexecution/reconciler.go`)
+   - New helper that retries the DRPlan Get with `ScyllaRetry` backoff, waiting for `ActiveExecution` to converge after the setup yield.
+   - Prevents false `StaleExecution` failures caused by ScyllaDB read-after-write lag.
+   - Replaced raw `Get + ActiveExecution check` in both `reconcileResume` and `reconcileReprotectResume`.
+
+### Test Results
+
+All unit tests pass. Lint clean. Coverage increased from 45.4% to 46.2%.
+
+### Execution Log
+
+| Step | Execution Name | Mode | Result | Start Time | Completion Time | Duration |
+|------|---------------|------|--------|------------|-----------------|----------|
+| 1 | run6v2-failover | planned_migration | **Succeeded** | 15:05:01Z | 15:05:49Z | 48s |
+| 2 | run6v2-reprotect1 | reprotect | **Succeeded** | 15:06:03Z | 15:06:45Z | 42s |
+| 3 | run6v2-failback | planned_migration | **Succeeded** | 15:06:57Z | 15:07:49Z | 52s |
+| 4 | run6v2-reprotect2 | reprotect | **Succeeded** | 15:08:07Z | 15:08:47Z | 40s |
+
+**Total cycle time**: ~4 minutes (15:04:50Z → 15:08:54Z)
+
+### Final State
+
+```
+NAME         PHASE         EFFECTIVE PHASE   ACTIVE SITE   VMS   UNPROTECTED   ACTIVE EXECUTION
+fedora-app   SteadyState   SteadyState       etl6          5     0
+```
+
+All 4 steps returned `Succeeded`. Full round-trip SteadyState → FailedOver → DRedSteadyState → FailedBack → SteadyState completed cleanly.
+
+### Error Log Comparison
+
+| Metric | Run 4 (Before) | Run 5 (Before) | Run 6 (After) |
+|--------|----------------|----------------|---------------|
+| ERROR-level logs (total, both sites) | 34+ | 34+ | **2** |
+| "Failed to set plan-name label" | 5+ per execution | 5+ per execution | **0** |
+| "Failed to persist group status update" | 5-10 per execution | 5-10 per execution | **0** |
+| "StaleExecution" failures | N/A | N/A | **0** |
+| "checkpoint write failed after retries" | 0 | 0 | **0** |
+| Checkpoint retries (DEBUG-level) | N/A (logged at ERROR) | N/A (logged at ERROR) | ~20 (at DEBUG, all resolved) |
+
+The 2 remaining ERROR-level logs are benign "DRExecution is immutable after completion" races from the non-owner site attempting a late write on an already-completed execution. These are harmless — the admission webhook correctly rejects the stale write.
+
+### Anomalies
+
+#### Resolved: Write contention at startup — Severity: Fixed
+
+The thundering herd of `resourceVersion` conflicts that generated 34+ ERROR logs in Runs 4 and 5 is completely eliminated. The combination of:
+- Targeted `MergeFrom` patches (smaller conflict surface)
+- Setup yield (fresh resourceVersion for wave initialization)
+- ScyllaDB-tuned retry backoff (200ms base, exponential to ~50s total)
+- Consistency-safe plan re-fetch (retries read-after-write lag)
+
+reduced ERROR-level logs from 34+ to 2 (benign), and eliminated all `persistStatus`, `ensurePlanNameLabel`, and `StaleExecution` failures entirely.
+
+#### Previously Identified: Immutable-after-completion race — Severity: Low
+
+The non-owner site's reconciler sometimes queues a late write against a DRExecution that was just marked complete by the owner. The admission webhook correctly rejects this (`status: Forbidden: DRExecution is immutable after completion`). This is a harmless eventual-consistency artifact — the execution is already complete and the late write carries no new information. Occurs 1-2 times per cycle.
+
+### Verification Checklist
+
+| Check | Result |
+|-------|--------|
+| All 4 steps Succeeded | Yes |
+| Final phase SteadyState | Yes |
+| Active site etl6 (back to primary) | Yes |
+| ERROR-level logs (plan-name label) | 0 (was 5+ per execution) |
+| ERROR-level logs (persistStatus) | 0 (was 5-10 per execution) |
+| ERROR-level logs (StaleExecution) | 0 |
+| ERROR-level logs (total) | 2 (benign immutable race) |
+| Checkpoint retries resolve within backoff | Yes (all at DEBUG level) |
+| No PartiallySucceeded results | Yes |
+| Unit tests pass | Yes |
+| Lint clean | Yes |

@@ -161,10 +161,7 @@ func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Setup phase: validate, set startTime, transition the plan.
 	// Gated on startTime so these steps never repeat on re-reconcile.
 	if exec.Status.StartTime == nil {
-		result, done, err := r.reconcileSetup(ctx, &exec, &plan, req.NamespacedName)
-		if err != nil || done {
-			return result, err
-		}
+		return r.reconcileSetup(ctx, &exec, &plan, req.NamespacedName)
 	}
 
 	// Re-protect dispatch: storage-only, not wave-based.
@@ -776,25 +773,15 @@ func (r *DRExecutionReconciler) reconcileReprotectResume(
 	logger := log.FromContext(ctx).WithValues("drexecution", exec.Name)
 	logger.Info("Resuming re-protect execution (idempotent replay)")
 
-	var plan soteriav1alpha1.DRPlan
-	if err := r.Get(ctx, client.ObjectKey{Name: exec.Spec.PlanName}, &plan); err != nil {
-		if errors.IsNotFound(err) {
-			return r.failExecution(ctx, exec, "PlanNotFound",
-				fmt.Sprintf("DRPlan %q not found during re-protect resume", exec.Spec.PlanName))
-		}
-		return ctrl.Result{}, err
-	}
-
-	if plan.Status.ActiveExecution != exec.Name {
-		return r.failExecution(ctx, exec, "StaleExecution",
-			fmt.Sprintf("execution %q is not the active execution for plan %q (active: %q)",
-				exec.Name, plan.Name, plan.Status.ActiveExecution))
+	plan, err := r.fetchPlanWithActiveExecCheck(ctx, exec.Spec.PlanName, exec.Name)
+	if err != nil {
+		return r.failExecution(ctx, exec, "StaleExecution", err.Error())
 	}
 
 	r.event(exec, corev1.EventTypeNormal, "ReprotectResumed", "Checkpoint",
 		"Resuming re-protect execution after restart (idempotent replay)")
 
-	return r.reconcileReprotect(ctx, exec, &plan)
+	return r.reconcileReprotect(ctx, exec, plan)
 }
 
 // resolveVGID resolves a VolumeGroupInfo to a driver-level VolumeGroupID
@@ -879,26 +866,16 @@ func (r *DRExecutionReconciler) reconcileResume(
 			len(resumePoint.FailedGroups),
 			len(resumePoint.InFlightGroups)))
 
-	// Fetch the referenced DRPlan.
-	var plan soteriav1alpha1.DRPlan
-	if err := r.Get(ctx, client.ObjectKey{Name: exec.Spec.PlanName}, &plan); err != nil {
-		if errors.IsNotFound(err) {
-			return r.failExecution(ctx, exec, "PlanNotFound",
-				fmt.Sprintf("DRPlan %q not found during resume", exec.Spec.PlanName))
-		}
-		return ctrl.Result{}, err
-	}
-
-	if plan.Status.ActiveExecution != exec.Name {
-		return r.failExecution(ctx, exec, "StaleExecution",
-			fmt.Sprintf("execution %q is not the active execution for plan %q (active: %q)",
-				exec.Name, plan.Name, plan.Status.ActiveExecution))
+	// Fetch the referenced DRPlan with read-after-write consistency retry.
+	plan, err := r.fetchPlanWithActiveExecCheck(ctx, exec.Spec.PlanName, exec.Name)
+	if err != nil {
+		return r.failExecution(ctx, exec, "StaleExecution", err.Error())
 	}
 
 	// Resolve handler for the execution mode.
 	drHandler, err := r.resolveHandler(exec.Spec.Mode)
 	if err != nil {
-		return r.failExecution(ctx, exec, "HandlerResolutionFailed", err.Error(), &plan)
+		return r.failExecution(ctx, exec, "HandlerResolutionFailed", err.Error(), plan)
 	}
 
 	// Build the set of groups to skip in the resume wave (completed + failed).
@@ -915,7 +892,7 @@ func (r *DRExecutionReconciler) reconcileResume(
 	if r.WaveExecutor != nil {
 		execInput := engine.ExecuteInput{
 			Execution: exec,
-			Plan:      &plan,
+			Plan:      plan,
 			Handler:   drHandler,
 		}
 
@@ -1253,9 +1230,41 @@ func startEventFields(phase string) (reason, action, verb string) {
 	}
 }
 
+// fetchPlanWithActiveExecCheck re-fetches the DRPlan and verifies that
+// ActiveExecution matches execName. Uses ScyllaRetry backoff to tolerate
+// read-after-write lag when the setup phase just patched ActiveExecution
+// and the informer cache hasn't converged yet.
+func (r *DRExecutionReconciler) fetchPlanWithActiveExecCheck(
+	ctx context.Context, planName, execName string,
+) (*soteriav1alpha1.DRPlan, error) {
+	logger := log.FromContext(ctx).WithValues("drexecution", execName, "plan", planName)
+	var plan soteriav1alpha1.DRPlan
+
+	err := retry.RetryOnConflict(engine.ScyllaRetry, func() error {
+		if err := r.Get(ctx, client.ObjectKey{Name: planName}, &plan); err != nil {
+			return err
+		}
+		if plan.Status.ActiveExecution == execName {
+			return nil
+		}
+		logger.V(1).Info("ActiveExecution not yet consistent, retrying",
+			"expected", execName, "actual", plan.Status.ActiveExecution)
+		return &errors.StatusError{ErrStatus: metav1.Status{
+			Reason:  metav1.StatusReasonConflict,
+			Message: "ActiveExecution not yet consistent",
+		}}
+	})
+	if err != nil {
+		return &plan, fmt.Errorf(
+			"execution %q is not the active execution for plan %q (active: %q)",
+			execName, planName, plan.Status.ActiveExecution)
+	}
+	return &plan, nil
+}
+
 // ensurePlanNameLabel sets soteria.io/plan-name on the DRExecution for
-// history queries (FR42). Uses retry.RetryOnConflict to handle concurrent
-// resourceVersion bumps from status patches or informer replays.
+// history queries (FR42). Uses a MergeFrom patch to minimize conflict
+// surface — only the label field is sent, avoiding full-object replacement.
 func (r *DRExecutionReconciler) ensurePlanNameLabel(
 	ctx context.Context, exec *soteriav1alpha1.DRExecution, key client.ObjectKey,
 ) error {
@@ -1264,41 +1273,40 @@ func (r *DRExecutionReconciler) ensurePlanNameLabel(
 	}
 	logger := log.FromContext(ctx).WithValues("drexecution", exec.Name)
 
-	err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+	err := retry.RetryOnConflict(engine.ScyllaRetry, func() error {
 		if err := r.Get(ctx, key, exec); err != nil {
 			return err
 		}
 		if exec.Labels != nil && exec.Labels["soteria.io/plan-name"] == exec.Spec.PlanName {
 			return nil
 		}
+		patch := client.MergeFrom(exec.DeepCopy())
 		if exec.Labels == nil {
 			exec.Labels = make(map[string]string)
 		}
 		exec.Labels["soteria.io/plan-name"] = exec.Spec.PlanName
-		return r.Update(ctx, exec)
+		return r.Patch(ctx, exec, patch)
 	})
 	if err != nil {
 		logger.Error(err, "Failed to set plan-name label", "label", "soteria.io/plan-name")
 		return err
 	}
 
-	if err := r.Get(ctx, key, exec); err != nil {
-		return err
-	}
 	logger.Info("Set plan-name label", "label", "soteria.io/plan-name", "value", exec.Spec.PlanName)
 	return nil
 }
 
 // reconcileSetup validates the execution mode, transitions the DRPlan phase,
 // sets the concurrency guard, and initializes the execution's StartTime.
-// Returns (result, done=true, err) when the caller should return immediately
-// (either because of an error or because the execution was failed).
+// Always yields after completing setup (RequeueAfter) so the next reconcile
+// starts with a fresh resourceVersion, avoiding write contention from
+// ScyllaDB eventual consistency.
 func (r *DRExecutionReconciler) reconcileSetup(
 	ctx context.Context,
 	exec *soteriav1alpha1.DRExecution,
 	plan *soteriav1alpha1.DRPlan,
 	key client.ObjectKey,
-) (ctrl.Result, bool, error) {
+) (ctrl.Result, error) {
 	logger := log.FromContext(ctx).WithValues("drexecution", exec.Name)
 
 	if exec.Spec.Mode != soteriav1alpha1.ExecutionModePlannedMigration &&
@@ -1306,7 +1314,7 @@ func (r *DRExecutionReconciler) reconcileSetup(
 		exec.Spec.Mode != soteriav1alpha1.ExecutionModeReprotect {
 		result, err := r.failExecution(ctx, exec, "InvalidMode",
 			fmt.Sprintf("unsupported execution mode %q", exec.Spec.Mode))
-		return result, true, err
+		return result, err
 	}
 
 	previousPhase := plan.Status.Phase
@@ -1319,7 +1327,7 @@ func (r *DRExecutionReconciler) reconcileSetup(
 		result, fErr := r.failExecution(ctx, exec, "InvalidPhaseTransition",
 			fmt.Sprintf("cannot %s from phase %q on plan %q; valid starting phases: %s",
 				exec.Spec.Mode, previousPhase, plan.Name, strings.Join(validPhases, ", ")))
-		return result, true, fErr
+		return result, fErr
 	}
 
 	planPatch := client.MergeFrom(plan.DeepCopy())
@@ -1327,14 +1335,14 @@ func (r *DRExecutionReconciler) reconcileSetup(
 	plan.Status.ActiveExecutionMode = exec.Spec.Mode
 	if err := r.Status().Patch(ctx, plan, planPatch); err != nil {
 		logger.Error(err, "Failed to set ActiveExecution on DRPlan", "plan", plan.Name)
-		return ctrl.Result{}, true, err
+		return ctrl.Result{}, err
 	}
 
 	logger.Info("Set ActiveExecution on DRPlan",
 		"plan", plan.Name, "activeExecution", exec.Name, "phase", previousPhase)
 
 	if err := r.ensurePlanNameLabel(ctx, exec, key); err != nil {
-		return ctrl.Result{}, true, err
+		return ctrl.Result{}, err
 	}
 
 	now := metav1.Now()
@@ -1350,7 +1358,7 @@ func (r *DRExecutionReconciler) reconcileSetup(
 
 	if err := r.Status().Patch(ctx, exec, execPatch); err != nil {
 		logger.Error(err, "Failed to update DRExecution status")
-		return ctrl.Result{}, true, err
+		return ctrl.Result{}, err
 	}
 
 	reason, action, verb := startEventFields(targetPhase)
@@ -1358,9 +1366,9 @@ func (r *DRExecutionReconciler) reconcileSetup(
 		fmt.Sprintf("%s started for plan %s in %s mode via execution %s",
 			verb, plan.Name, exec.Spec.Mode, exec.Name))
 
-	logger.Info("DRExecution setup complete",
+	logger.Info("DRExecution setup complete, yielding for fresh resourceVersion",
 		"plan", plan.Name, "mode", exec.Spec.Mode, "effectivePhase", targetPhase)
-	return ctrl.Result{}, false, nil
+	return ctrl.Result{RequeueAfter: 1 * time.Millisecond}, nil
 }
 
 // dispatchByRole computes the reconcile role for this controller instance and

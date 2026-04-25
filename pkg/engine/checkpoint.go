@@ -78,10 +78,11 @@ func (c *KubeCheckpointer) WriteCheckpoint(ctx context.Context, exec *soteriav1a
 	start := time.Now()
 
 	backoff := wait.Backoff{
-		Duration: 100 * time.Millisecond,
-		Factor:   2.0,
-		Cap:      5 * time.Second,
-		Steps:    6, // 1 initial + 5 retries
+		Duration: ScyllaRetry.Duration,
+		Factor:   ScyllaRetry.Factor,
+		Jitter:   ScyllaRetry.Jitter,
+		Cap:      10 * time.Second,
+		Steps:    ScyllaRetry.Steps,
 	}
 
 	statusCopy := exec.Status.DeepCopy()

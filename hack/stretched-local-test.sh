@@ -364,65 +364,6 @@ done
 # ---------------------------------------------------------------------------
 # Populate sample data
 # ---------------------------------------------------------------------------
-echo ""
-echo "=== Populating sample data ==="
-
-echo "  DRPlan 'finance-dr' → ${CTX_ETL6}..."
-kctl --context="${CTX_ETL6}" apply -f - <<'EOF'
-apiVersion: soteria.io/v1alpha1
-kind: DRPlan
-metadata:
-  name: finance-dr
-  namespace: default
-spec:
-  waveLabel: dr-wave
-  maxConcurrentFailovers: 5
-  primarySite: etl6
-  secondarySite: etl7
-EOF
-
-echo "  DRPlan 'payments-dr' → ${CTX_ETL7}..."
-kctl --context="${CTX_ETL7}" apply -f - <<'EOF'
-apiVersion: soteria.io/v1alpha1
-kind: DRPlan
-metadata:
-  name: payments-dr
-  namespace: default
-spec:
-  waveLabel: failover-wave
-  maxConcurrentFailovers: 2
-  primarySite: etl7
-  secondarySite: etl6
-EOF
-
-sleep 2
-
-echo "  DRExecution 'finance-failover-001' → ${CTX_ETL6}..."
-kctl --context="${CTX_ETL6}" apply -f - <<'EOF'
-apiVersion: soteria.io/v1alpha1
-kind: DRExecution
-metadata:
-  name: finance-failover-001
-  namespace: default
-spec:
-  planName: finance-dr
-  mode: planned_migration
-EOF
-
-echo "  DRExecution 'payments-disaster-001' → ${CTX_ETL7}..."
-kctl --context="${CTX_ETL7}" apply -f - <<'EOF'
-apiVersion: soteria.io/v1alpha1
-kind: DRExecution
-metadata:
-  name: payments-disaster-001
-  namespace: default
-spec:
-  planName: payments-dr
-  mode: disaster
-EOF
-
-echo "  Sample data populated."
-
 # ---------------------------------------------------------------------------
 # Deploy DR test VMs (Fedora) with DRPlan
 # ---------------------------------------------------------------------------
@@ -541,10 +482,6 @@ cat <<SUMMARY
    etl6 : APIService v1alpha1.soteria.io (--scylladb-local-dc=etl6, --site-name=etl6)
    etl7 : APIService v1alpha1.soteria.io (--scylladb-local-dc=etl7, --site-name=etl7)
 
- Sample data:
-   DRPlans:      finance-dr (via ${CTX_ETL6}), payments-dr (via ${CTX_ETL7})
-   DRExecutions: finance-failover-001 (planned_migration), payments-disaster-001 (disaster)
-
  DR test (namespace: ${DR_TEST_NS}):
    DRPlan: fedora-app (waveLabel: soteria.io/wave, maxConcurrentFailovers: 2)
    Wave 1: fedora-db
@@ -554,17 +491,16 @@ cat <<SUMMARY
    ${CTX_ETL7}: VMs stopped (runStrategy: Halted)
 
  Retrieve DRPlans (via aggregated API):
-   kubectl --context=${CTX_ETL6} get drplans -n default
-   kubectl --context=${CTX_ETL7} get drplans -n default
    kubectl --context=${CTX_ETL6} get drplans -n ${DR_TEST_NS}
+   kubectl --context=${CTX_ETL7} get drplans -n ${DR_TEST_NS}
 
  Retrieve Fedora VMs:
    kubectl --context=${CTX_ETL6} get vm -n ${DR_TEST_NS}
    kubectl --context=${CTX_ETL7} get vm -n ${DR_TEST_NS}
 
  Cross-DC replication test:
-   kubectl --context=${CTX_ETL6} get drplans -n default -o name
-   kubectl --context=${CTX_ETL7} get drplans -n default -o name
+   kubectl --context=${CTX_ETL6} get drplans -n ${DR_TEST_NS} -o name
+   kubectl --context=${CTX_ETL7} get drplans -n ${DR_TEST_NS} -o name
    # Both should show the same DRPlans after replication delay
 
  Logs:

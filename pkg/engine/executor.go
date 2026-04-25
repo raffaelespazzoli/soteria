@@ -32,12 +32,14 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/events"
 	"k8s.io/client-go/util/retry"
@@ -49,6 +51,18 @@ import (
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
 	"github.com/soteria-project/soteria/pkg/drivers"
 )
+
+// ScyllaRetry is a retry backoff tuned for ScyllaDB's eventual consistency
+// window. The default client-go retry (10ms, 5 steps, factor 1.0) is too
+// aggressive — reads immediately after a write may return stale data.
+// This backoff uses 200ms base with exponential growth and jitter to ride
+// out the replication lag.
+var ScyllaRetry = wait.Backoff{
+	Steps:    8,
+	Duration: 200 * time.Millisecond,
+	Factor:   2.0,
+	Jitter:   0.3,
+}
 
 // RetryGroupsAnnotation is the annotation key that operators use to trigger
 // retry of failed DRGroups. The value is a comma-separated list of group names
@@ -1079,7 +1093,7 @@ func (e *WaveExecutor) persistStatus(ctx context.Context, exec *soteriav1alpha1.
 	defer e.statusMu.Unlock()
 
 	statusCopy := exec.Status.DeepCopy()
-	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+	return retry.RetryOnConflict(ScyllaRetry, func() error {
 		if err := e.Client.Get(ctx, client.ObjectKeyFromObject(exec), exec); err != nil {
 			return fmt.Errorf("re-fetching DRExecution before status update: %w", err)
 		}
