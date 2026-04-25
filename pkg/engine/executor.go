@@ -1224,19 +1224,25 @@ type RetryInput struct {
 	RetryTargets []RetryTarget
 }
 
-// parseRetryAnnotation splits the annotation value into group names.
+// parseRetryAnnotation splits the annotation value into deduplicated group names.
 // Returns nil for the "all-failed" sentinel — the caller resolves those.
 func parseRetryAnnotation(value string) []string {
 	if value == RetryAllFailed {
 		return nil
 	}
 	groups := strings.Split(value, ",")
+	seen := make(map[string]struct{}, len(groups))
 	result := make([]string, 0, len(groups))
 	for _, g := range groups {
 		g = strings.TrimSpace(g)
-		if g != "" {
-			result = append(result, g)
+		if g == "" {
+			continue
 		}
+		if _, dup := seen[g]; dup {
+			continue
+		}
+		seen[g] = struct{}{}
+		result = append(result, g)
 	}
 	return result
 }

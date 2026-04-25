@@ -1,10 +1,10 @@
 ---
 project_name: 'dr-orchestrator'
 user_name: 'Raffa'
-date: '2026-04-06'
+date: '2026-04-25'
 sections_completed: ['technology_stack', 'language_rules', 'framework_rules', 'testing_rules', 'code_quality', 'workflow_rules', 'critical_rules']
 status: 'complete'
-rule_count: 88
+rule_count: 95
 optimized_for_llm: true
 ---
 
@@ -73,8 +73,12 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 - Single binary: API server + controller in one process. Leader election (`ctrl.Options{LeaderElection: true}`) controls workflow engine only — all replicas serve API
 - Controller communicates via standard client-go through kube-apiserver proxy — never touches ScyllaDB directly
 - **Aggregated API Server admission flow:** kube-apiserver owns webhook admission — it reads the VWC, calls the Soteria webhook service (port 443 → pod 9443), and only proxies to the aggregated API server (port 6443) if validation passes. The aggregated API server stores to ScyllaDB without further validation. Disable `ValidatingAdmissionWebhook` and `MutatingAdmissionWebhook` on the aggregated API server (`--disable-admission-plugins`) to prevent it from re-invoking external webhooks. The in-process controller-runtime webhook handler serves both the VWC calls from kube-apiserver and the aggregated API server's own admission chain
-- Reconcile returns: success `ctrl.Result{}, nil` | poll `ctrl.Result{RequeueAfter: d}, nil` | error `ctrl.Result{}, err`
+- Reconcile returns: success `ctrl.Result{}, nil` | poll `ctrl.Result{RequeueAfter: d}, nil` | error `ctrl.Result{}, err` | yield after setup writes `ctrl.Result{RequeueAfter: 1*time.Millisecond}, nil`
 - No in-memory state across reconcile calls — use CRD status or ScyllaDB
+- **ScyllaDB retry policy:** All `RetryOnConflict` calls against ScyllaDB-backed resources must use `engine.ScyllaRetry` (200ms base, factor 2.0, jitter 0.3, 8 steps) — never `retry.DefaultRetry` (10ms/5 steps is too fast for cross-DC propagation)
+- **Strategic merge patches:** Prefer `client.MergeFrom(obj.DeepCopy())` + `r.Patch()` over `r.Update()` for metadata/label updates to reduce resourceVersion conflict surface in eventual-consistency environments
+- **Site-aware reconciliation:** Controller instances are configured with `--site-name` (required); reconcile ownership is derived from `engine.ReconcileRole(phase, mode, localSite, primary, secondary)` returning Owner/Step0Only/None. Source site runs Step 0 in planned migration; target site runs per-group waves
+- **VM readiness gate:** After StartVM, the controller yields and waits for VM watch events. Wave N+1 starts only after all wave N VMs reach Running state (configurable timeout via `DRPlanSpec.VMReadyTimeout`, default 5m)
 - CRD status conditions: always `metav1.Condition` — no custom condition types
 - CRD JSON fields: camelCase — `waveLabel`, `maxConcurrentFailovers`
 - CRD field markers — defaulting, validation, and optionality:
@@ -87,8 +91,8 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 - Labels/annotations: `soteria.io/<key>` kebab-case — `soteria.io/drplan`, `soteria.io/wave`
 - Event reasons: PascalCase past-tense — `FailoverStarted`, `WaveCompleted`, `GroupFailed`
 - RBAC: Kubernetes-native only — no custom authorization logic
-- DRPlan 8-phase lifecycle: 4 rest states (`SteadyState`, `FailedOver`, `DRedSteadyState`, `FailedBack`) + 4 transition states (`FailingOver`, `Reprotecting`, `FailingBack`, `ReprotectingBack`). Phase advances to transition state when execution starts, to rest state when execution completes
-- Unified handler model: `FailoverHandler` (config: GracefulShutdown) implements both failover and failback. `ReprotectHandler` implements both reprotect and restore. Direction is encoded in state machine phases, not handler logic
+- DRPlan 8-phase lifecycle: `DRPlan.Status.Phase` holds **only** rest states (`SteadyState`, `FailedOver`, `DRedSteadyState`, `FailedBack`). Transient phases (`FailingOver`, `Reprotecting`, `FailingBack`, `ReprotectingBack`) are derived via `EffectivePhase(restPhase, activeExecMode)`. `DRPlan.Status.ActiveExecution` references the in-progress DRExecution by name (empty when idle). Phase advances to next rest state on successful completion; stays unchanged on failure (self-healing)
+- Unified handler model: `FailoverHandler` (config: `GracefulShutdown bool`) implements both failover and failback. Per-group path is always `StopReplication → StartVM`. `ReprotectHandler` implements both reprotect and restore. Direction is encoded in state machine phases, not handler logic
 
 **ScyllaDB Storage Layer:**
 
@@ -106,7 +110,7 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 - 6-method interface: CreateVolumeGroup, DeleteVolumeGroup, GetVolumeGroup, SetSource, StopReplication, GetReplicationStatus
 - Replication model uses two engine-driven transitions (NonReplicated → Source, Source → NonReplicated) while the Target role is observable via GetReplicationStatus but not explicitly set by the engine
 - Drivers act as reconcilers — check actual storage state before applying changes
-- All 7 methods must be idempotent — safe to retry after crash/restart
+- All 6 methods must be idempotent — safe to retry after crash/restart
 - Driver selection is implicit from PVC storage class — no StorageProviderConfig CRD
 - Registration: `init()` + registry pattern, discovered at startup
 - Timeouts: accept `context.Context`, respect cancellation
@@ -267,6 +271,8 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 5. **No `log.Fatal` / `os.Exit` in library code** — only in `cmd/` entry points
 6. **No hand-editing `zz_generated_*.go`** — regenerate via `hack/update-codegen.sh`; CI verifies with `hack/verify-codegen.sh`
 7. **No storing credentials directly** — reference K8s Secrets or Vault; never log/expose credentials in logs, events, metrics, or DRExecution records
+8. **No `retry.DefaultRetry` for ScyllaDB-backed resources** — always use `engine.ScyllaRetry`; DefaultRetry's 10ms/5-step backoff exhausts retries before ScyllaDB propagates writes across DCs
+9. **No `client.Update` for metadata/label changes in multi-controller environments** — use `client.MergeFrom` strategic merge patch to reduce conflict surface
 
 **Domain-Specific Safety Rules:**
 
@@ -310,4 +316,4 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 - Review periodically for outdated rules
 - Remove rules that become obvious over time
 
-Last Updated: 2026-04-23
+Last Updated: 2026-04-25

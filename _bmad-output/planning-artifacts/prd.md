@@ -135,13 +135,13 @@ She applies it and opens the OCP Console. The DR Dashboard shows `erp-full-stack
 
 **Opening Scene:** Priya clones the Soteria repo and runs `make dev-cluster`. A local OpenShift dev environment spins up with the orchestrator running against the no-op driver. She creates a test DRPlan, triggers a failover, and watches it succeed — all without any real storage. She reads the no-op driver source to understand the StorageProvider interface contract.
 
-**Rising Action:** Priya creates a new `dell-powerstore` driver package. The interface is 7 methods — `CreateVolumeGroup`, `DeleteVolumeGroup`, `GetVolumeGroup`, `SetSource`, `SetTarget`, `StopReplication`, `GetReplicationStatus`. The replication model uses three volume roles (NonReplicated, Source, Target) and the driver acts as a reconciler — checking actual storage state before flipping roles. She maps each to Dell CSM's `repctl` commands and the `DellCSIReplicationGroup` CRD. The translation layer is straightforward because Soteria's interface mirrors CSI-Addons semantics, which Dell is already moving toward.
+**Rising Action:** Priya creates a new `dell-powerstore` driver package. The interface is 6 methods — `CreateVolumeGroup`, `DeleteVolumeGroup`, `GetVolumeGroup`, `SetSource`, `StopReplication`, `GetReplicationStatus`. The replication model uses two engine-driven transitions (NonReplicated → Source, Source → NonReplicated) and the driver acts as a reconciler — checking actual storage state before flipping roles. Drivers handle unreachable peers internally — no force flags from the orchestrator. She maps each to Dell CSM's `repctl` commands and the `DellCSIReplicationGroup` CRD. The translation layer is straightforward because Soteria's interface mirrors CSI-Addons semantics, which Dell is already moving toward.
 
 **Climax:** Priya runs the conformance test suite against a real two-cluster environment with PowerStore arrays. The suite exercises the full DR lifecycle — create volume groups, enable replication, planned failover, re-protect, disaster failover with force, failback. Three tests fail because Dell's volume promotion is asynchronous where Soteria expects synchronous completion. She adds a polling loop with timeout. All tests pass.
 
 **Resolution:** Priya submits a PR with the driver, conformance test results, and a failure-mode document describing known edge cases (async promotion, replication group size limits). The driver is reviewed by Soteria maintainers and merged. PowerStore appears as a supported storage backend in the next release. Her team anticipates the driver will thin out significantly once Dell's native CSI-Addons support ships.
 
-**Capabilities revealed:** No-op driver as development reference, `make dev-cluster` contributor onboarding, StorageProvider interface (7 methods), conformance test suite, driver contribution workflow, transitional shim architecture.
+**Capabilities revealed:** No-op driver as development reference, `make dev-cluster` contributor onboarding, StorageProvider interface (6 methods), conformance test suite, driver contribution workflow, transitional shim architecture.
 
 ---
 
@@ -280,7 +280,7 @@ Metrics are exposed via standard `/metrics` endpoint and scraped by Prometheus. 
 
 | Component | Description |
 |---|---|
-| StorageProvider Go interface | 7-method interface with role-based replication model (NonReplicated/Source/Target) |
+| StorageProvider Go interface | 6-method interface with role-based replication model (NonReplicated/Source; Target observable but not engine-set) |
 | No-op driver | Full interface implementation for dev/test/CI |
 | DRPlan CRD | Label-driven wave formation, waveLabel, maxConcurrentFailovers. VMs associated via `soteria.io/drplan` label. No `type` field — execution mode chosen at runtime |
 | DRExecution CRD | Immutable audit record. Execution mode (planned_migration, disaster, reprotect) is a field on DRExecution, not DRPlan |
@@ -335,12 +335,12 @@ Failover and failback use the same handler — the execution mode (planned_migra
 
 | Mode | Origin Site | Target Site | RPO | v1 | Lasting Effects |
 |---|---|---|---|---|---|
-| **Planned Migration** | Both DCs up. Graceful VM shutdown → StopReplication → final sync | SetSource on target volumes → start VMs wave by wave | 0 | Yes | Yes |
-| **Disaster Recovery** | May be down. Errors ignored | SetSource(force=true) on target volumes → start VMs wave by wave | >0 | Yes | Yes |
-| **Reprotect** | N/A (storage-only, no VM changes) | StopReplication(force=true) → SetSource → monitor replication health | N/A | Yes | Yes |
+| **Planned Migration** | Both DCs up. Step 0: graceful VM shutdown only (StopReplication deferred to per-group) | Per-group: StopReplication (idempotent no-op after Step 0) → StartVM wave by wave, gated on VM readiness | 0 | Yes | Yes |
+| **Disaster Recovery** | May be down. Errors ignored | Per-group: StopReplication → SetSource → StartVM wave by wave, gated on VM readiness | >0 | Yes | Yes |
+| **Reprotect** | N/A (storage-only, no VM changes) | StopReplication → SetSource → monitor replication health | N/A | Yes | Yes |
 | **Test** *(post-v1)* | VMs keep running, untouched | Clone/snapshot volumes → start VMs in isolated network → validate → cleanup | N/A | No | None |
 
-Planned migration and disaster recovery are the same core workflow with different configuration: planned migration adds a pre-execution phase (Step 0: stop origin VMs, stop replication, wait for final sync). Disaster skips Step 0 and uses force=true. A single `FailoverHandler` implements both modes. Similarly, failover (from SteadyState) and failback (from DRedSteadyState) are the same operation — the handler does not distinguish direction. Reprotect (from FailedOver) and restore (from FailedBack) are also the same operation — a single `ReprotectHandler` implements both.
+Planned migration and disaster recovery are the same core workflow with different configuration: planned migration adds a pre-execution phase (Step 0: stop origin VMs). The per-group path is always unified: `StopReplication → StartVM`, with each wave gated on VM readiness (VMs must reach Running state before the next wave starts). In the planned case, Step 0 has already moved volumes to NonReplicated, so the per-group StopReplication is an idempotent no-op. A single `FailoverHandler` implements both modes, parameterized by `GracefulShutdown` (whether Step 0 runs). Similarly, failover (from SteadyState) and failback (from DRedSteadyState) are the same operation — the handler does not distinguish direction. Reprotect (from FailedOver) and restore (from FailedBack) are also the same operation — a single `ReprotectHandler` implements both. Each controller instance is configured with a `--site-name` flag and only reconciles DRExecution steps for which it is the designated owner based on the current DR phase — the source site runs Step 0 in planned migration, the target site runs the per-group waves.
 
 ## Functional Requirements
 
@@ -357,8 +357,8 @@ Planned migration and disaster recovery are the same core workflow with differen
 
 ### DR Execution & Workflow
 
-- **FR9:** Operator can trigger a planned migration execution for a DRPlan when both datacenters are available — orchestrator gracefully stops origin VMs, stops replication, transitions target volumes to Source role, and starts target VMs wave by wave
-- **FR10:** Operator can trigger a disaster recovery execution for a DRPlan — orchestrator transitions target volumes to Source role (force=true), and starts target VMs wave by wave, ignoring errors from the origin site
+- **FR9:** Operator can trigger a planned migration execution for a DRPlan when both datacenters are available — the source-site controller gracefully stops origin VMs (Step 0), then the target-site controller runs the per-group path (StopReplication → StartVM) wave by wave, with each wave gated on VM readiness (VMs must reach Running state before the next wave begins)
+- **FR10:** Operator can trigger a disaster recovery execution for a DRPlan — the target-site controller runs the per-group path (StopReplication → SetSource → StartVM) wave by wave, with each wave gated on VM readiness, ignoring errors from the origin site. Drivers handle unreachable peers internally
 - **FR11:** Orchestrator executes waves sequentially and operations within a wave concurrently, respecting `maxConcurrentFailovers` by chunking waves into DRGroups
 - **FR12:** `maxConcurrentFailovers` always counts individual VMs regardless of consistency level. When namespace-level consistency is configured, the orchestrator creates DRGroup chunks such that all VMs in the same namespace and same wave are always fully contained in a single chunk. If remaining chunk capacity cannot fit the next namespace group, a new chunk is created (current chunk capacity may be underutilized). A pre-flight check validates that `maxConcurrentFailovers` is greater than or equal to the largest namespace+wave group — if not, execution is rejected
 - **FR13:** Orchestrator uses fail-forward error handling — if a DRGroup fails, it is marked `Failed`, the engine continues with remaining groups, and the execution is reported as `PartiallySucceeded`
@@ -371,10 +371,10 @@ Planned migration and disaster recovery are the same core workflow with differen
 
 ### Storage Abstraction
 
-- **FR20:** Orchestrator interacts with storage backends exclusively through a StorageProvider Go interface with 7 methods: CreateVolumeGroup, DeleteVolumeGroup, GetVolumeGroup, SetSource, SetTarget, StopReplication, GetReplicationStatus. The replication model uses three volume roles (NonReplicated, Source, Target) with all transitions routed through NonReplicated. Drivers act as reconcilers — checking actual storage state before applying changes
+- **FR20:** Orchestrator interacts with storage backends exclusively through a StorageProvider Go interface with 6 methods: CreateVolumeGroup, DeleteVolumeGroup, GetVolumeGroup, SetSource, StopReplication, GetReplicationStatus. The replication model uses two engine-driven transitions (NonReplicated → Source via SetSource, Source → NonReplicated via StopReplication). The Target role is observable via GetReplicationStatus but not explicitly set by the engine — when one site calls SetSource, the paired site implicitly becomes the target. Drivers act as reconcilers — checking actual storage state before applying changes. Drivers are responsible for handling unreachable peers internally — the orchestrator does not pass force flags
 - **FR21:** Orchestrator determines which StorageProvider driver to use by inspecting the storage class of the VMs' PVCs — no explicit storage configuration resource required
 - **FR23:** No-op driver implements the full StorageProvider interface but performs no actual storage operations, enabling development, testing, and CI without storage infrastructure
-- **FR24:** Storage vendor engineer can implement a new StorageProvider driver by implementing the 7-method Go interface and running the conformance test suite
+- **FR24:** Storage vendor engineer can implement a new StorageProvider driver by implementing the 6-method Go interface and running the conformance test suite
 - **FR25:** Orchestrator supports heterogeneous storage within a single DRPlan — different VMs can use different storage backends, each handled by the appropriate driver
 
 ### Cross-Site Shared State
@@ -383,7 +383,9 @@ Planned migration and disaster recovery are the same core workflow with differen
 - **FR27:** Each cluster can read and write DR resources locally without cross-datacenter latency
 - **FR28:** When one datacenter fails, the surviving cluster continues to operate normally — reading existing plans and writing new execution records
 - **FR29:** When a failed datacenter recovers, DR state automatically reconciles without manual intervention
-- **FR30:** Concurrent writes from both sites are resolved via last-write-wins, with lightweight transactions for critical state transitions (e.g., plan state changes)
+- **FR30:** Concurrent writes from both sites are resolved via last-write-wins, with lightweight transactions for critical state transitions (e.g., plan state changes). Controllers use ScyllaDB-tuned retry backoff for status updates and strategic merge patches to reduce conflict surface
+- **FR30a:** Each controller instance is configured with a `--site-name` flag and computes its reconcile role (Owner, Step0Only, or None) based on the current DRPlan transition phase. Only the target site runs per-group wave execution; the source site runs Step 0 in planned migration mode and exits immediately in disaster mode. This eliminates cross-site write contention on DRExecution status
+- **FR30b:** After all StartVM operations in a wave complete, the controller verifies VMs have reached Running state before advancing to the next wave. A configurable per-plan timeout (default 5 minutes) controls how long to wait; timeout behavior is mode-dependent (fail-forward in disaster, fail-fast in planned migration)
 
 ### Monitoring & Observability
 
@@ -423,6 +425,7 @@ Planned migration and disaster recovery are the same core workflow with differen
 - **NFR3:** Target 99% failover execution success rate across all execution modes, measured over time. Failures attributable to orchestrator bugs (not external storage/infrastructure issues) must be exceptional.
 - **NFR4:** The ScyllaDB-backed Aggregated API Server must remain available on the surviving cluster during a single-datacenter failure with no manual intervention required.
 - **NFR5:** DRExecution writes during a disaster (when the other DC is down) must succeed locally with no dependency on cross-site connectivity.
+- **NFR5a:** The orchestrator must handle ScyllaDB eventual consistency gracefully — status updates use tuned retry backoff (200ms base, factor 2.0, 8 steps with jitter) and strategic merge patches rather than full object replacement. The default Kubernetes retry policy (`retry.DefaultRetry`) is insufficient for ScyllaDB and must not be used.
 
 ### Performance
 

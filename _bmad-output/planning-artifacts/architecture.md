@@ -28,7 +28,7 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 |---|---|---|
 | DR Plan Management | FR1–FR8 | CRD design, label-driven discovery, admission webhooks for field validation and wave consistency |
 | DR Execution & Workflow | FR9–FR19 | Purpose-built wave executor, DRGroup chunking engine, 4-state machine with 3 execution modes, fail-forward error model |
-| Storage Abstraction | FR20–FR25 | Pluggable driver interface (7 methods), role-based replication model (NonReplicated/Source/Target), implicit driver selection from PVC storage classes, heterogeneous storage within a single plan |
+| Storage Abstraction | FR20–FR25 | Pluggable driver interface (6 methods), role-based replication model (NonReplicated/Source; Target observable but not engine-set), implicit driver selection from PVC storage classes, heterogeneous storage within a single plan |
 | Cross-Site Shared State | FR26–FR30 | ScyllaDB-backed Aggregated API Server, LOCAL_ONE consistency, LWW conflict resolution, lightweight transactions for state transitions |
 | Monitoring & Observability | FR31–FR34 | Prometheus metrics endpoint, replication health polling via GetReplicationStatus, unprotected VM detection |
 | OCP Console Plugin | FR35–FR40 | PatternFly plugin, dual-mode UX (planning/disaster), cross-cluster awareness via shared ScyllaDB, live Gantt-chart execution monitor |
@@ -205,7 +205,9 @@ kubebuilder init --domain dr.orchestrator --repo github.com/soteria-project/sote
 | Controller ↔ API server | Standard client-go via kube-apiserver proxy | Decoupled from ScyllaDB; RBAC/audit/admission enforced uniformly; extra hop negligible at our write rates |
 | Checkpointing | Per-DRGroup — DRExecution status updated after each DRGroup completes | Natural execution boundary; concurrent operations within a DRGroup retry together; storage operations are idempotent |
 | Error model | Fail-forward with PartiallySucceeded (pre-decided in PRD) | Rollback impossible when active DC is down |
-| Unified handler model | Single FailoverHandler (planned/disaster config), single ReprotectHandler | Failover == failback, reprotect == restore at the code level. Direction encoded in state machine phases, not handler logic |
+| Unified handler model | Single FailoverHandler (parameterized by GracefulShutdown), single ReprotectHandler | Failover == failback, reprotect == restore at the code level. Direction encoded in state machine phases, not handler logic. Per-group path is always `StopReplication → StartVM` regardless of mode |
+| Site-aware reconciliation | `--site-name` flag, `ReconcileRole(phase, mode, localSite, primary, secondary)` → Owner/Step0Only/None | Eliminates cross-site write contention. Source site runs Step 0 in planned migration; target site runs per-group waves. Disaster source exits immediately |
+| VM readiness gate | Wave N+1 starts only after all wave N VMs reach Running state (event-driven via VM watch + timeout) | Enforces application dependency ordering defined by waves at runtime. Configurable timeout with mode-dependent policy |
 
 ### Frontend Architecture
 
@@ -295,7 +297,7 @@ kubebuilder init --domain dr.orchestrator --repo github.com/soteria-project/sote
 | Console plugin | `console-plugin/` at repo root | Separate build, image, and concerns |
 | Driver packages | `pkg/drivers/<vendor>/` | `pkg/drivers/noop/` |
 | Driver mocks | `pkg/drivers/fake/` | k8s `<package>fake` convention |
-| Conformance tests | `pkg/drivers/conformance/` | All drivers must pass; validates 7-method contract |
+| Conformance tests | `pkg/drivers/conformance/` | All drivers must pass; validates 6-method contract |
 
 ### CRD Status Patterns
 
@@ -317,6 +319,23 @@ kubebuilder init --domain dr.orchestrator --repo github.com/soteria-project/sote
 | Context | Always pass `ctx` from reconcile; never create new | Enables cancellation and tracing |
 | Structured logging | `log.FromContext(ctx).WithValues("plan", plan.Name)` | controller-runtime convention |
 | Log levels | Info(0) = state transitions; V(1) = normal ops; V(2) = debug | Kubernetes logging convention |
+| Reconcile yield after setup | `ctrl.Result{RequeueAfter: 1*time.Millisecond}, nil` | Forces fresh object fetch in next cycle after multiple writes in eventual-consistency environment |
+| Status updates | Prefer `client.MergeFrom` strategic merge patch over `client.Update` | Reduces resourceVersion conflict surface with ScyllaDB eventual consistency |
+| Retry policy | `engine.ScyllaRetry` (200ms/2.0/0.3/8 steps) for all `RetryOnConflict` | Standard `retry.DefaultRetry` (10ms/5 steps) is too fast for ScyllaDB cross-DC propagation |
+
+### ScyllaDB Eventual Consistency Patterns
+
+Hard-won operational knowledge from 6 UAT runs on stretched etl6/etl7 clusters:
+
+| Pattern | Implementation | Rationale |
+|---|---|---|
+| Setup yield | `reconcileSetup` returns `RequeueAfter: 1ms` after initial writes | Multiple writes within one reconcile (label, condition, plan status) create cascading resourceVersion conflicts. Yielding after setup forces the next phase to start with a fresh object fetch |
+| ScyllaDB-tuned retry | `var ScyllaRetry = wait.Backoff{Steps: 8, Duration: 200ms, Factor: 2.0, Jitter: 0.3}` | `retry.DefaultRetry` (10ms base, 5 steps) exhausts retries before ScyllaDB propagates writes across DCs. The tuned backoff provides ~50s of total retry window |
+| MergeFrom patch | `client.MergeFrom(obj.DeepCopy())` + `r.Patch()` instead of `r.Update()` | Strategic merge patch applies only changed fields, avoiding full-object replacement that conflicts with concurrent status updates from other controllers |
+| Consistency-safe fetch | `fetchPlanWithActiveExecCheck(ctx, planName, execName)` retries `Get` until `plan.Status.ActiveExecution` matches expected value | After `reconcileSetup` writes `ActiveExecution`, the next reconcile may read a stale plan from ScyllaDB. The helper retries with `ScyllaRetry` backoff to wait for consistency |
+| Checkpoint backoff | `KubeCheckpointer.WriteCheckpoint` uses `ScyllaRetry`-aligned parameters | Checkpoint writes after handler operations need the same eventual-consistency tolerance as other status updates |
+
+**Anti-pattern: Using `retry.DefaultRetry` for ScyllaDB-backed resources.** This is the most common source of write contention errors. Always use `engine.ScyllaRetry`.
 
 ### Driver Implementation Patterns
 
@@ -325,7 +344,7 @@ kubebuilder init --domain dr.orchestrator --repo github.com/soteria-project/sote
 | Registration | `init()` + registry pattern | Discovered at startup, selected at runtime by storage class |
 | Error types | Typed errors from `pkg/drivers/errors.go` | `ErrVolumeNotFound`, `ErrReplicationNotReady`, `ErrInvalidTransition` |
 | Timeouts | Accept `context.Context`; respect cancellation | Caller controls timeout via context deadline |
-| Idempotency | All 7 methods must be idempotent | Safe to retry after crash/restart |
+| Idempotency | All 6 methods must be idempotent | Safe to retry after crash/restart |
 
 ### Testing Patterns
 
@@ -355,6 +374,8 @@ kubebuilder init --domain dr.orchestrator --repo github.com/soteria-project/sote
 - Creating new `context.Background()` inside reconcile handlers
 - Using `log.Fatal` or `os.Exit` in library code (only in `cmd/` entry points)
 - Hand-editing `zz_generated_*.go` files
+- Using `retry.DefaultRetry` for operations against ScyllaDB-backed API server — always use `engine.ScyllaRetry`
+- Using `client.Update` for metadata/label changes in multi-controller environments — use `client.MergeFrom` patch instead
 
 ## Project Structure & Boundaries
 
@@ -420,7 +441,7 @@ soteria/
 │   │       └── schema.go                    # Generic KV table DDL and CDC enablement
 │   │
 │   ├── drivers/                             # StorageProvider abstraction
-│   │   ├── interface.go                     # StorageProvider interface (7 methods)
+│   │   ├── interface.go                     # StorageProvider interface (6 methods)
 │   │   ├── errors.go                        # ErrVolumeNotFound, ErrInvalidTransition, etc.
 │   │   ├── registry.go                      # Driver registration + discovery from PVC storage class
 │   │   ├── noop/
@@ -437,7 +458,8 @@ soteria/
 │   │   ├── checkpoint.go                    # Per-DRGroup checkpoint: write status after each group
 │   │   ├── discovery.go                     # VM discovery via `soteria.io/drplan=<planName>` label + wave grouping
 │   │   ├── failover.go                      # Unified failover/failback workflow (planned + disaster modes)
-│   │   └── reprotect.go                     # Re-protect / restore workflow
+│   │   ├── reprotect.go                     # Re-protect / restore workflow
+│   │   └── roles.go                         # Site-aware reconcile role: ReconcileRole, TargetSiteForPhase
 │   │
 │   ├── controller/                          # Kubernetes controllers (controller-runtime)
 │   │   ├── drplan/
@@ -533,7 +555,7 @@ ScyllaDB (generic KV store)
 Only `pkg/storage/scylladb/` touches ScyllaDB directly. The controller and Console go through the Kubernetes API. Enforced by `internal/` convention and anti-pattern rules.
 
 **Driver Boundary:**
-`pkg/drivers/interface.go` defines the 7-method contract. Everything above (`pkg/engine/`, `pkg/controller/`) is driver-agnostic. Everything below (`pkg/drivers/noop/`) is vendor-specific. External driver authors import `pkg/drivers/`.
+`pkg/drivers/interface.go` defines the 6-method contract. Everything above (`pkg/engine/`, `pkg/controller/`) is driver-agnostic. Everything below (`pkg/drivers/noop/`) is vendor-specific. External driver authors import `pkg/drivers/`.
 
 **Engine Boundary:**
 `pkg/engine/` owns workflow execution. Receives a plan and a driver, executes waves, writes checkpoints via the Kubernetes API. Does not know about ScyllaDB, CDC, or API server internals.
@@ -563,10 +585,12 @@ Only `pkg/storage/scylladb/` touches ScyllaDB directly. The controller and Conso
 
 2. Operator triggers failover (kubectl/Console)
    → Creates DRExecution → Extension API Server → ScyllaDB
-   → CDC → cacher → DRExecution controller informer
-   → Engine: discover VMs → chunk DRGroups → execute waves
-   → Per-DRGroup: driver.SetSource() → StartVMs()
-   → Update DRExecution status (checkpoint) → ScyllaDB
+   → CDC → cacher → DRExecution controller informer on BOTH sites
+   → Each site computes ReconcileRole(phase, mode, localSite, ...)
+   → Source site (RoleStep0, planned only): StopVM → write Step0Complete
+   → Target site (RoleOwner): waits for Step0Complete (planned) or starts immediately (disaster)
+   → Per-DRGroup: StopReplication → StartVM → WaitVMReady (event-driven)
+   → Update DRExecution status (checkpoint with ScyllaRetry) → ScyllaDB
    → CDC → cacher → Console watch → live Gantt chart
 
 3. Replication health monitoring (background)
@@ -579,8 +603,10 @@ Only `pkg/storage/scylladb/` touches ScyllaDB directly. The controller and Conso
    →[reprotect]→ Reprotecting →[complete]→ DRedSteadyState
    →[failback]→ FailingBack →[complete]→ FailedBack
    →[restore]→ ReprotectingBack →[complete]→ SteadyState
-   Failover and failback use the same FailoverHandler.
+   Failover and failback use the same FailoverHandler (parameterized by GracefulShutdown).
    Reprotect and restore use the same ReprotectHandler.
+   DRPlan.Status.Phase holds only rest states; ActiveExecution points to in-progress execution.
+   EffectivePhase derives transient phase for display.
 ```
 
 ## Architecture Validation Results
@@ -634,9 +660,16 @@ Only `pkg/storage/scylladb/` touches ScyllaDB directly. The controller and Conso
 
 **Important Gaps (non-blocking):**
 
-1. **Unified handler model:** `pkg/engine/failover.go` implements both planned migration and disaster failover as a single `FailoverHandler` with configuration. `pkg/engine/reprotect.go` implements both re-protect and restore as a single `ReprotectHandler`. The `FailedBack` rest state and `ReprotectingBack` transition state complete the symmetric 8-phase lifecycle.
+1. ~~**Unified handler model:**~~ **RESOLVED (Epic 5, Story 5.7)** — `FailoverHandler` parameterized by `GracefulShutdown` only. Per-group path unified to `StopReplication → StartVM`. `SetTarget` removed from interface. `Force` flags removed.
 2. **Hook extension points:** Hooks are post-v1, but define empty hook interfaces in the executor (`preWave`, `postWave`, `preVM`, `postVM` callbacks) so v2 hooks don't require engine restructuring.
 3. **ScyllaDB operational docs:** `config/scylladb/` has the ScyllaCluster CR but sizing guidance and reference architecture should be documented post-v1.
+4. **Cross-cluster integration testing:** Current envtest setup tests single-controller scenarios. Dual-controller testing (two `LocalSite` values against shared state) would catch the write-contention and site-ownership bugs found during UAT. Proposed as Tier B in Epic 5 retrospective.
+
+**Resolved since original architecture (Epic 5):**
+- ScyllaDB eventual consistency patterns documented and codified (`ScyllaRetry`, `MergeFrom`, setup yield, consistency-safe fetch)
+- Site-aware reconcile ownership eliminates cross-site contention (`ReconcileRole`, `--site-name`)
+- VM readiness gate enforces wave ordering at runtime (event-driven via VM watch)
+- Rest-state-only DRPlan model eliminates stuck-transient-phase bug class (`ActiveExecution` pointer)
 
 **Deferred (by design):** Test mode, hook framework, Console health monitoring/wizard, Dell/Pure/NetApp drivers.
 

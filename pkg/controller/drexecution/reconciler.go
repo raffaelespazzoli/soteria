@@ -106,6 +106,13 @@ func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// that path separately below.
 	if exec.Status.Result == soteriav1alpha1.ExecutionResultSucceeded ||
 		exec.Status.Result == soteriav1alpha1.ExecutionResultFailed {
+		if _, hasRetry := exec.Annotations[engine.RetryGroupsAnnotation]; hasRetry {
+			logger.Info("Cleaning stale retry annotation from terminal execution",
+				"result", exec.Status.Result)
+			r.removeRetryAnnotation(ctx, &exec)
+			r.setRetryRejectedCondition(ctx, &exec, fmt.Sprintf(
+				"retry not allowed: execution already %s", exec.Status.Result))
+		}
 		logger.V(1).Info("DRExecution already completed, skipping", "result", exec.Status.Result)
 		return ctrl.Result{}, nil
 	}
@@ -1066,12 +1073,19 @@ func (r *DRExecutionReconciler) reconcileRetry(
 		return ctrl.Result{}, nil
 	}
 
+	// Fetch the plan early — needed for VM namespace resolution and chunk reconstruction.
+	var plan soteriav1alpha1.DRPlan
+	if err := r.Get(ctx, client.ObjectKey{Name: exec.Spec.PlanName}, &plan); err != nil {
+		logger.Error(err, "Failed to fetch DRPlan for retry")
+		return ctrl.Result{}, err
+	}
+
 	// VM health validation for all VMs in retry groups.
 	if r.WaveExecutor != nil && r.WaveExecutor.VMHealthValidator != nil {
 		for _, target := range targets {
 			groupStatus := exec.Status.Waves[target.WaveIndex].Groups[target.GroupIndex]
 			for _, vmName := range groupStatus.VMNames {
-				ns := r.resolveVMNamespace(exec, target, vmName)
+				ns := r.resolveVMNamespaceFromPlan(&plan, target.WaveIndex, vmName)
 				if err := r.WaveExecutor.VMHealthValidator.ValidateVMHealth(ctx, vmName, ns); err != nil {
 					logger.Info("VM health validation failed, rejecting retry",
 						"vm", vmName, "namespace", ns, "error", err)
@@ -1083,13 +1097,6 @@ func (r *DRExecutionReconciler) reconcileRetry(
 				}
 			}
 		}
-	}
-
-	// Fetch the plan for chunk reconstruction.
-	var plan soteriav1alpha1.DRPlan
-	if err := r.Get(ctx, client.ObjectKey{Name: exec.Spec.PlanName}, &plan); err != nil {
-		logger.Error(err, "Failed to fetch DRPlan for retry")
-		return ctrl.Result{}, err
 	}
 
 	// Resolve handler.
@@ -1186,24 +1193,6 @@ func (r *DRExecutionReconciler) setRetryRejectedCondition(
 	if err := r.Status().Update(ctx, exec); err != nil {
 		logger.V(1).Info("Could not set RetryRejected condition", "error", err)
 	}
-}
-
-// resolveVMNamespace finds the namespace for a VM in the retry target's wave.
-func (r *DRExecutionReconciler) resolveVMNamespace(
-	exec *soteriav1alpha1.DRExecution, target engine.RetryTarget, vmName string,
-) string {
-	var plan soteriav1alpha1.DRPlan
-	if err := r.Get(context.Background(), client.ObjectKey{Name: exec.Spec.PlanName}, &plan); err != nil {
-		return ""
-	}
-	if target.WaveIndex < len(plan.Status.Waves) {
-		for _, dvm := range plan.Status.Waves[target.WaveIndex].VMs {
-			if dvm.Name == vmName {
-				return dvm.Namespace
-			}
-		}
-	}
-	return ""
 }
 
 // recordExecutionMetrics observes the failover duration histogram and increments

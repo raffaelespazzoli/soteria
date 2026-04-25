@@ -177,13 +177,58 @@ Manual E2E testing on etl6/etl7 (Epic 4 retrospective) revealed that `failExecut
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4.6 (Cursor Agent)
 
 ### Debug Log References
 
+- Implemented during UAT session alongside E2E testing — no dedicated dev-story workflow run
+- All unit + integration tests passed on first run after fixture churn
+- No lint issues
+
 ### Completion Notes List
 
+- All 9 acceptance criteria satisfied
+- `DRPlan.Status.Phase` now holds only rest-state values; transient phases are derived via `EffectivePhase`
+- `ActiveExecution` field serves as explicit concurrency guard, replacing implicit phase-based detection
+- `RestStateAfterCompletion(restPhase, mode)` chains `Transition` + `CompleteTransition` internally — no transient phase exposure
+- `failExecution` clears `ActiveExecution` without touching `Phase` — self-healing property eliminates "stuck transient phase" bug class
+- Admission webhook rejects concurrent executions via `ActiveExecution != ""` check
+- Critical fields detection includes `ActiveExecution` changes for SERIAL Paxos
+- Printer column computes effective phase using `ActiveExecutionMode` stored alongside `ActiveExecution` (avoids extra DRExecution GET)
+- Preflight report includes `ActiveExecution` with warning when non-empty
+- Fixture churn across ~10 test files: replaced transient phase setup with rest-state + `ActiveExecution` pattern
+- 884 lines added, 197 removed across 23 files
+
+### Change Log
+
+- 2026-04-22: Story 5.0 implemented — rest-state-only DRPlan, ActiveExecution pointer, EffectivePhase helper, admission guard, critical fields, preflight, printer column, comprehensive tests
+
 ### File List
+
+**New files:**
+- `pkg/engine/statemachine_test.go` — EffectivePhase + RestStateAfterCompletion unit tests (159 lines)
+
+**Modified files:**
+- `pkg/apis/soteria.io/v1alpha1/types.go` — `ActiveExecution`, `ActiveExecutionMode` fields on `DRPlanStatus`; `ActiveExecution` on `PreflightReport`
+- `pkg/apis/soteria.io/v1alpha1/zz_generated.openapi.go` — auto-generated
+- `pkg/engine/statemachine.go` — `EffectivePhase()`, `RestStateAfterCompletion()`
+- `pkg/engine/executor.go` — `finishExecution` uses rest-state-only model, clears `ActiveExecution`
+- `pkg/engine/executor_test.go` — updated fixtures and assertions
+- `pkg/controller/drexecution/reconciler.go` — setup sets `ActiveExecution`, `failExecution` clears it, no transient phase writes
+- `pkg/controller/drexecution/reconciler_test.go` — updated test fixtures
+- `pkg/admission/drexecution_validator.go` — `ActiveExecution != ""` concurrency gate
+- `pkg/admission/drexecution_validator_test.go` — new concurrency guard tests
+- `pkg/apiserver/critical_fields.go` — `ActiveExecution` change detection
+- `pkg/apiserver/critical_fields_test.go` — updated tests
+- `internal/preflight/checks.go` — `ActiveExecution` in report + warning
+- `internal/preflight/checks_test.go` — new preflight tests
+- `pkg/registry/drplan/strategy.go` — `EFFECTIVE PHASE` printer column
+- `pkg/registry/drplan/strategy_test.go` — printer column tests
+- `pkg/registry/drplan/storage.go` — minor cleanup
+- `pkg/engine/reprotect_test.go` — fixture updates
+- `test/integration/apiserver/apiserver_test.go` — fixture updates
+- `test/integration/replication/replication_test.go` — fixture updates
+- `README.md` — project overview updates
 
 ### Review Findings
 

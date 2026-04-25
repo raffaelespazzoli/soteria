@@ -171,8 +171,51 @@ The `WaveExecutor.Execute` method will be refactored to `ExecuteNextWave` that p
 
 ### Agent Model Used
 
+Claude Opus 4.6 (Cursor Agent)
+
 ### Debug Log References
+
+- Implemented reactively after UAT Run 1 revealed VMs not verified as Running between waves — no dedicated dev-story workflow run
+- Significant refactor: wave executor transitioned from synchronous long-running reconcile to event-driven state machine
+- All 12 acceptance criteria verified via `make test` + integration tests
 
 ### Completion Notes List
 
+- All 12 acceptance criteria satisfied
+- `WaitingForVMReady` group result added to track per-group VM readiness gate
+- `WaitVMReady` step recorded for each VM showing ready duration or timeout error
+- `IsVMReady(ctx, name, namespace)` added to `VMManager` interface — checks `status.printableStatus == Running`
+- `VMReadyTimeout` field added to `DRPlanSpec` (default 5m, validated positive by admission webhook)
+- VirtualMachine watch added to DRExecution controller with `vmPrintableStatusChanged` predicate
+- `mapVMToDRExecution` handler maps VMs to owning DRExecution via `soteria.io/drplan` label → DRPlan → ActiveExecution
+- `reconcileWaveProgress` method drives the state machine: checks readiness, handles timeouts, advances waves
+- Mode-dependent timeout policy: disaster = fail-forward (continue), planned_migration = fail-fast (abort)
+- `RequeueAfter(10s)` safety net alongside VM watch events
+- `VMReadyStartTime` on `WaveStatus` tracks when readiness waiting began
+- Checkpoint/resume compatible: `WaitingForVMReady` state survives pod restart
+- 1,586 lines added, 98 removed across 17 files
+
+### Change Log
+
+- 2026-04-23: Story 5.6 implemented — event-driven wave gate with VM readiness verification, state machine refactor, VM watch, configurable timeout, mode-dependent policy
+
 ### File List
+
+**New files:**
+- `pkg/engine/vm_test.go` — `IsVMReady` unit tests for KubeVirt and NoOp managers (81 lines)
+
+**Modified files:**
+- `pkg/apis/soteria.io/v1alpha1/types.go` — `VMReadyTimeout` on `DRPlanSpec`, `WaitingForVMReady` result, `VMReadyStartTime` on `WaveStatus`
+- `pkg/apis/soteria.io/v1alpha1/validation.go` — `VMReadyTimeout` positive duration validation
+- `pkg/apis/soteria.io/v1alpha1/zz_generated.deepcopy.go` — auto-generated
+- `pkg/apis/soteria.io/v1alpha1/zz_generated.openapi.go` — auto-generated
+- `pkg/engine/vm.go` — `IsVMReady` on `VMManager` interface + `KubeVirtVMManager` implementation
+- `pkg/engine/vm_noop.go` — `IsVMReady` on `NoOpVMManager` (configurable)
+- `pkg/engine/executor.go` — wave loop yields after handler, `WaitingForVMReady` state tracking
+- `pkg/engine/failover.go` — `StepWaitVMReady` constant
+- `pkg/engine/failover_test.go` — updated for event-driven flow
+- `pkg/engine/resume.go` — `WaitingForVMReady` state in resume analysis
+- `pkg/engine/resume_test.go` — resume tests with VM readiness state
+- `pkg/controller/drexecution/reconciler.go` — VM watch, `reconcileWaveProgress`, `mapVMToDRExecution`, VM predicate, RBAC markers
+- `pkg/controller/drexecution/reconciler_test.go` — comprehensive wave gate tests (789 lines added)
+- `config/samples/soteria_v1alpha1_drplan.yaml` — `vmReadyTimeout` field

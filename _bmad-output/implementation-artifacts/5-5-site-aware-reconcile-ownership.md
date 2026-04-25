@@ -199,11 +199,49 @@ Story 5.6 adds the VM readiness gate between waves. This story adds the site own
 
 ### Agent Model Used
 
+Claude Opus 4.6 (Cursor Agent)
+
 ### Debug Log References
+
+- Implemented reactively after UAT Run 1 revealed cross-site contention — no dedicated dev-story workflow run
+- Two review decisions required: `--site-name` as required flag, and DRPlan site-awareness scope
+- `dispatchByRole` return type corrected during review to propagate `reconcileStep0` errors
 
 ### Completion Notes List
 
+- All 11 acceptance criteria satisfied
+- `--site-name` flag added to `cmd/soteria/main.go` as required flag; fails fast if missing
+- `ReconcileRole` pure function in `pkg/engine/roles.go` computes Owner/Step0Only/None from phase, mode, and site identity
+- DRExecution reconciler gates on role at top of Reconcile: RoleNone returns immediately, RoleStep0 dispatches to `reconcileStep0`, RoleOwner proceeds with waves
+- Planned migration handoff via `Step0Complete` condition — source site runs Step 0 then exits; target site waits via `RequeueAfter(5s)`
+- Disaster mode source site exits immediately (site may be down)
+- Misconfiguration guard rejects reconcile when `localSite` matches neither `primarySite` nor `secondarySite`
+- DRPlan reconciler uses `LocalSite` to scope VM discovery and health polling to local site
+- Integration test with two explicit `LocalSite` reconcilers (east=source no-op, west=target with full WaveExecutor)
+- 1,093 lines added, 86 removed across 15 files
+
+### Change Log
+
+- 2026-04-23: Story 5.5 implemented — site-aware reconcile ownership with `--site-name`, ReconcileRole, dispatchByRole, Step0Complete handoff, comprehensive unit + integration tests
+
 ### File List
+
+**New files:**
+- `pkg/engine/roles.go` — `ReconcileRole`, `TargetSiteForPhase`, `Role` type (109 lines)
+- `pkg/engine/roles_test.go` — comprehensive role tests: all phase × site × mode combinations (199 lines)
+- `test/integration/controller/drexecution_test.go` — dual-reconciler integration test (121 lines)
+- `hack/overlays/etl6/manager-dc-patch.yaml` — `--site-name=etl6` patch
+- `hack/overlays/etl7/manager-dc-patch.yaml` — `--site-name=etl7` patch
+
+**Modified files:**
+- `cmd/soteria/main.go` — `--site-name` flag, wired to both reconcilers
+- `config/manager/manager.yaml` — `--site-name=$(SITE_NAME)` arg
+- `Makefile` — `--site-name` in `make run`
+- `hack/stretched-local-test.sh` — passes `--site-name` per cluster
+- `pkg/controller/drexecution/reconciler.go` — `LocalSite` field, `dispatchByRole`, `reconcileStep0`, Step0Complete gating
+- `pkg/controller/drexecution/reconciler_test.go` — new unit tests + all existing tests updated with `LocalSite`
+- `pkg/controller/drplan/reconciler.go` — `LocalSite` field, site-scoped VM discovery and health polling
+- `test/integration/controller/suite_test.go` — dual-reconciler test setup
 
 ### Review Findings
 

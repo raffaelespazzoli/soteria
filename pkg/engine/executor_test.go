@@ -1467,6 +1467,16 @@ func TestParseRetryAnnotation_CommaSeparated(t *testing.T) {
 	}
 }
 
+func TestParseRetryAnnotation_DeduplicatesGroupNames(t *testing.T) {
+	result := parseRetryAnnotation("group-1, group-2, group-1, group-3, group-2")
+	if len(result) != 3 {
+		t.Fatalf("expected 3 deduplicated groups, got %d: %v", len(result), result)
+	}
+	if result[0] != "group-1" || result[1] != "group-2" || result[2] != "group-3" {
+		t.Errorf("unexpected parsed groups (order should preserve first occurrence): %v", result)
+	}
+}
+
 // --- Retry execution tests (Task 10) ---
 
 // newRetryTestPlan creates a plan with Status.Waves populated for retry tests.

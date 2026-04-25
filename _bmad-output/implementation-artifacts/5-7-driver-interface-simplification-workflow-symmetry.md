@@ -206,10 +206,73 @@ make build        # Compile
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4.6 (Cursor Agent)
 
 ### Debug Log References
 
+- Implemented in the same session as UAT Runs 4-6 and the write-contention fix
+- Story 5.7 itself was clean (235 added, 919 removed — net simplification)
+- Post-UAT fix commit (c58b2e6) corrected `ExecuteGroupWithSteps` to call `StopReplication` → `StartVM` for both planned and disaster modes
+- Post-UAT fix commit (d494cef) addressed ScyllaDB write contention: MergeFrom patch, setup yield, ScyllaRetry backoff, fetchPlanWithActiveExecCheck
+
 ### Completion Notes List
 
+- All 10 acceptance criteria satisfied
+- `SetTarget` removed from `StorageProvider` interface — 6 methods remaining
+- `Force` field removed from `SetSourceOptions` and `StopReplicationOptions` — options structs retained (empty) for future extensibility
+- Unified per-group failover path: `StopReplication → StartVM` for both planned and disaster modes
+- Step 0 simplified to VM-stop only — deleted `waitForSync`, `resolvedVG`, `syncPollInterval`, `syncTimeout`, `vgIDCache` and related infrastructure
+- `FailoverConfig` reduced to `{ GracefulShutdown bool }` — `Force` field removed
+- `ReprotectHandler` updated to match new signatures (no options)
+- Conformance suite updated: `SetTarget` lifecycle/idempotency/error tests removed
+- Fake driver cleaned: `OnSetTarget`, `SetTarget` removed
+- `doc.go` files updated in `pkg/engine/` and `pkg/drivers/fake/`
+- Net simplification: 235 lines added, 919 removed across 23 files (main story commit)
+- Post-story UAT fixes: +757 lines (failover path correction) and +404/-131 lines (write contention fix)
+- Engine coverage maintained at 80.5%, DRExecution controller coverage increased to 46.2%
+
+### Change Log
+
+- 2026-04-24: Story 5.7 implemented — driver interface simplification, unified failover path
+- 2026-04-24: Post-UAT fix — corrected multi-site planned migration and disaster failover storage operations
+- 2026-04-25: Post-UAT fix — ScyllaDB write contention fix (MergeFrom, setup yield, ScyllaRetry, fetchPlanWithActiveExecCheck)
+
 ### File List
+
+**Modified files (main story — f127e6f):**
+- `pkg/drivers/interface.go` — removed `SetTarget`, updated role model doc
+- `pkg/drivers/types.go` — removed `SetTargetOptions`, `Force` from options structs
+- `pkg/drivers/noop/driver.go` — removed `SetTarget`, updated signatures
+- `pkg/drivers/noop/driver_test.go` — removed `SetTarget` tests
+- `pkg/drivers/fake/driver.go` — removed `SetTarget`/`OnSetTarget`
+- `pkg/drivers/fake/driver_test.go` — updated signatures
+- `pkg/drivers/fake/doc.go` — removed `SetTarget` examples
+- `pkg/drivers/interface_test.go` — removed `SetTarget` from mock
+- `pkg/drivers/registry_test.go` — removed `SetTarget` from stub
+- `pkg/drivers/conformance/suite.go` — removed `SetTarget` lifecycle/idempotency/error tests
+- `pkg/drivers/conformance/doc.go` — updated lifecycle description
+- `pkg/drivers/doc.go` — updated package doc
+- `pkg/engine/failover.go` — unified `ExecuteGroup`, simplified `PreExecute`, deleted sync infrastructure
+- `pkg/engine/failover_test.go` — unified tests
+- `pkg/engine/reprotect.go` — updated call signatures
+- `pkg/engine/reprotect_test.go` — updated signatures
+- `pkg/engine/doc.go` — removed SetTarget/Force references
+- `pkg/engine/roles.go` — updated comment
+- `pkg/engine/executor_test.go` — updated test data
+- `pkg/controller/drexecution/reconciler.go` — simplified `FailoverConfig` dispatch
+- `_bmad-output/project-context.md` — updated to 6-method interface
+
+**Modified files (post-UAT fix — c58b2e6):**
+- `pkg/engine/failover.go` — corrected `ExecuteGroupWithSteps` for both planned/disaster
+- `pkg/engine/failover_test.go` — updated assertions
+- `pkg/controller/drexecution/reconciler.go` — additional test helpers
+- `pkg/controller/drexecution/reconciler_test.go` — new tests
+- `pkg/engine/executor.go` — minor update
+- `pkg/engine/executor_test.go` — updated
+
+**Modified files (write contention fix — d494cef):**
+- `pkg/controller/drexecution/reconciler.go` — MergeFrom patch, setup yield, fetchPlanWithActiveExecCheck
+- `pkg/controller/drexecution/reconciler_test.go` — updated for yield behavior
+- `pkg/engine/executor.go` — ScyllaRetry constant
+- `pkg/engine/checkpoint.go` — aligned backoff with ScyllaRetry
+- `hack/stretched-local-test.sh` — cleanup
