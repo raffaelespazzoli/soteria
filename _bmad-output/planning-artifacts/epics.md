@@ -302,7 +302,7 @@ Platform engineers can view replication health and RPO per volume group, identif
 **FRs covered:** FR31, FR32, FR33, FR34, FR41, FR42, FR43
 
 ### Epic 6: OCP Console — Dashboard & Plan Management
-The OCP Console provides a sortable/filterable DR Dashboard table (500+ plans), persistent alert banners for protection status, cross-cluster awareness columns, plan detail pages with wave composition trees, execution history, and configuration views.
+The OCP Console provides a sortable/filterable DR Dashboard table (500+ plans), persistent alert banners for protection status, plan detail pages with a DR lifecycle state machine overview, wave composition trees, execution history, and configuration views.
 **FRs covered:** FR35, FR36, FR40
 
 ### Epic 7: OCP Console — Execution & DR Operations
@@ -1506,7 +1506,7 @@ So that driver implementations are simpler, the failover/failback code paths are
 
 ## Epic 6: OCP Console — Dashboard & Plan Management
 
-The OCP Console provides a sortable/filterable DR Dashboard table (500+ plans), persistent alert banners for protection status, cross-cluster awareness columns, plan detail pages with wave composition trees, execution history, and configuration views.
+The OCP Console provides a sortable/filterable DR Dashboard table (500+ plans), persistent alert banners for protection status, plan detail pages with a DR lifecycle state machine overview, wave composition trees, execution history, and configuration views.
 
 ### Story 6.1: Console Plugin Project Initialization
 
@@ -1582,14 +1582,14 @@ So that DR management is a native part of my Console experience.
 ### Story 6.3: DR Dashboard Table & Toolbar
 
 As a platform engineer,
-I want a sortable, filterable dashboard table showing all DRPlans with status, cross-cluster awareness, replication health, and RPO,
+I want a sortable, filterable dashboard table showing all DRPlans with status, replication health, and last execution,
 So that I can assess DR posture for 500+ plans at a glance.
 
 **Acceptance Criteria:**
 
 **Given** the DR Dashboard page
 **When** it loads with DRPlan data via `useK8sWatchResource`
-**Then** a PatternFly Table (composable, compact variant) displays with columns: Name (link), Phase (status badge), Active On (cluster name), DC1 status, DC2 status, Protected (ReplicationHealthIndicator), VMs (count), Last Execution (date + result badge), RPO, Actions (kebab menu) (UX-DR1, FR35)
+**Then** a PatternFly Table (composable, compact variant) displays with columns: Name (link), Phase (status badge), Active On (cluster name), Protected (ReplicationHealthIndicator compact — icon + health label + RPO), Last Execution (date + result badge), Actions (kebab menu) (UX-DR1, FR35)
 
 **Given** the dashboard table with data
 **When** the user clicks a column header
@@ -1605,14 +1605,9 @@ So that I can assess DR posture for 500+ plans at a glance.
 **And** result count shows: "Showing N of M plans"
 **And** active filters are reflected in the URL (shareable filtered views)
 
-**Given** the cross-cluster status columns (UX-DR3, FR40)
-**When** the table renders
-**Then** each cluster column shows: filled circle (●) + "Active (N VMs)" for the active site, open circle (○) + "Passive" for the passive site, question mark (?) + "Unknown" when a site is unreachable
-**And** both clusters display identical data because both read from the same ScyllaDB state
-
 **Given** the Protected column (UX-DR8 compact variant)
 **When** rendering replication health
-**Then** each cell shows: icon + health label + "RPO Ns" + "checked Ns ago" in a single line
+**Then** each cell shows: icon + health label + "RPO Ns" in a single line
 **And** Healthy = green checkmark, Degraded = yellow warning, Error = red error circle, Unknown = gray question mark
 
 **Given** the Actions kebab menu per row
@@ -1627,9 +1622,9 @@ So that I can assess DR posture for 500+ plans at a glance.
 **When** viewed at 1920px+
 **Then** all columns are visible with generous spacing
 **When** viewed at 1440px
-**Then** the table may require horizontal scroll for all columns
+**Then** the table fits without horizontal scroll (6 columns)
 **When** viewed at 1024px (minimum supported)
-**Then** lower-priority columns (RPO, Last Execution) may be hidden by default
+**Then** all columns remain visible in compact layout
 
 ### Story 6.4: Alert Banner System
 
@@ -1664,24 +1659,43 @@ So that critical protection gaps are impossible to miss.
 **When** tested with axe-core
 **Then** all alert banners pass accessibility audits including screen reader announcement of alert content
 
-### Story 6.5: Plan Detail Page with Tabs
+### Story 6.5: Plan Detail Shell & Overview Tab (DRLifecycleDiagram)
 
 As a platform engineer,
-I want a plan detail page with Overview, Waves, History, and Configuration tabs,
-So that I can drill into any plan's full state and take context-aware actions.
+I want a plan detail page with an Overview tab showing the 4-phase DR lifecycle as an interactive state machine,
+So that I can see my plan's lifecycle state, take context-aware actions, and monitor transition progress.
 
 **Acceptance Criteria:**
 
 **Given** a DRPlan selected from the dashboard table (row click)
 **When** the Plan Detail page loads
 **Then** a full-page detail view renders with four horizontal tabs: Overview, Waves, History, Configuration (UX-DR4)
+**And** the Waves, History, and Configuration tab panels render placeholder content (implemented in Story 6.5b)
 
 **Given** the Overview tab
 **When** it renders
-**Then** a DescriptionList shows plan metadata: name, label selector, wave label, maxConcurrentFailovers, creation date
-**And** current phase is displayed with the appropriate status badge (UX-DR10)
-**And** a ReplicationHealthIndicator (expanded variant) shows per-volume-group health, RPO, and freshness (UX-DR8)
-**And** context-aware action buttons appear: only valid state transitions are shown — SteadyState shows Failover (danger) and Planned Migration (primary); FailedOver shows Reprotect (primary); DRedSteadyState shows Failback (primary) (FR36, UX-DR19)
+**Then** a plan header shows: plan name, VM count, wave count, and active cluster
+**And** a DRLifecycleDiagram custom component renders the 4-phase DR lifecycle as a visual cycle: SteadyState → FailedOver → DRedSteadyState → FailedBack
+**And** only the current rest phase is highlighted (accent-filled border); all other phases are faded to ~35% opacity — exactly one phase highlighted at a time
+**And** each phase node shows: phase label, description, VM location (DC1/DC2), datacenter roles, and replication direction
+**And** the outgoing transition arrow from the current rest phase shows an enabled action button; all other arrows show faded action name text
+**And** Failover uses danger variant (red); Reprotect, Failback, and Restore use secondary variant (FR36, UX-DR19)
+**And** clicking an action button calls an `onAction` callback prop (pre-flight modal wired in Story 7.1) — no inline keyword input
+
+**Given** the Overview tab during an active transition (FailingOver, Reprotecting, FailingBack, or Restoring)
+**When** it renders
+**Then** a transition progress banner (PatternFly Callout, info variant) appears above the diagram showing: action name, wave progress (e.g., "Wave 2 of 3"), elapsed time, estimated remaining time, and a link to the execution detail view
+**And** the outgoing transition arrow shows "In progress..." with a blue indicator instead of a button
+**And** the destination phase node shows a dashed accent border (visual "arriving here")
+**And** all action buttons across the diagram are hidden — no transitions can be triggered during an active execution
+
+### Story 6.5b: Waves, History & Configuration Tabs
+
+As a platform engineer,
+I want the Plan Detail's Waves, History, and Configuration tabs populated with wave composition, execution history, and plan metadata,
+So that I can drill into plan structure, review past executions, and inspect configuration details.
+
+**Acceptance Criteria:**
 
 **Given** the Waves tab
 **When** it renders
@@ -1700,7 +1714,9 @@ So that I can drill into any plan's full state and take context-aware actions.
 
 **Given** the Configuration tab
 **When** it renders
-**Then** a PatternFly CodeBlock shows the DRPlan CRD spec in YAML (read-only)
+**Then** a DescriptionList shows plan metadata: name, label selector, wave label, maxConcurrentFailovers, creation date
+**And** a ReplicationHealthIndicator (expanded variant) shows per-volume-group health, RPO, and freshness (UX-DR8)
+**And** a PatternFly CodeBlock shows the DRPlan CRD spec in YAML (read-only)
 **And** labels and annotations are visible
 
 **Given** a plan with no execution history
@@ -1718,7 +1734,7 @@ So that the Console is usable by all operators including those with assistive te
 **Given** the status badge system (UX-DR10, UX-DR18)
 **When** any DR status is rendered
 **Then** PatternFly Label components are used with the correct DR-specific color semantics:
-- Phase: SteadyState/DRedSteadyState = green (solid), FailedOver = blue (solid), FailingOver/Reprotecting/FailingBack = blue (outlined) + spinner icon
+- Phase: SteadyState/DRedSteadyState = green (solid), FailedOver/FailedBack = blue (solid), FailingOver/Reprotecting/FailingBack/Restoring = blue (outlined) + spinner icon
 - Execution result: Succeeded = green, PartiallySucceeded = yellow, Failed = red
 - Replication: Healthy = green, Degraded = yellow, Error = red, Unknown = gray
 **And** all colors use PatternFly CSS custom properties exclusively — no hardcoded values (automatic dark mode support)
@@ -1736,10 +1752,11 @@ So that the Console is usable by all operators including those with assistive te
 **When** navigated entirely via keyboard
 **Then** the full flow is operable: Tab to plan row → Enter to open detail → Tab to Failover button → Enter to open modal → Tab to confirmation input → type keyword → Tab to Confirm → Enter (UX-DR16)
 
-**Given** any custom component (ReplicationHealthIndicator, WaveCompositionTree, CrossClusterStatusColumns)
+**Given** any custom component (DRLifecycleDiagram, ReplicationHealthIndicator, WaveCompositionTree)
 **When** tested with axe-core in Jest
 **Then** zero accessibility violations are reported (UX-DR16)
 **And** keyboard navigation tests confirm arrow key and Tab behavior per component
+**And** DRLifecycleDiagram: action button reachable via Tab, phase nodes readable by screen reader, ARIA live region announces transition progress
 
 **Given** all Console views
 **When** rendered at 720p screen-share resolution
@@ -1759,8 +1776,8 @@ So that I act with full confidence and never trigger failover accidentally.
 
 **Acceptance Criteria:**
 
-**Given** a DRPlan detail page with a valid action button (Failover, Planned Migration, Reprotect, or Failback)
-**When** the operator clicks the action button
+**Given** a DRPlan detail page with a valid transition action on the DRLifecycleDiagram (Failover, Planned Migration, Reprotect, Failback, or Restore)
+**When** the operator clicks the action button on the lifecycle diagram's outgoing transition arrow
 **Then** a PatternFly Modal (large variant, ~800px) opens with a structured pre-flight summary (FR37, UX-DR5)
 
 **Given** the pre-flight modal for a disaster failover
@@ -1787,7 +1804,7 @@ So that I act with full confidence and never trigger failover accidentally.
 **Given** the confirmation keyword is entered correctly
 **When** the operator clicks Confirm
 **Then** a DRExecution resource is created via the Kubernetes API with the appropriate mode
-**And** the modal closes and the view transitions to the Execution Monitor
+**And** the modal closes and the Overview tab shows the transition in-progress state (progress banner, "In progress..." on the transition arrow, dashed border on destination phase)
 **And** the pre-flight modal is the only confirmation — no cascading "Are you sure?" dialogs
 
 **Given** the modal

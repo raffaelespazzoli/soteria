@@ -306,7 +306,7 @@ PatternFly is not a choice — it's a requirement. The value of documenting it l
 | Component | Purpose | Design Constraints |
 |---|---|---|
 | ExecutionGanttChart | Live execution visualization — waves as rows, DRGroups as blocks, real-time progress, inline error/retry | Uses PatternFly color tokens (--pf-v5-global--success-color, danger, warning), spacing scale, and typography. No external charting library — purpose-built for bridge-call readability. |
-| CrossClusterStatusTable | Dashboard table showing plan status across both clusters — active/passive indicators, replication direction, protection status | Extends PatternFly Table with custom cell renderers for cluster-column layout and directional arrows. |
+| DRLifecycleDiagram | Plan Detail Overview: visual state machine showing 4-phase DR cycle (SteadyState → FailedOver → DRedSteadyState → FailedBack) with highlighted current phase, transition buttons, and in-progress indicators | Uses PatternFly color tokens for phase nodes (accent for current, faded for others). Transition arrow with Button component for the active transition; dashed border on destination node during transient phases. Danger variant exclusively for Failover button. |
 | ReplicationHealthIndicator | Compact compound status showing health state + RPO lag + data freshness in one element | Composite of PatternFly Label + Timestamp + Tooltip. Consistent color semantics: Healthy=green, Degraded=yellow, Error=red, Unknown=gray. |
 | WaveCompositionTree | Hierarchical visualization of plan structure — waves → DRGroups → VMs with inline status decorators | Built on PatternFly TreeView with custom node renderers for VM status, consistency level, and storage backend indicators. |
 
@@ -544,10 +544,10 @@ The card-based dashboard (Direction B) was rejected because **the system must su
 | View | Chosen Approach | Source Direction |
 |---|---|---|
 | DR Dashboard | PatternFly Table with sortable/filterable columns + persistent alert banners above | A + B (alert banners) |
-| Cross-Cluster Status | Integrated into dashboard table as cluster columns showing active/passive per plan | A (adapted) |
 | Plan Detail | Full detail page with tabs (Overview, Waves, History, Configuration) — navigated to from table row click | A |
+| Plan Detail Overview | DR lifecycle state machine diagram showing 4-phase cycle with context-aware transition buttons and in-progress indicators | Novel (inspired by SRM lifecycle) |
 | Wave Visualization | TreeView within Plan Detail Waves tab — expandable wave → DRGroup → VM hierarchy with inline status | A |
-| Pre-flight Dialog | Large modal with structured summary sections | A |
+| Pre-flight Dialog | Large modal with structured summary sections — triggered from state machine transition buttons | A |
 | Execution Monitor | Custom horizontal Gantt chart — full-width, bridge-call optimized | B |
 | Execution History | PatternFly Table (compact variant) within Plan Detail History tab | A |
 
@@ -559,16 +559,16 @@ The card-based dashboard (Direction B) was rejected because **the system must su
 |---|---|---|---|---|
 | Name | Plan name (link to detail view) | Yes | Text search | Primary identifier |
 | Phase | Status badge (SteadyState, FailedOver, etc.) | Yes | Dropdown filter | Current DR state |
-| Active On | Cluster name where VMs are currently running | Yes | Dropdown filter | Cross-cluster orientation |
-| Protected | Replication health indicator (Healthy/Degraded/Error/Unknown) | Yes | Dropdown filter | The critical "Am I protected?" column |
-| VMs | Count of VMs in plan | Yes | — | Scale indicator |
+| Active On | Cluster name where VMs are currently running | Yes | Dropdown filter | Cross-cluster orientation — replaces dedicated DC1/DC2 columns |
+| Protected | ReplicationHealthIndicator compact: icon + health label + "RPO Ns" in one line | Yes | Dropdown filter | The critical "Am I protected?" column — RPO is embedded here, not a separate column |
 | Last Execution | Date + result badge (Succeeded/PartiallySucceeded/Failed) | Yes | Dropdown filter | Recency of validated DR |
-| RPO | Estimated RPO based on last replication sync | Yes | — | Data loss exposure |
 | Actions | Kebab menu (Failover, Reprotect, View History) — state-dependent | — | — | Context actions |
+
+**Removed columns (design simplification, 2026-04-25):** DC1 status, DC2 status, VMs count, and RPO were removed to reduce visual noise at 500-plan scale. "Active On" already provides cross-cluster orientation. RPO is embedded in the Protected column's compact indicator. VM count is available in the Plan Detail view.
 
 **Table Features:**
 - Default sort: Protected column (Error first, then Degraded, then Unknown, then Healthy) — problems surface to the top
-- Toolbar: filter chips for Phase, Active On, Protected status
+- Toolbar: filter chips for Phase, Active On, Protected status, Last Execution
 - Bulk selection for multi-plan operations (future)
 - Compact variant for high-density scanning
 - Row click navigates to Plan Detail page
@@ -583,11 +583,21 @@ Persistent alerts surface the most urgent issues without requiring the operator 
 
 Navigated to from dashboard table row click. Full-page detail view with horizontal tabs:
 
-**Overview Tab:**
-- Plan metadata (DescriptionList): name, label selector, wave label, maxConcurrentFailovers, creation date
-- Current phase with status badge
-- Replication health summary for all volume groups in the plan
-- Context-aware action buttons: only valid state transitions enabled (e.g., SteadyState → Failover; FailedOver → Reprotect)
+**Overview Tab — DR Lifecycle State Machine:**
+
+The Overview tab is redesigned as a visual state machine showing the 4-phase DR lifecycle cycle. This mirrors the architecture diagram operators already know and eliminates the "what can I do next?" question entirely.
+
+Layout:
+- **Plan header:** Name, VM count, wave count, active cluster
+- **Transition progress banner:** Appears during transient phases (FailingOver, Reprotecting, FailingBack, Restoring) showing wave progress, elapsed time, and estimated remaining time. Links to execution detail. When visible, all action buttons are disabled.
+- **State machine diagram:** The 4 rest phases (SteadyState, FailedOver, DRedSteadyState, FailedBack) arranged as a cycle with transition arrows between them
+  - **Current phase:** Highlighted with accent-filled border. Only one phase highlighted at a time.
+  - **Other phases:** Faded to ~35% opacity — visible for orientation but clearly not the current state
+  - **Transition arrows:** Each arrow shows the action name (Failover, Reprotect, Failback, Restore). Only the outgoing arrow from the current rest phase shows an enabled action button. All other arrows show the action name as faded text.
+  - **In-progress transitions:** During transient states, the outgoing arrow shows "In progress..." with a blue indicator instead of a button. The destination phase node shows a dashed accent border (visual "arriving here"). No action buttons appear anywhere.
+  - **Action button click:** Opens the pre-flight confirmation modal (Epic 7). Confirmation keyword and pre-flight summary are handled entirely within the modal — not shown inline on the diagram.
+  - **Failover button style:** Danger variant (red) reserved exclusively for Failover. All other transitions use secondary (neutral) variant.
+- Each phase node shows: phase label, description, VM location (DC1/DC2), datacenter roles (Active/Passive), and replication direction
 
 **Waves Tab:**
 - TreeView showing the auto-formed wave composition:
@@ -602,9 +612,11 @@ Navigated to from dashboard table row click. Full-page detail view with horizont
 **History Tab:**
 - PatternFly Table (compact) listing all DRExecution records for this plan
 - Columns: Date, Mode (Planned/Disaster), Result, Duration, RPO, Triggered By
-- Row click expands to per-wave, per-DRGroup execution detail (or navigates to execution detail view)
+- Row click navigates to execution detail view
 
 **Configuration Tab:**
+- Plan metadata (DescriptionList): name, label selector, wave label, maxConcurrentFailovers, creation date
+- ReplicationHealthIndicator (expanded variant): per-volume-group health, RPO, freshness, data freshness timestamps
 - YAML view of the DRPlan CRD spec (read-only, kubectl-equivalent)
 - Labels and annotations
 
@@ -622,22 +634,26 @@ Navigated to from dashboard table row click. Full-page detail view with horizont
 
 6. **Gantt chart for execution (from Direction B):** The horizontal Gantt chart remains the best execution visualization regardless of dashboard layout. During active execution, the operator is focused on one plan — the dashboard layout is irrelevant.
 
+7. **State machine Overview replaces metadata grid:** The Overview tab shows the 4-phase DR lifecycle as a visual cycle diagram instead of a static metadata list with detached action buttons. This mirrors the architecture diagram operators already know, and the transition buttons embedded in the arrows eliminate the "what can I do next?" question. During transitions, a progress banner replaces the button — the operator sees exactly what's happening without navigating away.
+
+8. **Configuration tab absorbs plan details:** Plan metadata (label selector, wave label, throttling) and replication health details moved from Overview to Configuration tab. This keeps Overview focused on lifecycle state and actions — the two things operators care about most.
+
 ### Implementation Approach
 
 **Phase 1 (v1 MVP):**
-- DR Dashboard table (PatternFly Table with toolbar, sorting, filtering)
+- DR Dashboard table (PatternFly Table with toolbar, sorting, filtering — 6 columns: Name, Phase, Active On, Protected, Last Execution, Actions)
 - Alert banner component above table (PatternFly Alert, persistent)
-- Cross-cluster columns integrated into dashboard table
 - Plan Detail page with tabs (Overview, Waves, History, Configuration)
+- DR Lifecycle state machine diagram in Overview tab (DRLifecycleDiagram custom component)
+- Transition in-progress banner with wave progress in Overview tab
 - Wave composition TreeView in Waves tab
-- Pre-flight confirmation modal (PatternFly Modal, large)
+- Pre-flight confirmation modal (PatternFly Modal, large) — triggered from state machine transition buttons
 - Execution monitor — PatternFly ProgressStepper for wave-level progress with expandable per-wave detail (simplified Gantt)
 - Execution history table in History tab
 
 **Phase 1b (v1 polish):**
 - Full horizontal Gantt chart execution monitor (custom component)
-- Replication health indicator composite component
-- RPO column with data freshness timestamp
+- ReplicationHealthIndicator composite component (compact for dashboard, expanded for Configuration tab)
 
 **Phase 2 (post-v1):**
 - Plan creation wizard (PatternFly Wizard)
@@ -835,7 +851,7 @@ Errors are never silent, never require log diving, and always suggest a next act
 | Status Badge | Label (colored, with icon) | Inline status for phase, execution result, replication health | All journeys |
 | Alert Banner | Alert (inline, not dismissible) | Dashboard: "N plans UNPROTECTED" danger/warning banners | Journeys 1, 4 |
 | Plan Detail Layout | Page + PageSection + Tabs | Plan detail page with Overview, Waves, History, Configuration tabs | All journeys |
-| Plan Metadata | DescriptionList | Plan overview: name, selector, throttle, creation date | Journeys 2, 3 |
+| Plan Metadata | DescriptionList | Configuration tab: name, selector, throttle, creation date | Journeys 2, 3 |
 | Action Buttons | Button (primary/secondary) + Dropdown | Context-aware: Failover, Reprotect, Planned Migration — state-dependent visibility | Journeys 2, 3, 4 |
 | Pre-flight Modal | Modal (variant="large") | Pre-flight confirmation dialog with structured summary | Journeys 2, 3, 4 |
 | Confirmation Input | TextInput + FormGroup | "Type FAILOVER to confirm" with validation feedback | Journeys 2, 3 |
@@ -898,43 +914,70 @@ Errors are never silent, never require log diving, and always suggest a next act
 
 ---
 
-#### 2. CrossClusterStatusColumns
+#### 2. DRLifecycleDiagram
 
-**Purpose:** Integrated table columns in the dashboard table showing which cluster each plan is active/passive on and the replication direction between them.
+**Purpose:** Visual state machine showing the 4-phase DR lifecycle as a cycle in the Plan Detail Overview tab. Answers "where am I in the DR lifecycle?" and "what can I do next?" at a glance. Replaces the previous metadata grid + action buttons layout.
 
-**Anatomy (within dashboard table row):**
+**Anatomy:**
 ```
-| Name          | Phase       | DC1 (this cluster) | DC2           | Protected | ...
-|---------------|-------------|---------------------|---------------|-----------|
-| erp-full-stack| SteadyState | ● Active (12 VMs)  | ○ Passive     | ✅ Healthy |
-| crm-app       | FailedOver  | ○ Passive           | ● Active (8 VMs)| ⚠️ Degraded|
-| analytics     | SteadyState | ● Active (20 VMs)  | ○ Passive     | ✅ Healthy |
+┌──────────────────┐              ┌──────────────────┐
+│  ★ Steady State  │── Failover →│    Failed Over    │
+│  VM on DC1       │              │    VM on DC2      │
+│  DC1: Active     │              │    DC2: Active    │
+│  Repl: DC1→DC2   │              │    No replication │
+└──────────────────┘              └──────────────────┘
+        ↑                                  ↓
+     Restore                          Reprotect
+        ↑                                  ↓
+┌──────────────────┐              ┌──────────────────┐
+│   Failed Back    │← Failback ──│ DR-ed Steady State│
+│   VM on DC1      │              │    VM on DC2      │
+│   DC1: Active    │              │    DC2: Active    │
+│   No replication │              │    Repl: DC2→DC1  │
+└──────────────────┘              └──────────────────┘
+
+★ = current phase (accent-filled)
+All other nodes faded to ~35% opacity
+Only the outgoing transition from ★ shows an enabled action button
 ```
 
 **States:**
 
-| Cluster Cell State | Visual | Meaning |
-|---|---|---|
-| Active | Filled circle (●) + "Active (N VMs)" | VMs currently running here |
-| Passive | Open circle (○) + "Passive" | DR target, volumes replicated |
-| Unknown | Question mark (?) + "Unknown" | Cannot determine (other DC unreachable) |
+| Element | State | Visual | Interaction |
+|---|---|---|---|
+| Phase node | Current (rest) | Accent-filled border and background | Shows datacenter details |
+| Phase node | Not current | Faded to 35% opacity | Visible for orientation |
+| Phase node | Transition destination | Dashed accent border | Visual "arriving here" |
+| Transition arrow | Available | Action button (Button component) | Opens pre-flight modal on click |
+| Transition arrow | In progress | "In progress..." blue pill + indicator | No interaction — progress banner shown above |
+| Transition arrow | Idle | Faded action name text | No interaction |
+| Progress banner | Active transition | Blue callout with wave progress, elapsed/remaining time | Link to execution detail |
 
-**Data Source:** DRPlan `.status.activeCluster` field watched via Console SDK.
+**Transition-Phase Mapping:**
 
-**Accessibility:** Screen reader text: "erp-full-stack is active on DC1 with 12 VMs, passive on DC2, replication healthy."
+| Rest Phase | Outgoing Action | Transient Phase | Target Rest Phase | Button Style |
+|---|---|---|---|---|
+| SteadyState | Failover | FailingOver | FailedOver | Danger (red) |
+| FailedOver | Reprotect | Reprotecting | DRedSteadyState | Secondary |
+| DRedSteadyState | Failback | FailingBack | FailedBack | Secondary |
+| FailedBack | Restore | Restoring | SteadyState | Secondary |
+
+**Data Source:** DRPlan `.status.phase` and `.status.activeExecution` fields watched via Console SDK. Phase determines which node is highlighted; activeExecution non-empty triggers the transition in-progress state.
+
+**Accessibility:** Each phase node readable as: "Steady State, current phase, VM on DC1, replication DC1 to DC2." Action button accessible via Tab. During transitions, ARIA live region announces: "Failover in progress, wave 2 of 3."
 
 ---
 
 #### 3. ReplicationHealthIndicator
 
-**Purpose:** Compact compound status element showing replication health + RPO lag + data freshness in a single inline element. Used in dashboard table cells and plan detail overview.
+**Purpose:** Compact compound status element showing replication health + RPO lag + data freshness in a single inline element. Used in dashboard table cells and plan detail Configuration tab.
 
 **Anatomy:**
 ```
-Dashboard cell:    ✅ Healthy · RPO 12s · checked 30s ago
-Plan detail:       ✅ Healthy
-                   RPO: 12 seconds (last sync 30s ago)
-                   Volume Groups: 4/4 healthy
+Dashboard cell:         ✅ Healthy · RPO 12s · checked 30s ago
+Configuration tab:      ✅ Healthy
+                        RPO: 12 seconds (last sync 30s ago)
+                        Volume Groups: 4/4 healthy
 ```
 
 **Variants:**
@@ -942,7 +985,7 @@ Plan detail:       ✅ Healthy
 | Variant | Usage | Content |
 |---|---|---|
 | Compact (table cell) | Dashboard Protected column | Icon + label + RPO + freshness in one line |
-| Expanded (plan detail) | Plan overview section | Full breakdown with per-volume-group health |
+| Expanded (Configuration tab) | Plan detail Configuration tab | Full breakdown with per-volume-group health |
 
 **States:**
 
@@ -1017,9 +1060,9 @@ Plan detail:       ✅ Healthy
 | P0 | Dashboard Table (PatternFly standard) | Entry point for all journeys — must ship first |
 | P0 | Alert Banner integration | "5-second glance" depends on alert banners above table |
 | P0 | Plan Detail page with tabs | Required for all action flows |
-| P0 | Pre-flight Modal | Required for all destructive actions |
+| P0 | DRLifecycleDiagram | Overview tab — state machine with transition actions; gateway to all DR operations |
+| P0 | Pre-flight Modal | Required for all destructive actions — triggered from lifecycle diagram buttons |
 | P0 | ProgressStepper execution monitor | Simplified execution visualization (defer Gantt to 1b) |
-| P1 | CrossClusterStatusColumns | Cross-cluster orientation — integrated into dashboard table |
 | P1 | ReplicationHealthIndicator (compact) | Dashboard Protected column content |
 | P1 | WaveCompositionTree | Waves tab in plan detail |
 
@@ -1028,7 +1071,7 @@ Plan detail:       ✅ Healthy
 | Priority | Component | Rationale |
 |---|---|---|
 | P2 | ExecutionGanttChart | Full bridge-call-ready execution visualization replacing ProgressStepper |
-| P2 | ReplicationHealthIndicator (expanded) | Plan detail overview with per-volume-group breakdown |
+| P2 | ReplicationHealthIndicator (expanded) | Configuration tab with per-volume-group breakdown |
 
 **Phase 2 (post-v1) — Extension Components:**
 
