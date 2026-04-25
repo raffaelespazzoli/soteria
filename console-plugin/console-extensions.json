@@ -1,0 +1,28 @@
+[
+  {
+    "type": "console.navigation/section",
+    "properties": {
+      "id": "disaster-recovery",
+      "name": "Disaster Recovery",
+      "perspective": "admin"
+    }
+  },
+  {
+    "type": "console.navigation/href",
+    "properties": {
+      "id": "dr-dashboard",
+      "name": "Dashboard",
+      "href": "/disaster-recovery",
+      "perspective": "admin",
+      "section": "disaster-recovery"
+    }
+  },
+  {
+    "type": "console.page/route",
+    "properties": {
+      "exact": true,
+      "path": "/disaster-recovery",
+      "component": { "$codeRef": "DRDashboard" }
+    }
+  }
+]

@@ -94,7 +94,7 @@ _This document builds collaboratively through step-by-step discovery. Sections a
 | operator-sdk | v1.42.2 (March 2026) | Builds on kubebuilder, adds OLM bundle generation. Adds opinions and indirection that aren't needed — OLM bundling can be added independently. | Rejected — unnecessary layer over kubebuilder |
 | kubernetes/sample-apiserver | Tracks k8s releases | Official reference for Aggregated API Server with custom storage. Fork-and-modify pattern, not scaffolding. Demonstrates `storage.Interface`, API registration, codegen. | **Selected** — architectural reference + code patterns |
 | apiserver-builder-alpha | v1.23.0 (April 2022) | Designed for aggregated APIs with custom storage. Valuable design patterns for storage backend wiring and API registration. Last release 2022; stale. | **Inspiration only** — patterns, not dependency |
-| openshift/console-plugin-template | Active (March 2026) | Official OCP Console plugin template. TypeScript, React, PatternFly 5, webpack module federation. | **Selected** — Console plugin |
+| openshift/console-plugin-template | Active (March 2026) | Official OCP Console plugin template. TypeScript, React 17, PatternFly 6, webpack module federation. | **Selected** — Console plugin |
 
 ### Selected Approach: Hybrid Multi-Component
 
@@ -114,7 +114,7 @@ kubebuilder init --domain dr.orchestrator --repo github.com/soteria-project/sote
 
 **Language & Runtime:**
 - Go (controller-runtime, k8s.io/apiserver, k8s.io/client-go)
-- TypeScript (Console plugin — React, PatternFly 5)
+- TypeScript (Console plugin — React 17, PatternFly 6)
 
 **Build Tooling:**
 - Makefile (kubebuilder generated — build, test, lint, manifests, docker-build)
@@ -214,7 +214,7 @@ kubebuilder init --domain dr.orchestrator --repo github.com/soteria-project/sote
 | Decision | Choice | Rationale |
 |---|---|---|
 | State management | Console SDK `useK8sWatchResource()` hooks | Native k8s watch via aggregated API; no custom state library; real-time updates via watch events |
-| UI framework | PatternFly 5 (pre-decided in PRD) | OpenShift Console consistency |
+| UI framework | PatternFly 6 (upstream template + Console 4.22 requirement) | OpenShift Console consistency |
 | Plugin architecture | Webpack module federation (from console-plugin-template) | Standard OCP dynamic plugin pattern |
 
 ### Infrastructure & Deployment

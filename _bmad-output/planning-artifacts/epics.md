@@ -1511,14 +1511,14 @@ The OCP Console provides a sortable/filterable DR Dashboard table (500+ plans), 
 ### Story 6.1: Console Plugin Project Initialization
 
 As a developer,
-I want the `console-plugin/` directory scaffolded from the openshift/console-plugin-template with TypeScript, React, PatternFly 5, webpack module federation, Jest, and axe-core configured,
+I want the `console-plugin/` directory scaffolded from the openshift/console-plugin-template with TypeScript, React, PatternFly 6, webpack module federation, Jest, and axe-core configured,
 So that all subsequent Console development has a working build, dev server, and test harness.
 
 **Acceptance Criteria:**
 
 **Given** the repository root
 **When** the `console-plugin/` directory is initialized from `openshift/console-plugin-template`
-**Then** `package.json` exists with dependencies for React, PatternFly 5, and the Console SDK (`@openshift-console/dynamic-plugin-sdk`)
+**Then** `package.json` exists with dependencies for React, PatternFly 6, and the Console SDK (`@openshift-console/dynamic-plugin-sdk`)
 **And** `tsconfig.json` is configured for strict TypeScript compilation
 **And** `webpack.config.ts` is configured for module federation as a dynamic OCP Console plugin
 **And** `console-extensions.json` defines the plugin's extension points

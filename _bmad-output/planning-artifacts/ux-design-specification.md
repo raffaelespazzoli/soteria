@@ -78,7 +78,7 @@ Soteria's UX is built around a single underlying question: **"Am I protected?"**
 | Dimension | Decision | Rationale |
 |---|---|---|
 | Platform | OCP Console plugin (web) | Zero context-switch for OpenShift administrators; inherits authentication and RBAC |
-| UI Framework | PatternFly 5 | Red Hat Console consistency; familiar patterns for target users |
+| UI Framework | PatternFly 6 | Red Hat Console consistency; upstream template pins PF 6; Console 4.22+ requires PF 6 |
 | Plugin Architecture | Webpack module federation | Standard OCP dynamic plugin pattern |
 | Input Mode | Desktop-first (keyboard/mouse) | DR operations performed from workstations and NOC stations, not mobile devices |
 | Screen Optimization | Large screen, multi-monitor, screen-share | Operators use multi-monitor setups; execution views are shared on bridge calls during incidents |
@@ -251,7 +251,7 @@ Grafana's alert state panels demonstrate how to build trust in monitoring status
 - OCP Console list → detail → action navigation (mandatory for native feel)
 - GitHub Actions sequential-stage + concurrent-job execution visualization
 - Grafana data freshness indicators on all health status
-- PatternFly 5 component library (required by NFR17)
+- PatternFly 6 component library (required by NFR17)
 
 **Adapt for Soteria:**
 - ArgoCD health tiles → DR Plan health cards (adapted for DR-specific status: phase, replication health, last test, RPO)
@@ -268,9 +268,11 @@ Grafana's alert state panels demonstrate how to build trust in monitoring status
 
 ### Design System Choice
 
-**PatternFly 5** — Red Hat's open-source design system, mandated by NFR17 for OCP Console plugin consistency and provided by the `openshift/console-plugin-template` starter.
+**PatternFly 6** — Red Hat's open-source design system, mandated by NFR17 for OCP Console plugin consistency and provided by the `openshift/console-plugin-template` starter. The upstream template pins PF 6.2.2+; Console 4.22+ drops PF 5 support entirely. The Console SDK README explicitly states "New dynamic plugins should use PF 6.x."
 
 PatternFly is not a choice — it's a requirement. The value of documenting it lies in understanding what PatternFly provides natively versus what requires custom development, and ensuring all custom components align with PatternFly's design tokens for visual consistency.
+
+> **Note:** This document was originally authored referencing PatternFly 5. Token names (e.g. `--pf-v5-global--*`) appearing in this spec are semantic placeholders — implementations must use the corresponding PatternFly 6 design token equivalents. PF6 component APIs are largely compatible with PF5 references below.
 
 ### Rationale for Selection
 
@@ -282,6 +284,7 @@ PatternFly is not a choice — it's a requirement. The value of documenting it l
 | Accessibility | WCAG 2.1 AA compliance built into all PatternFly components |
 | Consistency | Plugin feels native to OCP Console — zero learning curve for navigation and interaction patterns |
 | Maintenance | PatternFly updates are tracked by the Console team; staying aligned reduces maintenance burden |
+| Forward compatibility | Console 4.22+ supports PF 6 only — PF 5 plugins will break on upgrade |
 
 ### Implementation Approach
 
@@ -420,7 +423,7 @@ Users bring the SRM mental model, but Soteria applies Kubernetes-native primitiv
 
 ### Color System
 
-**Base System:** PatternFly 5 semantic color tokens (inherited from OCP Console). No custom color palette — all colors reference PatternFly CSS custom properties to ensure Console consistency and automatic light/dark mode support.
+**Base System:** PatternFly 6 semantic color tokens (inherited from OCP Console). No custom color palette — all colors reference PatternFly CSS custom properties to ensure Console consistency and automatic light/dark mode support.
 
 **DR-Specific Semantic Color Mapping:**
 
@@ -462,7 +465,7 @@ Users bring the SRM mental model, but Soteria applies Kubernetes-native primitiv
 
 ### Typography System
 
-**Base System:** PatternFly 5 typography (inherited). Red Hat Display for headings, Red Hat Text for body content. All sizing via PatternFly type scale tokens.
+**Base System:** PatternFly 6 typography (inherited). Red Hat Display for headings, Red Hat Text for body content. All sizing via PatternFly type scale tokens.
 
 **DR-Specific Typography Decisions:**
 
@@ -481,7 +484,7 @@ Users bring the SRM mental model, but Soteria applies Kubernetes-native primitiv
 
 ### Spacing & Layout Foundation
 
-**Base System:** PatternFly 5 spacing scale (8px base unit). All spacing via PatternFly spacer tokens.
+**Base System:** PatternFly 6 spacing scale (8px base unit). All spacing via PatternFly spacer tokens.
 
 **Layout Density by Context:**
 
@@ -504,7 +507,7 @@ Users bring the SRM mental model, but Soteria applies Kubernetes-native primitiv
 
 ### Accessibility Considerations
 
-**Inherited from PatternFly:**
+**Inherited from PatternFly 6:**
 - WCAG 2.1 AA contrast ratios on all standard components
 - Keyboard navigation support on all interactive elements
 - Screen reader compatibility via ARIA attributes
@@ -842,7 +845,7 @@ Errors are never silent, never require log diving, and always suggest a next act
 
 ## Component Strategy
 
-### Design System Components (PatternFly 5 — Direct Use)
+### Design System Components (PatternFly 6 — Direct Use)
 
 | Component | PatternFly Element | Usage in Soteria | Journey Reference |
 |---|---|---|---|

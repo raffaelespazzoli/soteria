@@ -25,7 +25,7 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 | **k8s.io/apiserver** | Aggregated API Server | Custom `storage.Interface` backed by ScyllaDB |
 | **ScyllaDB** (scylla-operator via OperatorHub) | Cross-site shared state | gocql driver, scylla-cdc-go for CDC streams |
 | **TypeScript / React** | OCP Console plugin | openshift/console-plugin-template starter |
-| **PatternFly 5** | UI components | Mandated by NFR17 — no other UI libraries |
+| **PatternFly 6** | UI components | Mandated by NFR17 — no other UI libraries. Upstream console-plugin-template pins PF 6; Console 4.22+ drops PF 5 support entirely |
 | **Webpack** (module federation) | Console plugin architecture | Standard OCP dynamic plugin pattern |
 | **Ginkgo/Gomega** | Go integration + E2E testing | envtest for integration tests |
 | **Jest** | TypeScript component testing | Console plugin template default |
@@ -62,7 +62,7 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 
 - Data fetching: Console SDK hooks exclusively (`useK8sWatchResource`, `useK8sModel`) — no direct API calls
 - Styling: PatternFly CSS custom properties only — no hardcoded colors, spacing, or font sizes (ensures dark mode works)
-- No external UI libraries — PatternFly 5 only, no Material UI, no Chakra
+- No external UI libraries — PatternFly 6 only, no Material UI, no Chakra
 - State management: Console SDK watch hooks — no Redux, no Zustand, no custom state libraries
 
 ### Framework-Specific Rules
@@ -120,7 +120,7 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 **React / Console Plugin:**
 
 - Console SDK hooks (`useK8sWatchResource()`) for all data — real-time via K8s watch events
-- PatternFly 5 tokens for DR status colors: success (green), warning (yellow), danger (red), disabled (gray), info (blue)
+- PatternFly 6 design tokens for DR status colors: success (green), warning (yellow), danger (red), disabled (gray), info (blue)
 - Navigation: OCP Console list → detail → action pattern — never deviate
 - Accessibility: color-independent status (icon + text label alongside color) on all indicators
 

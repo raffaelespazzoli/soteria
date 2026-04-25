@@ -36,6 +36,7 @@
 
 generated: 2026-04-06
 last_updated: 2026-04-25
+# 6.1 review: Console Plugin Project Initialization — scaffolded from openshift/console-plugin-template, TypeScript/React/PF6/webpack5, Jest+jest-axe+RTL, CRD interfaces+hooks, Dockerfile, build+test+devserver verified, Makefile console-plugin exclusion (~20 new files, ~4 modified files)
 # 6.6 created: Status Badges, Empty States & Accessibility — DashboardEmptyState (PatternFly EmptyState with guidance text + docs link), systematic accessibility audit across all 6.1–6.5b components (PhaseBadge/ExecutionResultBadge/ReplicationHealthIndicator color compliance, DRLifecycleDiagram ARIA roles+keyboard+live region, WaveCompositionTree accessible names, AlertBannerSystem screen reader), PatternFly Label color prop audit (no hardcoded hex), screen-share readability audit (min 14px for status text), full keyboard failover flow integration test, centralized jest-axe audit suite covering all 15 component states (~1 new src file, ~3 test files, ~10 audited files)
 # 6.5b created: Waves, History & Configuration Tabs — WaveCompositionTree (PatternFly TreeView with custom renderers, DRGroup chunk visualization, per-VM health/RPO/storage, namespace grouping, aggregate health), ExecutionHistoryTable (compact Table with Date/Mode/Result/Duration/RPO/Triggered By columns, date-descending sort, row-click navigation, EmptyState for no history), PlanConfiguration (DescriptionList with plan metadata, LabelGroup, CodeBlock YAML view), ReplicationHealthExpanded (per-VG health table), jest-axe accessibility (~5 src files, ~3 test files)
 # 6.5 created: Plan Detail Shell & Overview Tab — PatternFly Tabs (4-tab shell), DRLifecycleDiagram custom component (4 rest phases, 4 transitions, accent/faded/dashed styling, danger variant for Failover), TransitionProgressBanner (Alert info inline with wave progress + elapsed time + execution link), PlanHeader (name/VM count/wave count/active cluster), getEffectivePhase reuse from 6.3, PhaseBadge reuse from 6.3, onAction callback stub for 7.1, ARIA live region for transitions, jest-axe accessibility (~4 src files, ~3 test files)
@@ -208,7 +209,7 @@ development_status:
 
   # Epic 6: OCP Console — Dashboard & Plan Management
   epic-6: in-progress
-  6-1-console-plugin-project-initialization: ready-for-dev
+  6-1-console-plugin-project-initialization: done
   6-2-console-plugin-navigation-routing: ready-for-dev
   6-3-dr-dashboard-table-toolbar: ready-for-dev
   6-4-alert-banner-system: ready-for-dev
