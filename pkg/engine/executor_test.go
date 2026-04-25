@@ -896,7 +896,7 @@ func TestWaveExecutor_PartialFailure_ReportsPartiallySucceeded(t *testing.T) {
 	handler := &mockHandler{
 		failOn: map[string]error{
 			"wave-alpha-group-1": &GroupError{
-				StepName: StepSetSource,
+				StepName: StepStopReplication,
 				Target:   "ns-erp-db",
 				Err:      fmt.Errorf("replication state transition invalid"),
 			},
@@ -926,7 +926,7 @@ func TestWaveExecutor_PartialFailure_ReportsPartiallySucceeded(t *testing.T) {
 				if g.Error == "" {
 					t.Error("failed group should have Error set")
 				}
-				if !strings.Contains(g.Error, "SetSource") {
+				if !strings.Contains(g.Error, "StopReplication") {
 					t.Errorf("Error should contain step name, got: %s", g.Error)
 				}
 				if !strings.Contains(g.Error, "ns-erp-db") {
@@ -947,7 +947,7 @@ func TestWaveExecutor_GroupError_StepDetail(t *testing.T) {
 	handler := &mockHandler{
 		failOn: map[string]error{
 			"wave-alpha-group-0": &GroupError{
-				StepName: "SetSource",
+				StepName: "StopReplication",
 				Target:   "ns-erp-db",
 				Err:      fmt.Errorf("underlying driver error"),
 			},
@@ -967,7 +967,7 @@ func TestWaveExecutor_GroupError_StepDetail(t *testing.T) {
 	if group.Result != soteriav1alpha1.DRGroupResultFailed {
 		t.Errorf("expected Failed, got %q", group.Result)
 	}
-	want := "step SetSource failed for ns-erp-db: underlying driver error"
+	want := "step StopReplication failed for ns-erp-db: underlying driver error"
 	if group.Error != want {
 		t.Errorf("Error = %q, want %q", group.Error, want)
 	}
@@ -2109,5 +2109,58 @@ func TestBuildChunkInput(t *testing.T) {
 		default:
 			t.Errorf("unexpected wave key: %s", wg.WaveKey)
 		}
+	}
+}
+
+func TestPersistStatus_PreservesExternalConditions(t *testing.T) {
+	plan := newTestPlan("plan-ps")
+	exec := newTestExecution("exec-ps", "plan-ps")
+	vms := makeVMs([]string{"vm-1"}, "w1")
+	cl := newFakeClient(vms, plan, exec)
+
+	we := newTestExecutor(cl, &mockVMDiscoverer{vms: vms}, &mockNamespaceLookup{})
+
+	exec.Status.Waves = []soteriav1alpha1.WaveStatus{{WaveIndex: 0}}
+	if err := we.PersistStatus(context.Background(), exec); err != nil {
+		t.Fatalf("initial persist: %v", err)
+	}
+
+	// Simulate another controller (Step0) setting a condition directly via
+	// the API, outside this WaveExecutor's in-memory exec.
+	var fetched soteriav1alpha1.DRExecution
+	if err := cl.Get(context.Background(), client.ObjectKeyFromObject(exec), &fetched); err != nil {
+		t.Fatalf("fetching: %v", err)
+	}
+	fetched.Status.Conditions = append(fetched.Status.Conditions, metav1.Condition{
+		Type:   "Step0Complete",
+		Status: metav1.ConditionTrue,
+		Reason: "SourceSiteStep0Completed",
+	})
+	if err := cl.Status().Update(context.Background(), &fetched); err != nil {
+		t.Fatalf("injecting Step0Complete: %v", err)
+	}
+
+	// The in-memory exec does NOT have Step0Complete. Persist wave progress.
+	exec.Status.Waves[0].WaveIndex = 0
+	now := metav1.Now()
+	exec.Status.Waves[0].StartTime = &now
+	if err := we.PersistStatus(context.Background(), exec); err != nil {
+		t.Fatalf("second persist: %v", err)
+	}
+
+	// Verify Step0Complete survived the persist.
+	var after soteriav1alpha1.DRExecution
+	if err := cl.Get(context.Background(), client.ObjectKeyFromObject(exec), &after); err != nil {
+		t.Fatalf("final fetch: %v", err)
+	}
+	found := false
+	for _, c := range after.Status.Conditions {
+		if c.Type == "Step0Complete" && c.Status == metav1.ConditionTrue {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("Step0Complete condition was lost by persistStatus; expected it to be preserved")
 	}
 }

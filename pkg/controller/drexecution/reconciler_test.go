@@ -694,6 +694,102 @@ func TestDRExecutionReconciler_PlannedMigration_OwnerProceedsAfterStep0(t *testi
 	}
 }
 
+func TestDRExecutionReconciler_ResumePath_WaitsForStep0Complete(t *testing.T) {
+	// Multi-site planned migration: the Owner resume path must wait for
+	// Step0Complete before dispatching to the WaveExecutor. Without this
+	// gate, persistStatus in the WaveExecutor can overwrite Step0Complete
+	// set by the source site.
+	now := metav1.Now()
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "exec-resume-step0"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-r",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+		Status: soteriav1alpha1.DRExecutionStatus{
+			StartTime: &now,
+			Conditions: []metav1.Condition{
+				{
+					Type:   "Progressing",
+					Status: metav1.ConditionTrue,
+					Reason: "ExecutionStarted",
+				},
+			},
+		},
+	}
+	plan := newSiteAwarePlan("plan-r", "east", "west", soteriav1alpha1.PhaseSteadyState)
+	plan.Status.ActiveExecution = "exec-resume-step0"
+	plan.Status.ActiveExecutionMode = soteriav1alpha1.ExecutionModePlannedMigration
+	cl := newTestClient(exec, plan)
+
+	r := &DRExecutionReconciler{
+		Client:         cl,
+		Scheme:         newTestScheme(),
+		LocalSite:      "west", // Target site = Owner
+		ResumeAnalyzer: &engine.ResumeAnalyzer{},
+		Handler:        &engine.NoOpHandler{},
+	}
+
+	result, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "exec-resume-step0"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.RequeueAfter != 5*time.Second {
+		t.Errorf("expected RequeueAfter 5s for Step0 wait on resume path, got %v", result.RequeueAfter)
+	}
+}
+
+func TestDRExecutionReconciler_ResumePath_ProceedsAfterStep0Complete(t *testing.T) {
+	// When Step0Complete IS set, the resume path should proceed normally.
+	now := metav1.Now()
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "exec-resume-ok"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-rok",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+		Status: soteriav1alpha1.DRExecutionStatus{
+			StartTime: &now,
+			Conditions: []metav1.Condition{
+				{
+					Type:   "Progressing",
+					Status: metav1.ConditionTrue,
+					Reason: "ExecutionStarted",
+				},
+				{
+					Type:   "Step0Complete",
+					Status: metav1.ConditionTrue,
+					Reason: "SourceSiteStep0Completed",
+				},
+			},
+		},
+	}
+	plan := newSiteAwarePlan("plan-rok", "east", "west", soteriav1alpha1.PhaseSteadyState)
+	plan.Status.ActiveExecution = "exec-resume-ok"
+	plan.Status.ActiveExecutionMode = soteriav1alpha1.ExecutionModePlannedMigration
+	cl := newTestClient(exec, plan)
+
+	r := &DRExecutionReconciler{
+		Client:         cl,
+		Scheme:         newTestScheme(),
+		LocalSite:      "west",
+		ResumeAnalyzer: &engine.ResumeAnalyzer{},
+		Handler:        &engine.NoOpHandler{},
+	}
+
+	result, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "exec-resume-ok"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.RequeueAfter == 5*time.Second {
+		t.Error("should NOT requeue with 5s when Step0Complete is set")
+	}
+}
+
 func TestDRExecutionReconciler_DisasterMode_SourceExitsImmediately(t *testing.T) {
 	// AC6: disaster mode, source site → RoleNone → return without action.
 	now := metav1.Now()

@@ -26,13 +26,18 @@ limitations under the License.
 //   planned_migration → {GracefulShutdown: true,  Force: false}
 //   disaster          → {GracefulShutdown: false, Force: true}
 //
-// When GracefulShutdown=true, the handler runs a global Step 0 pre-execution:
+// The failover handler only moves volumes to NonReplicated and starts VMs.
+// Re-establishing replication (SetSource) is the reprotect handler's job.
+//
+// When GracefulShutdown=true (planned migration), the handler runs Step 0:
 //   1. Stop all origin VMs (graceful shutdown)
 //   2. Stop replication on all volume groups (initiates final flush)
 //   3. Poll GetReplicationStatus until sync completion (RPO=0)
+//   Per-group: StartVM only (volumes are already NonReplicated from Step 0).
 //
-// When GracefulShutdown=false, PreExecute is a no-op and per-DRGroup skips
-// StopReplication — SetSource(force=true) handles promotion directly.
+// When GracefulShutdown=false (disaster), PreExecute is a no-op. Per-group:
+//   StopReplication(force=true) to break the replication link and promote
+//   target disks to writable, then StartVM.
 
 package engine
 
@@ -51,7 +56,6 @@ import (
 
 const (
 	StepStopReplication = "StopReplication"
-	StepSetSource       = "SetSource"
 	StepStartVM         = "StartVM"
 	StepWaitVMReady     = "WaitVMReady"
 
@@ -61,10 +65,13 @@ const (
 
 // FailoverConfig drives FailoverHandler behavior without mode-string switching.
 type FailoverConfig struct {
-	// GracefulShutdown enables Step 0 (stop VMs, stop replication, sync wait)
-	// and per-group StopReplication. False for disaster failover.
+	// GracefulShutdown enables Step 0 (stop VMs, stop replication, sync wait).
+	// When true (planned migration), per-group execution only starts VMs
+	// because Step 0 already moved all volumes to NonReplicated.
+	// When false (disaster), per-group execution calls StopReplication(force=true)
+	// to break the replication link before starting VMs.
 	GracefulShutdown bool
-	// Force is passed to SetSourceOptions and StopReplicationOptions.
+	// Force is passed to StopReplicationOptions in the per-group disaster path.
 	// True for disaster (origin may be unreachable).
 	Force bool
 }
@@ -294,12 +301,15 @@ func isSynced(status drivers.ReplicationStatus) bool {
 // ExecuteGroup implements DRGroupHandler for a single DRGroup within a wave.
 // Returns *GroupError for step failures to enable structured error propagation.
 //
-// GracefulShutdown=true:  StopReplication → SetSource(force=false) → StartVM
-// GracefulShutdown=false: SetSource(force=true) → StartVM
+// GracefulShutdown=true  (planned migration): StartVM only — Step 0 already
+//
+//	moved volumes to NonReplicated.
+//
+// GracefulShutdown=false (disaster): StopReplication(force=true) → StartVM.
 func (h *FailoverHandler) ExecuteGroup(ctx context.Context, group ExecutionGroup) error {
 	logger := log.FromContext(ctx)
 
-	if h.Config.GracefulShutdown {
+	if !h.Config.GracefulShutdown {
 		for _, vg := range group.Chunk.VolumeGroups {
 			if ctx.Err() != nil {
 				return ctx.Err()
@@ -311,29 +321,11 @@ func (h *FailoverHandler) ExecuteGroup(ctx context.Context, group ExecutionGroup
 				return &GroupError{StepName: StepStopReplication, Target: vg.Name, Err: err}
 			}
 
-			logger.V(1).Info("Stopping replication for DRGroup volume group",
+			logger.V(1).Info("Stopping replication for DRGroup volume group (disaster)",
 				"volumeGroup", vg.Name, "wave", group.WaveIndex)
-			if err := driver.StopReplication(ctx, vgID, drivers.StopReplicationOptions{Force: false}); err != nil {
+			if err := driver.StopReplication(ctx, vgID, drivers.StopReplicationOptions{Force: h.Config.Force}); err != nil {
 				return &GroupError{StepName: StepStopReplication, Target: vg.Name, Err: err}
 			}
-		}
-	}
-
-	for _, vg := range group.Chunk.VolumeGroups {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-
-		driver := group.DriverForVG(vg.Name)
-		vgID, err := h.resolveVolumeGroupID(ctx, driver, vg, group.PVCResolver)
-		if err != nil {
-			return &GroupError{StepName: StepSetSource, Target: vg.Name, Err: err}
-		}
-
-		logger.V(1).Info("Setting source for DRGroup volume group",
-			"volumeGroup", vg.Name, "wave", group.WaveIndex)
-		if err := driver.SetSource(ctx, vgID, drivers.SetSourceOptions{Force: h.Config.Force}); err != nil {
-			return &GroupError{StepName: StepSetSource, Target: vg.Name, Err: err}
 		}
 	}
 
@@ -378,7 +370,7 @@ func (h *FailoverHandler) ExecuteGroupWithSteps(
 		_ = sr.RecordStep(ctx, step)
 	}
 
-	if h.Config.GracefulShutdown {
+	if !h.Config.GracefulShutdown {
 		for _, vg := range group.Chunk.VolumeGroups {
 			if ctx.Err() != nil {
 				return steps, ctx.Err()
@@ -389,34 +381,15 @@ func (h *FailoverHandler) ExecuteGroupWithSteps(
 				recordStep(StepStopReplication, "Failed", err.Error())
 				return steps, &GroupError{StepName: StepStopReplication, Target: vg.Name, Err: err}
 			}
-			logger.V(1).Info("Stopping replication for DRGroup volume group",
+			logger.V(1).Info("Stopping replication for DRGroup volume group (disaster)",
 				"volumeGroup", vg.Name, "wave", group.WaveIndex)
-			if err := driver.StopReplication(ctx, vgID, drivers.StopReplicationOptions{Force: false}); err != nil {
+			if err := driver.StopReplication(ctx, vgID, drivers.StopReplicationOptions{Force: h.Config.Force}); err != nil {
 				recordStep(StepStopReplication, "Failed",
 					fmt.Sprintf("Failed to stop replication for volume group %s: %v", vg.Name, err))
 				return steps, &GroupError{StepName: StepStopReplication, Target: vg.Name, Err: err}
 			}
 			recordStep(StepStopReplication, "Succeeded", fmt.Sprintf("Stopped replication for volume group %s", vg.Name))
 		}
-	}
-
-	for _, vg := range group.Chunk.VolumeGroups {
-		if ctx.Err() != nil {
-			return steps, ctx.Err()
-		}
-		driver := group.DriverForVG(vg.Name)
-		vgID, err := h.resolveVolumeGroupID(ctx, driver, vg, group.PVCResolver)
-		if err != nil {
-			recordStep(StepSetSource, "Failed", err.Error())
-			return steps, &GroupError{StepName: StepSetSource, Target: vg.Name, Err: err}
-		}
-		logger.V(1).Info("Setting source for DRGroup volume group",
-			"volumeGroup", vg.Name, "wave", group.WaveIndex)
-		if err := driver.SetSource(ctx, vgID, drivers.SetSourceOptions{Force: h.Config.Force}); err != nil {
-			recordStep(StepSetSource, "Failed", fmt.Sprintf("Failed to set source for volume group %s: %v", vg.Name, err))
-			return steps, &GroupError{StepName: StepSetSource, Target: vg.Name, Err: err}
-		}
-		recordStep(StepSetSource, "Succeeded", fmt.Sprintf("Set source for volume group %s", vg.Name))
 	}
 
 	for _, vm := range group.Chunk.VMs {

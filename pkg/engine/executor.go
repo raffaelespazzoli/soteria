@@ -1070,6 +1070,10 @@ func (e *WaveExecutor) countGroups(exec *soteriav1alpha1.DRExecution) (failed, t
 // racing on the DRExecution status subresource. Re-fetches before update to
 // ensure the latest resourceVersion and retries on conflict (the informer
 // cache may lag behind the API server after a recent Patch).
+//
+// Conditions set by other reconcilers (e.g. Step0Complete from the source-site
+// controller) are preserved: any condition present in the freshly-fetched
+// object but absent from the in-memory copy is carried forward.
 func (e *WaveExecutor) persistStatus(ctx context.Context, exec *soteriav1alpha1.DRExecution) error {
 	e.statusMu.Lock()
 	defer e.statusMu.Unlock()
@@ -1079,9 +1083,26 @@ func (e *WaveExecutor) persistStatus(ctx context.Context, exec *soteriav1alpha1.
 		if err := e.Client.Get(ctx, client.ObjectKeyFromObject(exec), exec); err != nil {
 			return fmt.Errorf("re-fetching DRExecution before status update: %w", err)
 		}
+		fetchedConditions := exec.Status.Conditions
 		exec.Status = *statusCopy
+		mergeConditions(&exec.Status.Conditions, fetchedConditions)
 		return e.Client.Status().Update(ctx, exec)
 	})
+}
+
+// mergeConditions copies conditions present in fetched but missing from dst
+// into dst so that conditions set by other controllers are not lost when
+// the WaveExecutor writes wave/group progress.
+func mergeConditions(dst *[]metav1.Condition, fetched []metav1.Condition) {
+	have := make(map[string]struct{}, len(*dst))
+	for _, c := range *dst {
+		have[c.Type] = struct{}{}
+	}
+	for _, c := range fetched {
+		if _, ok := have[c.Type]; !ok {
+			*dst = append(*dst, c)
+		}
+	}
 }
 
 // setGroupStatus updates a single DRGroup's status in memory and persists it.

@@ -188,8 +188,8 @@ func TestFailoverHandler_Graceful_FullSuccess(t *testing.T) {
 	if !drv.Called("StopReplication") {
 		t.Error("Expected StopReplication to be called")
 	}
-	if !drv.Called("SetSource") {
-		t.Error("Expected SetSource to be called")
+	if drv.Called("SetSource") {
+		t.Error("SetSource should not be called during failover (belongs in reprotect)")
 	}
 }
 
@@ -322,32 +322,33 @@ func TestFailoverHandler_Graceful_Step0_SyncCompletes(t *testing.T) {
 	}
 }
 
-func TestFailoverHandler_Graceful_PerGroup_SetSourceFails(t *testing.T) {
+func TestFailoverHandler_Graceful_PerGroup_NoDriverCalls(t *testing.T) {
 	drv := fake.New()
-	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
-		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
-	})
-	drv.OnSetSource("vg-1").Return(errors.New("promotion failed"))
-
 	vm := newMockVMManager()
 	handler := &FailoverHandler{
-		Driver:           drv,
-		VMManager:        vm,
-		Config:           gracefulConfig(),
-		SyncPollInterval: 1 * time.Millisecond,
-		SyncTimeout:      1 * time.Second,
+		Driver:    drv,
+		VMManager: vm,
+		Config:    gracefulConfig(),
 	}
 
 	vms := []VMReference{{Name: "vm-db01", Namespace: "ns1"}}
 	vgs := []soteriav1alpha1.VolumeGroupInfo{makeVolumeGroupInfo("vg-db", "ns1", "vm-db01")}
 	group := makeExecutionGroup("wave-1-group-0", vms, vgs, drv, 0)
 
-	err := handler.ExecuteGroup(context.Background(), group)
-	if err == nil {
-		t.Fatal("ExecuteGroup should fail when SetSource fails")
+	if err := handler.ExecuteGroup(context.Background(), group); err != nil {
+		t.Fatalf("ExecuteGroup failed: %v", err)
 	}
-	if !strings.Contains(err.Error(), "SetSource") {
-		t.Errorf("Error should mention SetSource step: %v", err)
+
+	if drv.Called("StopReplication") {
+		t.Error("Graceful per-group should not call StopReplication (Step 0 handles it)")
+	}
+	if drv.Called("SetSource") {
+		t.Error("Graceful per-group should not call SetSource (reprotect handles it)")
+	}
+
+	starts := vm.getStarts()
+	if len(starts) != 1 || starts[0] != testVMKey {
+		t.Errorf("Expected VM start %s, got %v", testVMKey, starts)
 	}
 }
 
@@ -383,17 +384,11 @@ func TestFailoverHandler_Graceful_PerGroup_StartVMFails(t *testing.T) {
 
 func TestFailoverHandler_Graceful_PerGroup_StepStatusRecorded(t *testing.T) {
 	drv := fake.New()
-	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
-		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
-	})
-
 	vm := newMockVMManager()
 	handler := &FailoverHandler{
-		Driver:           drv,
-		VMManager:        vm,
-		Config:           gracefulConfig(),
-		SyncPollInterval: 1 * time.Millisecond,
-		SyncTimeout:      1 * time.Second,
+		Driver:    drv,
+		VMManager: vm,
+		Config:    gracefulConfig(),
 	}
 
 	vms := []VMReference{
@@ -408,15 +403,14 @@ func TestFailoverHandler_Graceful_PerGroup_StepStatusRecorded(t *testing.T) {
 		t.Fatalf("ExecuteGroupWithSteps failed: %v", err)
 	}
 
-	// Expected: 1 StopReplication + 1 SetSource + 2 StartVM = 4 steps
-	if len(steps) != 4 {
-		t.Fatalf("Expected 4 step statuses, got %d", len(steps))
+	// Graceful per-group: only StartVM steps (Step 0 handled replication)
+	if len(steps) != 2 {
+		t.Fatalf("Expected 2 step statuses (2 StartVM), got %d", len(steps))
 	}
 
-	expectedNames := []string{StepStopReplication, StepSetSource, StepStartVM, StepStartVM}
 	for i, step := range steps {
-		if step.Name != expectedNames[i] {
-			t.Errorf("Step %d: name = %q, want %q", i, step.Name, expectedNames[i])
+		if step.Name != StepStartVM {
+			t.Errorf("Step %d: name = %q, want %q", i, step.Name, StepStartVM)
 		}
 		if step.Status != statusSucceeded {
 			t.Errorf("Step %d: status = %q, want Succeeded", i, step.Status)
@@ -475,7 +469,7 @@ func TestFailoverHandler_Graceful_EmptyGroups(t *testing.T) {
 		t.Fatalf("ExecuteGroup with empty chunk should succeed: %v", err)
 	}
 
-	if drv.Called("StopReplication") || drv.Called("SetSource") {
+	if drv.Called("StopReplication") {
 		t.Error("No driver calls should be made for empty groups")
 	}
 }
@@ -530,7 +524,16 @@ func TestFailoverHandler_Graceful_VolumeGroupIDCaching(t *testing.T) {
 	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
 		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
 	})
+	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-2", Name: "vg-app"},
+	})
 	drv.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleNonReplicated,
+			Health: drivers.HealthUnknown,
+		},
+	})
+	drv.OnGetReplicationStatus("vg-2").ReturnResult(fake.Response{
 		ReplicationStatus: &drivers.ReplicationStatus{
 			Role:   drivers.RoleNonReplicated,
 			Health: drivers.HealthUnknown,
@@ -547,7 +550,10 @@ func TestFailoverHandler_Graceful_VolumeGroupIDCaching(t *testing.T) {
 	}
 
 	vms := []VMReference{{Name: "vm-db01", Namespace: "ns1"}}
-	vgs := []soteriav1alpha1.VolumeGroupInfo{makeVolumeGroupInfo("vg-db", "ns1", "vm-db01")}
+	vgs := []soteriav1alpha1.VolumeGroupInfo{
+		makeVolumeGroupInfo("vg-db", "ns1", "vm-db01"),
+		makeVolumeGroupInfo("vg-app", "ns1", "vm-db01"),
+	}
 	groups := []ExecutionGroup{makeExecutionGroup("wave-1-group-0", vms, vgs, drv, 0)}
 
 	ctx := context.Background()
@@ -556,13 +562,9 @@ func TestFailoverHandler_Graceful_VolumeGroupIDCaching(t *testing.T) {
 		t.Fatalf("PreExecute failed: %v", err)
 	}
 
-	if err := handler.ExecuteGroup(ctx, groups[0]); err != nil {
-		t.Fatalf("ExecuteGroup failed: %v", err)
-	}
-
 	createCalls := drv.CallCount("CreateVolumeGroup")
-	if createCalls != 1 {
-		t.Errorf("Expected 1 CreateVolumeGroup call (cached), got %d", createCalls)
+	if createCalls != 2 {
+		t.Errorf("Expected 2 CreateVolumeGroup calls (one per VG), got %d", createCalls)
 	}
 }
 
@@ -638,7 +640,7 @@ func TestFailoverHandler_DisasterConfig_NoStep0(t *testing.T) {
 	}
 }
 
-func TestFailoverHandler_DisasterConfig_ForceTrue(t *testing.T) {
+func TestFailoverHandler_DisasterConfig_StopReplicationForce(t *testing.T) {
 	drv := fake.New()
 	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
 		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
@@ -659,16 +661,29 @@ func TestFailoverHandler_DisasterConfig_ForceTrue(t *testing.T) {
 		t.Fatalf("ExecuteGroup failed: %v", err)
 	}
 
-	if !drv.Called("SetSource") {
-		t.Error("Expected SetSource to be called")
+	if !drv.Called("StopReplication") {
+		t.Error("Expected StopReplication to be called for disaster")
 	}
+	if drv.Called("SetSource") {
+		t.Error("SetSource should not be called during failover")
+	}
+
+	calls := drv.CallsTo("StopReplication")
+	if len(calls) != 1 {
+		t.Fatalf("Expected 1 StopReplication call, got %d", len(calls))
+	}
+	opts := calls[0].Args[1].(drivers.StopReplicationOptions)
+	if !opts.Force {
+		t.Error("Disaster failover must pass Force=true to StopReplication")
+	}
+
 	starts := vm.getStarts()
 	if len(starts) != 1 || starts[0] != testVMKey {
 		t.Errorf("Expected VM start %s, got %v", testVMKey, starts)
 	}
 }
 
-func TestFailoverHandler_DisasterConfig_NoStopReplication(t *testing.T) {
+func TestFailoverHandler_DisasterConfig_NoSetSource(t *testing.T) {
 	drv := fake.New()
 	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
 		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
@@ -689,8 +704,8 @@ func TestFailoverHandler_DisasterConfig_NoStopReplication(t *testing.T) {
 		t.Fatalf("ExecuteGroup failed: %v", err)
 	}
 
-	if drv.Called("StopReplication") {
-		t.Error("Disaster mode per-group should NOT call StopReplication")
+	if drv.Called("SetSource") {
+		t.Error("Disaster mode per-group should NOT call SetSource (reprotect handles it)")
 	}
 }
 
@@ -735,7 +750,7 @@ func TestFailover_Disaster_FullSuccess(t *testing.T) {
 		t.Fatalf("ExecuteGroupWithSteps failed: %v", err)
 	}
 
-	// 2 SetSource + 2 StartVM = 4 steps
+	// 2 StopReplication + 2 StartVM = 4 steps
 	if len(steps) != 4 {
 		t.Fatalf("Expected 4 steps, got %d", len(steps))
 	}
@@ -751,28 +766,28 @@ func TestFailover_Disaster_FullSuccess(t *testing.T) {
 		t.Errorf("Expected 2 VM starts, got %d", len(starts))
 	}
 
-	setSourceCalls := drv.CallsTo("SetSource")
-	if len(setSourceCalls) != 2 {
-		t.Fatalf("Expected 2 SetSource calls, got %d", len(setSourceCalls))
+	stopCalls := drv.CallsTo("StopReplication")
+	if len(stopCalls) != 2 {
+		t.Fatalf("Expected 2 StopReplication calls, got %d", len(stopCalls))
 	}
-	for _, call := range setSourceCalls {
-		opts := call.Args[1].(drivers.SetSourceOptions)
+	for _, call := range stopCalls {
+		opts := call.Args[1].(drivers.StopReplicationOptions)
 		if !opts.Force {
-			t.Error("Disaster failover must use Force=true in SetSource")
+			t.Error("Disaster failover must use Force=true in StopReplication")
 		}
 	}
 
-	if drv.Called("StopReplication") {
-		t.Error("Disaster failover must not call StopReplication")
+	if drv.Called("SetSource") {
+		t.Error("Disaster failover must not call SetSource (reprotect handles it)")
 	}
 }
 
-func TestFailover_Disaster_SetSourceFails(t *testing.T) {
+func TestFailover_Disaster_StopReplicationFails(t *testing.T) {
 	drv := fake.New()
 	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
 		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
 	})
-	drv.OnSetSource("vg-1").Return(errors.New("force promotion failed: peer unreachable"))
+	drv.OnStopReplication("vg-1").Return(errors.New("force stop failed: storage backend error"))
 
 	vm := newMockVMManager()
 	handler := &FailoverHandler{
@@ -787,26 +802,24 @@ func TestFailover_Disaster_SetSourceFails(t *testing.T) {
 
 	steps, err := handler.ExecuteGroupWithSteps(context.Background(), group)
 	if err == nil {
-		t.Fatal("ExecuteGroupWithSteps should fail when SetSource fails")
+		t.Fatal("ExecuteGroupWithSteps should fail when StopReplication fails")
 	}
-	if !strings.Contains(err.Error(), StepSetSource) {
-		t.Errorf("Error should mention SetSource step: %v", err)
+	if !strings.Contains(err.Error(), StepStopReplication) {
+		t.Errorf("Error should mention StopReplication step: %v", err)
 	}
 	if !strings.Contains(err.Error(), "vg-db") {
 		t.Errorf("Error should mention volume group name: %v", err)
 	}
 
-	// Should have one Failed SetSource step
 	if len(steps) != 1 {
-		t.Fatalf("Expected 1 step (failed SetSource), got %d", len(steps))
+		t.Fatalf("Expected 1 step (failed StopReplication), got %d", len(steps))
 	}
-	if steps[0].Name != StepSetSource || steps[0].Status != statusFailed {
-		t.Errorf("Step should be failed SetSource: %+v", steps[0])
+	if steps[0].Name != StepStopReplication || steps[0].Status != statusFailed {
+		t.Errorf("Step should be failed StopReplication: %+v", steps[0])
 	}
 
-	// No VMs should be started
 	if len(vm.getStarts()) != 0 {
-		t.Error("No VMs should start when SetSource fails")
+		t.Error("No VMs should start when StopReplication fails")
 	}
 }
 
@@ -837,12 +850,12 @@ func TestFailover_Disaster_StartVMFails(t *testing.T) {
 		t.Errorf("Error should mention StartVM step: %v", err)
 	}
 
-	// SetSource succeeded, StartVM failed — 2 steps total (no RPOSummary on failure)
+	// StopReplication succeeded, StartVM failed — 2 steps total
 	if len(steps) != 2 {
-		t.Fatalf("Expected 2 steps (SetSource succeeded, StartVM failed), got %d", len(steps))
+		t.Fatalf("Expected 2 steps (StopReplication succeeded, StartVM failed), got %d", len(steps))
 	}
-	if steps[0].Name != StepSetSource || steps[0].Status != statusSucceeded {
-		t.Errorf("First step should be succeeded SetSource: %+v", steps[0])
+	if steps[0].Name != StepStopReplication || steps[0].Status != statusSucceeded {
+		t.Errorf("First step should be succeeded StopReplication: %+v", steps[0])
 	}
 	if steps[1].Name != StepStartVM || steps[1].Status != statusFailed {
 		t.Errorf("Second step should be failed StartVM: %+v", steps[1])
@@ -880,12 +893,12 @@ func TestFailover_Disaster_StepStatusRecorded(t *testing.T) {
 		t.Fatalf("ExecuteGroupWithSteps failed: %v", err)
 	}
 
-	// 2 SetSource + 2 StartVM = 4 steps
+	// 2 StopReplication + 2 StartVM = 4 steps
 	if len(steps) != 4 {
 		t.Fatalf("Expected 4 steps, got %d", len(steps))
 	}
 
-	expectedNames := []string{StepSetSource, StepSetSource, StepStartVM, StepStartVM}
+	expectedNames := []string{StepStopReplication, StepStopReplication, StepStartVM, StepStartVM}
 	for i, step := range steps {
 		if step.Name != expectedNames[i] {
 			t.Errorf("Step %d: name = %q, want %q", i, step.Name, expectedNames[i])
@@ -899,8 +912,8 @@ func TestFailover_Disaster_StepStatusRecorded(t *testing.T) {
 	}
 
 	for _, step := range steps {
-		if step.Name == StepStopReplication {
-			t.Error("Disaster mode should not have StopReplication steps")
+		if step.Name == "SetSource" {
+			t.Error("Disaster mode should not have SetSource steps (reprotect handles it)")
 		}
 	}
 }
@@ -934,7 +947,7 @@ func TestFailover_Disaster_EmptyGroup(t *testing.T) {
 		t.Errorf("Expected 0 steps for empty group, got %d", len(steps))
 	}
 
-	if drv.Called("SetSource") || drv.Called("StopReplication") {
+	if drv.Called("StopReplication") || drv.Called("SetSource") {
 		t.Error("No driver calls should be made for empty groups")
 	}
 	if len(vm.getStarts()) != 0 {
@@ -997,17 +1010,17 @@ func TestFailover_Disaster_ForceFlag(t *testing.T) {
 		t.Fatalf("ExecuteGroup failed: %v", err)
 	}
 
-	calls := drv.CallsTo("SetSource")
+	calls := drv.CallsTo("StopReplication")
 	if len(calls) != 1 {
-		t.Fatalf("Expected 1 SetSource call, got %d", len(calls))
+		t.Fatalf("Expected 1 StopReplication call, got %d", len(calls))
 	}
-	opts := calls[0].Args[1].(drivers.SetSourceOptions)
+	opts := calls[0].Args[1].(drivers.StopReplicationOptions)
 	if !opts.Force {
-		t.Error("Disaster failover must pass Force=true to SetSource")
+		t.Error("Disaster failover must pass Force=true to StopReplication")
 	}
 }
 
-func TestFailover_Disaster_NoStopReplication(t *testing.T) {
+func TestFailover_Disaster_NoSetSource(t *testing.T) {
 	drv := fake.New()
 	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
 		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
@@ -1028,8 +1041,8 @@ func TestFailover_Disaster_NoStopReplication(t *testing.T) {
 		t.Fatalf("ExecuteGroup failed: %v", err)
 	}
 
-	if drv.Called("StopReplication") {
-		t.Error("Disaster failover must never call StopReplication")
+	if drv.Called("SetSource") {
+		t.Error("Disaster failover must never call SetSource (reprotect handles it)")
 	}
 
 	drv.Reset()
@@ -1046,8 +1059,8 @@ func TestFailover_Disaster_NoStopReplication(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ExecuteGroupWithSteps failed: %v", err)
 	}
-	if drv.Called("StopReplication") {
-		t.Error("StopReplication must never be called for disaster config (via steps path)")
+	if drv.Called("SetSource") {
+		t.Error("SetSource must never be called for disaster config (via steps path)")
 	}
 }
 
@@ -1086,14 +1099,14 @@ func TestFailover_Disaster_MultipleVolumeGroups(t *testing.T) {
 		t.Fatalf("ExecuteGroupWithSteps failed: %v", err)
 	}
 
-	// 3 SetSource + 2 StartVM = 5
+	// 3 StopReplication + 2 StartVM = 5
 	if len(steps) != 5 {
 		t.Fatalf("Expected 5 steps, got %d", len(steps))
 	}
 
 	for i := range 3 {
-		if steps[i].Name != StepSetSource {
-			t.Errorf("Step %d should be SetSource, got %q", i, steps[i].Name)
+		if steps[i].Name != StepStopReplication {
+			t.Errorf("Step %d should be StopReplication, got %q", i, steps[i].Name)
 		}
 	}
 	for i := 3; i < 5; i++ {
@@ -1102,27 +1115,19 @@ func TestFailover_Disaster_MultipleVolumeGroups(t *testing.T) {
 		}
 	}
 
-	allCalls := drv.Calls()
-	var setSourceDone bool
-	for _, c := range allCalls {
-		if c.Method == "SetSource" {
-			if setSourceDone {
-				t.Error("SetSource called after a non-SetSource method")
-			}
-		} else if c.Method != "CreateVolumeGroup" {
-			setSourceDone = true
+	stopCalls := drv.CallsTo("StopReplication")
+	if len(stopCalls) != 3 {
+		t.Fatalf("Expected 3 StopReplication calls, got %d", len(stopCalls))
+	}
+	for i, call := range stopCalls {
+		opts := call.Args[1].(drivers.StopReplicationOptions)
+		if !opts.Force {
+			t.Errorf("StopReplication call %d: Force should be true", i)
 		}
 	}
 
-	setSourceCalls := drv.CallsTo("SetSource")
-	if len(setSourceCalls) != 3 {
-		t.Fatalf("Expected 3 SetSource calls, got %d", len(setSourceCalls))
-	}
-	for i, call := range setSourceCalls {
-		opts := call.Args[1].(drivers.SetSourceOptions)
-		if !opts.Force {
-			t.Errorf("SetSource call %d: Force should be true", i)
-		}
+	if drv.Called("SetSource") {
+		t.Error("Disaster mode should not call SetSource")
 	}
 }
 

@@ -833,6 +833,15 @@ func (r *DRExecutionReconciler) reconcileResume(
 ) (ctrl.Result, error) {
 	logger := log.FromContext(ctx).WithValues("drexecution", exec.Name)
 
+	// Multi-site planned migration: the Owner must wait for the source site
+	// to complete Step 0 before running waves, even on the resume path.
+	if r.LocalSite != "" &&
+		exec.Spec.Mode == soteriav1alpha1.ExecutionModePlannedMigration &&
+		!meta.IsStatusConditionTrue(exec.Status.Conditions, "Step0Complete") {
+		logger.V(1).Info("Waiting for source site to complete Step 0 (resume path)")
+		return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+	}
+
 	if r.ResumeAnalyzer == nil {
 		logger.V(1).Info("ResumeAnalyzer not configured, skipping resume")
 		return ctrl.Result{}, nil
