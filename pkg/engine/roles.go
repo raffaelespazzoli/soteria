@@ -18,8 +18,8 @@ limitations under the License.
 // roles.go provides pure functions for site-aware reconcile ownership.
 // During a DR transition, exactly one site owns the execution (the target
 // site — the one becoming active). In planned migration mode, the source
-// site has a limited Step 0 role (stop VMs, stop replication, sync wait)
-// before handing off to the target. In disaster mode, the source site does
+// site has a limited Step 0 role (stop all origin VMs) before handing off
+// to the target. In disaster mode, the source site does
 // nothing (it may be down). These functions are stateless and fully testable
 // with table-driven tests — no API calls or side effects.
 

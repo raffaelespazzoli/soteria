@@ -1276,15 +1276,10 @@ func TestWaveExecutor_StepRecorder_PassedToHandler(t *testing.T) {
 	vms := makeVMs([]string{"vm-1"}, "alpha")
 	cl := newFakeClient(vms, plan, exec)
 
-	// Use a StepHandler to verify steps are recorded in DRGroupStatus.
-	drv := &noop.Driver{}
 	vm := newMockVMManager()
 	handler := &FailoverHandler{
-		Driver:           drv,
-		VMManager:        vm,
-		Config:           FailoverConfig{GracefulShutdown: false, Force: true},
-		SyncPollInterval: 1 * time.Millisecond,
-		SyncTimeout:      1 * time.Second,
+		VMManager: vm,
+		Config:    FailoverConfig{GracefulShutdown: false},
 	}
 
 	executor := newTestExecutor(cl, &mockVMDiscoverer{vms: vms},

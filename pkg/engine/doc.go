@@ -55,16 +55,16 @@ limitations under the License.
 //   - Unified FailoverHandler (failover.go): implements both planned migration and
 //     disaster failover through a single DRGroupHandler driven by FailoverConfig
 //     — not the execution mode string. The controller maps mode → config:
-//     planned_migration → {GracefulShutdown: true, Force: false}
-//     disaster          → {GracefulShutdown: false, Force: true}
-//     When GracefulShutdown=true, PreExecute runs Step 0 (stop VMs, stop
-//     replication, sync wait) and per-group calls StopReplication+SetSource+StartVM.
+//     planned_migration → {GracefulShutdown: true}
+//     disaster          → {GracefulShutdown: false}
+//     When GracefulShutdown=true, PreExecute runs Step 0 (stop all origin VMs).
 //     When GracefulShutdown=false (disaster), PreExecute is a no-op because the
-//     origin site is unreachable — no VM stopping, no replication stopping, no sync
-//     wait. Per-group execution skips StopReplication and uses SetSource(force=true)
-//     to force-promote target volumes. The same handler handles both failover (from
-//     SteadyState) and failback (from DRedSteadyState) — direction is encoded in
-//     state machine phases, not handler logic.
+//     origin site may be unreachable. Per-group execution is a single unified path
+//     for both modes: StopReplication → StartVM. StopReplication is idempotent —
+//     after planned Step 0 it is a no-op; in disaster it breaks the replication
+//     link and promotes target disks to writable. The same handler handles both
+//     failover (from SteadyState) and failback (from DRedSteadyState) — direction
+//     is encoded in state machine phases, not handler logic.
 //
 //   - VMManager interface (vm.go): abstracts KubeVirt VM lifecycle control for
 //     stopping origin VMs (Step 0) and starting target VMs (per-DRGroup).

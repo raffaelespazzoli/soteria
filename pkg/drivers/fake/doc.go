@@ -44,7 +44,7 @@ limitations under the License.
 // After exercising the code under test, assert on recorded calls:
 //
 //	calls := d.CallsTo("SetSource")
-//	// calls[0].Args == []interface{}{"vg-1", drivers.SetSourceOptions{Force: true}}
+//	// calls[0].Args == []interface{}{"vg-1"}
 //
 //	d.CallCount("SetSource") // 1
 //	d.Called("SetSource")    // true

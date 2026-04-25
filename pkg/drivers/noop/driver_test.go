@@ -24,8 +24,6 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/go-logr/logr"
-	"github.com/go-logr/logr/funcr"
 	"github.com/soteria-project/soteria/pkg/drivers"
 )
 
@@ -117,25 +115,13 @@ func TestDriver_ReplicationLifecycle(t *testing.T) {
 	}{
 		{
 			name:       "set source",
-			action:     func() error { return d.SetSource(testCtx(), info.ID, drivers.SetSourceOptions{}) },
+			action:     func() error { return d.SetSource(testCtx(), info.ID) },
 			wantRole:   drivers.RoleSource,
 			wantHealth: drivers.HealthHealthy,
 		},
 		{
 			name:       "stop replication from source",
-			action:     func() error { return d.StopReplication(testCtx(), info.ID, drivers.StopReplicationOptions{}) },
-			wantRole:   drivers.RoleNonReplicated,
-			wantHealth: drivers.HealthUnknown,
-		},
-		{
-			name:       "set target",
-			action:     func() error { return d.SetTarget(testCtx(), info.ID, drivers.SetTargetOptions{}) },
-			wantRole:   drivers.RoleTarget,
-			wantHealth: drivers.HealthHealthy,
-		},
-		{
-			name:       "stop replication from target",
-			action:     func() error { return d.StopReplication(testCtx(), info.ID, drivers.StopReplicationOptions{}) },
+			action:     func() error { return d.StopReplication(testCtx(), info.ID) },
 			wantRole:   drivers.RoleNonReplicated,
 			wantHealth: drivers.HealthUnknown,
 		},
@@ -172,76 +158,20 @@ func TestDriver_ReplicationLifecycle(t *testing.T) {
 	}
 }
 
-func TestDriver_InvalidTransition_SetSourceWhenTarget(t *testing.T) {
+func TestDriver_InvalidTransition_SetSourceWhenSource(t *testing.T) {
 	d := New()
 	info, err := d.CreateVolumeGroup(testCtx(), drivers.VolumeGroupSpec{Name: "invalid-src"})
 	if err != nil {
 		t.Fatalf("CreateVolumeGroup: %v", err)
 	}
 
-	if err := d.SetTarget(testCtx(), info.ID, drivers.SetTargetOptions{}); err != nil {
-		t.Fatalf("SetTarget: %v", err)
-	}
-
-	err = d.SetSource(testCtx(), info.ID, drivers.SetSourceOptions{})
-	if !errors.Is(err, drivers.ErrInvalidTransition) {
-		t.Fatalf("expected ErrInvalidTransition for SetSource when Target, got: %v", err)
-	}
-}
-
-func TestDriver_InvalidTransition_SetTargetWhenSource(t *testing.T) {
-	d := New()
-	info, err := d.CreateVolumeGroup(testCtx(), drivers.VolumeGroupSpec{Name: "invalid-tgt"})
-	if err != nil {
-		t.Fatalf("CreateVolumeGroup: %v", err)
-	}
-
-	if err := d.SetSource(testCtx(), info.ID, drivers.SetSourceOptions{}); err != nil {
+	if err := d.SetSource(testCtx(), info.ID); err != nil {
 		t.Fatalf("SetSource: %v", err)
 	}
 
-	err = d.SetTarget(testCtx(), info.ID, drivers.SetTargetOptions{})
-	if !errors.Is(err, drivers.ErrInvalidTransition) {
-		t.Fatalf("expected ErrInvalidTransition for SetTarget when Source, got: %v", err)
-	}
-}
-
-func TestDriver_SetSource_Force(t *testing.T) {
-	d := New()
-	info, err := d.CreateVolumeGroup(testCtx(), drivers.VolumeGroupSpec{Name: "force-source"})
-	if err != nil {
-		t.Fatalf("CreateVolumeGroup: %v", err)
-	}
-
-	// Capture log key-value pairs to verify the force flag is included.
-	var logLines []string
-	logger := funcr.New(func(_, args string) {
-		logLines = append(logLines, args)
-	}, funcr.Options{Verbosity: 1})
-	ctx := logr.NewContext(context.Background(), logger)
-
-	if err := d.SetSource(ctx, info.ID, drivers.SetSourceOptions{Force: true}); err != nil {
-		t.Fatalf("SetSource with Force: %v", err)
-	}
-
-	status, err := d.GetReplicationStatus(testCtx(), info.ID)
-	if err != nil {
-		t.Fatalf("GetReplicationStatus: %v", err)
-	}
-	if status.Role != drivers.RoleSource {
-		t.Fatalf("expected RoleSource, got %q", status.Role)
-	}
-
-	// Verify the "force"=true key-value pair was logged by SetSource.
-	forceLogged := false
-	for _, line := range logLines {
-		if strings.Contains(line, `"force"`) && strings.Contains(line, "true") {
-			forceLogged = true
-			break
-		}
-	}
-	if !forceLogged {
-		t.Fatalf("expected force=true to be logged by SetSource, got log args: %v", logLines)
+	// SetSource is idempotent — calling again on Source returns nil.
+	if err := d.SetSource(testCtx(), info.ID); err != nil {
+		t.Fatalf("idempotent SetSource should succeed, got: %v", err)
 	}
 }
 
@@ -314,13 +244,10 @@ func TestDriver_ContextCancellation(t *testing.T) {
 	if _, err := d.GetVolumeGroup(ctx, "any-id"); err == nil {
 		t.Fatal("expected error from cancelled context, got nil")
 	}
-	if err := d.SetSource(ctx, "any-id", drivers.SetSourceOptions{}); err == nil {
+	if err := d.SetSource(ctx, "any-id"); err == nil {
 		t.Fatal("expected error from cancelled context, got nil")
 	}
-	if err := d.SetTarget(ctx, "any-id", drivers.SetTargetOptions{}); err == nil {
-		t.Fatal("expected error from cancelled context, got nil")
-	}
-	if err := d.StopReplication(ctx, "any-id", drivers.StopReplicationOptions{}); err == nil {
+	if err := d.StopReplication(ctx, "any-id"); err == nil {
 		t.Fatal("expected error from cancelled context, got nil")
 	}
 	if _, err := d.GetReplicationStatus(ctx, "any-id"); err == nil {
@@ -335,10 +262,10 @@ func TestDriver_Idempotency_SetSource(t *testing.T) {
 		t.Fatalf("CreateVolumeGroup: %v", err)
 	}
 
-	if err := d.SetSource(testCtx(), info.ID, drivers.SetSourceOptions{}); err != nil {
+	if err := d.SetSource(testCtx(), info.ID); err != nil {
 		t.Fatalf("first SetSource: %v", err)
 	}
-	if err := d.SetSource(testCtx(), info.ID, drivers.SetSourceOptions{}); err != nil {
+	if err := d.SetSource(testCtx(), info.ID); err != nil {
 		t.Fatalf("second SetSource (idempotent): %v", err)
 	}
 
@@ -351,29 +278,6 @@ func TestDriver_Idempotency_SetSource(t *testing.T) {
 	}
 }
 
-func TestDriver_Idempotency_SetTarget(t *testing.T) {
-	d := New()
-	info, err := d.CreateVolumeGroup(testCtx(), drivers.VolumeGroupSpec{Name: "idem-target"})
-	if err != nil {
-		t.Fatalf("CreateVolumeGroup: %v", err)
-	}
-
-	if err := d.SetTarget(testCtx(), info.ID, drivers.SetTargetOptions{}); err != nil {
-		t.Fatalf("first SetTarget: %v", err)
-	}
-	if err := d.SetTarget(testCtx(), info.ID, drivers.SetTargetOptions{}); err != nil {
-		t.Fatalf("second SetTarget (idempotent): %v", err)
-	}
-
-	status, err := d.GetReplicationStatus(testCtx(), info.ID)
-	if err != nil {
-		t.Fatalf("GetReplicationStatus: %v", err)
-	}
-	if status.Role != drivers.RoleTarget {
-		t.Fatalf("expected RoleTarget after idempotent SetTarget, got %q", status.Role)
-	}
-}
-
 func TestDriver_Idempotency_StopReplication(t *testing.T) {
 	d := New()
 	info, err := d.CreateVolumeGroup(testCtx(), drivers.VolumeGroupSpec{Name: "idem-stop"})
@@ -382,7 +286,7 @@ func TestDriver_Idempotency_StopReplication(t *testing.T) {
 	}
 
 	// StopReplication on NonReplicated is idempotent
-	if err := d.StopReplication(testCtx(), info.ID, drivers.StopReplicationOptions{}); err != nil {
+	if err := d.StopReplication(testCtx(), info.ID); err != nil {
 		t.Fatalf("StopReplication on NonReplicated: %v", err)
 	}
 
@@ -428,11 +332,8 @@ func TestDriver_UnknownVolumeGroup_ReplicationMethods(t *testing.T) {
 		name string
 		fn   func() error
 	}{
-		{"SetSource", func() error { return d.SetSource(testCtx(), unknownID, drivers.SetSourceOptions{}) }},
-		{"SetTarget", func() error { return d.SetTarget(testCtx(), unknownID, drivers.SetTargetOptions{}) }},
-		{"StopReplication", func() error {
-			return d.StopReplication(testCtx(), unknownID, drivers.StopReplicationOptions{})
-		}},
+		{"SetSource", func() error { return d.SetSource(testCtx(), unknownID) }},
+		{"StopReplication", func() error { return d.StopReplication(testCtx(), unknownID) }},
 		{"GetReplicationStatus", func() error {
 			_, err := d.GetReplicationStatus(testCtx(), unknownID)
 			return err
@@ -471,7 +372,7 @@ func TestDriver_ConcurrentAccess(t *testing.T) {
 				return
 			}
 
-			if err := d.SetSource(testCtx(), info.ID, drivers.SetSourceOptions{}); err != nil {
+			if err := d.SetSource(testCtx(), info.ID); err != nil {
 				t.Errorf("SetSource: %v", err)
 				return
 			}
@@ -481,7 +382,7 @@ func TestDriver_ConcurrentAccess(t *testing.T) {
 				return
 			}
 
-			if err := d.StopReplication(testCtx(), info.ID, drivers.StopReplicationOptions{}); err != nil {
+			if err := d.StopReplication(testCtx(), info.ID); err != nil {
 				t.Errorf("StopReplication: %v", err)
 				return
 			}

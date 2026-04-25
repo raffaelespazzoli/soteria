@@ -118,11 +118,7 @@ func (d *Driver) GetVolumeGroup(ctx context.Context, id drivers.VolumeGroupID) (
 	return copyInfo(state.info), nil
 }
 
-// SetSource intentionally mirrors the structure of SetTarget — the duplication
-// is inherent to implementing symmetric StorageProvider interface methods.
-//
-//nolint:dupl
-func (d *Driver) SetSource(ctx context.Context, id drivers.VolumeGroupID, opts drivers.SetSourceOptions) error {
+func (d *Driver) SetSource(ctx context.Context, id drivers.VolumeGroupID) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -148,47 +144,11 @@ func (d *Driver) SetSource(ctx context.Context, id drivers.VolumeGroupID, opts d
 
 	state.role = drivers.RoleSource
 
-	log.FromContext(ctx).V(1).Info("No-op: Set volume group to Source", "volumeGroupID", id, "force", opts.Force)
+	log.FromContext(ctx).V(1).Info("No-op: Set volume group to Source", "volumeGroupID", id)
 	return nil
 }
 
-// SetTarget intentionally mirrors the structure of SetSource — the duplication
-// is inherent to implementing symmetric StorageProvider interface methods.
-//
-//nolint:dupl
-func (d *Driver) SetTarget(ctx context.Context, id drivers.VolumeGroupID, opts drivers.SetTargetOptions) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	state, ok := d.volumeGroups[id]
-	if !ok {
-		log.FromContext(ctx).V(1).Info("No-op: Volume group not found for SetTarget", "volumeGroupID", id)
-		return drivers.ErrVolumeGroupNotFound
-	}
-
-	if state.role == drivers.RoleTarget {
-		log.FromContext(ctx).V(1).Info("No-op: Already Target, no-op", "volumeGroupID", id)
-		return nil
-	}
-	if state.role != drivers.RoleNonReplicated {
-		log.FromContext(ctx).V(1).Info("No-op: Invalid transition for SetTarget",
-			"volumeGroupID", id, "currentRole", state.role)
-		return drivers.ErrInvalidTransition
-	}
-
-	state.role = drivers.RoleTarget
-
-	log.FromContext(ctx).V(1).Info("No-op: Set volume group to Target", "volumeGroupID", id, "force", opts.Force)
-	return nil
-}
-
-func (d *Driver) StopReplication(
-	ctx context.Context, id drivers.VolumeGroupID, opts drivers.StopReplicationOptions,
-) error {
+func (d *Driver) StopReplication(ctx context.Context, id drivers.VolumeGroupID) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -209,7 +169,7 @@ func (d *Driver) StopReplication(
 
 	state.role = drivers.RoleNonReplicated
 
-	log.FromContext(ctx).V(1).Info("No-op: Stopped replication", "volumeGroupID", id, "force", opts.Force)
+	log.FromContext(ctx).V(1).Info("No-op: Stopped replication", "volumeGroupID", id)
 	return nil
 }
 

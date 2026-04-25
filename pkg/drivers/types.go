@@ -34,7 +34,8 @@ type VolumeRole string
 const (
 	// RoleNonReplicated indicates the volume group has no active replication.
 	// This is the initial state after creation and the intermediate state
-	// during role changes (e.g., re-protect always goes Source → NonReplicated → Target).
+	// during role changes (e.g., failover goes Source → NonReplicated via
+	// StopReplication, then re-protect calls SetSource on the other site).
 	RoleNonReplicated VolumeRole = "NonReplicated"
 
 	// RoleSource indicates the volume group is the replication source (primary).
@@ -59,7 +60,7 @@ const (
 	HealthDegraded ReplicationHealth = "Degraded"
 
 	// HealthSyncing indicates a sync operation is in progress (initial sync
-	// after SetSource/SetTarget, or catch-up after a temporary disruption).
+	// after SetSource, or catch-up after a temporary disruption).
 	HealthSyncing ReplicationHealth = "Syncing"
 
 	// HealthUnknown indicates the driver cannot determine replication health.
@@ -115,29 +116,4 @@ type ReplicationStatus struct {
 	// EstimatedRPO is the driver's estimate of data loss if failover happened now.
 	// Nil if the driver cannot calculate RPO (e.g., replication not yet established).
 	EstimatedRPO *time.Duration
-}
-
-// SetSourceOptions configures a SetSource operation.
-type SetSourceOptions struct {
-	// Force tells the driver to proceed even if the paired target is
-	// unreachable. Required for disaster failover when the remote site is
-	// down; must not be set for planned migration where both sites are healthy.
-	Force bool
-}
-
-// SetTargetOptions configures a SetTarget operation.
-type SetTargetOptions struct {
-	// Force tells the driver to proceed even if the paired source is
-	// unreachable. Used during re-protect when the old source site may
-	// still be down after a disaster failover.
-	Force bool
-}
-
-// StopReplicationOptions configures a StopReplication operation.
-type StopReplicationOptions struct {
-	// Force tells the driver to stop replication even if there are
-	// outstanding writes or the peer is unreachable. Used during re-protect
-	// when the previously active site must transition to NonReplicated
-	// regardless of in-flight I/O.
-	Force bool
 }

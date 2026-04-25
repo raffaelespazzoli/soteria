@@ -20,13 +20,15 @@ import "context"
 
 // StorageProvider is the contract between the DR orchestrator and vendor-specific
 // storage backends (FR20). The interface uses a role-based replication model with
-// three volume roles (NonReplicated, Source, Target) and four valid transitions,
-// all routed through the NonReplicated state:
+// two engine-driven transitions routed through the NonReplicated state:
 //
-//	NonReplicated → Source   (SetSource)
-//	NonReplicated → Target   (SetTarget)
+//	NonReplicated → Source        (SetSource)
 //	Source        → NonReplicated (StopReplication)
-//	Target        → NonReplicated (StopReplication)
+//
+// The Target role still exists in [ReplicationStatus] — the paired site's driver
+// may report its volumes as Target via [GetReplicationStatus]. However, the engine
+// never explicitly sets a volume to Target; when one site calls SetSource, the
+// paired site implicitly becomes the target as an admin precondition.
 //
 // Volume pairing is an admin precondition — the driver assumes that paired
 // volumes are correctly configured on both storage instances before any
@@ -59,26 +61,17 @@ type StorageProvider interface {
 
 	// SetSource transitions a volume group to the Source role (replication
 	// origin, read-write). Valid from NonReplicated; returns ErrInvalidTransition
-	// if the current role is Target. When opts.Force is true the driver proceeds
-	// even if the paired target is unreachable — required for disaster failover
-	// when the remote site is down. Idempotency: returns nil if the volume group
-	// is already Source. Returns ErrVolumeGroupNotFound if the group does not exist.
-	SetSource(ctx context.Context, id VolumeGroupID, opts SetSourceOptions) error
-
-	// SetTarget transitions a volume group to the Target role (replication
-	// destination, read-only). Valid from NonReplicated; returns ErrInvalidTransition
-	// if the current role is Source. When opts.Force is true the driver proceeds
-	// even if the paired source is unreachable. Idempotency: returns nil if the
-	// volume group is already Target. Returns ErrVolumeGroupNotFound if the group
-	// does not exist.
-	SetTarget(ctx context.Context, id VolumeGroupID, opts SetTargetOptions) error
+	// if the current role is Target. The driver must handle unreachable peers
+	// internally — resilience to network partitions is the driver's responsibility,
+	// not the orchestrator's. Idempotency: returns nil if the volume group is
+	// already Source. Returns ErrVolumeGroupNotFound if the group does not exist.
+	SetSource(ctx context.Context, id VolumeGroupID) error
 
 	// StopReplication transitions a volume group from Source or Target back to
-	// NonReplicated. When opts.Force is true the driver stops replication even
-	// if there are outstanding writes or the peer is unreachable. Idempotency:
-	// returns nil if the volume group is already NonReplicated. Returns
-	// ErrVolumeGroupNotFound if the group does not exist.
-	StopReplication(ctx context.Context, id VolumeGroupID, opts StopReplicationOptions) error
+	// NonReplicated. The driver must handle unreachable peers and outstanding
+	// writes internally. Idempotency: returns nil if the volume group is already
+	// NonReplicated. Returns ErrVolumeGroupNotFound if the group does not exist.
+	StopReplication(ctx context.Context, id VolumeGroupID) error
 
 	// GetReplicationStatus returns the current replication role, health, and
 	// estimated RPO for a volume group. The workflow engine polls this method

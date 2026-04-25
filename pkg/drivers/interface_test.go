@@ -35,15 +35,11 @@ func (m *mockProvider) GetVolumeGroup(_ context.Context, _ VolumeGroupID) (Volum
 	return VolumeGroupInfo{}, nil
 }
 
-func (m *mockProvider) SetSource(_ context.Context, _ VolumeGroupID, _ SetSourceOptions) error {
+func (m *mockProvider) SetSource(_ context.Context, _ VolumeGroupID) error {
 	return nil
 }
 
-func (m *mockProvider) SetTarget(_ context.Context, _ VolumeGroupID, _ SetTargetOptions) error {
-	return nil
-}
-
-func (m *mockProvider) StopReplication(_ context.Context, _ VolumeGroupID, _ StopReplicationOptions) error {
+func (m *mockProvider) StopReplication(_ context.Context, _ VolumeGroupID) error {
 	return nil
 }
 

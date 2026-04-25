@@ -62,7 +62,7 @@ func testSpec(suffix string) drivers.VolumeGroupSpec {
 
 // runLifecycleTest exercises the complete DR lifecycle in sequence:
 // Create → SetSource → GetReplicationStatus(Source) → StopReplication →
-// SetTarget → GetReplicationStatus(Target) → StopReplication → Delete → Get(deleted).
+// GetReplicationStatus(NonReplicated) → Delete → Get(deleted).
 //
 // Each step depends on the state left by the previous step. If any step fails,
 // subsequent steps are skipped because they would produce misleading results.
@@ -88,7 +88,7 @@ func runLifecycleTest(t *testing.T, provider drivers.StorageProvider) {
 	}
 
 	t.Run("SetSource", func(t *testing.T) {
-		if err := provider.SetSource(ctx, vgID, drivers.SetSourceOptions{Force: false}); err != nil {
+		if err := provider.SetSource(ctx, vgID); err != nil {
 			t.Fatalf("SetSource failed for volume group %s: %v", vgID, err)
 		}
 	})
@@ -115,8 +115,8 @@ func runLifecycleTest(t *testing.T, provider drivers.StorageProvider) {
 		return
 	}
 
-	t.Run("StopReplication_FromSource", func(t *testing.T) {
-		if err := provider.StopReplication(ctx, vgID, drivers.StopReplicationOptions{Force: false}); err != nil {
+	t.Run("StopReplication", func(t *testing.T) {
+		if err := provider.StopReplication(ctx, vgID); err != nil {
 			t.Fatalf("StopReplication failed for volume group %s: %v", vgID, err)
 		}
 	})
@@ -124,32 +124,14 @@ func runLifecycleTest(t *testing.T, provider drivers.StorageProvider) {
 		return
 	}
 
-	t.Run("SetTarget", func(t *testing.T) {
-		if err := provider.SetTarget(ctx, vgID, drivers.SetTargetOptions{Force: false}); err != nil {
-			t.Fatalf("SetTarget failed for volume group %s: %v", vgID, err)
-		}
-	})
-	if t.Failed() {
-		return
-	}
-
-	t.Run("GetReplicationStatus_Target", func(t *testing.T) {
+	t.Run("GetReplicationStatus_NonReplicated", func(t *testing.T) {
 		status, err := provider.GetReplicationStatus(ctx, vgID)
 		if err != nil {
 			t.Fatalf("GetReplicationStatus failed for volume group %s: %v", vgID, err)
 		}
-		if status.Role != drivers.RoleTarget {
+		if status.Role != drivers.RoleNonReplicated {
 			t.Fatalf("Expected role %s, got %s for volume group %s",
-				drivers.RoleTarget, status.Role, vgID)
-		}
-	})
-	if t.Failed() {
-		return
-	}
-
-	t.Run("StopReplication_FromTarget", func(t *testing.T) {
-		if err := provider.StopReplication(ctx, vgID, drivers.StopReplicationOptions{Force: false}); err != nil {
-			t.Fatalf("StopReplication failed for volume group %s: %v", vgID, err)
+				drivers.RoleNonReplicated, status.Role, vgID)
 		}
 	})
 	if t.Failed() {
@@ -226,35 +208,19 @@ func runIdempotencyTest(t *testing.T, provider drivers.StorageProvider) {
 	})
 
 	t.Run("SetSource", func(t *testing.T) {
-		opts := drivers.SetSourceOptions{Force: false}
-		if err := provider.SetSource(ctx, vgID, opts); err != nil {
+		if err := provider.SetSource(ctx, vgID); err != nil {
 			t.Fatalf("SetSource first call failed for volume group %s: %v", vgID, err)
 		}
-		if err := provider.SetSource(ctx, vgID, opts); err != nil {
+		if err := provider.SetSource(ctx, vgID); err != nil {
 			t.Fatalf("SetSource second call failed (idempotency) for volume group %s: %v", vgID, err)
 		}
 	})
 
-	if err := provider.StopReplication(ctx, vgID, drivers.StopReplicationOptions{Force: false}); err != nil {
-		t.Fatalf("Setup: StopReplication (before SetTarget idempotency) failed for volume group %s: %v", vgID, err)
-	}
-
-	t.Run("SetTarget", func(t *testing.T) {
-		opts := drivers.SetTargetOptions{Force: false}
-		if err := provider.SetTarget(ctx, vgID, opts); err != nil {
-			t.Fatalf("SetTarget first call failed for volume group %s: %v", vgID, err)
-		}
-		if err := provider.SetTarget(ctx, vgID, opts); err != nil {
-			t.Fatalf("SetTarget second call failed (idempotency) for volume group %s: %v", vgID, err)
-		}
-	})
-
 	t.Run("StopReplication", func(t *testing.T) {
-		opts := drivers.StopReplicationOptions{Force: false}
-		if err := provider.StopReplication(ctx, vgID, opts); err != nil {
+		if err := provider.StopReplication(ctx, vgID); err != nil {
 			t.Fatalf("StopReplication first call failed for volume group %s: %v", vgID, err)
 		}
-		if err := provider.StopReplication(ctx, vgID, opts); err != nil {
+		if err := provider.StopReplication(ctx, vgID); err != nil {
 			t.Fatalf("StopReplication second call failed (idempotency) for volume group %s: %v", vgID, err)
 		}
 	})
@@ -293,12 +259,11 @@ func runContextCancellationTest(t *testing.T, provider drivers.StorageProvider) 
 	vgID := info.ID
 
 	t.Cleanup(func() {
-		// Best-effort teardown so we don't leak resources on real backends.
-		_ = provider.StopReplication(context.Background(), vgID, drivers.StopReplicationOptions{Force: true})
+		_ = provider.StopReplication(context.Background(), vgID)
 		_ = provider.DeleteVolumeGroup(context.Background(), vgID)
 	})
 
-	if err := provider.SetSource(validCtx, vgID, drivers.SetSourceOptions{Force: false}); err != nil {
+	if err := provider.SetSource(validCtx, vgID); err != nil {
 		t.Fatalf("Setup: SetSource failed for volume group %s: %v", vgID, err)
 	}
 
@@ -320,21 +285,14 @@ func runContextCancellationTest(t *testing.T, provider drivers.StorageProvider) 
 	})
 
 	t.Run("SetSource", func(t *testing.T) {
-		err := provider.SetSource(cancelledCtx, vgID, drivers.SetSourceOptions{Force: false})
+		err := provider.SetSource(cancelledCtx, vgID)
 		if err == nil {
 			t.Fatalf("SetSource: expected error with cancelled context for volume group %s, got nil", vgID)
 		}
 	})
 
-	t.Run("SetTarget", func(t *testing.T) {
-		err := provider.SetTarget(cancelledCtx, vgID, drivers.SetTargetOptions{Force: false})
-		if err == nil {
-			t.Fatalf("SetTarget: expected error with cancelled context for volume group %s, got nil", vgID)
-		}
-	})
-
 	t.Run("StopReplication", func(t *testing.T) {
-		err := provider.StopReplication(cancelledCtx, vgID, drivers.StopReplicationOptions{Force: false})
+		err := provider.StopReplication(cancelledCtx, vgID)
 		if err == nil {
 			t.Fatalf("StopReplication: expected error with cancelled context for volume group %s, got nil", vgID)
 		}
@@ -373,17 +331,7 @@ func runErrorConditionsTest(t *testing.T, provider drivers.StorageProvider) {
 	})
 
 	t.Run("SetSource_NotFound", func(t *testing.T) {
-		err := provider.SetSource(ctx, nonexistentID, drivers.SetSourceOptions{Force: false})
-		if err == nil {
-			t.Fatal("Expected error for nonexistent volume group, got nil")
-		}
-		if !errors.Is(err, drivers.ErrVolumeGroupNotFound) {
-			t.Fatalf("Expected error wrapping %v, got: %v", drivers.ErrVolumeGroupNotFound, err)
-		}
-	})
-
-	t.Run("SetTarget_NotFound", func(t *testing.T) {
-		err := provider.SetTarget(ctx, nonexistentID, drivers.SetTargetOptions{Force: false})
+		err := provider.SetSource(ctx, nonexistentID)
 		if err == nil {
 			t.Fatal("Expected error for nonexistent volume group, got nil")
 		}
@@ -393,7 +341,7 @@ func runErrorConditionsTest(t *testing.T, provider drivers.StorageProvider) {
 	})
 
 	t.Run("StopReplication_NotFound", func(t *testing.T) {
-		err := provider.StopReplication(ctx, nonexistentID, drivers.StopReplicationOptions{Force: false})
+		err := provider.StopReplication(ctx, nonexistentID)
 		if err == nil {
 			t.Fatal("Expected error for nonexistent volume group, got nil")
 		}

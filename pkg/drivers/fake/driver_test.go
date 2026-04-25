@@ -33,7 +33,7 @@ func TestDriver_CompileTimeInterfaceCheck(t *testing.T) {
 	var _ drivers.StorageProvider = (*fake.Driver)(nil)
 }
 
-// TestDriver_DefaultBehavior_ReturnsSuccess verifies that all 7 StorageProvider
+// TestDriver_DefaultBehavior_ReturnsSuccess verifies that all 6 StorageProvider
 // methods succeed with zero/default values when no reactions are programmed (AC4).
 func TestDriver_DefaultBehavior_ReturnsSuccess(t *testing.T) {
 	ctx := context.Background()
@@ -53,15 +53,11 @@ func TestDriver_DefaultBehavior_ReturnsSuccess(t *testing.T) {
 		t.Errorf("GetVolumeGroup: expected nil error, got %v", err)
 	}
 
-	if err := d.SetSource(ctx, "vg-1", drivers.SetSourceOptions{}); err != nil {
+	if err := d.SetSource(ctx, "vg-1"); err != nil {
 		t.Errorf("SetSource: expected nil error, got %v", err)
 	}
 
-	if err := d.SetTarget(ctx, "vg-1", drivers.SetTargetOptions{}); err != nil {
-		t.Errorf("SetTarget: expected nil error, got %v", err)
-	}
-
-	if err := d.StopReplication(ctx, "vg-1", drivers.StopReplicationOptions{}); err != nil {
+	if err := d.StopReplication(ctx, "vg-1"); err != nil {
 		t.Errorf("StopReplication: expected nil error, got %v", err)
 	}
 
@@ -102,7 +98,7 @@ func TestDriver_OnSetSource_ReturnError(t *testing.T) {
 	d := fake.New()
 	d.OnSetSource("vg-1").Return(drivers.ErrInvalidTransition)
 
-	err := d.SetSource(ctx, "vg-1", drivers.SetSourceOptions{})
+	err := d.SetSource(ctx, "vg-1")
 	if !errors.Is(err, drivers.ErrInvalidTransition) {
 		t.Errorf("expected ErrInvalidTransition, got %v", err)
 	}
@@ -117,7 +113,7 @@ func TestDriver_OnSetSource_ReturnNil(t *testing.T) {
 	d := fake.New()
 	d.OnSetSource("vg-1").Return(nil)
 
-	if err := d.SetSource(ctx, "vg-1", drivers.SetSourceOptions{}); err != nil {
+	if err := d.SetSource(ctx, "vg-1"); err != nil {
 		t.Errorf("expected nil error, got %v", err)
 	}
 }
@@ -166,15 +162,15 @@ func TestDriver_MultipleReactions_ConsumedInOrder(t *testing.T) {
 	d.OnSetSource("vg-1").Return(drivers.ErrInvalidTransition)
 
 	// First call: nil
-	if err := d.SetSource(ctx, "vg-1", drivers.SetSourceOptions{}); err != nil {
+	if err := d.SetSource(ctx, "vg-1"); err != nil {
 		t.Errorf("first call: expected nil, got %v", err)
 	}
 	// Second call: error
-	if err := d.SetSource(ctx, "vg-1", drivers.SetSourceOptions{}); !errors.Is(err, drivers.ErrInvalidTransition) {
+	if err := d.SetSource(ctx, "vg-1"); !errors.Is(err, drivers.ErrInvalidTransition) {
 		t.Errorf("second call: expected ErrInvalidTransition, got %v", err)
 	}
 	// Third call: default (nil — no more reactions)
-	if err := d.SetSource(ctx, "vg-1", drivers.SetSourceOptions{}); err != nil {
+	if err := d.SetSource(ctx, "vg-1"); err != nil {
 		t.Errorf("third call: expected default nil, got %v", err)
 	}
 }
@@ -187,11 +183,11 @@ func TestDriver_ArgMatching_SpecificVgID(t *testing.T) {
 	d.OnSetSource("vg-match").Return(drivers.ErrInvalidTransition)
 
 	// Non-matching call gets default (nil)
-	if err := d.SetSource(ctx, "vg-other", drivers.SetSourceOptions{}); err != nil {
+	if err := d.SetSource(ctx, "vg-other"); err != nil {
 		t.Errorf("non-matching call: expected nil, got %v", err)
 	}
 	// Matching call gets programmed error
-	if err := d.SetSource(ctx, "vg-match", drivers.SetSourceOptions{}); !errors.Is(err, drivers.ErrInvalidTransition) {
+	if err := d.SetSource(ctx, "vg-match"); !errors.Is(err, drivers.ErrInvalidTransition) {
 		t.Errorf("matching call: expected ErrInvalidTransition, got %v", err)
 	}
 }
@@ -213,8 +209,8 @@ func TestDriver_CallRecording(t *testing.T) {
 	ctx := context.Background()
 	d := fake.New()
 
-	_ = d.SetSource(ctx, "vg-1", drivers.SetSourceOptions{Force: true})
-	_ = d.SetSource(ctx, "vg-2", drivers.SetSourceOptions{})
+	_ = d.SetSource(ctx, "vg-1")
+	_ = d.SetSource(ctx, "vg-2")
 	_ = d.DeleteVolumeGroup(ctx, "vg-1")
 
 	all := d.Calls()
@@ -247,7 +243,7 @@ func TestDriver_Reset(t *testing.T) {
 	ctx := context.Background()
 	d := fake.New()
 	d.OnSetSource("vg-1").Return(drivers.ErrInvalidTransition)
-	_ = d.SetSource(ctx, "vg-1", drivers.SetSourceOptions{})
+	_ = d.SetSource(ctx, "vg-1")
 
 	d.Reset()
 
@@ -255,7 +251,7 @@ func TestDriver_Reset(t *testing.T) {
 		t.Error("after Reset: expected 0 SetSource calls")
 	}
 	// Reaction should be gone — next call should get default nil
-	if err := d.SetSource(ctx, "vg-1", drivers.SetSourceOptions{}); err != nil {
+	if err := d.SetSource(ctx, "vg-1"); err != nil {
 		t.Errorf("after Reset: expected nil error (default), got %v", err)
 	}
 }
@@ -274,7 +270,7 @@ func TestDriver_ConcurrentAccess(t *testing.T) {
 		go func() {
 			defer wg.Done()
 			d.OnSetSource().Return(nil)
-			_ = d.SetSource(ctx, "vg-1", drivers.SetSourceOptions{})
+			_ = d.SetSource(ctx, "vg-1")
 			_ = d.CallCount("SetSource")
 			_ = d.Calls()
 		}()
@@ -318,19 +314,13 @@ func TestDriver_ErrorInjection_AllMethods(t *testing.T) {
 		{
 			name:    "SetSource returns ErrInvalidTransition",
 			setup:   func(d *fake.Driver) { d.OnSetSource("vg-1").Return(drivers.ErrInvalidTransition) },
-			call:    func(d *fake.Driver) error { return d.SetSource(ctx, "vg-1", drivers.SetSourceOptions{}) },
-			wantErr: drivers.ErrInvalidTransition,
-		},
-		{
-			name:    "SetTarget returns ErrInvalidTransition",
-			setup:   func(d *fake.Driver) { d.OnSetTarget("vg-1").Return(drivers.ErrInvalidTransition) },
-			call:    func(d *fake.Driver) error { return d.SetTarget(ctx, "vg-1", drivers.SetTargetOptions{}) },
+			call:    func(d *fake.Driver) error { return d.SetSource(ctx, "vg-1") },
 			wantErr: drivers.ErrInvalidTransition,
 		},
 		{
 			name:    "StopReplication returns ErrReplicationNotReady",
 			setup:   func(d *fake.Driver) { d.OnStopReplication("vg-1").Return(drivers.ErrReplicationNotReady) },
-			call:    func(d *fake.Driver) error { return d.StopReplication(ctx, "vg-1", drivers.StopReplicationOptions{}) },
+			call:    func(d *fake.Driver) error { return d.StopReplication(ctx, "vg-1") },
 			wantErr: drivers.ErrReplicationNotReady,
 		},
 		{
@@ -358,9 +348,8 @@ func TestDriver_ErrorInjection_AllMethods(t *testing.T) {
 func TestDriver_CallArgs_Recorded(t *testing.T) {
 	ctx := context.Background()
 	d := fake.New()
-	opts := drivers.SetSourceOptions{Force: true}
 
-	_ = d.SetSource(ctx, "vg-42", opts)
+	_ = d.SetSource(ctx, "vg-42")
 
 	calls := d.CallsTo("SetSource")
 	if len(calls) != 1 {
@@ -368,9 +357,6 @@ func TestDriver_CallArgs_Recorded(t *testing.T) {
 	}
 	if calls[0].Args[0] != drivers.VolumeGroupID("vg-42") {
 		t.Errorf("expected Args[0] == %q, got %v", "vg-42", calls[0].Args[0])
-	}
-	if calls[0].Args[1] != opts {
-		t.Errorf("expected Args[1] == %+v, got %+v", opts, calls[0].Args[1])
 	}
 }
 
@@ -435,7 +421,7 @@ func TestDriver_ErrorInjection_CallStillRecorded(t *testing.T) {
 func TestDriver_Calls_ReturnsCopy(t *testing.T) {
 	ctx := context.Background()
 	d := fake.New()
-	_ = d.SetSource(ctx, "vg-1", drivers.SetSourceOptions{})
+	_ = d.SetSource(ctx, "vg-1")
 
 	snapshot := d.Calls()
 

@@ -29,10 +29,10 @@ limitations under the License.
 //
 // Workflow:
 //
-//	Phase 1 — Role setup: for each VG, StopReplication(force=true) then
-//	  SetSource(force=false). StopReplication failures are tolerated (old
-//	  active site may be unreachable). SetSource failures mark the VG as
-//	  failed; if ALL VGs fail SetSource, the execution fails.
+//	Phase 1 — Role setup: for each VG, StopReplication then SetSource.
+//	  StopReplication failures are tolerated (old active site may be
+//	  unreachable). SetSource failures mark the VG as failed; if ALL VGs
+//	  fail SetSource, the execution fails.
 //
 //	Phase 2 — Health monitoring: poll GetReplicationStatus at configurable
 //	  intervals until all VGs report HealthHealthy or the timeout expires.
@@ -165,8 +165,7 @@ func (h *ReprotectHandler) Execute(ctx context.Context, input ReprotectInput) (*
 			return nil, ctx.Err()
 		}
 
-		// StopReplication(force=true) — tolerate failure (AC4).
-		stopErr := vg.Driver.StopReplication(ctx, vg.VGID, drivers.StopReplicationOptions{Force: true})
+		stopErr := vg.Driver.StopReplication(ctx, vg.VGID)
 		now := metav1.Now()
 		if stopErr != nil {
 			logger.V(1).Info("StopReplication failed for volume group, proceeding",
@@ -187,11 +186,10 @@ func (h *ReprotectHandler) Execute(ctx context.Context, input ReprotectInput) (*
 			})
 		}
 
-		// SetSource(force=false).
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		setErr := vg.Driver.SetSource(ctx, vg.VGID, drivers.SetSourceOptions{Force: false})
+		setErr := vg.Driver.SetSource(ctx, vg.VGID)
 		now = metav1.Now()
 		if setErr != nil {
 			logger.Info("SetSource failed for volume group",

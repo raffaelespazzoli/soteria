@@ -88,7 +88,7 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 - Event reasons: PascalCase past-tense — `FailoverStarted`, `WaveCompleted`, `GroupFailed`
 - RBAC: Kubernetes-native only — no custom authorization logic
 - DRPlan 8-phase lifecycle: 4 rest states (`SteadyState`, `FailedOver`, `DRedSteadyState`, `FailedBack`) + 4 transition states (`FailingOver`, `Reprotecting`, `FailingBack`, `ReprotectingBack`). Phase advances to transition state when execution starts, to rest state when execution completes
-- Unified handler model: `FailoverHandler` (config: GracefulShutdown, Force) implements both failover and failback. `ReprotectHandler` implements both reprotect and restore. Direction is encoded in state machine phases, not handler logic
+- Unified handler model: `FailoverHandler` (config: GracefulShutdown) implements both failover and failback. `ReprotectHandler` implements both reprotect and restore. Direction is encoded in state machine phases, not handler logic
 
 **ScyllaDB Storage Layer:**
 
@@ -103,8 +103,8 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 
 **StorageProvider Driver Framework:**
 
-- 7-method interface: CreateVolumeGroup, DeleteVolumeGroup, GetVolumeGroup, SetSource, SetTarget, StopReplication, GetReplicationStatus
-- Replication model uses three volume roles (NonReplicated, Source, Target) with all transitions routed through NonReplicated
+- 6-method interface: CreateVolumeGroup, DeleteVolumeGroup, GetVolumeGroup, SetSource, StopReplication, GetReplicationStatus
+- Replication model uses two engine-driven transitions (NonReplicated → Source, Source → NonReplicated) while the Target role is observable via GetReplicationStatus but not explicitly set by the engine
 - Drivers act as reconcilers — check actual storage state before applying changes
 - All 7 methods must be idempotent — safe to retry after crash/restart
 - Driver selection is implicit from PVC storage class — no StorageProviderConfig CRD

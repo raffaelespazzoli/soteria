@@ -24,8 +24,8 @@ limitations under the License.
 // of the StorageProvider contract:
 //
 //   - Lifecycle — the complete DR lifecycle sequence: CreateVolumeGroup →
-//     SetSource → GetReplicationStatus(Source) → StopReplication → SetTarget →
-//     GetReplicationStatus(Target) → StopReplication → DeleteVolumeGroup →
+//     SetSource → GetReplicationStatus(Source) → StopReplication →
+//     GetReplicationStatus(NonReplicated) → DeleteVolumeGroup →
 //     GetVolumeGroup(deleted). Verifies correct role transitions and that
 //     deletion is confirmed via [drivers.ErrVolumeGroupNotFound].
 //

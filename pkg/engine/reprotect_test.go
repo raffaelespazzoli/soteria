@@ -474,7 +474,7 @@ func TestReprotect_EmptyVolumeGroups(t *testing.T) {
 	}
 }
 
-func TestReprotect_ForceFlags(t *testing.T) {
+func TestReprotect_DriverCallsMade(t *testing.T) {
 	d := fake.New()
 	d.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
 		ReplicationStatus: &drivers.ReplicationStatus{Health: drivers.HealthHealthy},
@@ -492,30 +492,14 @@ func TestReprotect_ForceFlags(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify StopReplication used Force=true.
 	stopCalls := d.CallsTo("StopReplication")
 	if len(stopCalls) != 1 {
 		t.Fatalf("expected 1 StopReplication call, got %d", len(stopCalls))
 	}
-	stopOpts, ok := stopCalls[0].Args[1].(drivers.StopReplicationOptions)
-	if !ok {
-		t.Fatal("StopReplication args[1] is not StopReplicationOptions")
-	}
-	if !stopOpts.Force {
-		t.Error("expected StopReplication Force=true")
-	}
 
-	// Verify SetSource used Force=false.
 	srcCalls := d.CallsTo("SetSource")
 	if len(srcCalls) != 1 {
 		t.Fatalf("expected 1 SetSource call, got %d", len(srcCalls))
-	}
-	srcOpts, ok := srcCalls[0].Args[1].(drivers.SetSourceOptions)
-	if !ok {
-		t.Fatal("SetSource args[1] is not SetSourceOptions")
-	}
-	if srcOpts.Force {
-		t.Error("expected SetSource Force=false")
 	}
 }
 

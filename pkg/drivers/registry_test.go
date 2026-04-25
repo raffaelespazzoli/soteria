@@ -38,13 +38,10 @@ func (s *stubProvider) DeleteVolumeGroup(_ context.Context, _ VolumeGroupID) err
 func (s *stubProvider) GetVolumeGroup(_ context.Context, _ VolumeGroupID) (VolumeGroupInfo, error) {
 	return VolumeGroupInfo{}, nil
 }
-func (s *stubProvider) SetSource(_ context.Context, _ VolumeGroupID, _ SetSourceOptions) error {
+func (s *stubProvider) SetSource(_ context.Context, _ VolumeGroupID) error {
 	return nil
 }
-func (s *stubProvider) SetTarget(_ context.Context, _ VolumeGroupID, _ SetTargetOptions) error {
-	return nil
-}
-func (s *stubProvider) StopReplication(_ context.Context, _ VolumeGroupID, _ StopReplicationOptions) error {
+func (s *stubProvider) StopReplication(_ context.Context, _ VolumeGroupID) error {
 	return nil
 }
 func (s *stubProvider) GetReplicationStatus(_ context.Context, _ VolumeGroupID) (ReplicationStatus, error) {

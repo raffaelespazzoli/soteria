@@ -1,6 +1,6 @@
 # Story 5.7: Driver Interface Simplification & Workflow Symmetry
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -110,6 +110,12 @@ This story is a correction that addresses design insights identified during the 
   - [ ] 8.6 Run `make test` — all tests pass
   - [ ] 8.7 Run `make lint-fix && make lint`
   - [ ] 8.8 Run `make build` — compiles cleanly
+
+### Review Findings
+
+- [x] [Review][Patch] Update stale engine architecture comments for the VM-stop-only Step 0 and unified `StopReplication -> StartVM` flow [`pkg/engine/doc.go:55`]
+- [x] [Review][Patch] Refresh project AI context to the 6-method driver interface and simplified failover config [`_bmad-output/project-context.md:91`]
+- [x] [Review][Patch] Remove the unused `FailoverHandler.Driver` field left behind after per-group driver resolution moved into `ExecutionGroup` [`pkg/engine/failover.go:80`]
 
 ## Dev Notes
 

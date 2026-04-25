@@ -1025,10 +1025,8 @@ func (r *DRExecutionReconciler) resolveHandler(
 				"VMManager not configured; planned migration requires a VMManager")
 		}
 		return &engine.FailoverHandler{
-			VMManager:        r.VMManager,
-			Config:           engine.FailoverConfig{GracefulShutdown: true, Force: false},
-			SyncPollInterval: 2 * time.Second,
-			SyncTimeout:      10 * time.Minute,
+			VMManager: r.VMManager,
+			Config:    engine.FailoverConfig{GracefulShutdown: true},
 		}, nil
 	case soteriav1alpha1.ExecutionModeDisaster:
 		if r.VMManager == nil {
@@ -1039,10 +1037,8 @@ func (r *DRExecutionReconciler) resolveHandler(
 				"VMManager not configured; disaster failover requires a VMManager")
 		}
 		return &engine.FailoverHandler{
-			VMManager:        r.VMManager,
-			Config:           engine.FailoverConfig{GracefulShutdown: false, Force: true},
-			SyncPollInterval: 2 * time.Second,
-			SyncTimeout:      10 * time.Minute,
+			VMManager: r.VMManager,
+			Config:    engine.FailoverConfig{GracefulShutdown: false},
 		}, nil
 	case soteriav1alpha1.ExecutionModeReprotect:
 		return &engine.NoOpHandler{}, nil

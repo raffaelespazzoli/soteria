@@ -17,11 +17,12 @@ limitations under the License.
 // Package drivers defines the StorageProvider interface, typed errors, driver
 // registry, and credential resolution for DR storage backends.
 //
-// StorageProvider is a 7-method interface (CreateVolumeGroup, DeleteVolumeGroup,
-// GetVolumeGroup, SetSource, SetTarget, StopReplication, GetReplicationStatus)
-// that every storage driver must implement. The replication model uses three
-// volume roles (NonReplicated, Source, Target) with all transitions routed
-// through NonReplicated. All methods are idempotent and accept context.Context
+// StorageProvider is a 6-method interface (CreateVolumeGroup, DeleteVolumeGroup,
+// GetVolumeGroup, SetSource, StopReplication, GetReplicationStatus) that every
+// storage driver must implement. The replication model uses two engine-driven
+// transitions (NonReplicated → Source, Source → NonReplicated) while the Target
+// role is observable via GetReplicationStatus but not explicitly set by the
+// engine. All methods are idempotent and accept context.Context
 // for cancellation. Implementations return typed sentinel errors from errors.go
 // so the workflow engine can branch on error type without coupling to driver
 // internals.

@@ -76,7 +76,7 @@ type reaction struct {
 //	d.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
 //	    ReplicationStatus: &drivers.ReplicationStatus{Role: drivers.RoleSource},
 //	})
-//	err := d.SetSource(ctx, "vg-1", drivers.SetSourceOptions{})
+//	err := d.SetSource(ctx, "vg-1")
 //	// err == drivers.ErrInvalidTransition
 //
 // All public methods are protected by a single sync.Mutex and are safe for
@@ -164,12 +164,6 @@ func (d *Driver) OnGetVolumeGroup(vgID ...drivers.VolumeGroupID) *CallStub {
 // only calls with that ID match; otherwise the reaction matches any call.
 func (d *Driver) OnSetSource(vgID ...drivers.VolumeGroupID) *CallStub {
 	return d.onMethod("SetSource", optionalVgID(vgID))
-}
-
-// OnSetTarget programs a reaction for SetTarget. If vgID is provided,
-// only calls with that ID match; otherwise the reaction matches any call.
-func (d *Driver) OnSetTarget(vgID ...drivers.VolumeGroupID) *CallStub {
-	return d.onMethod("SetTarget", optionalVgID(vgID))
 }
 
 // OnStopReplication programs a reaction for StopReplication. If vgID is provided,
@@ -263,11 +257,11 @@ func (d *Driver) GetVolumeGroup(_ context.Context, id drivers.VolumeGroupID) (dr
 	return drivers.VolumeGroupInfo{}, nil
 }
 
-// SetSource records the call (including opts) and returns the programmed response.
+// SetSource records the call and returns the programmed response.
 // Default: returns nil.
-func (d *Driver) SetSource(_ context.Context, id drivers.VolumeGroupID, opts drivers.SetSourceOptions) error {
+func (d *Driver) SetSource(_ context.Context, id drivers.VolumeGroupID) error {
 	d.mu.Lock()
-	d.calls = append(d.calls, Call{Method: "SetSource", Args: []any{id, opts}})
+	d.calls = append(d.calls, Call{Method: "SetSource", Args: []any{id}})
 	r := d.findReaction("SetSource", id)
 	d.mu.Unlock()
 
@@ -277,27 +271,11 @@ func (d *Driver) SetSource(_ context.Context, id drivers.VolumeGroupID, opts dri
 	return nil
 }
 
-// SetTarget records the call (including opts) and returns the programmed response.
+// StopReplication records the call and returns the programmed response.
 // Default: returns nil.
-func (d *Driver) SetTarget(_ context.Context, id drivers.VolumeGroupID, opts drivers.SetTargetOptions) error {
+func (d *Driver) StopReplication(_ context.Context, id drivers.VolumeGroupID) error {
 	d.mu.Lock()
-	d.calls = append(d.calls, Call{Method: "SetTarget", Args: []any{id, opts}})
-	r := d.findReaction("SetTarget", id)
-	d.mu.Unlock()
-
-	if r != nil {
-		return r.resp.Err
-	}
-	return nil
-}
-
-// StopReplication records the call (including opts) and returns the programmed response.
-// Default: returns nil.
-func (d *Driver) StopReplication(
-	_ context.Context, id drivers.VolumeGroupID, opts drivers.StopReplicationOptions,
-) error {
-	d.mu.Lock()
-	d.calls = append(d.calls, Call{Method: "StopReplication", Args: []any{id, opts}})
+	d.calls = append(d.calls, Call{Method: "StopReplication", Args: []any{id}})
 	r := d.findReaction("StopReplication", id)
 	d.mu.Unlock()
 
