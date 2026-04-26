@@ -36,6 +36,7 @@
 
 generated: 2026-04-06
 last_updated: 2026-04-26
+# 6.4 done: Alert Banner System — AlertBannerSystem component (PatternFly Alert inline, danger+warning, non-dismissible), AlertActionLink filter wiring to useFilterParams, DRDashboardPage integration, getReplicationHealth reuse from 6.3, singular/plural grammar, automatic resolution via watch updates, 23 new tests with jest-axe accessibility (~1 new src file, ~1 new test file, ~2 modified files)
 # 6.2 done: Console Plugin Navigation & Routing — console.navigation/section + console.navigation/href + 3 console.page/route entries (Dashboard/PlanDetail/ExecutionDetail), PatternFly Breadcrumb, module-level dashboard state preservation, React Router v7 useParams for URL params, DRBreadcrumb shared component, react-router type augmentation for v5→v7 bridge, jest.config.ts type fix, 27 tests with jest-axe (~7 new src files, ~4 test files, ~3 modified files)
 # 6.1 review: Console Plugin Project Initialization — scaffolded from openshift/console-plugin-template, TypeScript/React/PF6/webpack5, Jest+jest-axe+RTL, CRD interfaces+hooks, Dockerfile, build+test+devserver verified, Makefile console-plugin exclusion (~20 new files, ~4 modified files)
 # 6.6 created: Status Badges, Empty States & Accessibility — DashboardEmptyState (PatternFly EmptyState with guidance text + docs link), systematic accessibility audit across all 6.1–6.5b components (PhaseBadge/ExecutionResultBadge/ReplicationHealthIndicator color compliance, DRLifecycleDiagram ARIA roles+keyboard+live region, WaveCompositionTree accessible names, AlertBannerSystem screen reader), PatternFly Label color prop audit (no hardcoded hex), screen-share readability audit (min 14px for status text), full keyboard failover flow integration test, centralized jest-axe audit suite covering all 15 component states (~1 new src file, ~3 test files, ~10 audited files)
@@ -214,7 +215,7 @@ development_status:
   6-1-console-plugin-project-initialization: done
   6-2-console-plugin-navigation-routing: done
   6-3-dr-dashboard-table-toolbar: done
-  6-4-alert-banner-system: ready-for-dev
+  6-4-alert-banner-system: done
   6-5-plan-detail-shell-overview-tab: ready-for-dev
   6-5b-waves-history-configuration-tabs: ready-for-dev
   6-6-status-badges-empty-states-accessibility: ready-for-dev

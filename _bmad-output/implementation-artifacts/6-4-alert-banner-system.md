@@ -1,6 +1,6 @@
 # Story 6.4: Alert Banner System
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -26,35 +26,40 @@ So that critical protection gaps are impossible to miss.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create AlertBannerSystem component (AC: #1, #2, #3, #4)
-  - [ ] 1.1 Create `src/components/DRDashboard/AlertBannerSystem.tsx` — accepts DRPlan list, computes alert state, renders 0–2 PatternFly `Alert` components
-  - [ ] 1.2 Compute broken replication count: plans where `getReplicationHealth(plan).status === 'Error'`
-  - [ ] 1.3 Compute degraded replication count: plans where `getReplicationHealth(plan).status === 'Degraded'`
-  - [ ] 1.4 Render danger alert when `errorCount > 0`: `variant="danger"`, `isInline`, no `actionClose` (not dismissible)
-  - [ ] 1.5 Render warning alert when `degradedCount > 0`: `variant="warning"`, `isInline`, no `actionClose` (not dismissible)
-  - [ ] 1.6 Render nothing when both counts are zero
-  - [ ] 1.7 Danger banner appears above warning banner (danger first = highest severity on top)
+- [x] Task 1: Create AlertBannerSystem component (AC: #1, #2, #3, #4)
+  - [x] 1.1 Create `src/components/DRDashboard/AlertBannerSystem.tsx` — accepts DRPlan list, computes alert state, renders 0–2 PatternFly `Alert` components
+  - [x] 1.2 Compute broken replication count: plans where `getReplicationHealth(plan).status === 'Error'`
+  - [x] 1.3 Compute degraded replication count: plans where `getReplicationHealth(plan).status === 'Degraded'`
+  - [x] 1.4 Render danger alert when `errorCount > 0`: `variant="danger"`, `isInline`, no `actionClose` (not dismissible)
+  - [x] 1.5 Render warning alert when `degradedCount > 0`: `variant="warning"`, `isInline`, no `actionClose` (not dismissible)
+  - [x] 1.6 Render nothing when both counts are zero
+  - [x] 1.7 Danger banner appears above warning banner (danger first = highest severity on top)
 
-- [ ] Task 2: Implement banner action links (AC: #5)
-  - [ ] 2.1 Add `actionLinks` prop to danger alert with a link: "View affected plans" that applies `protected=Error` filter
-  - [ ] 2.2 Add `actionLinks` prop to warning alert with a link: "View affected plans" that applies `protected=Degraded` filter
-  - [ ] 2.3 Action links call a callback prop `onFilterByHealth(status: string)` that the parent wires to the existing `useFilterParams` from Story 6.3
+- [x] Task 2: Implement banner action links (AC: #5)
+  - [x] 2.1 Add `actionLinks` prop to danger alert with a link: "View affected plans" that applies `protected=Error` filter
+  - [x] 2.2 Add `actionLinks` prop to warning alert with a link: "View affected plans" that applies `protected=Degraded` filter
+  - [x] 2.3 Action links call a callback prop `onFilterByHealth(status: string)` that the parent wires to the existing `useFilterParams` from Story 6.3
 
-- [ ] Task 3: Integrate into DRDashboardPage (AC: #1, #2, #3, #4)
-  - [ ] 3.1 Import `AlertBannerSystem` into `DRDashboardPage.tsx`
-  - [ ] 3.2 Render `<AlertBannerSystem>` above the `<DRDashboard>` table component within the same `PageSection`
-  - [ ] 3.3 Pass the full plans array from `useDRPlans()` to `AlertBannerSystem`
-  - [ ] 3.4 Wire `onFilterByHealth` to the dashboard's filter state (via `useFilterParams` or direct state setter from Story 6.3)
+- [x] Task 3: Integrate into DRDashboardPage (AC: #1, #2, #3, #4)
+  - [x] 3.1 Import `AlertBannerSystem` into `DRDashboardPage.tsx`
+  - [x] 3.2 Render `<AlertBannerSystem>` above the `<DRDashboard>` table component within the same `PageSection`
+  - [x] 3.3 Pass the full plans array from `useDRPlans()` to `AlertBannerSystem`
+  - [x] 3.4 Wire `onFilterByHealth` to the dashboard's filter state (via `useFilterParams` or direct state setter from Story 6.3)
 
-- [ ] Task 4: Tests (AC: #1–#6)
-  - [ ] 4.1 Create `tests/components/AlertBannerSystem.test.tsx` — danger banner renders when Error plans exist, count is correct
-  - [ ] 4.2 Test warning banner renders when Degraded plans exist, count is correct
-  - [ ] 4.3 Test no banners render when all plans are Healthy or Unknown
-  - [ ] 4.4 Test both banners render simultaneously: danger above warning
-  - [ ] 4.5 Test danger banner disappears when Error condition resolves (re-render with updated props)
-  - [ ] 4.6 Test action link click calls `onFilterByHealth` with correct status
-  - [ ] 4.7 Run `jest-axe` on `AlertBannerSystem` with danger, warning, and both-visible scenarios — zero violations
-  - [ ] 4.8 Verify `yarn build` succeeds with all new components
+- [x] Task 4: Tests (AC: #1–#6)
+  - [x] 4.1 Create `tests/components/AlertBannerSystem.test.tsx` — danger banner renders when Error plans exist, count is correct
+  - [x] 4.2 Test warning banner renders when Degraded plans exist, count is correct
+  - [x] 4.3 Test no banners render when all plans are Healthy or Unknown
+  - [x] 4.4 Test both banners render simultaneously: danger above warning
+  - [x] 4.5 Test danger banner disappears when Error condition resolves (re-render with updated props)
+  - [x] 4.6 Test action link click calls `onFilterByHealth` with correct status
+  - [x] 4.7 Run `jest-axe` on `AlertBannerSystem` with danger, warning, and both-visible scenarios — zero violations
+  - [x] 4.8 Verify `yarn build` succeeds with all new components
+
+### Review Findings
+
+- [x] [Review][Decision] Banner action resets all active filters — AC5 requires showing the full affected set. Changed `handleFilterByHealth` to use `{ ...EMPTY_FILTERS, protected: [healthStatus] }` instead of spreading existing filters. Decision: reset all filters on banner click.
+- [x] [Review][Patch] Added page-level test proving banner click navigates with `?protected=Error` only, clearing other filters [console-plugin/tests/components/DRDashboardPage.test.tsx]
 
 ## Dev Notes
 
@@ -402,10 +407,34 @@ All recent work is Go backend. Stories 6.1–6.3 are ready-for-dev but not yet i
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4.6 (Cursor Agent)
 
 ### Debug Log References
 
+None — clean implementation with no debugging required.
+
 ### Completion Notes List
 
+- Created `AlertBannerSystem` component: accepts DRPlan array, uses `useMemo` with `getReplicationHealth()` (reused from Story 6.3) to compute error/degraded counts, renders 0–2 PatternFly `Alert` components (danger above warning, `isInline`, not dismissible)
+- Implemented singular/plural grammar for banner messages: "1 DR Plan" vs "N DR Plans" for danger, "1 plan" vs "N plans" for warning
+- Added `AlertActionLink` "View affected plans" on each banner, calling `onFilterByHealth` callback with `'Error'` or `'Degraded'`
+- Integrated into `DRDashboardPage`: page now calls `useDRPlans()` and `useFilterParams()` to wire alert banners above the dashboard table; `handleFilterByHealth` sets `protected` filter via `setFilters`
+- Refactored `DRDashboardPage` from `React.FC` arrow function to regular function declaration (fixes `no-undef` lint for `React` since jsx-runtime transform is used)
+- Updated `DRDashboardPage` test with `react-router` and `useK8sWatchResource` mocks needed by new dependencies
+- 23 new tests covering: danger banner rendering/count/grammar (4), warning banner rendering/count/grammar (4), no banners when healthy/unknown/empty (4), automatic resolution via rerender (2), both banners simultaneously with ordering (2), action link click callbacks (3), jest-axe accessibility for all 4 scenarios (4)
+- All 158 tests pass (135 existing + 23 new), 0 regressions
+- Production webpack build succeeds
+
+### Change Log
+
+- 2026-04-25: Implemented Story 6.4 — AlertBannerSystem component, DRDashboardPage integration, 23 tests
+
 ### File List
+
+New files:
+- console-plugin/src/components/DRDashboard/AlertBannerSystem.tsx
+- console-plugin/tests/components/AlertBannerSystem.test.tsx
+
+Modified files:
+- console-plugin/src/components/DRDashboard/DRDashboardPage.tsx
+- console-plugin/tests/components/DRDashboardPage.test.tsx

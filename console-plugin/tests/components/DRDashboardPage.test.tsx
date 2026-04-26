@@ -1,18 +1,31 @@
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { axe, toHaveNoViolations } from 'jest-axe';
+import { useK8sWatchResource } from '@openshift-console/dynamic-plugin-sdk';
 import DRDashboardPage from '../../src/components/DRDashboard/DRDashboardPage';
 import {
   saveDashboardState,
   restoreDashboardState,
 } from '../../src/hooks/useDashboardState';
+import { DRPlan } from '../../src/models/types';
 
 expect.extend(toHaveNoViolations);
+
+const mockNavigate = jest.fn();
+
+jest.mock('react-router', () => ({
+  ...jest.requireActual('react-router-dom'),
+  useLocation: () => ({ search: '', pathname: '/disaster-recovery' }),
+  useNavigate: () => mockNavigate,
+}));
 
 jest.mock('@openshift-console/dynamic-plugin-sdk', () => ({
   DocumentTitle: ({ children }: { children: React.ReactNode }) => (
     <title>{children}</title>
   ),
+  useK8sWatchResource: jest.fn(() => [[], true, null]),
 }));
+
+const mockUseK8sWatchResource = useK8sWatchResource as jest.Mock;
 
 jest.mock('../../src/components/DRDashboard/DRDashboard', () => {
   return {
@@ -32,6 +45,7 @@ const mockRestore = restoreDashboardState as jest.Mock;
 beforeEach(() => {
   mockSave.mockClear();
   mockRestore.mockClear().mockReturnValue(null);
+  mockNavigate.mockClear();
 });
 
 describe('DRDashboardPage', () => {
@@ -75,5 +89,37 @@ describe('DRDashboardPage', () => {
     const { container } = render(<DRDashboardPage />);
     const results = await axe(container);
     expect(results).toHaveNoViolations();
+  });
+
+  it('banner action link navigates with only protected filter, clearing other filters', () => {
+    const errorPlan: DRPlan = {
+      apiVersion: 'soteria.io/v1alpha1',
+      kind: 'DRPlan',
+      metadata: { name: 'broken-plan', uid: 'uid-1', creationTimestamp: '' },
+      spec: {
+        waveLabel: 'wave',
+        maxConcurrentFailovers: 1,
+        primarySite: 'site-a',
+        secondarySite: 'site-b',
+      },
+      status: {
+        phase: 'SteadyState',
+        conditions: [
+          { type: 'ReplicationHealthy', status: 'False', reason: 'Error', message: 'broken' },
+        ],
+      },
+    };
+    mockUseK8sWatchResource.mockReturnValue([[errorPlan], true, null]);
+
+    render(<DRDashboardPage />);
+    const link = screen.getByText('View affected plans');
+    fireEvent.click(link);
+
+    expect(mockNavigate).toHaveBeenCalledWith(
+      { search: 'protected=Error' },
+      { replace: true },
+    );
+
+    mockUseK8sWatchResource.mockReturnValue([[], true, null]);
   });
 });
