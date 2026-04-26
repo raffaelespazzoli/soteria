@@ -6,10 +6,7 @@ interface DRBreadcrumbProps {
   executionName?: string;
 }
 
-const DRBreadcrumb: React.FC<DRBreadcrumbProps> = ({
-  planName,
-  executionName,
-}) => (
+const DRBreadcrumb: React.FC<DRBreadcrumbProps> = ({ planName, executionName }) => (
   <Breadcrumb>
     <BreadcrumbItem>
       <Link to="/disaster-recovery">Disaster Recovery</Link>
@@ -23,9 +20,7 @@ const DRBreadcrumb: React.FC<DRBreadcrumbProps> = ({
         )}
       </BreadcrumbItem>
     )}
-    {executionName && (
-      <BreadcrumbItem isActive>{executionName}</BreadcrumbItem>
-    )}
+    {executionName && <BreadcrumbItem isActive>{executionName}</BreadcrumbItem>}
   </Breadcrumb>
 );
 

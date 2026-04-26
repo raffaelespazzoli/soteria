@@ -14,9 +14,7 @@ const ExecutionDetailPage: React.FC = () => {
         <Title headingLevel="h1">{name}</Title>
       </PageSection>
       <PageSection>
-        <Content component="p">
-          Execution detail content will be implemented in Story 7.2.
-        </Content>
+        <Content component="p">Execution detail content will be implemented in Story 7.2.</Content>
       </PageSection>
     </>
   );

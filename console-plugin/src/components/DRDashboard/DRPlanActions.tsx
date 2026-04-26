@@ -21,7 +21,6 @@ const DRPlanActions: React.FC<DRPlanActionsProps> = ({ plan }) => {
   if (actions.length === 0) return null;
 
   const onActionClick = (action: DRAction) => {
-    // eslint-disable-next-line no-console
     console.log('Action:', action.key, 'Plan:', plan.metadata?.name);
     setIsOpen(false);
   };

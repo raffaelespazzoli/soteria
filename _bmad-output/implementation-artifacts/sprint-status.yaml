@@ -36,6 +36,7 @@
 
 generated: 2026-04-06
 last_updated: 2026-04-26
+# 6.5 review: Plan Detail Shell & Overview Tab — DRPlanDetailPage rewritten (4-tab layout with Tabs/Tab/TabTitleText), DRLifecycleDiagram custom component (4 PhaseNode sub-components in CSS Grid 2x2, 4 TransitionEdge sub-components, rest/transient state rendering, danger variant for Failover, accent/faded/dashed styling), TransitionProgressBanner (Alert info inline with wave progress + elapsed time + execution link), PlanHeader (name + PhaseBadge + VM count + wave count + active cluster), role="figure" ARIA + aria-live region, onAction callback stub for 7.1, getEffectivePhase/PhaseBadge reuse from 6.3, 43 new tests with jest-axe accessibility (~3 new src files, ~2 new test files, ~2 modified files)
 # 6.4 done: Alert Banner System — AlertBannerSystem component (PatternFly Alert inline, danger+warning, non-dismissible), AlertActionLink filter wiring to useFilterParams, DRDashboardPage integration, getReplicationHealth reuse from 6.3, singular/plural grammar, automatic resolution via watch updates, 23 new tests with jest-axe accessibility (~1 new src file, ~1 new test file, ~2 modified files)
 # 6.2 done: Console Plugin Navigation & Routing — console.navigation/section + console.navigation/href + 3 console.page/route entries (Dashboard/PlanDetail/ExecutionDetail), PatternFly Breadcrumb, module-level dashboard state preservation, React Router v7 useParams for URL params, DRBreadcrumb shared component, react-router type augmentation for v5→v7 bridge, jest.config.ts type fix, 27 tests with jest-axe (~7 new src files, ~4 test files, ~3 modified files)
 # 6.1 review: Console Plugin Project Initialization — scaffolded from openshift/console-plugin-template, TypeScript/React/PF6/webpack5, Jest+jest-axe+RTL, CRD interfaces+hooks, Dockerfile, build+test+devserver verified, Makefile console-plugin exclusion (~20 new files, ~4 modified files)
@@ -216,7 +217,7 @@ development_status:
   6-2-console-plugin-navigation-routing: done
   6-3-dr-dashboard-table-toolbar: done
   6-4-alert-banner-system: done
-  6-5-plan-detail-shell-overview-tab: ready-for-dev
+  6-5-plan-detail-shell-overview-tab: done
   6-5b-waves-history-configuration-tabs: ready-for-dev
   6-6-status-badges-empty-states-accessibility: ready-for-dev
   epic-6-retrospective: optional

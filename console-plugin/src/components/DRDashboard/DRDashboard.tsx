@@ -105,10 +105,10 @@ function sortPlans(
         break;
       case 3: // Protected
         cmp =
-          (HEALTH_SORT_ORDER[a.health.status] ?? 99) -
-          (HEALTH_SORT_ORDER[b.health.status] ?? 99);
+          (HEALTH_SORT_ORDER[a.health.status] ?? 99) - (HEALTH_SORT_ORDER[b.health.status] ?? 99);
         break;
-      case 4: { // Last Execution
+      case 4: {
+        // Last Execution
         const timeA = a.lastExec?.status?.startTime
           ? new Date(a.lastExec.status.startTime).getTime()
           : 0;

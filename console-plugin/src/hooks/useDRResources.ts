@@ -51,12 +51,11 @@ export function useDRExecutions(planName?: string): [DRExecution[], boolean, unk
 }
 
 export function useDRExecution(name: string): [DRExecution | undefined, boolean, unknown] {
-  const resource: WatchK8sResource = {
-    groupVersionKind: drExecutionGVK,
-    name,
-    isList: false,
-  };
+  const resource: WatchK8sResource | null = name
+    ? { groupVersionKind: drExecutionGVK, name, isList: false }
+    : null;
   const [data, loaded, error] = useK8sWatchResource<DRExecution>(resource);
+  if (!name) return [undefined, true, null];
   return [loaded && !error ? data : undefined, loaded, error];
 }
 

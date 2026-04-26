@@ -67,14 +67,11 @@ function MultiSelectFilter({
       }}
       onOpenChange={setIsOpen}
       toggle={(ref: React.Ref<MenuToggleElement>) => {
-        (toggleRef as React.MutableRefObject<MenuToggleElement | null>).current =
-          (ref as React.RefObject<MenuToggleElement>).current;
+        (toggleRef as React.MutableRefObject<MenuToggleElement | null>).current = (
+          ref as React.RefObject<MenuToggleElement>
+        ).current;
         return (
-          <MenuToggle
-            ref={ref}
-            onClick={() => setIsOpen((prev) => !prev)}
-            isExpanded={isOpen}
-          >
+          <MenuToggle ref={ref} onClick={() => setIsOpen((prev) => !prev)} isExpanded={isOpen}>
             {categoryName}
             {selected.length > 0 && ` (${selected.length})`}
           </MenuToggle>

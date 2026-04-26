@@ -26,7 +26,9 @@ export function getEffectivePhase(plan: DRPlan): EffectivePhase {
     case 'FailedOver':
       return mode === 'reprotect' ? 'Reprotecting' : 'FailedOver';
     case 'DRedSteadyState':
-      return mode === 'planned_migration' || mode === 'disaster' ? 'FailingBack' : 'DRedSteadyState';
+      return mode === 'planned_migration' || mode === 'disaster'
+        ? 'FailingBack'
+        : 'DRedSteadyState';
     case 'FailedBack':
       return mode === 'reprotect' ? 'Restoring' : 'FailedBack';
     default:
@@ -57,10 +59,7 @@ export function getReplicationHealth(plan: DRPlan): ReplicationHealth {
 /**
  * Finds the most recent DRExecution for a given plan name.
  */
-export function getLastExecution(
-  executions: DRExecution[],
-  planName: string,
-): DRExecution | null {
+export function getLastExecution(executions: DRExecution[], planName: string): DRExecution | null {
   return (
     executions
       .filter((e) => e.spec?.planName === planName)
