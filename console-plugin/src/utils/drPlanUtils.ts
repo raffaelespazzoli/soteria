@@ -4,7 +4,7 @@ export type RestPhase = 'SteadyState' | 'FailedOver' | 'DRedSteadyState' | 'Fail
 export type TransientPhase = 'FailingOver' | 'Reprotecting' | 'FailingBack' | 'Restoring';
 export type EffectivePhase = RestPhase | TransientPhase;
 
-export type ReplicationHealthStatus = 'Healthy' | 'Degraded' | 'Error' | 'Unknown';
+export type ReplicationHealthStatus = 'Healthy' | 'Degraded' | 'Syncing' | 'Error' | 'Unknown';
 
 export interface ReplicationHealth {
   status: ReplicationHealthStatus;
@@ -99,6 +99,7 @@ export function buildLatestExecutionMap(executions: DRExecution[]): Map<string, 
 export const HEALTH_SORT_ORDER: Record<string, number> = {
   Error: 0,
   Degraded: 1,
-  Unknown: 2,
-  Healthy: 3,
+  Syncing: 2,
+  Unknown: 3,
+  Healthy: 4,
 };

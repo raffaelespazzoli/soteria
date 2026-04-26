@@ -13,7 +13,10 @@ import DRBreadcrumb from '../shared/DRBreadcrumb';
 import PlanHeader from './PlanHeader';
 import DRLifecycleDiagram from './DRLifecycleDiagram';
 import TransitionProgressBanner from './TransitionProgressBanner';
-import { useDRPlan, useDRExecution } from '../../hooks/useDRResources';
+import { WaveCompositionTree } from './WaveCompositionTree';
+import { ExecutionHistoryTable } from './ExecutionHistoryTable';
+import { PlanConfiguration } from './PlanConfiguration';
+import { useDRPlan, useDRExecution, useDRExecutions } from '../../hooks/useDRResources';
 import { DRPlan } from '../../models/types';
 import { getEffectivePhase } from '../../utils/drPlanUtils';
 import { WaveProgress } from './DRLifecycleDiagram';
@@ -27,6 +30,7 @@ const DRPlanDetailPage: React.FC = () => {
   const [plan, planLoaded, planError] = useDRPlan(name!);
   const activeExecName = plan?.status?.activeExecution ?? '';
   const [execution] = useDRExecution(activeExecName);
+  const [executions, executionsLoaded] = useDRExecutions(name!);
   const [activeTab, setActiveTab] = useState<string | number>(0);
 
   const effectivePhase = plan ? getEffectivePhase(plan) : null;
@@ -69,13 +73,17 @@ const DRPlanDetailPage: React.FC = () => {
               <DRLifecycleDiagram plan={plan} onAction={handleAction} waveProgress={isInTransition ? waveProgress : null} />
             </Tab>
             <Tab eventKey={1} title={<TabTitleText>Waves</TabTitleText>}>
-              Placeholder — implemented in Story 6.5b
+              <WaveCompositionTree plan={plan} />
             </Tab>
             <Tab eventKey={2} title={<TabTitleText>History</TabTitleText>}>
-              Placeholder — implemented in Story 6.5b
+              {!executionsLoaded ? (
+                <Skeleton width="100%" height="200px" screenreaderText="Loading execution history" />
+              ) : (
+                <ExecutionHistoryTable executions={executions} planName={name!} />
+              )}
             </Tab>
             <Tab eventKey={3} title={<TabTitleText>Configuration</TabTitleText>}>
-              Placeholder — implemented in Story 6.5b
+              <PlanConfiguration plan={plan} />
             </Tab>
           </Tabs>
         )}

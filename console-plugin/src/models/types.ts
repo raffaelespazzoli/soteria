@@ -71,6 +71,7 @@ export interface DRPlan extends K8sResourceCommon {
 }
 
 export interface DRPlanSpec {
+  labelSelector?: string;
   waveLabel: string;
   maxConcurrentFailovers: number;
   primarySite: string;
@@ -171,6 +172,7 @@ export interface DRExecutionStatus {
   waves?: WaveStatus[];
   startTime?: string;
   completionTime?: string;
+  rpoSeconds?: number;
   conditions?: Condition[];
 }
 

@@ -32,6 +32,7 @@ const mockPlan: DRPlan = {
 
 const mockUseDRPlan = jest.fn<[DRPlan | undefined, boolean, unknown], [string]>();
 const mockUseDRExecution = jest.fn();
+const mockUseDRExecutions = jest.fn();
 
 jest.mock('@openshift-console/dynamic-plugin-sdk', () => ({
   DocumentTitle: ({ children }: { children: React.ReactNode }) => <title>{children}</title>,
@@ -41,11 +42,13 @@ jest.mock('@openshift-console/dynamic-plugin-sdk', () => ({
 jest.mock('../../src/hooks/useDRResources', () => ({
   useDRPlan: (...args: [string]) => mockUseDRPlan(...args),
   useDRExecution: (...args: unknown[]) => mockUseDRExecution(...args),
+  useDRExecutions: (...args: unknown[]) => mockUseDRExecutions(...args),
 }));
 
 jest.mock('react-router', () => ({
   ...jest.requireActual('react-router'),
   useParams: () => ({ name: 'erp-full-stack' }),
+  useNavigate: () => jest.fn(),
   Link: ({ to, children }: { to: string; children: React.ReactNode }) => (
     <a href={to}>{children}</a>
   ),
@@ -55,6 +58,7 @@ describe('DRPlanDetailPage', () => {
   beforeEach(() => {
     mockUseDRPlan.mockReturnValue([mockPlan, true, null]);
     mockUseDRExecution.mockReturnValue([undefined, true, null]);
+    mockUseDRExecutions.mockReturnValue([[], true, null]);
   });
 
   afterEach(() => {
@@ -101,10 +105,11 @@ describe('DRPlanDetailPage', () => {
     expect(screen.getByTestId('dr-lifecycle-diagram')).toBeInTheDocument();
   });
 
-  it('renders placeholder content for Waves, History, and Configuration tabs', () => {
+  it('renders real content for Waves, History, and Configuration tabs', () => {
     render(<DRPlanDetailPage />);
-    const placeholders = screen.getAllByText(/Placeholder — implemented in Story 6.5b/);
-    expect(placeholders.length).toBe(3);
+    expect(screen.getByLabelText('Wave composition')).toBeInTheDocument();
+    expect(screen.getByText('No executions yet')).toBeInTheDocument();
+    expect(screen.getByText('Max Concurrent Failovers')).toBeInTheDocument();
   });
 
   it('switches to Waves tab when clicked', () => {

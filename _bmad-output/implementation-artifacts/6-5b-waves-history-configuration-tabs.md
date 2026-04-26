@@ -1,6 +1,6 @@
 # Story 6.5b: Waves, History & Configuration Tabs
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -26,51 +26,51 @@ So that I can drill into plan structure, review past executions, and inspect con
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Replace Waves tab placeholder with WaveCompositionTree (AC: #1)
-  - [ ] 1.1 Create `src/components/DRPlanDetail/WaveCompositionTree.tsx` — accepts `plan: DRPlan`, renders PatternFly `TreeView` with `TreeViewDataItem[]`
-  - [ ] 1.2 Build wave data from `plan.status.waves[]`: each wave becomes a tree node with `name: "Wave {n}"`, `title` showing VM count and aggregate health badge, `children` containing DRGroup chunks
-  - [ ] 1.3 DRGroup chunk children: group VMs by `maxConcurrentFailovers` threshold; each chunk node shows "DRGroup chunk {n} (maxConcurrent: {value})"
-  - [ ] 1.4 Per-VM leaf nodes: render name, namespace, storage backend (PatternFly `Label`), consistency level (namespace name or "VM-level"), `ReplicationHealthIndicator` compact from Story 6.3 for health + RPO
-  - [ ] 1.5 Aggregate health per wave: compute worst-case health across all VMs in the wave — Error > Degraded > Unknown > Healthy
-  - [ ] 1.6 Namespace-consistent VMs: VMs sharing a namespace get a blue info `Label` showing "NS: {namespace}"
-  - [ ] 1.7 Default all waves to collapsed (`defaultExpanded: false` on TreeViewDataItem)
-  - [ ] 1.8 Wire into `DRPlanDetailPage.tsx` — replace Waves tab placeholder content
+- [x] Task 1: Replace Waves tab placeholder with WaveCompositionTree (AC: #1)
+  - [x] 1.1 Create `src/components/DRPlanDetail/WaveCompositionTree.tsx` — accepts `plan: DRPlan`, renders PatternFly `TreeView` with `TreeViewDataItem[]`
+  - [x] 1.2 Build wave data from `plan.status.waves[]`: each wave becomes a tree node with `name: "Wave {n}"`, `title` showing VM count and aggregate health badge, `children` containing DRGroup chunks
+  - [x] 1.3 DRGroup chunk children: group VMs by `maxConcurrentFailovers` threshold; each chunk node shows "DRGroup chunk {n} (maxConcurrent: {value})"
+  - [x] 1.4 Per-VM leaf nodes: render name, namespace, storage backend (PatternFly `Label`), consistency level (namespace name or "VM-level"), `ReplicationHealthIndicator` compact from Story 6.3 for health + RPO
+  - [x] 1.5 Aggregate health per wave: compute worst-case health across all VMs in the wave — Error > Degraded > Unknown > Healthy
+  - [x] 1.6 Namespace-consistent VMs: VMs sharing a namespace get a blue info `Label` showing "NS: {namespace}"
+  - [x] 1.7 Default all waves to collapsed (`defaultExpanded: false` on TreeViewDataItem)
+  - [x] 1.8 Wire into `DRPlanDetailPage.tsx` — replace Waves tab placeholder content
 
-- [ ] Task 2: Replace History tab placeholder with ExecutionHistoryTable (AC: #2, #5)
-  - [ ] 2.1 Create `src/components/DRPlanDetail/ExecutionHistoryTable.tsx` — accepts `executions: DRExecution[]`, `planName: string`
-  - [ ] 2.2 Filter executions by `spec.planName === planName` (defensive — the hook should already filter, but guard against full-list data)
-  - [ ] 2.3 Render PatternFly Table (composable, compact) with columns: Date (`status.startTime` formatted), Mode (`spec.mode` — display "Planned Migration" or "Disaster"), Result (`ExecutionResultBadge` from Story 6.3), Duration (computed from `startTime`/`completionTime` using `formatDuration` from Story 6.3), RPO (from execution status or "N/A"), Triggered By (from annotations or "N/A")
-  - [ ] 2.4 Sort by Date descending (most recent first) — default sort
-  - [ ] 2.5 Row click navigates via `Link` to `/disaster-recovery/executions/${execution.metadata.name}`
-  - [ ] 2.6 Empty state: when `executions.length === 0`, render PatternFly `EmptyState` (variant="sm") with `EmptyStateIcon` (CubesIcon or similar), title "No executions yet", body "Trigger a planned migration to validate your DR plan"
-  - [ ] 2.7 Wire into `DRPlanDetailPage.tsx` — replace History tab placeholder; use `useDRExecutions(planName)` hook from Story 6.1
+- [x] Task 2: Replace History tab placeholder with ExecutionHistoryTable (AC: #2, #5)
+  - [x] 2.1 Create `src/components/DRPlanDetail/ExecutionHistoryTable.tsx` — accepts `executions: DRExecution[]`, `planName: string`
+  - [x] 2.2 Filter executions by `spec.planName === planName` (defensive — the hook should already filter, but guard against full-list data)
+  - [x] 2.3 Render PatternFly Table (composable, compact) with columns: Date (`status.startTime` formatted), Mode (`spec.mode` — display "Planned Migration" or "Disaster"), Result (`ExecutionResultBadge` from Story 6.3), Duration (computed from `startTime`/`completionTime` using `formatDuration` from Story 6.3), RPO (from execution status or "N/A"), Triggered By (from annotations or "N/A")
+  - [x] 2.4 Sort by Date descending (most recent first) — default sort
+  - [x] 2.5 Row click navigates via `Link` to `/disaster-recovery/executions/${execution.metadata.name}`
+  - [x] 2.6 Empty state: when `executions.length === 0`, render PatternFly `EmptyState` (variant="sm") with `EmptyStateIcon` (CubesIcon or similar), title "No executions yet", body "Trigger a planned migration to validate your DR plan"
+  - [x] 2.7 Wire into `DRPlanDetailPage.tsx` — replace History tab placeholder; use `useDRExecutions(planName)` hook from Story 6.1
 
-- [ ] Task 3: Replace Configuration tab placeholder with PlanConfiguration (AC: #3, #4)
-  - [ ] 3.1 Create `src/components/DRPlanDetail/PlanConfiguration.tsx` — accepts `plan: DRPlan`
-  - [ ] 3.2 Render PatternFly `DescriptionList` (horizontal, compact) with terms: Name (`metadata.name`), Label Selector (`spec.labelSelector`), Wave Label (`spec.waveLabel`), Max Concurrent Failovers (`spec.maxConcurrentFailovers`), Primary Site (`spec.primarySite`), Secondary Site (`spec.secondarySite`), Created (`metadata.creationTimestamp` formatted)
-  - [ ] 3.3 Render labels section: iterate `metadata.labels` as PatternFly `Label` components in a `LabelGroup`
-  - [ ] 3.4 Render annotations section: iterate `metadata.annotations` as key-value pairs (skip internal kubernetes.io annotations)
-  - [ ] 3.5 Create `src/components/DRPlanDetail/ReplicationHealthExpanded.tsx` — expanded variant of ReplicationHealthIndicator showing per-volume-group table: VG Name, Health badge, RPO, Last Checked. Data from `plan.status.conditions` (ReplicationHealthy) and volume group data if available
-  - [ ] 3.6 Render PatternFly `CodeBlock` with `code={yamlDump(plan.spec)}` — YAML serialization of `plan.spec` as read-only. Use `js-yaml` if available in the template, otherwise JSON.stringify with formatting
-  - [ ] 3.7 Wire into `DRPlanDetailPage.tsx` — replace Configuration tab placeholder
+- [x] Task 3: Replace Configuration tab placeholder with PlanConfiguration (AC: #3, #4)
+  - [x] 3.1 Create `src/components/DRPlanDetail/PlanConfiguration.tsx` — accepts `plan: DRPlan`
+  - [x] 3.2 Render PatternFly `DescriptionList` (horizontal, compact) with terms: Name (`metadata.name`), Label Selector (`spec.labelSelector`), Wave Label (`spec.waveLabel`), Max Concurrent Failovers (`spec.maxConcurrentFailovers`), Primary Site (`spec.primarySite`), Secondary Site (`spec.secondarySite`), Created (`metadata.creationTimestamp` formatted)
+  - [x] 3.3 Render labels section: iterate `metadata.labels` as PatternFly `Label` components in a `LabelGroup`
+  - [x] 3.4 Render annotations section: iterate `metadata.annotations` as key-value pairs (skip internal kubernetes.io annotations)
+  - [x] 3.5 Create `src/components/DRPlanDetail/ReplicationHealthExpanded.tsx` — expanded variant of ReplicationHealthIndicator showing per-volume-group table: VG Name, Health badge, RPO, Last Checked. Data from `plan.status.conditions` (ReplicationHealthy) and volume group data if available
+  - [x] 3.6 Render PatternFly `CodeBlock` with `code={yamlDump(plan.spec)}` — YAML serialization of `plan.spec` as read-only. Use `js-yaml` if available in the template, otherwise JSON.stringify with formatting
+  - [x] 3.7 Wire into `DRPlanDetailPage.tsx` — replace Configuration tab placeholder
 
-- [ ] Task 4: Wire all tabs into DRPlanDetailPage (AC: #1–#5)
-  - [ ] 4.1 Modify `DRPlanDetailPage.tsx` — import `WaveCompositionTree`, `ExecutionHistoryTable`, `PlanConfiguration`
-  - [ ] 4.2 Add `useDRExecutions(planName)` call to fetch execution data for History tab
-  - [ ] 4.3 Replace Waves tab `TabContent` placeholder with `<WaveCompositionTree plan={plan} />`
-  - [ ] 4.4 Replace History tab `TabContent` placeholder with `<ExecutionHistoryTable executions={executions} planName={name} />`
-  - [ ] 4.5 Replace Configuration tab `TabContent` placeholder with `<PlanConfiguration plan={plan} />`
-  - [ ] 4.6 Handle loading state for executions (Skeleton or Spinner in History tab while loading)
+- [x] Task 4: Wire all tabs into DRPlanDetailPage (AC: #1–#5)
+  - [x] 4.1 Modify `DRPlanDetailPage.tsx` — import `WaveCompositionTree`, `ExecutionHistoryTable`, `PlanConfiguration`
+  - [x] 4.2 Add `useDRExecutions(planName)` call to fetch execution data for History tab
+  - [x] 4.3 Replace Waves tab `TabContent` placeholder with `<WaveCompositionTree plan={plan} />`
+  - [x] 4.4 Replace History tab `TabContent` placeholder with `<ExecutionHistoryTable executions={executions} planName={name} />`
+  - [x] 4.5 Replace Configuration tab `TabContent` placeholder with `<PlanConfiguration plan={plan} />`
+  - [x] 4.6 Handle loading state for executions (Skeleton or Spinner in History tab while loading)
 
-- [ ] Task 5: Accessibility (AC: #6)
-  - [ ] 5.1 WaveCompositionTree: PatternFly TreeView provides `role="tree"` and `role="treeitem"` automatically — verify it renders correctly. Arrow keys navigate and expand/collapse nodes.
-  - [ ] 5.2 Per-VM health in WaveCompositionTree: ensure each health indicator is readable as a single string (e.g., "erp-db-1, odf-storage, VM-level consistency, replication healthy, RPO 8 seconds")
-  - [ ] 5.3 ExecutionHistoryTable: standard PatternFly Table accessibility — rows are navigable via keyboard, status badges include text labels alongside color
-  - [ ] 5.4 PlanConfiguration: DescriptionList has native accessibility support. CodeBlock is read-only, accessible by default.
-  - [ ] 5.5 Empty state: EmptyState component is screen-reader-friendly by default
+- [x] Task 5: Accessibility (AC: #6)
+  - [x] 5.1 WaveCompositionTree: PatternFly TreeView provides `role="tree"` and `role="treeitem"` automatically — verify it renders correctly. Arrow keys navigate and expand/collapse nodes.
+  - [x] 5.2 Per-VM health in WaveCompositionTree: ensure each health indicator is readable as a single string (e.g., "erp-db-1, odf-storage, VM-level consistency, replication healthy, RPO 8 seconds")
+  - [x] 5.3 ExecutionHistoryTable: standard PatternFly Table accessibility — rows are navigable via keyboard, status badges include text labels alongside color
+  - [x] 5.4 PlanConfiguration: DescriptionList has native accessibility support. CodeBlock is read-only, accessible by default.
+  - [x] 5.5 Empty state: EmptyState component is screen-reader-friendly by default
 
-- [ ] Task 6: Tests (AC: #1–#6)
-  - [ ] 6.1 Create `tests/components/WaveCompositionTree.test.tsx`:
+- [x] Task 6: Tests (AC: #1–#6)
+  - [x] 6.1 Create `tests/components/WaveCompositionTree.test.tsx`:
     - Renders wave nodes with correct labels ("Wave 1", "Wave 2", etc.)
     - Shows VM count and aggregate health per wave header
     - Waves default to collapsed (VM details not visible)
@@ -78,7 +78,7 @@ So that I can drill into plan structure, review past executions, and inspect con
     - Per-VM rows show name, namespace, storage, health badge, RPO
     - Namespace-consistent VMs show "NS: {namespace}" label
     - Renders correctly with empty waves array (edge case)
-  - [ ] 6.2 Create `tests/components/ExecutionHistoryTable.test.tsx`:
+  - [x] 6.2 Create `tests/components/ExecutionHistoryTable.test.tsx`:
     - Renders table with correct columns: Date, Mode, Result, Duration, RPO, Triggered By
     - Rows display DRExecution data correctly
     - Result column uses ExecutionResultBadge (Succeeded/PartiallySucceeded/Failed)
@@ -86,16 +86,25 @@ So that I can drill into plan structure, review past executions, and inspect con
     - Row click navigates to execution detail (Link renders with correct href)
     - Empty state renders when no executions exist
     - Default sort is date descending
-  - [ ] 6.3 Create `tests/components/PlanConfiguration.test.tsx`:
+  - [x] 6.3 Create `tests/components/PlanConfiguration.test.tsx`:
     - DescriptionList renders all plan metadata fields
     - Labels render as PatternFly Label components
     - CodeBlock renders plan spec as YAML/JSON
     - ReplicationHealthExpanded renders per-VG health table
     - Handles plan with no labels/annotations gracefully
-  - [ ] 6.4 Run `jest-axe` on WaveCompositionTree — zero violations
-  - [ ] 6.5 Run `jest-axe` on ExecutionHistoryTable (with data and empty state) — zero violations
-  - [ ] 6.6 Run `jest-axe` on PlanConfiguration — zero violations
-  - [ ] 6.7 Verify `yarn build` succeeds with all new components
+  - [x] 6.4 Run `jest-axe` on WaveCompositionTree — zero violations
+  - [x] 6.5 Run `jest-axe` on ExecutionHistoryTable (with data and empty state) — zero violations
+  - [x] 6.6 Run `jest-axe` on PlanConfiguration — zero violations
+  - [x] 6.7 Verify `yarn build` succeeds with all new components
+
+### Review Findings
+
+- [x] [Review][Patch] Support `Syncing` replication health without crashing plan-detail indicators [`console-plugin/src/components/DRPlanDetail/WaveCompositionTree.tsx:16`]
+- [x] [Review][Patch] Render wave children when `status.waves[].vms` exist but `groups` are absent [`console-plugin/src/components/DRPlanDetail/WaveCompositionTree.tsx:160`]
+- [x] [Review][Patch] Make execution-detail navigation work for the full history row, not only the Date cell [`console-plugin/src/components/DRPlanDetail/ExecutionHistoryTable.tsx:82`]
+- [x] [Review][Patch] Preserve zero-second RPO values in the replication-health table instead of showing them as missing [`console-plugin/src/components/DRPlanDetail/ReplicationHealthExpanded.tsx:51`]
+- [x] [Review][Patch] Show degraded/error counts in the wave aggregate health badge [`console-plugin/src/components/DRPlanDetail/WaveCompositionTree.tsx:53`]
+- [x] [Review][Patch] Always render the Label Selector field in configuration, even when the plan has no selector [`console-plugin/src/components/DRPlanDetail/PlanConfiguration.tsx:57`]
 
 ## Dev Notes
 
@@ -679,10 +688,41 @@ All recent work is Go backend. Stories 6.1–6.5 are ready-for-dev but not yet i
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4.6 (via Cursor)
 
 ### Debug Log References
 
+- PF6 TreeView API: `name` is `React.ReactNode` (not string); `title` is compact-variant-only. All custom rendering goes through `name`.
+- PF6 EmptyState API: No separate `EmptyStateHeader`/`EmptyStateIcon` components. Use `titleText`, `icon`, `headingLevel` props directly on `EmptyState`.
+- PF6 Label color: `"gold"` is not valid; use `"yellow"` for warning/degraded.
+- `js-yaml` not in dependencies — used `JSON.stringify(plan.spec, null, 2)` as fallback for CodeBlock.
+- Added `labelSelector?: string` to DRPlanSpec and `rpoSeconds?: number` to DRExecutionStatus (both exist on Go CRDs but were missing from TS types).
+
 ### Completion Notes List
 
+- **WaveCompositionTree**: PatternFly TreeView with wave → DRGroup chunk → VM hierarchy. Health data cross-referenced from `plan.status.replicationHealth[]` by VG name. Storage backend looked up from preflight data. Aggregate health (worst-case) displayed per wave header. Namespace-consistent VMs show blue "NS:" label.
+- **ExecutionHistoryTable**: Compact PatternFly Table with 6 columns. Defensive planName filter. Date-descending sort. Reuses `ExecutionResultBadge` and `formatDuration`/`formatRPO` from Story 6.3. PF6 EmptyState for no-history case.
+- **PlanConfiguration**: Horizontal compact DescriptionList with 7 metadata fields. Labels as LabelGroup. Annotations filtered to exclude internal kubernetes.io prefixes. JSON CodeBlock for plan spec.
+- **ReplicationHealthExpanded**: Per-VG health table with Health badge, RPO, Last Checked columns. Falls back to overall health indicator when no VG breakdown available.
+- **DRPlanDetailPage**: Wired all three tab components. Added `useDRExecutions(name!)` hook call. History tab shows Skeleton while loading.
+- **Tests**: 44 new tests across 3 test files. All jest-axe accessibility audits pass with zero violations. Existing 203 tests unaffected (0 regressions). Webpack build verified.
+
+### Change Log
+
+- 2026-04-25: Implemented Story 6.5b — Waves, History & Configuration tabs (4 new components, 3 new test files, 2 modified files)
+
 ### File List
+
+**New files:**
+- `console-plugin/src/components/DRPlanDetail/WaveCompositionTree.tsx`
+- `console-plugin/src/components/DRPlanDetail/ExecutionHistoryTable.tsx`
+- `console-plugin/src/components/DRPlanDetail/PlanConfiguration.tsx`
+- `console-plugin/src/components/DRPlanDetail/ReplicationHealthExpanded.tsx`
+- `console-plugin/tests/components/WaveCompositionTree.test.tsx`
+- `console-plugin/tests/components/ExecutionHistoryTable.test.tsx`
+- `console-plugin/tests/components/PlanConfiguration.test.tsx`
+
+**Modified files:**
+- `console-plugin/src/components/DRPlanDetail/DRPlanDetailPage.tsx` — replaced tab placeholders with real components, added useDRExecutions hook
+- `console-plugin/src/models/types.ts` — added `labelSelector` to DRPlanSpec, `rpoSeconds` to DRExecutionStatus
+- `console-plugin/tests/components/DRPlanDetailPage.test.tsx` — added useDRExecutions mock, updated placeholder test

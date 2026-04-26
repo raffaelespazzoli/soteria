@@ -3,6 +3,7 @@ import {
   ExclamationTriangleIcon,
   ExclamationCircleIcon,
   QuestionCircleIcon,
+  SyncAltIcon,
 } from '@patternfly/react-icons';
 import { ReplicationHealth, ReplicationHealthStatus } from '../../utils/drPlanUtils';
 import { formatRPO } from '../../utils/formatters';
@@ -23,6 +24,11 @@ const HEALTH_CONFIG: Record<ReplicationHealthStatus, HealthConfig> = {
     Icon: ExclamationTriangleIcon,
     colorVar: 'var(--pf-t--global--icon--color--status--warning--default)',
     label: 'Degraded',
+  },
+  Syncing: {
+    Icon: SyncAltIcon,
+    colorVar: 'var(--pf-t--global--icon--color--status--info--default)',
+    label: 'Syncing',
   },
   Error: {
     Icon: ExclamationCircleIcon,
