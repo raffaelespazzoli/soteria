@@ -1,7 +1,19 @@
 import { Label, LabelProps, Spinner } from '@patternfly/react-core';
-import { CheckCircleIcon, InProgressIcon } from '@patternfly/react-icons';
+import { CheckCircleIcon, InfoCircleIcon } from '@patternfly/react-icons';
 import { EffectivePhase } from '../../utils/drPlanUtils';
 import { isTransientPhase } from '../../utils/drPlanActions';
+
+const VISUALLY_HIDDEN: React.CSSProperties = {
+  position: 'absolute',
+  width: '1px',
+  height: '1px',
+  padding: 0,
+  margin: '-1px',
+  overflow: 'hidden',
+  clip: 'rect(0,0,0,0)',
+  whiteSpace: 'nowrap',
+  borderWidth: 0,
+};
 
 interface PhaseConfig {
   status?: LabelProps['status'];
@@ -27,13 +39,13 @@ const PHASE_DISPLAY: Record<EffectivePhase, PhaseConfig> = {
   FailedOver: {
     color: 'blue',
     variant: 'filled',
-    icon: <InProgressIcon />,
+    icon: <InfoCircleIcon />,
     label: 'Failed Over',
   },
   FailedBack: {
     color: 'blue',
     variant: 'filled',
-    icon: <InProgressIcon />,
+    icon: <InfoCircleIcon />,
     label: 'Failed Back',
   },
   FailingOver: {
@@ -79,7 +91,7 @@ const PhaseBadge: React.FC<PhaseBadgeProps> = ({ phase }) => {
       isCompact
     >
       {config.label}
-      {transient && <span className="pf-v6-screen-reader"> (in progress)</span>}
+      {transient && <span style={VISUALLY_HIDDEN}> (in progress)</span>}
     </Label>
   );
 };

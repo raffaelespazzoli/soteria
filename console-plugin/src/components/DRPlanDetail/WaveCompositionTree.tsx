@@ -1,5 +1,12 @@
 import { useMemo } from 'react';
 import { TreeView, TreeViewDataItem, Label } from '@patternfly/react-core';
+import {
+  CheckCircleIcon,
+  ExclamationTriangleIcon,
+  ExclamationCircleIcon,
+  QuestionCircleIcon,
+  SyncAltIcon,
+} from '@patternfly/react-icons';
 import ReplicationHealthIndicator from '../shared/ReplicationHealthIndicator';
 import { DRPlan, DiscoveredVM, VolumeGroupInfo, VolumeGroupHealth } from '../../models/types';
 import { formatRPO } from '../../utils/formatters';
@@ -51,6 +58,14 @@ const HEALTH_LABEL_COLORS: Record<ReplicationHealthStatus, 'green' | 'yellow' | 
   Unknown: 'grey',
 };
 
+const HEALTH_ICONS: Record<ReplicationHealthStatus, React.ReactElement> = {
+  Healthy: <CheckCircleIcon />,
+  Degraded: <ExclamationTriangleIcon />,
+  Syncing: <SyncAltIcon />,
+  Error: <ExclamationCircleIcon />,
+  Unknown: <QuestionCircleIcon />,
+};
+
 function AggregateHealthBadge({ groups, healthData }: { groups: VolumeGroupInfo[]; healthData: VolumeGroupHealth[] }) {
   const statuses = groups.map((g) => getVGHealth(g.name, healthData).status);
   const worst = getAggregateHealth(groups, healthData);
@@ -70,7 +85,7 @@ function AggregateHealthBadge({ groups, healthData }: { groups: VolumeGroupInfo[
   }
 
   return (
-    <Label isCompact color={HEALTH_LABEL_COLORS[worst]}>
+    <Label isCompact color={HEALTH_LABEL_COLORS[worst]} icon={HEALTH_ICONS[worst]}>
       {label}
     </Label>
   );
@@ -110,7 +125,7 @@ function VMNodeContent({
       {consistencyLevel === 'namespace' ? (
         <Label isCompact color="blue">NS: {namespace}</Label>
       ) : (
-        <span style={{ fontSize: 'var(--pf-t--global--font--size--sm)', color: 'var(--pf-t--global--text--color--subtle)' }}>
+        <span style={{ fontSize: 'var(--pf-t--global--font--size--body--default)', color: 'var(--pf-t--global--text--color--subtle)' }}>
           VM-level
         </span>
       )}
@@ -209,10 +224,15 @@ export const WaveCompositionTree: React.FC<WaveCompositionTreeProps> = ({ plan }
       const children = groups.length > 0
         ? buildDRGroupChunks(groups, maxConcurrent, plan, healthData)
         : buildDiscoveredVMNodes(wave.vms ?? [], plan, healthData);
+      const aggHealth = groups.length > 0 ? getAggregateHealth(groups, healthData) : null;
+      const waveLabel = `Wave ${idx + 1}, ${vmCount} VMs${aggHealth ? `, replication ${aggHealth.toLowerCase()}` : ''}`;
 
       return {
         name: (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--pf-t--global--spacer--sm)' }}>
+          <span
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--pf-t--global--spacer--sm)' }}
+            aria-label={waveLabel}
+          >
             Wave {idx + 1} — {vmCount} VMs
             {groups.length > 0 && (
               <AggregateHealthBadge groups={groups} healthData={healthData} />

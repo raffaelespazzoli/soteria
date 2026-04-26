@@ -49,26 +49,26 @@ function PhaseNode({ phase, isActive, isTransitioning }: PhaseNodeProps) {
   return (
     <div
       role="group"
-      aria-label={`${phase.label}, ${isActive ? 'current phase, ' : ''}${isTransitioning ? 'transition destination, ' : ''}VMs on ${phase.vm}, replication: ${phase.replication}`}
+      aria-label={`${phase.label}, ${isActive ? 'current phase, ' : ''}${isTransitioning ? 'transition destination, ' : ''}${phase.vm}, replication: ${phase.replication}`}
       style={nodeStyle}
       data-testid={`phase-node-${phase.id}`}
     >
-      <div style={{ fontWeight: 'var(--pf-v5-global--FontWeight--bold)' as unknown as number, marginBottom: 'var(--pf-v5-global--spacer--xs)' }}>
+      <div style={{ fontWeight: 'var(--pf-v5-global--FontWeight--bold)' as unknown as number, fontSize: 'var(--pf-v5-global--FontSize--md)', marginBottom: 'var(--pf-v5-global--spacer--xs)' }}>
         {phase.label}
       </div>
-      <div style={{ fontSize: 'var(--pf-v5-global--FontSize--sm)', opacity: 0.85 }}>
+      <div style={{ fontSize: 'var(--pf-v5-global--FontSize--md)', opacity: 0.85 }}>
         {phase.description}
       </div>
-      <div style={{ fontSize: 'var(--pf-v5-global--FontSize--sm)', marginTop: 'var(--pf-v5-global--spacer--xs)' }}>
+      <div style={{ fontSize: 'var(--pf-v5-global--FontSize--md)', marginTop: 'var(--pf-v5-global--spacer--xs)' }}>
         {phase.vm}
       </div>
-      <div style={{ fontSize: 'var(--pf-v5-global--FontSize--xs)' }}>
+      <div style={{ fontSize: 'var(--pf-v5-global--FontSize--md)' }}>
         DC1: {phase.dc1}
       </div>
-      <div style={{ fontSize: 'var(--pf-v5-global--FontSize--xs)' }}>
+      <div style={{ fontSize: 'var(--pf-v5-global--FontSize--md)' }}>
         DC2: {phase.dc2}
       </div>
-      <div style={{ fontSize: 'var(--pf-v5-global--FontSize--xs)' }}>
+      <div style={{ fontSize: 'var(--pf-v5-global--FontSize--md)' }}>
         Replication: {phase.replication}
       </div>
     </div>
@@ -123,14 +123,14 @@ function TransitionEdge({ transition, state, plan, onAction, direction }: Transi
             color: 'var(--pf-v5-global--Color--light-100)',
             padding: 'var(--pf-v5-global--spacer--xs) var(--pf-v5-global--spacer--sm)',
             borderRadius: 'var(--pf-v5-global--BorderRadius--lg)',
-            fontSize: 'var(--pf-v5-global--FontSize--sm)',
+            fontSize: 'var(--pf-v5-global--FontSize--md)',
           }}
         >
           In progress...
         </span>
       )}
       {state === 'idle' && (
-        <span style={{ opacity: 0.35, fontSize: 'var(--pf-v5-global--FontSize--sm)' }}>
+        <span style={{ opacity: 0.35, fontSize: 'var(--pf-v5-global--FontSize--md)' }}>
           {transition.action} {arrow}
         </span>
       )}

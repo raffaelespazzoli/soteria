@@ -73,7 +73,11 @@ const TransitionProgressBanner: React.FC<TransitionProgressBannerProps> = ({ pla
           </Link>
         }
       >
-        {waveProgress} — Elapsed: {elapsed || '0s'} · Est. remaining: {estimatedRemaining}
+        <span style={{ fontSize: 'var(--pf-v5-global--FontSize--lg)' }}>{waveProgress}</span>
+        {' — Elapsed: '}
+        <span style={{ fontSize: 'var(--pf-v5-global--FontSize--lg)' }}>{elapsed || '0s'}</span>
+        {' · Est. remaining: '}
+        <span style={{ fontSize: 'var(--pf-v5-global--FontSize--lg)' }}>{estimatedRemaining}</span>
       </Alert>
     </div>
   );

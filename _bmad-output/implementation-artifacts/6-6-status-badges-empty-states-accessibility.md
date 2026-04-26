@@ -1,6 +1,6 @@
 # Story 6.6: Status Badges, Empty States & Accessibility
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -32,70 +32,70 @@ So that the Console is usable by all operators including those with assistive te
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create DashboardEmptyState component (AC: #2)
-  - [ ] 1.1 Create `src/components/DRDashboard/DashboardEmptyState.tsx` — PatternFly `EmptyState` with `CubesIcon` (or `AddCircleOIcon`), title "No DR Plans configured", body "Create your first DR plan by labeling VMs..." + `Button` variant="link" linking to documentation
-  - [ ] 1.2 Wire into `DRDashboard.tsx` — when `useDRPlans()` returns an empty array (loaded, no error), render `DashboardEmptyState` instead of the table
-  - [ ] 1.3 Ensure empty state is accessible: `EmptyState` provides native screen reader support, title uses heading level `h4`
+- [x] Task 1: Create DashboardEmptyState component (AC: #2)
+  - [x] 1.1 Create `src/components/DRDashboard/DashboardEmptyState.tsx` — PatternFly `EmptyState` with `CubesIcon` (or `AddCircleOIcon`), title "No DR Plans configured", body "Create your first DR plan by labeling VMs..." + `Button` variant="link" linking to documentation
+  - [x] 1.2 Wire into `DRDashboard.tsx` — when `useDRPlans()` returns an empty array (loaded, no error), render `DashboardEmptyState` instead of the table
+  - [x] 1.3 Ensure empty state is accessible: `EmptyState` provides native screen reader support, title uses heading level `h4`
 
-- [ ] Task 2: Audit PhaseBadge for color semantics compliance (AC: #1, #3)
-  - [ ] 2.1 Open `src/components/shared/PhaseBadge.tsx` from Story 6.3
-  - [ ] 2.2 Verify/fix color mapping: SteadyState/DRedSteadyState → `color="green"` (Label prop), FailedOver/FailedBack → `color="blue"`, transient phases → `color="blue"` + `variant="outline"` + spinner icon via `icon={<Spinner size="sm" />}`
-  - [ ] 2.3 Verify/fix every badge renders icon + text (never color alone): add `CheckCircleIcon` for green rest phases, `InfoCircleIcon` for blue rest phases, `Spinner` for transient
-  - [ ] 2.4 Verify no hardcoded color values — all colors from PatternFly Label `color` prop or `--pf-v5-global--*` CSS tokens
-  - [ ] 2.5 Verify `aria-label` or visible text provides full phase name for screen readers
+- [x] Task 2: Audit PhaseBadge for color semantics compliance (AC: #1, #3)
+  - [x] 2.1 Open `src/components/shared/PhaseBadge.tsx` from Story 6.3
+  - [x] 2.2 Verify/fix color mapping: SteadyState/DRedSteadyState → `color="green"` (Label prop), FailedOver/FailedBack → `color="blue"`, transient phases → `color="blue"` + `variant="outline"` + spinner icon via `icon={<Spinner size="sm" />}`
+  - [x] 2.3 Verify/fix every badge renders icon + text (never color alone): add `CheckCircleIcon` for green rest phases, `InfoCircleIcon` for blue rest phases, `Spinner` for transient
+  - [x] 2.4 Verify no hardcoded color values — all colors from PatternFly Label `color` prop or `--pf-v5-global--*` CSS tokens
+  - [x] 2.5 Verify `aria-label` or visible text provides full phase name for screen readers
 
-- [ ] Task 3: Audit ExecutionResultBadge for color semantics compliance (AC: #1, #3)
-  - [ ] 3.1 Open `src/components/shared/ExecutionResultBadge.tsx` from Story 6.3
-  - [ ] 3.2 Verify/fix color mapping: Succeeded → `color="green"` + `CheckCircleIcon`, PartiallySucceeded → `color="gold"` + `ExclamationTriangleIcon`, Failed → `color="red"` + `ExclamationCircleIcon`
-  - [ ] 3.3 Verify icon + text on all variants — never color alone
-  - [ ] 3.4 Verify no hardcoded color values
+- [x] Task 3: Audit ExecutionResultBadge for color semantics compliance (AC: #1, #3)
+  - [x] 3.1 Open `src/components/shared/ExecutionResultBadge.tsx` from Story 6.3
+  - [x] 3.2 Verify/fix color mapping: Succeeded → `color="green"` + `CheckCircleIcon`, PartiallySucceeded → `color="gold"` + `ExclamationTriangleIcon`, Failed → `color="red"` + `ExclamationCircleIcon`
+  - [x] 3.3 Verify icon + text on all variants — never color alone
+  - [x] 3.4 Verify no hardcoded color values
 
-- [ ] Task 4: Audit ReplicationHealthIndicator for color and accessibility (AC: #1, #3)
-  - [ ] 4.1 Open `src/components/shared/ReplicationHealthIndicator.tsx` from Story 6.3
-  - [ ] 4.2 Verify/fix compact variant: each health state uses icon + text label + RPO — never color alone
-  - [ ] 4.3 Verify/fix screen reader string: `aria-label="Replication healthy, RPO 12 seconds"` (single readable string per AC3)
-  - [ ] 4.4 Verify no hardcoded color values — all via `--pf-v5-global--success-color--100`, `--pf-v5-global--warning-color--100`, `--pf-v5-global--danger-color--100`, `--pf-v5-global--disabled-color--100`
-  - [ ] 4.5 Open `src/components/DRPlanDetail/ReplicationHealthExpanded.tsx` from Story 6.5b — verify expanded variant also has icon + text + screen reader strings per row
+- [x] Task 4: Audit ReplicationHealthIndicator for color and accessibility (AC: #1, #3)
+  - [x] 4.1 Open `src/components/shared/ReplicationHealthIndicator.tsx` from Story 6.3
+  - [x] 4.2 Verify/fix compact variant: each health state uses icon + text label + RPO — never color alone
+  - [x] 4.3 Verify/fix screen reader string: `aria-label="Replication healthy, RPO 12 seconds"` (single readable string per AC3)
+  - [x] 4.4 Verify no hardcoded color values — all via `--pf-v5-global--success-color--100`, `--pf-v5-global--warning-color--100`, `--pf-v5-global--danger-color--100`, `--pf-v5-global--disabled-color--100`
+  - [x] 4.5 Open `src/components/DRPlanDetail/ReplicationHealthExpanded.tsx` from Story 6.5b — verify expanded variant also has icon + text + screen reader strings per row
 
-- [ ] Task 5: Audit DRLifecycleDiagram accessibility (AC: #4, #6)
-  - [ ] 5.1 Open `src/components/DRPlanDetail/DRLifecycleDiagram.tsx` from Story 6.5
-  - [ ] 5.2 Verify/fix diagram container: `role="img"`, `aria-label="DR lifecycle state machine diagram"`
-  - [ ] 5.3 Verify/fix each PhaseNode: `role="group"`, `aria-label` reads full state (e.g., "Steady State, current phase, VMs on DC1, replication DC1 to DC2")
-  - [ ] 5.4 Verify/fix action buttons: standard PatternFly `Button` — focusable via Tab, labelled with action name
-  - [ ] 5.5 Verify/fix `aria-live="polite"` region for transition progress: announces "{action} in progress, wave {n} of {total}"
-  - [ ] 5.6 Verify/fix keyboard flow: Tab moves through action buttons in order; Enter activates the focused button
-  - [ ] 5.7 Verify/fix PhaseNode opacity changes are purely decorative — screen reader state comes from aria-label
+- [x] Task 5: Audit DRLifecycleDiagram accessibility (AC: #4, #6)
+  - [x] 5.1 Open `src/components/DRPlanDetail/DRLifecycleDiagram.tsx` from Story 6.5
+  - [x] 5.2 Verify/fix diagram container: `role="img"`, `aria-label="DR lifecycle state machine diagram"`
+  - [x] 5.3 Verify/fix each PhaseNode: `role="group"`, `aria-label` reads full state (e.g., "Steady State, current phase, VMs on DC1, replication DC1 to DC2")
+  - [x] 5.4 Verify/fix action buttons: standard PatternFly `Button` — focusable via Tab, labelled with action name
+  - [x] 5.5 Verify/fix `aria-live="polite"` region for transition progress: announces "{action} in progress, wave {n} of {total}"
+  - [x] 5.6 Verify/fix keyboard flow: Tab moves through action buttons in order; Enter activates the focused button
+  - [x] 5.7 Verify/fix PhaseNode opacity changes are purely decorative — screen reader state comes from aria-label
 
-- [ ] Task 6: Audit AlertBannerSystem accessibility (AC: #3, #5)
-  - [ ] 6.1 Open `src/components/DRDashboard/AlertBannerSystem.tsx` from Story 6.4
-  - [ ] 6.2 Verify/fix alert banners are announced by screen readers (PatternFly `Alert` with `isInline` handles this natively)
-  - [ ] 6.3 Verify/fix `AlertActionLink` is keyboard accessible (focusable via Tab, activatable via Enter)
+- [x] Task 6: Audit AlertBannerSystem accessibility (AC: #3, #5)
+  - [x] 6.1 Open `src/components/DRDashboard/AlertBannerSystem.tsx` from Story 6.4
+  - [x] 6.2 Verify/fix alert banners are announced by screen readers (PatternFly `Alert` with `isInline` handles this natively)
+  - [x] 6.3 Verify/fix `AlertActionLink` is keyboard accessible (focusable via Tab, activatable via Enter)
 
-- [ ] Task 7: Audit WaveCompositionTree accessibility (AC: #5)
-  - [ ] 7.1 Open `src/components/DRPlanDetail/WaveCompositionTree.tsx` from Story 6.5b
-  - [ ] 7.2 Verify/fix TreeView has `aria-label="Wave composition"`
-  - [ ] 7.3 Verify/fix each VM leaf node is readable as a single string: "erp-db-1, odf-storage, VM-level consistency, replication healthy, RPO 8 seconds"
-  - [ ] 7.4 Verify/fix keyboard navigation: Arrow Up/Down between nodes, Right to expand, Left to collapse
+- [x] Task 7: Audit WaveCompositionTree accessibility (AC: #5)
+  - [x] 7.1 Open `src/components/DRPlanDetail/WaveCompositionTree.tsx` from Story 6.5b
+  - [x] 7.2 Verify/fix TreeView has `aria-label="Wave composition"`
+  - [x] 7.3 Verify/fix each VM leaf node is readable as a single string: "erp-db-1, odf-storage, VM-level consistency, replication healthy, RPO 8 seconds"
+  - [x] 7.4 Verify/fix keyboard navigation: Arrow Up/Down between nodes, Right to expand, Left to collapse
 
-- [ ] Task 8: Audit screen-share readability (AC: #7)
-  - [ ] 8.1 Review all custom components for font size compliance: minimum `--pf-v5-global--FontSize--md` (14px) for all text in status indicators
-  - [ ] 8.2 Verify RPO, elapsed time, and VM count use `--pf-v5-global--FontSize--lg` or larger where they appear as primary data points (plan header, transition progress banner, execution summary)
-  - [ ] 8.3 Fix any components using `--pf-v5-global--FontSize--sm` (12px) for critical status text — upgrade to `--pf-v5-global--FontSize--md`
-  - [ ] 8.4 Verify all font sizes use PatternFly tokens — no hardcoded px values
+- [x] Task 8: Audit screen-share readability (AC: #7)
+  - [x] 8.1 Review all custom components for font size compliance: minimum `--pf-v5-global--FontSize--md` (14px) for all text in status indicators
+  - [x] 8.2 Verify RPO, elapsed time, and VM count use `--pf-v5-global--FontSize--lg` or larger where they appear as primary data points (plan header, transition progress banner, execution summary)
+  - [x] 8.3 Fix any components using `--pf-v5-global--FontSize--sm` (12px) for critical status text — upgrade to `--pf-v5-global--FontSize--md`
+  - [x] 8.4 Verify all font sizes use PatternFly tokens — no hardcoded px values
 
-- [ ] Task 9: Full keyboard flow integration test (AC: #4)
-  - [ ] 9.1 Create `tests/components/KeyboardAccessibility.test.tsx` — integration test that simulates the full failover keyboard flow across components:
+- [x] Task 9: Full keyboard flow integration test (AC: #4)
+  - [x] 9.1 Create `tests/components/KeyboardAccessibility.test.tsx` — integration test that simulates the full failover keyboard flow across components:
     - Render DRDashboard with a mock plan in SteadyState
     - Tab to the plan row, press Enter → verify navigation intent (Link href)
     - Render DRPlanDetailPage with mock SteadyState plan
     - Tab to Failover button → verify focus on the button
     - Press Enter → verify `onAction` callback called (modal trigger)
     Note: The actual pre-flight modal is Story 7.1. This test validates up to the action trigger.
-  - [ ] 9.2 Test keyboard navigation within DRLifecycleDiagram: Tab through action buttons, verify only the available action receives focus
-  - [ ] 9.3 Test keyboard navigation within WaveCompositionTree: Arrow keys expand/collapse nodes
+  - [x] 9.2 Test keyboard navigation within DRLifecycleDiagram: Tab through action buttons, verify only the available action receives focus
+  - [x] 9.3 Test keyboard navigation within WaveCompositionTree: Arrow keys expand/collapse nodes
 
-- [ ] Task 10: Comprehensive jest-axe test suite (AC: #5, #6)
-  - [ ] 10.1 Create `tests/components/Accessibility.test.tsx` — centralized accessibility audit:
+- [x] Task 10: Comprehensive jest-axe test suite (AC: #5, #6)
+  - [x] 10.1 Create `tests/components/Accessibility.test.tsx` — centralized accessibility audit:
     - PhaseBadge: render all 8 phases, `toHaveNoViolations`
     - ExecutionResultBadge: render all 3 results, `toHaveNoViolations`
     - ReplicationHealthIndicator compact: render all 4 health states, `toHaveNoViolations`
@@ -111,8 +111,8 @@ So that the Console is usable by all operators including those with assistive te
     - ExecutionHistoryTable empty: render, `toHaveNoViolations`
     - PlanConfiguration: render, `toHaveNoViolations`
     - ReplicationHealthExpanded: render, `toHaveNoViolations`
-  - [ ] 10.2 Verify all components pass — fix any violations found
-  - [ ] 10.3 Verify `yarn build` succeeds after all changes
+  - [x] 10.2 Verify all components pass — fix any violations found
+  - [x] 10.3 Verify `yarn build` succeeds after all changes
 
 ## Dev Notes
 
@@ -685,10 +685,65 @@ All recent work is Go backend. Stories 6.1–6.5b are ready-for-dev but not yet 
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4.6 (via Cursor)
 
 ### Debug Log References
 
+- axe-core nested-interactive violation: `role="img"` conflicts with focusable Button children in DRLifecycleDiagram. Resolved by keeping `role="figure"` which semantically allows interactive children.
+- PF6 Button component="a" renders link attributes on the anchor wrapper, not the inner text span. Tests must query by `role("link")` not `getByText`.
+
 ### Completion Notes List
 
+- Created `DashboardEmptyState` component with PF6 EmptyState, CubesIcon, heading h4, guidance text with code blocks, and external docs link
+- Wired empty state into `DRDashboard.tsx` — renders when `plans.length === 0`
+- PhaseBadge: Fixed `InProgressIcon` → `InfoCircleIcon` for FailedOver/FailedBack rest phases (AC3: icon should reflect state); replaced non-existent `pf-v6-screen-reader` CSS class with inline visually-hidden styles for screen-reader-only "(in progress)" text
+- ExecutionResultBadge: Audited — compliant. Uses `status` prop (success/warning/danger) for semantic colors, icon + text on all variants, no hardcoded colors
+- ReplicationHealthIndicator: Audited — compliant. Uses PF6 icon color tokens, `aria-label` with full readable string, icon + text + RPO, `role="status"`
+- ReplicationHealthExpanded: Audited — compliant. Renders per-VG health table with ReplicationHealthIndicator per row
+- DRLifecycleDiagram: Kept `role="figure"` (not `role="img"` per spec) because `role="img"` causes axe nested-interactive violation with action buttons. Upgraded PhaseNode detail text from `--FontSize--xs` to `--FontSize--sm` and added explicit `--FontSize--md` on phase labels for 720p screen-share readability (AC7)
+- AlertBannerSystem: Audited — compliant. PF Alert isInline + AlertActionLink natively keyboard accessible
+- WaveCompositionTree: Audited — compliant. TreeView with aria-label, VM nodes have aria-label with full status string, PF TreeView keyboard navigation native
+- PlanHeader: VM count and wave count upgraded to `--FontSize--lg` for screen-share readability
+- TransitionProgressBanner: Wave progress, elapsed time, and estimated remaining upgraded to `--FontSize--lg`
+- Screen-share readability: All status indicators use min `--FontSize--md` (14px). PlanHeader plan name at `--FontSize--lg`. DRLifecycleDiagram all text upgraded to `--FontSize--md`. Critical numbers in PlanHeader/TransitionProgressBanner at `--FontSize--lg`
+- WaveCompositionTree: AggregateHealthBadge now includes icon (CheckCircle/Warning/Error/Sync/Question) alongside text+color. Wave nodes have plain-text `aria-label`. VMNodeContent VM-level text upgraded to body-default font size
+- DashboardEmptyState: Docs link updated (was 404), extra body sentence trimmed per AC2
+- DRDashboard: Error state from useDRPlans now shown as danger Alert before empty state check
+- Keyboard tests rewritten with `@testing-library/user-event`: Tab navigation via `userEvent.tab()`, Enter activation via `userEvent.keyboard('{Enter}')`
+- react-router mock fixed: `jest.requireActual('react-router')` instead of `react-router-dom`
+- jest-axe coverage: Added Syncing state for ReplicationHealthIndicator
+- Created 3 new test files: DashboardEmptyState.test.tsx (6 tests), KeyboardAccessibility.test.tsx (6 tests), Accessibility.test.tsx (31 tests)
+- All 291 tests pass, zero jest-axe violations across all 15+ component states
+- Webpack production build succeeds
+
+### Retro Discussion Items
+
+- **DRLifecycleDiagram role attribute:** Story spec requires `role="img"` (AC6), but `axe-core` reports `nested-interactive` violation because the diagram contains interactive Button elements. Implementation uses `role="figure"` which is semantically correct for a composite diagram with interactive children. The story spec should be updated to reflect `role="figure"` as the accepted direction.
+
+### Change Log
+
+- 2026-04-25: Implemented Story 6.6 — DashboardEmptyState component, systematic accessibility audit (PhaseBadge icon fix, screen-reader text fix, DRLifecycleDiagram font sizes), comprehensive jest-axe + keyboard test suites
+- 2026-04-25: Code review fixes — DRDashboard error state handling before empty state, dead docs link replaced, PlanHeader/TransitionProgressBanner critical numbers upgraded to --FontSize--lg, keyboard tests rewritten with userEvent.tab/keyboard, PhaseNode aria-label fixed ("VMs on" redundancy), all DRLifecycleDiagram text upgraded to --FontSize--md, AggregateHealthBadge icon added, WaveCompositionTree wave node aria-label added, Syncing state added to jest-axe coverage, extra body sentence trimmed from DashboardEmptyState, react-router mock fixed
+
 ### File List
+
+New files:
+- console-plugin/src/components/DRDashboard/DashboardEmptyState.tsx
+- console-plugin/tests/components/DashboardEmptyState.test.tsx
+- console-plugin/tests/components/KeyboardAccessibility.test.tsx
+- console-plugin/tests/components/Accessibility.test.tsx
+
+Modified files:
+- console-plugin/src/components/DRDashboard/DRDashboard.tsx (import + empty state rendering + error state handling)
+- console-plugin/src/components/DRDashboard/DashboardEmptyState.tsx (docs link fix, body text trim)
+- console-plugin/src/components/shared/PhaseBadge.tsx (InProgressIcon → InfoCircleIcon, visually-hidden styles)
+- console-plugin/src/components/DRPlanDetail/DRLifecycleDiagram.tsx (font sizes: all text to --md, aria-label fix, edge text to --md)
+- console-plugin/src/components/DRPlanDetail/PlanHeader.tsx (VM/wave counts to --FontSize--lg)
+- console-plugin/src/components/DRPlanDetail/TransitionProgressBanner.tsx (wave/elapsed/est to --FontSize--lg)
+- console-plugin/src/components/DRPlanDetail/WaveCompositionTree.tsx (AggregateHealthBadge icon, wave aria-label, VM-level font size)
+- console-plugin/tests/components/DRLifecycleDiagram.test.tsx (test text updated for role="figure" consistency)
+- console-plugin/tests/components/KeyboardAccessibility.test.tsx (rewritten with userEvent.tab/keyboard)
+- console-plugin/tests/components/Accessibility.test.tsx (Syncing state added, react-router mock fixed)
+- console-plugin/tests/components/DashboardEmptyState.test.tsx (docs link assertion relaxed)
+- _bmad-output/implementation-artifacts/6-6-status-badges-empty-states-accessibility.md (story status + tasks + retro items)
+- _bmad-output/implementation-artifacts/sprint-status.yaml (story status update)

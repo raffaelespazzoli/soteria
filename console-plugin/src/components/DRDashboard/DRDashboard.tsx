@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Alert } from '@patternfly/react-core';
 import { Table, Thead, Tr, Th, Tbody, Td, ThProps } from '@patternfly/react-table';
 import { Link } from 'react-router';
 import { useDRPlans, useDRExecutions } from '../../hooks/useDRResources';
@@ -18,6 +19,7 @@ import ExecutionResultBadge from '../shared/ExecutionResultBadge';
 import ReplicationHealthIndicator from '../shared/ReplicationHealthIndicator';
 import DRDashboardToolbar from './DRDashboardToolbar';
 import DRPlanActions from './DRPlanActions';
+import { DashboardEmptyState } from './DashboardEmptyState';
 import { DRExecution, DRExecutionResult, DRPlan } from '../../models/types';
 
 type SortColumn = 0 | 1 | 2 | 3 | 4;
@@ -125,7 +127,7 @@ function sortPlans(
 }
 
 export default function DRDashboard() {
-  const [plans, plansLoaded] = useDRPlans();
+  const [plans, plansLoaded, plansError] = useDRPlans();
   const [executions, execsLoaded] = useDRExecutions();
   const { filters, setFilters, clearAllFilters } = useFilterParams();
 
@@ -215,6 +217,14 @@ export default function DRDashboard() {
 
   if (!plansLoaded || !execsLoaded) {
     return <div>Loading...</div>;
+  }
+
+  if (plansError) {
+    return <Alert variant="danger" isInline title="Failed to load DR plans">{String(plansError)}</Alert>;
+  }
+
+  if (plans.length === 0) {
+    return <DashboardEmptyState />;
   }
 
   return (

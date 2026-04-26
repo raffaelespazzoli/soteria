@@ -50,10 +50,10 @@ const PlanHeader: React.FC<PlanHeaderProps> = ({ plan }) => {
         style={{ marginTop: 'var(--pf-v5-global--spacer--sm)' }}
       >
         <FlexItem>
-          <strong>{vmCount}</strong> {vmCount === 1 ? 'VM' : 'VMs'}
+          <strong style={{ fontSize: 'var(--pf-v5-global--FontSize--lg)' }}>{vmCount}</strong> {vmCount === 1 ? 'VM' : 'VMs'}
         </FlexItem>
         <FlexItem>
-          <strong>{waveCount}</strong> {waveCount === 1 ? 'wave' : 'waves'}
+          <strong style={{ fontSize: 'var(--pf-v5-global--FontSize--lg)' }}>{waveCount}</strong> {waveCount === 1 ? 'wave' : 'waves'}
         </FlexItem>
         {activeSite && <FlexItem>Active on: {activeSite}</FlexItem>}
       </Flex>
