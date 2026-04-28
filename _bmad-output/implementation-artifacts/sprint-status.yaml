@@ -36,6 +36,7 @@
 
 generated: 2026-04-06
 last_updated: 2026-04-28
+# 7.1 review: Pre-flight Confirmation & Failover Trigger — PreflightConfirmationModal (PF6 ModalHeader/ModalBody/ModalFooter, large variant, keyword confirmation TextInput, danger/primary button variants), ACTION_CONFIG shared constant (6 action keys → mode/keyword/variant), getPreflightData pure function (RPO human-readable for disaster/guaranteed for planned/N/A for reprotect, RTO from last execution, capacity from preflight warnings, action-specific summary with site names), useCreateDRExecution hook (k8sCreate wrapper, mode mapping, soteria.io/plan-name label, isCreating/error state), DRPlanDetailPage modal wiring (pendingAction state, conditional rendering, create on confirm, error in modal), DRPlanActions onAction callback prop (DRDashboard navigates to plan detail), 75 new tests with jest-axe accessibility (~3 new src files, ~2 new hooks, ~3 new test files, ~4 modified files)
 # epic-6-retrospective done: 7/7 stories, ~160+ tests with jest-axe, ~21 review patches, 1 proactive split (6.5→6.5+6.5b), 0 spawned; 9 UAT issues resolved (React Error #130 most significant — RR v5 vs v7 mismatch); post-UAT DRLifecycleDiagram overhaul + PlanConfiguration two-pane layout; 4.6 deferred fixes formally closed (resolved in Epic 5); all Epic 7 story specs corrected for RR v5 + PF6; env findings codified.
 # epic-6-retrospective: 4.6 deferred fixes verified resolved (annotation cleanup in reconciler.go:104-117, resolveVMNamespace refactored to resolveVMNamespaceFromPlan pure function, parseRetryAnnotation dedup with seen-map + test). All 3 items addressed as side effects of Stories 5.5-5.7; formal closure during Epic 6 retro.
 # 7.4 created: Toast Notifications & Execution Summary — module-level toastStore singleton (addToast/removeToast/subscribe), useToastNotifications hook (useSyncExternalStore or useReducer+subscribe for React 17), ToastContainer (PatternFly AlertGroup isToast+isLiveRegion with Alert variants), useExecutionNotifications hook (useDRExecutions watch, transition detection via useRef prevStates, initial-load skip, mode-aware labels), ExecutionSummary (Card with --pf-v5-global--FontSize--xl bridge-call-ready plain language: VM count+duration+RPO+result), toast message templates (info 8s started, success 15s completed, warning persistent partial, danger persistent failed, re-protect 8s), integration into DRDashboardPage+DRPlanDetailPage+ExecutionDetailPage, jest-axe accessibility (~2 new src files, ~1 new hook, ~1 new store module, ~3 modified pages, ~5 new test files, ~1 modified test file)
@@ -230,7 +231,7 @@ development_status:
 
   # Epic 7: OCP Console — Execution & DR Operations
   epic-7: in-progress
-  7-1-pre-flight-confirmation-failover-trigger: ready-for-dev
+  7-1-pre-flight-confirmation-failover-trigger: done
   7-2-live-execution-monitor-progressstepper: ready-for-dev
   7-3-inline-error-display-drgroup-retry: ready-for-dev
   7-4-toast-notifications-execution-summary: ready-for-dev

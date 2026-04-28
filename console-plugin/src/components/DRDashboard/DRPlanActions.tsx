@@ -12,16 +12,19 @@ import { DRAction, getValidActions } from '../../utils/drPlanActions';
 
 interface DRPlanActionsProps {
   plan: DRPlan;
+  onAction?: (actionKey: string, plan: DRPlan) => void;
 }
 
-const DRPlanActions: React.FC<DRPlanActionsProps> = ({ plan }) => {
+const DRPlanActions: React.FC<DRPlanActionsProps> = ({ plan, onAction }) => {
   const [isOpen, setIsOpen] = useState(false);
   const actions = getValidActions(plan);
 
   if (actions.length === 0) return null;
 
   const onActionClick = (action: DRAction) => {
-    console.log('Action:', action.key, 'Plan:', plan.metadata?.name);
+    if (onAction) {
+      onAction(action.key, plan);
+    }
     setIsOpen(false);
   };
 

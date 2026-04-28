@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { DocumentTitle } from '@openshift-console/dynamic-plugin-sdk';
 import {
   Alert,
@@ -16,14 +16,13 @@ import TransitionProgressBanner from './TransitionProgressBanner';
 import { WaveCompositionTree } from './WaveCompositionTree';
 import { ExecutionHistoryTable } from './ExecutionHistoryTable';
 import { PlanConfiguration } from './PlanConfiguration';
+import { PreflightConfirmationModal } from './PreflightConfirmationModal';
 import { useDRPlan, useDRExecution, useDRExecutions } from '../../hooks/useDRResources';
+import { useCreateDRExecution } from '../../hooks/useCreateDRExecution';
+import { getPreflightData } from '../../hooks/usePreflightData';
 import { DRPlan } from '../../models/types';
 import { getEffectivePhase } from '../../utils/drPlanUtils';
 import { WaveProgress } from './DRLifecycleDiagram';
-
-function handleAction(action: string, plan: DRPlan) {
-  console.log('Trigger:', action, plan.metadata?.name);
-}
 
 const DRPlanDetailPage: React.FC = () => {
   const { name } = useParams<{ name: string }>();
@@ -32,6 +31,8 @@ const DRPlanDetailPage: React.FC = () => {
   const [execution] = useDRExecution(activeExecName);
   const [executions, executionsLoaded] = useDRExecutions(name!);
   const [activeTab, setActiveTab] = useState<string | number>(0);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
+  const { create, isCreating, error: createError, clearError } = useCreateDRExecution();
 
   const effectivePhase = plan ? getEffectivePhase(plan) : null;
   const restPhase = plan?.status?.phase;
@@ -43,6 +44,30 @@ const DRPlanDetailPage: React.FC = () => {
     const completed = waves.filter(w => w.completionTime).length;
     return { current: Math.min(completed + 1, waves.length), total: waves.length };
   })();
+
+  const handleAction = useCallback((_action: string, _plan: DRPlan) => {
+    setPendingAction(_action);
+  }, []);
+
+  const handleConfirm = useCallback(async () => {
+    if (!pendingAction || !plan) return;
+    try {
+      await create(plan.metadata!.name!, pendingAction);
+      setPendingAction(null);
+    } catch {
+      // Error is stored in the hook state and displayed in the modal
+    }
+  }, [pendingAction, plan, create]);
+
+  const handleCloseModal = useCallback(() => {
+    setPendingAction(null);
+    clearError();
+  }, [clearError]);
+
+  const preflightData =
+    pendingAction && plan && executionsLoaded
+      ? getPreflightData(plan, pendingAction, executions)
+      : null;
 
   return (
     <>
@@ -88,6 +113,18 @@ const DRPlanDetailPage: React.FC = () => {
           </Tabs>
         )}
       </PageSection>
+      {pendingAction && plan && preflightData && (
+        <PreflightConfirmationModal
+          isOpen
+          onClose={handleCloseModal}
+          onConfirm={handleConfirm}
+          action={pendingAction}
+          planName={plan.metadata?.name ?? ''}
+          preflightData={preflightData}
+          isCreating={isCreating}
+          error={createError}
+        />
+      )}
     </>
   );
 };

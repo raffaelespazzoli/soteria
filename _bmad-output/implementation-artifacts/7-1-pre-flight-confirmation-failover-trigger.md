@@ -1,6 +1,6 @@
 # Story 7.1: Pre-flight Confirmation & Failover Trigger
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -36,44 +36,44 @@ So that I act with full confidence and never trigger failover accidentally.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create `PreflightConfirmationModal` component (AC: #1, #2, #3, #4, #6, #7)
-  - [ ] 1.1 Create `src/components/DRPlanDetail/PreflightConfirmationModal.tsx` — PatternFly `Modal` with `variant="large"`, structured pre-flight summary, TextInput confirmation field, Confirm/Cancel buttons
-  - [ ] 1.2 Implement pre-flight summary section: VM count, wave count, estimated RPO (from `getReplicationHealth`), estimated RTO (from last execution via `useDRExecutions`), action summary text
-  - [ ] 1.3 Implement action-specific content variants: disaster failover summary vs. planned migration Step 0 summary vs. reprotect/failback/restore summaries
-  - [ ] 1.4 Implement confirmation keyword validation: TextInput with `FormGroup` label "Type {KEYWORD} to confirm", Confirm button disabled until exact match
-  - [ ] 1.5 Implement button variants: `variant="danger"` for Failover confirm, `variant="primary"` for all others
-  - [ ] 1.6 Implement Cancel + Escape close with no side effects
+- [x] Task 1: Create `PreflightConfirmationModal` component (AC: #1, #2, #3, #4, #6, #7)
+  - [x] 1.1 Create `src/components/DRPlanDetail/PreflightConfirmationModal.tsx` — PatternFly `Modal` with `variant="large"`, structured pre-flight summary, TextInput confirmation field, Confirm/Cancel buttons
+  - [x] 1.2 Implement pre-flight summary section: VM count, wave count, estimated RPO (from `getReplicationHealth`), estimated RTO (from last execution via `useDRExecutions`), action summary text
+  - [x] 1.3 Implement action-specific content variants: disaster failover summary vs. planned migration Step 0 summary vs. reprotect/failback/restore summaries
+  - [x] 1.4 Implement confirmation keyword validation: TextInput with `FormGroup` label "Type {KEYWORD} to confirm", Confirm button disabled until exact match
+  - [x] 1.5 Implement button variants: `variant="danger"` for Failover confirm, `variant="primary"` for all others
+  - [x] 1.6 Implement Cancel + Escape close with no side effects
 
-- [ ] Task 2: Create `usePreflightData` hook (AC: #2, #3)
-  - [ ] 2.1 Create `src/hooks/usePreflightData.ts` — derives pre-flight display data from DRPlan + last DRExecution
-  - [ ] 2.2 Compute estimated RPO from `getReplicationHealth(plan).rpoSeconds`
-  - [ ] 2.3 Compute estimated RTO from `getLastExecution()` duration (fallback: "Unknown — no previous execution")
-  - [ ] 2.4 Compute DR site capacity assessment from plan status (sufficient/warning/unknown)
-  - [ ] 2.5 Generate action summary text per action type
+- [x] Task 2: Create `usePreflightData` hook (AC: #2, #3)
+  - [x] 2.1 Create `src/hooks/usePreflightData.ts` — derives pre-flight display data from DRPlan + last DRExecution
+  - [x] 2.2 Compute estimated RPO from `getReplicationHealth(plan).rpoSeconds`
+  - [x] 2.3 Compute estimated RTO from `getLastExecution()` duration (fallback: "Unknown — no previous execution")
+  - [x] 2.4 Compute DR site capacity assessment from plan status (sufficient/warning/unknown)
+  - [x] 2.5 Generate action summary text per action type
 
-- [ ] Task 3: Create `useCreateDRExecution` hook (AC: #5)
-  - [ ] 3.1 Create `src/hooks/useCreateDRExecution.ts` — wraps `k8sCreate` from Console SDK to create a DRExecution resource
-  - [ ] 3.2 Map UI action to `DRExecutionSpec.mode`: Failover→`disaster`, Planned Migration→`planned_migration`, Reprotect→`reprotect`, Failback→`planned_migration`, Restore→`reprotect`
-  - [ ] 3.3 Generate DRExecution name: `{planName}-{action}-{timestamp}`
-  - [ ] 3.4 Set `soteria.io/plan-name` label for history queries
-  - [ ] 3.5 Return `{ create, isCreating, error }` tuple with loading/error state
+- [x] Task 3: Create `useCreateDRExecution` hook (AC: #5)
+  - [x] 3.1 Create `src/hooks/useCreateDRExecution.ts` — wraps `k8sCreate` from Console SDK to create a DRExecution resource
+  - [x] 3.2 Map UI action to `DRExecutionSpec.mode`: Failover→`disaster`, Planned Migration→`planned_migration`, Reprotect→`reprotect`, Failback→`planned_migration`, Restore→`reprotect`
+  - [x] 3.3 Generate DRExecution name: `{planName}-{action}-{timestamp}`
+  - [x] 3.4 Set `soteria.io/plan-name` label for history queries
+  - [x] 3.5 Return `{ create, isCreating, error }` tuple with loading/error state
 
-- [ ] Task 4: Wire modal into DRPlanDetailPage (AC: #1, #5)
-  - [ ] 4.1 Replace `console.log` in `handleAction` with modal state management (`useState` for `isModalOpen` + `pendingAction`)
-  - [ ] 4.2 Render `PreflightConfirmationModal` conditionally when `isModalOpen`
-  - [ ] 4.3 On confirm: call `useCreateDRExecution.create()`, close modal on success
-  - [ ] 4.4 On error: display inline error in modal, keep modal open
+- [x] Task 4: Wire modal into DRPlanDetailPage (AC: #1, #5)
+  - [x] 4.1 Replace `console.log` in `handleAction` with modal state management (`useState` for `isModalOpen` + `pendingAction`)
+  - [x] 4.2 Render `PreflightConfirmationModal` conditionally when `isModalOpen`
+  - [x] 4.3 On confirm: call `useCreateDRExecution.create()`, close modal on success
+  - [x] 4.4 On error: display inline error in modal, keep modal open
 
-- [ ] Task 5: Extend DRLifecycleDiagram for Planned Migration (AC: #8)
-  - [ ] 5.1 Modify `TransitionEdge` for SteadyState→FailedOver to render TWO buttons when `state === 'available'`: "Failover" (`variant="danger"`) and "Planned Migration" (`variant="secondary"`)
-  - [ ] 5.2 Update `onAction` calls: Failover button calls `onAction('Failover', plan)`, Planned Migration button calls `onAction('Planned Migration', plan)`
+- [x] Task 5: Extend DRLifecycleDiagram for Planned Migration (AC: #8)
+  - [x] 5.1 Modify `TransitionEdge` for SteadyState→FailedOver to render TWO buttons when `state === 'available'`: "Failover" (`variant="danger"`) and "Planned Migration" (`variant="secondary"`)
+  - [x] 5.2 Update `onAction` calls: Failover button calls `onAction('Failover', plan)`, Planned Migration button calls `onAction('Planned Migration', plan)`
 
-- [ ] Task 6: Wire modal into DRPlanActions kebab menu (AC: #1)
-  - [ ] 6.1 Modify `DRPlanActions.tsx` to accept an `onAction` callback prop instead of console.log
-  - [ ] 6.2 In `DRDashboard.tsx`, pass the same modal trigger logic from dashboard context
+- [x] Task 6: Wire modal into DRPlanActions kebab menu (AC: #1)
+  - [x] 6.1 Modify `DRPlanActions.tsx` to accept an `onAction` callback prop instead of console.log
+  - [x] 6.2 In `DRDashboard.tsx`, pass the same modal trigger logic from dashboard context
 
-- [ ] Task 7: Write tests (AC: #7)
-  - [ ] 7.1 Create `tests/components/PreflightConfirmationModal.test.tsx`:
+- [x] Task 7: Write tests (AC: #7)
+  - [x] 7.1 Create `tests/components/PreflightConfirmationModal.test.tsx`:
     - Renders modal with pre-flight summary for each action type (5 actions)
     - Confirm button disabled until keyword matches exactly
     - Confirm button enabled after correct keyword
@@ -83,21 +83,28 @@ So that I act with full confidence and never trigger failover accidentally.
     - RPO displayed at 2xl size for disaster failover
     - Planned migration shows RPO "0 — guaranteed"
     - jest-axe zero violations for all action variants
-  - [ ] 7.2 Create `tests/hooks/usePreflightData.test.ts`:
+  - [x] 7.2 Create `tests/hooks/usePreflightData.test.ts`:
     - Computes estimated RPO from plan health
     - Computes estimated RTO from last execution
     - Returns "Unknown" RTO when no previous execution
     - Generates correct summary text per action type
-  - [ ] 7.3 Create `tests/hooks/useCreateDRExecution.test.ts`:
+  - [x] 7.3 Create `tests/hooks/useCreateDRExecution.test.ts`:
     - Maps actions to correct DRExecution mode
     - Generates correct resource name
     - Sets soteria.io/plan-name label
     - Handles creation error
-  - [ ] 7.4 Update `tests/components/DRLifecycleDiagram.test.tsx`:
+  - [x] 7.4 Update `tests/components/DRLifecycleDiagram.test.tsx`:
     - SteadyState shows both Failover and Planned Migration buttons
     - Only Failover has danger variant
     - Both buttons trigger onAction with correct action string
-  - [ ] 7.5 Run `yarn build` and verify all tests pass
+  - [x] 7.5 Run `yarn build` and verify all tests pass
+
+### Review Findings
+
+- [x] [Review][Patch] Clear stale create errors when the pre-flight modal closes [`console-plugin/src/components/DRPlanDetail/DRPlanDetailPage.tsx`, `console-plugin/src/hooks/useCreateDRExecution.ts`]
+- [x] [Review][Patch] Do not compute pre-flight RTO from an unloaded execution-history watch; show a loading or unknown state explicitly until `useDRExecutions` has loaded [`console-plugin/src/components/DRPlanDetail/DRPlanDetailPage.tsx`, `console-plugin/src/hooks/usePreflightData.ts`]
+- [x] [Review][Patch] Normalize action inputs before looking up `ACTION_CONFIG` so the modal and create hook accept both title-case labels and existing lowercase keys as required by the story (`Failover` and `failover`, etc.) [`console-plugin/src/components/DRPlanDetail/PreflightConfirmationModal.tsx`, `console-plugin/src/hooks/useCreateDRExecution.ts`, `console-plugin/src/utils/drPlanActions.ts`]
+- [x] [Review][Patch] Add the explicit `Step 0:` framing to the planned-migration pre-flight summary to match AC3 [`console-plugin/src/hooks/usePreflightData.ts`]
 
 ## Dev Notes
 
@@ -595,10 +602,41 @@ All Epic 6 stories are complete. Story 7.1 is the first Epic 7 story. The codeba
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Opus 4.6 (Cursor)
 
 ### Debug Log References
 
+- PF6 Modal API: `title` and `actions` props not supported in PF6; switched to compositional API with `ModalHeader`/`ModalBody`/`ModalFooter`
+- `@testing-library/react` v12 does not export `renderHook`; used React mock pattern for hook tests instead
+- Task 5 (DRLifecycleDiagram dual buttons) already implemented in existing code from Story 6.5/6.6; action keys passed as lowercase (`a.key`), not title-case as story spec assumed; modal's `ACTION_CONFIG` handles lowercase keys directly to avoid breaking existing 303-line test suite
+
 ### Completion Notes List
 
+- **Task 1:** Created `PreflightConfirmationModal` using PF6 compositional Modal API (`ModalHeader`/`ModalBody`/`ModalFooter`), with structured pre-flight summary, keyword confirmation `TextInput` in `FormGroup`, danger variant for Failover confirm, inline `Alert` for creation errors, and proper ARIA labeling
+- **Task 2:** Created `getPreflightData` pure function in `usePreflightData.ts` — derives VM count, wave count, RPO (47s human-readable for disaster, "0 — guaranteed" for planned, "N/A" for reprotect/restore), RTO from last execution duration, capacity from preflight warnings, and action-specific summary text with site names
+- **Task 3:** Created `useCreateDRExecution` hook wrapping Console SDK `k8sCreate` — maps 6 action keys to 3 `DRExecution.spec.mode` values via `ACTION_CONFIG`, generates hyphenated resource names with timestamps, sets `soteria.io/plan-name` label, tracks `isCreating`/`error` state
+- **Task 4:** Rewired `DRPlanDetailPage` — replaced module-level `handleAction` console.log with component-level `useCallback` that sets `pendingAction` state, conditionally renders `PreflightConfirmationModal`, calls `useCreateDRExecution.create()` on confirm, clears state on success, keeps modal open on error
+- **Task 5:** Already satisfied by existing code — SteadyState edge renders both Failover (danger) and Planned Migration (secondary) buttons via `getValidActions`/`ACTIONS_BY_PHASE`; DRedSteadyState similarly renders Failback + Planned Migration
+- **Task 6:** Modified `DRPlanActions` to accept optional `onAction` callback prop; `DRDashboard` passes `history.push` handler to navigate to plan detail page on kebab action (v1 scope per dev notes)
+- **Task 7:** 75 new tests across 3 files — 35 PreflightConfirmationModal tests (5 action variants, keyword validation, button variants, cancel/escape, RPO display, error display, 6 jest-axe accessibility passes), 24 usePreflightData tests (RPO/RTO/summary/capacity/sites), 16 useCreateDRExecution tests (mode mapping, naming, labels, loading/error state, ACTION_CONFIG completeness)
+
+### Change Log
+
+- 2026-04-28: Story 7.1 implemented — Pre-flight Confirmation & Failover Trigger. 3 new source files, 2 new hooks, 1 modified utility, 3 modified components. 370 total tests (75 new), `yarn build` clean, all Go unit + integration tests pass.
+
 ### File List
+
+**New files:**
+- `console-plugin/src/components/DRPlanDetail/PreflightConfirmationModal.tsx`
+- `console-plugin/src/hooks/usePreflightData.ts`
+- `console-plugin/src/hooks/useCreateDRExecution.ts`
+- `console-plugin/tests/components/PreflightConfirmationModal.test.tsx`
+- `console-plugin/tests/hooks/usePreflightData.test.ts`
+- `console-plugin/tests/hooks/useCreateDRExecution.test.ts`
+
+**Modified files:**
+- `console-plugin/src/utils/drPlanActions.ts` — added `ACTION_CONFIG` with keyword/mode/variant mapping per action
+- `console-plugin/src/components/DRPlanDetail/DRPlanDetailPage.tsx` — replaced console.log handleAction with modal state management + PreflightConfirmationModal rendering
+- `console-plugin/src/components/DRDashboard/DRPlanActions.tsx` — added optional `onAction` callback prop
+- `console-plugin/src/components/DRDashboard/DRDashboard.tsx` — pass `history.push` onAction to DRPlanActions
+- `console-plugin/tests/components/DRPlanActions.test.tsx` — updated to test onAction callback instead of console.log

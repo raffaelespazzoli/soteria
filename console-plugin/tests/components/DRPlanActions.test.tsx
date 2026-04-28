@@ -22,9 +22,9 @@ function makePlan(phase: string, activeExecution?: string, activeExecutionMode?:
 }
 
 describe('DRPlanActions', () => {
-  const consoleSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
+  const mockOnAction = jest.fn();
 
-  afterAll(() => consoleSpy.mockRestore());
+  beforeEach(() => mockOnAction.mockClear());
 
   it('renders kebab menu for SteadyState plan', () => {
     render(<DRPlanActions plan={makePlan('SteadyState')} />);
@@ -71,12 +71,12 @@ describe('DRPlanActions', () => {
     expect(container.innerHTML).toBe('');
   });
 
-  it('logs action to console when menu item is clicked', () => {
-    consoleSpy.mockClear();
-    render(<DRPlanActions plan={makePlan('SteadyState')} />);
+  it('calls onAction callback when menu item is clicked', () => {
+    const plan = makePlan('SteadyState');
+    render(<DRPlanActions plan={plan} onAction={mockOnAction} />);
     fireEvent.click(screen.getByRole('button', { name: /actions for test-plan/i }));
     fireEvent.click(screen.getByText('Failover'));
-    expect(consoleSpy).toHaveBeenCalledWith('Action:', 'failover', 'Plan:', 'test-plan');
+    expect(mockOnAction).toHaveBeenCalledWith('failover', plan);
   });
 
   it('has no accessibility violations for SteadyState plan', async () => {

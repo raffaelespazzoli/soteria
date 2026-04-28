@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert } from '@patternfly/react-core';
 import { Table, Thead, Tr, Th, Tbody, Td, ThProps } from '@patternfly/react-table';
-import { Link } from 'react-router-dom';
+import { Link, useHistory } from 'react-router-dom';
 import { useDRPlans, useDRExecutions } from '../../hooks/useDRResources';
 import { useFilterParams, FilterState } from '../../hooks/useFilterParams';
 import { saveDashboardState, restoreDashboardState } from '../../hooks/useDashboardState';
@@ -127,6 +127,7 @@ function sortPlans(
 }
 
 export default function DRDashboard() {
+  const history = useHistory();
   const [plans, plansLoaded, plansError] = useDRPlans();
   const [executions, execsLoaded] = useDRExecutions();
   const { filters, setFilters, clearAllFilters } = useFilterParams();
@@ -267,7 +268,12 @@ export default function DRDashboard() {
                   <LastExecutionCell enrichedPlan={ep} />
                 </Td>
                 <Td isActionCell>
-                  <DRPlanActions plan={ep.plan} />
+                  <DRPlanActions
+                    plan={ep.plan}
+                    onAction={(_action, p) =>
+                      history.push(`/disaster-recovery/plans/${p.metadata?.name ?? ''}`)
+                    }
+                  />
                 </Td>
               </Tr>
             );
