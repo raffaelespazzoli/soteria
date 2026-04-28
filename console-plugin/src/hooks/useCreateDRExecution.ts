@@ -1,18 +1,8 @@
 import { useState, useCallback } from 'react';
 import { k8sCreate } from '@openshift-console/dynamic-plugin-sdk';
 import { DRExecution } from '../models/types';
+import { drExecutionModel } from '../models/k8sModels';
 import { ACTION_CONFIG, resolveActionKey } from '../utils/drPlanActions';
-
-const drExecutionModel = {
-  apiGroup: 'soteria.io',
-  apiVersion: 'v1alpha1',
-  kind: 'DRExecution',
-  abbr: 'DRE',
-  label: 'DRExecution',
-  labelPlural: 'DRExecutions',
-  plural: 'drexecutions',
-  namespaced: false,
-};
 
 export function useCreateDRExecution(): {
   create: (planName: string, action: string) => Promise<DRExecution>;

@@ -1,7 +1,8 @@
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { axe, toHaveNoViolations } from 'jest-axe';
 import ExecutionHeader from '../../src/components/ExecutionDetail/ExecutionHeader';
-import { DRExecution } from '../../src/models/types';
+import { DRExecution, DRGroupResultValue } from '../../src/models/types';
 
 expect.extend(toHaveNoViolations);
 
@@ -129,6 +130,112 @@ describe('ExecutionHeader', () => {
 
   it('has no accessibility violations (completed)', async () => {
     const { container } = render(<ExecutionHeader execution={completedExecution} />);
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
+  });
+});
+
+const partialExecution: DRExecution = {
+  ...baseExecution,
+  status: {
+    startTime: new Date(now - 10 * 60 * 1000).toISOString(),
+    completionTime: new Date(now).toISOString(),
+    result: 'PartiallySucceeded',
+    rpoSeconds: 47,
+    waves: [
+      {
+        waveIndex: 0,
+        startTime: new Date(now - 10 * 60 * 1000).toISOString(),
+        completionTime: new Date(now - 5 * 60 * 1000).toISOString(),
+        groups: [
+          { name: 'drgroup-1', result: DRGroupResultValue.Completed, vmNames: ['db-1'] },
+        ],
+      },
+      {
+        waveIndex: 1,
+        startTime: new Date(now - 5 * 60 * 1000).toISOString(),
+        completionTime: new Date(now).toISOString(),
+        groups: [
+          { name: 'drgroup-3', result: DRGroupResultValue.Failed, vmNames: ['app-1'], error: 'timeout' },
+          { name: 'drgroup-4', result: DRGroupResultValue.Failed, vmNames: ['app-2'], error: 'error 2' },
+        ],
+      },
+    ],
+  },
+};
+
+const singleFailExecution: DRExecution = {
+  ...baseExecution,
+  status: {
+    ...partialExecution.status!,
+    waves: [
+      partialExecution.status!.waves![0],
+      {
+        waveIndex: 1,
+        startTime: new Date(now - 5 * 60 * 1000).toISOString(),
+        completionTime: new Date(now).toISOString(),
+        groups: [
+          { name: 'drgroup-3', result: DRGroupResultValue.Failed, vmNames: ['app-1'], error: 'timeout' },
+          { name: 'drgroup-4', result: DRGroupResultValue.Completed, vmNames: ['app-2'] },
+        ],
+      },
+    ],
+  },
+};
+
+describe('ExecutionHeader — Retry All Failed', () => {
+  it('shows "Retry All Failed" button when multiple groups failed and result is PartiallySucceeded', () => {
+    render(<ExecutionHeader execution={partialExecution} onRetryAll={jest.fn()} />);
+    expect(screen.getByRole('button', { name: /retry all failed/i })).toBeInTheDocument();
+  });
+
+  it('hides "Retry All Failed" button when only one group failed', () => {
+    render(<ExecutionHeader execution={singleFailExecution} onRetryAll={jest.fn()} />);
+    expect(screen.queryByRole('button', { name: /retry all failed/i })).not.toBeInTheDocument();
+  });
+
+  it('hides "Retry All Failed" when result is Succeeded', () => {
+    render(<ExecutionHeader execution={completedExecution} onRetryAll={jest.fn()} />);
+    expect(screen.queryByRole('button', { name: /retry all failed/i })).not.toBeInTheDocument();
+  });
+
+  it('calls onRetryAll when "Retry All Failed" is clicked', async () => {
+    const user = userEvent.setup();
+    const onRetryAll = jest.fn();
+    render(<ExecutionHeader execution={partialExecution} onRetryAll={onRetryAll} />);
+    await user.click(screen.getByRole('button', { name: /retry all failed/i }));
+    expect(onRetryAll).toHaveBeenCalledTimes(1);
+  });
+
+  it('disables "Retry All Failed" when isRetryDisabled is true', () => {
+    render(
+      <ExecutionHeader
+        execution={partialExecution}
+        onRetryAll={jest.fn()}
+        isRetryDisabled
+        retryTooltip="Retry in progress"
+      />,
+    );
+    expect(screen.getByRole('button', { name: /retry all failed/i })).toBeDisabled();
+  });
+
+  it('has no accessibility violations (with Retry All Failed)', async () => {
+    const { container } = render(
+      <ExecutionHeader execution={partialExecution} onRetryAll={jest.fn()} />,
+    );
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
+  });
+
+  it('has no accessibility violations (disabled Retry All)', async () => {
+    const { container } = render(
+      <ExecutionHeader
+        execution={partialExecution}
+        onRetryAll={jest.fn()}
+        isRetryDisabled
+        retryTooltip="Retry in progress"
+      />,
+    );
     const results = await axe(container);
     expect(results).toHaveNoViolations();
   });

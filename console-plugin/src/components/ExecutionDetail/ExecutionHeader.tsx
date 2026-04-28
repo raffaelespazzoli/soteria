@@ -1,5 +1,5 @@
-import { Label, LabelProps } from '@patternfly/react-core';
-import { DRExecution, DRExecutionMode, WaveStatus } from '../../models/types';
+import { Label, LabelProps, Button, Tooltip } from '@patternfly/react-core';
+import { DRExecution, DRExecutionMode, DRGroupResultValue, WaveStatus } from '../../models/types';
 import { useElapsedTime, formatElapsedMs } from '../../hooks/useElapsedTime';
 import { formatDuration, formatRPO } from '../../utils/formatters';
 import ExecutionResultBadge from '../shared/ExecutionResultBadge';
@@ -34,15 +34,34 @@ const lgFontStyle: React.CSSProperties = {
   fontSize: 'var(--pf-t--global--font--size--body--lg, var(--pf-v5-global--FontSize--lg))',
 };
 
-interface ExecutionHeaderProps {
-  execution: DRExecution;
+function getFailedGroupCount(execution: DRExecution): number {
+  if (!execution.status?.waves) return 0;
+  return execution.status.waves.reduce(
+    (count, w) => count + (w.groups?.filter((g) => g.result === DRGroupResultValue.Failed).length ?? 0),
+    0,
+  );
 }
 
-const ExecutionHeader: React.FC<ExecutionHeaderProps> = ({ execution }) => {
+interface ExecutionHeaderProps {
+  execution: DRExecution;
+  onRetryAll?: () => void;
+  isRetryDisabled?: boolean;
+  retryTooltip?: string;
+}
+
+const ExecutionHeader: React.FC<ExecutionHeaderProps> = ({
+  execution,
+  onRetryAll,
+  isRetryDisabled = false,
+  retryTooltip,
+}) => {
   const { spec, status } = execution;
   const isComplete = !!status?.completionTime;
   const { elapsed, elapsedMs } = useElapsedTime(status?.startTime, !isComplete);
   const modeDisplay = getModeDisplay(spec.mode);
+  const failedGroupCount = getFailedGroupCount(execution);
+  const showRetryAll =
+    status?.result === 'PartiallySucceeded' && failedGroupCount > 1;
 
   const headerStyle: React.CSSProperties = {
     marginBottom: 'var(--pf-t--global--spacer--md, var(--pf-v5-global--spacer--md))',
@@ -78,6 +97,25 @@ const ExecutionHeader: React.FC<ExecutionHeaderProps> = ({ execution }) => {
           {status?.result && <ExecutionResultBadge result={status.result} />}
           {status?.rpoSeconds != null && (
             <span style={lgFontStyle}>{formatRPO(status.rpoSeconds)}</span>
+          )}
+          {showRetryAll && (
+            isRetryDisabled && retryTooltip ? (
+              <Tooltip content={retryTooltip}>
+                <Button variant="primary" size="sm" isDisabled aria-label="Retry All Failed">
+                  Retry All Failed
+                </Button>
+              </Tooltip>
+            ) : (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={onRetryAll}
+                isDisabled={isRetryDisabled}
+                aria-label="Retry All Failed"
+              >
+                Retry All Failed
+              </Button>
+            )
           )}
         </div>
       </div>

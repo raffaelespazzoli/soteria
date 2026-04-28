@@ -9,15 +9,25 @@ import {
 import { useParams } from 'react-router-dom';
 import DRBreadcrumb from '../shared/DRBreadcrumb';
 import { useDRExecution } from '../../hooks/useDRResources';
+import { useRetryDRGroup } from '../../hooks/useRetryDRGroup';
+import { DRGroupResultValue } from '../../models/types';
 import ExecutionHeader from './ExecutionHeader';
 import WaveProgressStep from './WaveProgressStep';
 
 const ExecutionDetailPage: React.FC = () => {
   const { name } = useParams<{ name: string }>();
   const [execution, execLoaded, execError] = useDRExecution(name);
+  const { retry, retryAll, isRetrying, retryError, retriedGroup } = useRetryDRGroup(name, execution ?? null);
   const planName = execution?.spec?.planName ?? '';
 
   const waves = execution?.status?.waves ?? [];
+  const hasAnyInProgress = waves.some((w) =>
+    w.groups?.some((g) => g.result === DRGroupResultValue.InProgress),
+  );
+  const retryDisabled = isRetrying || hasAnyInProgress;
+  const retryTooltipText = retryDisabled
+    ? 'Retry in progress — wait for current retry to complete'
+    : undefined;
   const completedCount = waves.filter((w) => w.completionTime).length;
   const prevCompletedRef = useRef(completedCount);
   const ariaRef = useRef<HTMLDivElement>(null);
@@ -76,10 +86,25 @@ const ExecutionDetailPage: React.FC = () => {
       <DocumentTitle>{`DR Execution: ${execution.metadata?.name}`}</DocumentTitle>
       <PageSection>
         <DRBreadcrumb planName={planName} executionName={execution.metadata?.name} />
-        <ExecutionHeader execution={execution} />
+        <ExecutionHeader
+          execution={execution}
+          onRetryAll={retryAll}
+          isRetryDisabled={retryDisabled}
+          retryTooltip={retryTooltipText}
+        />
         <ProgressStepper isVertical aria-label="Execution wave progress">
           {waves.map((wave, idx) => (
-            <WaveProgressStep key={wave.waveIndex ?? idx} wave={wave} index={idx} />
+            <WaveProgressStep
+              key={wave.waveIndex ?? idx}
+              wave={wave}
+              index={idx}
+              executionResult={execution.status?.result}
+              onRetry={retry}
+              isRetryDisabled={retryDisabled}
+              retryTooltip={retryTooltipText}
+              retryError={retryError}
+              retriedGroup={retriedGroup}
+            />
           ))}
         </ProgressStepper>
         <div

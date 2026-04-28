@@ -5,8 +5,9 @@ import {
   ExclamationCircleIcon,
   PendingIcon,
 } from '@patternfly/react-icons';
-import { WaveStatus, DRGroupExecutionStatus, DRGroupResultValue } from '../../models/types';
+import { WaveStatus, DRGroupExecutionStatus, DRGroupResultValue, DRExecutionResult } from '../../models/types';
 import { formatElapsedMs } from '../../hooks/useElapsedTime';
+import FailedGroupDetail from './FailedGroupDetail';
 
 export type WaveState = 'pending' | 'inProgress' | 'completed' | 'partiallyFailed';
 
@@ -76,11 +77,6 @@ const GroupStatusDisplay: React.FC<GroupStatusDisplayProps> = ({ group }) => {
         <span>
           <ExclamationCircleIcon style={iconStyle('--pf-t--global--icon--color--status--danger--default, --pf-v5-global--danger-color--100')} />
           {' Failed'}
-          {group.error && (
-            <span style={{ marginLeft: 'var(--pf-t--global--spacer--sm, var(--pf-v5-global--spacer--sm))', color: 'var(--pf-t--global--text--color--status--danger--default, var(--pf-v5-global--danger-color--100))' }}>
-              — {group.error}
-            </span>
-          )}
         </span>
       );
     default:
@@ -96,20 +92,35 @@ const GroupStatusDisplay: React.FC<GroupStatusDisplayProps> = ({ group }) => {
 interface WaveProgressStepProps {
   wave: WaveStatus;
   index: number;
+  executionResult?: DRExecutionResult;
+  onRetry?: (groupName: string) => void;
+  isRetryDisabled?: boolean;
+  retryTooltip?: string;
+  retryError?: string | null;
+  retriedGroup?: string | null;
 }
 
-const WaveProgressStep: React.FC<WaveProgressStepProps> = ({ wave, index }) => {
+const WaveProgressStep: React.FC<WaveProgressStepProps> = ({
+  wave,
+  index,
+  executionResult,
+  onRetry,
+  isRetryDisabled = false,
+  retryTooltip,
+  retryError,
+  retriedGroup,
+}) => {
   const state = getWaveState(wave);
   const variant = WAVE_STATE_VARIANT[state];
   const isCurrent = state === 'inProgress';
   const vmCount = getVMCount(wave);
   const waveElapsed = getWaveElapsed(wave);
 
-  const defaultExpanded = state === 'inProgress';
+  const defaultExpanded = state === 'inProgress' || state === 'partiallyFailed';
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 
   useEffect(() => {
-    if (state === 'inProgress') setIsExpanded(true);
+    if (state === 'inProgress' || state === 'partiallyFailed') setIsExpanded(true);
   }, [state]);
 
   const description =
@@ -139,31 +150,48 @@ const WaveProgressStep: React.FC<WaveProgressStepProps> = ({ wave, index }) => {
             aria-label={`Wave ${index + 1} groups`}
             style={{ paddingLeft: 'var(--pf-t--global--spacer--md, var(--pf-v5-global--spacer--md))' }}
           >
-            {wave.groups.map((group, gIdx) => (
-              <div
-                key={`${group.name}-${gIdx}`}
-                role="listitem"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 'var(--pf-t--global--spacer--md, var(--pf-v5-global--spacer--md))',
-                  padding: 'var(--pf-t--global--spacer--xs, var(--pf-v5-global--spacer--xs)) 0',
-                  flexWrap: 'wrap',
-                  fontSize: 'var(--pf-t--global--font--size--body--default, 14px)',
-                }}
-              >
-                <strong>{group.name}</strong>
-                <span style={{ color: 'var(--pf-t--global--text--color--subtle, var(--pf-v5-global--Color--200))' }}>
-                  ({group.vmNames?.join(', ') ?? 'no VMs'})
-                </span>
-                <GroupStatusDisplay group={group} />
-                {group.startTime && (
-                  <span style={{ fontFamily: 'var(--pf-t--global--font--family--mono, var(--pf-v5-global--FontFamily--monospace))' }}>
-                    {getGroupElapsed(group)}
-                  </span>
-                )}
-              </div>
-            ))}
+            {wave.groups.map((group, gIdx) => {
+              const isFailed = group.result === DRGroupResultValue.Failed;
+              const showRetryButton = isFailed && executionResult === 'PartiallySucceeded';
+              const scopedError = retryError && (retriedGroup === null || retriedGroup === 'all-failed' || retriedGroup === group.name)
+                ? retryError
+                : null;
+              return (
+                <div key={`${group.name}-${gIdx}`} role="listitem">
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 'var(--pf-t--global--spacer--md, var(--pf-v5-global--spacer--md))',
+                      padding: 'var(--pf-t--global--spacer--xs, var(--pf-v5-global--spacer--xs)) 0',
+                      flexWrap: 'wrap',
+                      fontSize: 'var(--pf-t--global--font--size--body--default, 14px)',
+                    }}
+                  >
+                    <strong>{group.name}</strong>
+                    <span style={{ color: 'var(--pf-t--global--text--color--subtle, var(--pf-v5-global--Color--200))' }}>
+                      ({group.vmNames?.join(', ') ?? 'no VMs'})
+                    </span>
+                    <GroupStatusDisplay group={group} />
+                    {group.startTime && (
+                      <span style={{ fontFamily: 'var(--pf-t--global--font--family--mono, var(--pf-v5-global--FontFamily--monospace))' }}>
+                        {getGroupElapsed(group)}
+                      </span>
+                    )}
+                  </div>
+                  {isFailed && (
+                    <FailedGroupDetail
+                      group={group}
+                      showRetryButton={showRetryButton}
+                      onRetry={onRetry ? () => onRetry(group.name) : undefined}
+                      isRetryDisabled={isRetryDisabled}
+                      retryTooltip={retryTooltip}
+                      retryError={scopedError}
+                    />
+                  )}
+                </div>
+              );
+            })}
           </div>
         </ExpandableSection>
       )}

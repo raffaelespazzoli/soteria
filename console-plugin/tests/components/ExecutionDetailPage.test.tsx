@@ -9,6 +9,7 @@ jest.mock('@openshift-console/dynamic-plugin-sdk', () => ({
   DocumentTitle: ({ children }: { children: React.ReactNode }) => (
     <title>{children}</title>
   ),
+  k8sPatch: jest.fn(),
 }));
 
 jest.mock('react-router-dom', () => ({
@@ -240,4 +241,126 @@ describe('ExecutionDetailPage', () => {
     expect(mockUseDRExecution).toHaveBeenCalledWith('erp-failover-1714327200000');
   });
 
+});
+
+const mockPartialExecution: DRExecution = {
+  ...mockActiveExecution,
+  status: {
+    startTime: new Date(now - 17 * 60 * 1000).toISOString(),
+    completionTime: new Date(now).toISOString(),
+    result: 'PartiallySucceeded',
+    rpoSeconds: 47,
+    waves: [
+      {
+        waveIndex: 0,
+        startTime: new Date(now - 17 * 60 * 1000).toISOString(),
+        completionTime: new Date(now - 10 * 60 * 1000).toISOString(),
+        groups: [
+          {
+            name: 'drgroup-1',
+            result: DRGroupResultValue.Completed,
+            vmNames: ['erp-db-1', 'erp-db-2'],
+            startTime: new Date(now - 17 * 60 * 1000).toISOString(),
+            completionTime: new Date(now - 10 * 60 * 1000).toISOString(),
+          },
+        ],
+      },
+      {
+        waveIndex: 1,
+        startTime: new Date(now - 10 * 60 * 1000).toISOString(),
+        completionTime: new Date(now - 2 * 60 * 1000).toISOString(),
+        groups: [
+          {
+            name: 'drgroup-3',
+            result: DRGroupResultValue.Failed,
+            vmNames: ['erp-app-1', 'erp-app-2', 'erp-app-3'],
+            error: 'storage driver timeout on SetSource',
+            steps: [
+              { name: 'StopReplication', status: 'Completed' },
+              { name: 'StartVM', status: 'Failed', message: 'timeout after 5m' },
+            ],
+            retryCount: 0,
+            startTime: new Date(now - 10 * 60 * 1000).toISOString(),
+            completionTime: new Date(now - 2 * 60 * 1000).toISOString(),
+          },
+          {
+            name: 'drgroup-4',
+            result: DRGroupResultValue.Completed,
+            vmNames: ['erp-app-4', 'erp-app-5'],
+            startTime: new Date(now - 10 * 60 * 1000).toISOString(),
+            completionTime: new Date(now - 3 * 60 * 1000).toISOString(),
+          },
+        ],
+      },
+      {
+        waveIndex: 2,
+        startTime: new Date(now - 2 * 60 * 1000).toISOString(),
+        completionTime: new Date(now).toISOString(),
+        groups: [
+          {
+            name: 'drgroup-5',
+            result: DRGroupResultValue.Completed,
+            vmNames: ['erp-web-1', 'erp-web-2', 'erp-web-3'],
+            startTime: new Date(now - 2 * 60 * 1000).toISOString(),
+            completionTime: new Date(now).toISOString(),
+          },
+        ],
+      },
+    ],
+  },
+};
+
+const mockPartialWithRejection: DRExecution = {
+  ...mockPartialExecution,
+  status: {
+    ...mockPartialExecution.status!,
+    conditions: [
+      { type: 'RetryRejected', status: 'True', message: 'VM erp-app-1 is in an unpredictable state — manual intervention required' },
+    ],
+  },
+};
+
+describe('ExecutionDetailPage — retry', () => {
+  afterEach(() => jest.restoreAllMocks());
+
+  it('renders retry buttons for PartiallySucceeded execution', () => {
+    mockUseDRExecution.mockReturnValue([mockPartialExecution, true, null]);
+    render(<ExecutionDetailPage />);
+    expect(screen.getByRole('button', { name: /retry drgroup-3/i })).toBeInTheDocument();
+  });
+
+  it('shows error detail for failed group in PartiallySucceeded execution', () => {
+    mockUseDRExecution.mockReturnValue([mockPartialExecution, true, null]);
+    render(<ExecutionDetailPage />);
+    expect(screen.getByText(/storage driver timeout/)).toBeInTheDocument();
+    expect(screen.getByText('StartVM')).toBeInTheDocument();
+  });
+
+  it('renders PartiallySucceeded result badge', () => {
+    mockUseDRExecution.mockReturnValue([mockPartialExecution, true, null]);
+    render(<ExecutionDetailPage />);
+    expect(screen.getByText('Partial')).toBeInTheDocument();
+  });
+
+  it('has no accessibility violations (PartiallySucceeded)', async () => {
+    mockUseDRExecution.mockReturnValue([mockPartialExecution, true, null]);
+    const { container } = render(<ExecutionDetailPage />);
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
+  });
+
+  it('displays RetryRejected condition message on page load', () => {
+    mockUseDRExecution.mockReturnValue([mockPartialWithRejection, true, null]);
+    render(<ExecutionDetailPage />);
+    expect(
+      screen.getByText(/VM erp-app-1 is in an unpredictable state/),
+    ).toBeInTheDocument();
+  });
+
+  it('has no accessibility violations (PartiallySucceeded with rejection)', async () => {
+    mockUseDRExecution.mockReturnValue([mockPartialWithRejection, true, null]);
+    const { container } = render(<ExecutionDetailPage />);
+    const results = await axe(container);
+    expect(results).toHaveNoViolations();
+  });
 });
