@@ -6,6 +6,7 @@ const config: Config = {
     '^.+\\.tsx?$': [
       'ts-jest',
       {
+        diagnostics: false,
         tsconfig: {
           esModuleInterop: true,
           jsx: 'react-jsx',

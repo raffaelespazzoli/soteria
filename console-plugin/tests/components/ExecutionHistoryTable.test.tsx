@@ -9,10 +9,10 @@ jest.mock('@openshift-console/dynamic-plugin-sdk', () => ({
   useK8sWatchResource: jest.fn(() => [null, false, null]),
 }));
 
-const mockNavigate = jest.fn();
-jest.mock('react-router', () => ({
-  ...jest.requireActual('react-router'),
-  useNavigate: () => mockNavigate,
+const mockPush = jest.fn();
+jest.mock('react-router-dom', () => ({
+  ...jest.requireActual('react-router-dom'),
+  useHistory: () => ({ push: mockPush }),
 }));
 
 const mockExecutions: DRExecution[] = [
@@ -101,16 +101,16 @@ describe('ExecutionHistoryTable', () => {
   });
 
   it('navigates to execution detail when row is clicked', () => {
-    mockNavigate.mockClear();
+    mockPush.mockClear();
     render(<ExecutionHistoryTable executions={mockExecutions} planName="erp-full-stack" />);
     const rows = screen.getAllByRole('row');
     const dataRows = rows.slice(1);
     fireEvent.click(dataRows[0]);
-    expect(mockNavigate).toHaveBeenCalledWith(
+    expect(mockPush).toHaveBeenCalledWith(
       '/disaster-recovery/executions/erp-full-stack-migration-002',
     );
     fireEvent.click(dataRows[1]);
-    expect(mockNavigate).toHaveBeenCalledWith(
+    expect(mockPush).toHaveBeenCalledWith(
       '/disaster-recovery/executions/erp-full-stack-failover-001',
     );
   });

@@ -4,8 +4,8 @@ import DRBreadcrumb from '../../src/components/shared/DRBreadcrumb';
 
 expect.extend(toHaveNoViolations);
 
-jest.mock('react-router', () => ({
-  ...jest.requireActual('react-router'),
+jest.mock('react-router-dom', () => ({
+  ...jest.requireActual('react-router-dom'),
   Link: ({ to, children }: { to: string; children: React.ReactNode }) => (
     <a href={to}>{children}</a>
   ),

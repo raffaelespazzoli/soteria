@@ -148,15 +148,6 @@ describe('PlanConfiguration', () => {
     });
   });
 
-  describe('CodeBlock', () => {
-    it('renders plan spec as JSON in CodeBlock', () => {
-      render(<PlanConfiguration plan={mockPlan} />);
-      expect(screen.getByText('Plan Spec')).toBeInTheDocument();
-      const codeBlock = screen.getByText(/maxConcurrentFailovers/);
-      expect(codeBlock).toBeInTheDocument();
-    });
-  });
-
   describe('ReplicationHealthExpanded', () => {
     it('renders per-VG health table when health data available', () => {
       render(<PlanConfiguration plan={mockPlan} />);

@@ -10,8 +10,8 @@ jest.mock('@openshift-console/dynamic-plugin-sdk', () => ({
   ),
 }));
 
-jest.mock('react-router', () => ({
-  ...jest.requireActual('react-router'),
+jest.mock('react-router-dom', () => ({
+  ...jest.requireActual('react-router-dom'),
   useParams: () => ({ name: 'exec-20260425-001' }),
   Link: ({ to, children }: { to: string; children: React.ReactNode }) => (
     <a href={to}>{children}</a>

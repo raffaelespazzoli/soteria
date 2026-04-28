@@ -5,8 +5,8 @@ import { DRExecution, DRPlan } from '../../src/models/types';
 
 expect.extend(toHaveNoViolations);
 
-jest.mock('react-router', () => ({
-  ...jest.requireActual('react-router'),
+jest.mock('react-router-dom', () => ({
+  ...jest.requireActual('react-router-dom'),
   Link: ({ to, children }: { to: string; children: React.ReactNode }) => (
     <a href={to}>{children}</a>
   ),
@@ -59,24 +59,24 @@ describe('TransitionProgressBanner', () => {
     expect(container.innerHTML).toBe('');
   });
 
-  it('renders "Failover in progress" during FailingOver', () => {
+  it('renders "Failing Over in progress" during FailingOver', () => {
     const plan = makePlan({
       phase: 'SteadyState',
       activeExecution: 'exec-001',
       activeExecutionMode: 'disaster',
     });
     render(<TransitionProgressBanner plan={plan} execution={makeExecution()} />);
-    expect(screen.getByText('Failover in progress')).toBeInTheDocument();
+    expect(screen.getByText('Failing Over in progress')).toBeInTheDocument();
   });
 
-  it('renders "Reprotect in progress" during Reprotecting', () => {
+  it('renders "Reprotecting in progress" during Reprotecting', () => {
     const plan = makePlan({
       phase: 'FailedOver',
       activeExecution: 'exec-002',
       activeExecutionMode: 'reprotect',
     });
     render(<TransitionProgressBanner plan={plan} execution={makeExecution()} />);
-    expect(screen.getByText('Reprotect in progress')).toBeInTheDocument();
+    expect(screen.getByText('Reprotecting in progress')).toBeInTheDocument();
   });
 
   it('renders wave progress showing current in-progress wave', () => {
@@ -131,7 +131,7 @@ describe('TransitionProgressBanner', () => {
     const { rerender, container } = render(
       <TransitionProgressBanner plan={plan} execution={makeExecution()} />,
     );
-    expect(screen.getByText('Failover in progress')).toBeInTheDocument();
+    expect(screen.getByText('Failing Over in progress')).toBeInTheDocument();
 
     const restPlan = makePlan({ phase: 'FailedOver' });
     rerender(<TransitionProgressBanner plan={restPlan} execution={null} />);

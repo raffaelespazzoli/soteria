@@ -10,12 +10,13 @@ import { DRPlan } from '../../src/models/types';
 
 expect.extend(toHaveNoViolations);
 
-const mockNavigate = jest.fn();
+const mockReplace = jest.fn();
+const mockPush = jest.fn();
 
-jest.mock('react-router', () => ({
+jest.mock('react-router-dom', () => ({
   ...jest.requireActual('react-router-dom'),
   useLocation: () => ({ search: '', pathname: '/disaster-recovery' }),
-  useNavigate: () => mockNavigate,
+  useHistory: () => ({ replace: mockReplace, push: mockPush, location: { search: '' } }),
 }));
 
 jest.mock('@openshift-console/dynamic-plugin-sdk', () => ({
@@ -45,7 +46,8 @@ const mockRestore = restoreDashboardState as jest.Mock;
 beforeEach(() => {
   mockSave.mockClear();
   mockRestore.mockClear().mockReturnValue(null);
-  mockNavigate.mockClear();
+  mockReplace.mockClear();
+  mockPush.mockClear();
 });
 
 describe('DRDashboardPage', () => {
@@ -115,9 +117,8 @@ describe('DRDashboardPage', () => {
     const link = screen.getByText('View affected plans');
     fireEvent.click(link);
 
-    expect(mockNavigate).toHaveBeenCalledWith(
+    expect(mockReplace).toHaveBeenCalledWith(
       { search: 'protected=Error' },
-      { replace: true },
     );
 
     mockUseK8sWatchResource.mockReturnValue([[], true, null]);

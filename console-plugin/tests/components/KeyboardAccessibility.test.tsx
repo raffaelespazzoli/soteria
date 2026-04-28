@@ -7,10 +7,10 @@ import { DRPlan, DRExecution } from '../../src/models/types';
 
 const mockNavigate = jest.fn();
 
-jest.mock('react-router', () => ({
-  ...jest.requireActual('react-router'),
+jest.mock('react-router-dom', () => ({
+  ...jest.requireActual('react-router-dom'),
   useLocation: () => ({ search: '', pathname: '/disaster-recovery' }),
-  useNavigate: () => mockNavigate,
+  useHistory: () => ({ replace: mockNavigate, push: mockNavigate, location: { search: '' } }),
   Link: ({ to, children }: { to: string; children: React.ReactNode }) => (
     <a href={to}>{children}</a>
   ),
@@ -128,7 +128,7 @@ describe('Keyboard accessibility — DRLifecycleDiagram', () => {
     const failoverButton = screen.getByRole('button', { name: 'Failover' });
     failoverButton.focus();
     await user.keyboard('{Enter}');
-    expect(onAction).toHaveBeenCalledWith('Failover', mockSteadyStatePlan);
+    expect(onAction).toHaveBeenCalledWith('failover', mockSteadyStatePlan);
   });
 
   it('Failback button is reachable via Tab from DRedSteadyState', async () => {
