@@ -20,7 +20,7 @@ So that I stay informed and can report precise results to stakeholders.
 
 4. **AC4 — Re-protect complete toast:** When a re-protect execution completes with `result === 'Succeeded'`, a success toast appears: "Re-protect complete: replication healthy" (auto-dismiss after 8 seconds).
 
-5. **AC5 — Bridge-call-ready completion summary:** The execution monitor (`ExecutionDetailPage`) displays a completion summary section when the execution is finished. The summary uses `--pf-v5-global--FontSize--xl` with plain language: "{vmCount} VMs recovered in {duration}", "RPO: {rpoSeconds} seconds", "Result: Succeeded" (or "{successCount} of {totalCount} VMs recovered — {failedCount} DRGroup failed"). Designed to be read aloud on a bridge call. (UX-DR17)
+5. **AC5 — Bridge-call-ready completion summary:** The execution monitor (`ExecutionDetailPage`) displays a completion summary section when the execution is finished. The summary uses `--pf-t--global--font--size--heading--h3` / `--pf-v5-global--FontSize--xl` with plain language: "{vmCount} VMs recovered in {duration}", "RPO: {rpoSeconds} seconds", "Result: Succeeded" (or "{successCount} of {totalCount} VMs recovered — {failedCount} DRGroup failed"). Designed to be read aloud on a bridge call. (UX-DR17)
 
 6. **AC6 — Toast links:** Every toast includes a link to the relevant execution monitor page. Links use `react-router-dom` `Link` component.
 
@@ -48,7 +48,7 @@ So that I stay informed and can report precise results to stakeholders.
 - [ ] Task 3: Create `ToastContainer` component (AC: #7, #8)
   - [ ] 3.1 Create `src/components/shared/ToastContainer.tsx` — renders PatternFly `AlertGroup` with `isToast` and `isLiveRegion` props
   - [ ] 3.2 Map each `Toast` to an `Alert` with correct variant, `actionClose` for dismiss, and optional `actionLinks` for navigation
-  - [ ] 3.3 Use `Link` from `react-router-dom` for toast action links (wrapping in `AlertActionLink`)
+  - [ ] 3.3 Use `Link` from `react-router-dom` for toast action links (wrapping in `AlertActionLink`); for programmatic navigation use `useHistory().push()` (RR v5)
 
 - [ ] Task 4: Create `useExecutionNotifications` hook (AC: #1, #2, #3, #4, #9, #10)
   - [ ] 4.1 Create `src/hooks/useExecutionNotifications.ts` — watches DRExecution list via `useDRExecutions()`, detects lifecycle transitions, dispatches toasts
@@ -64,7 +64,7 @@ So that I stay informed and can report precise results to stakeholders.
 
 - [ ] Task 5: Create `ExecutionSummary` component (AC: #5, #8)
   - [ ] 5.1 Create `src/components/ExecutionDetail/ExecutionSummary.tsx` — bridge-call-ready completion summary
-  - [ ] 5.2 Render at `--pf-v5-global--FontSize--xl` in plain language:
+  - [ ] 5.2 Render at `--pf-t--global--font--size--heading--h3` (or `--pf-v5-global--FontSize--xl` fallback) in plain language:
     - "{vmCount} VMs recovered in {duration}"
     - "RPO: {rpoSeconds} seconds"
     - "Result: {result}" or "{successCount} of {totalCount} VMs recovered — {failedCount} DRGroup failed"
@@ -327,7 +327,7 @@ const ToastContainer: React.FC = () => {
 };
 ```
 
-**Note on AlertActionLink:** In PatternFly 6, `AlertActionLink` accepts a `component` prop for custom link rendering. If this doesn't work in v6.2.2, use `onClick` with `navigate()` from `react-router-dom` as a fallback. Test the actual API.
+**Note on AlertActionLink:** In PatternFly 6, `AlertActionLink` accepts a `component` prop for custom link rendering. If this doesn't work in v6.2.2, use `onClick` with `useHistory().push()` from `react-router-dom` as a fallback (React Router v5 on OCP 4.20 — no `useNavigate`). Test the actual API.
 
 ### ExecutionSummary — Bridge-Call-Ready Component
 
@@ -346,7 +346,7 @@ const ExecutionSummary: React.FC<ExecutionSummaryProps> = ({ execution }) => {
   const result = execution.status.result;
 
   const summaryStyle: React.CSSProperties = {
-    fontSize: 'var(--pf-v5-global--FontSize--xl)',
+    fontSize: 'var(--pf-t--global--font--size--heading--h3, var(--pf-v5-global--FontSize--xl))',
     lineHeight: 1.5,
   };
 
@@ -449,9 +449,9 @@ function addToast(toast: Omit<Toast, 'id'>) {
 ### Non-Negotiable Constraints
 
 - **PatternFly 6 ONLY** — `AlertGroup`, `Alert`, `AlertActionCloseButton`, `AlertActionLink`, `Card`, `CardBody` from `@patternfly/react-core`. No other UI libraries.
-- **CSS custom properties only** — `--pf-v5-global--FontSize--xl` for summary text. No hardcoded values.
+- **CSS custom properties only** — PF6 `--pf-t--global--*` tokens preferred (e.g. `--pf-t--global--font--size--heading--h3` for summary text); `--pf-v5-global--*` tokens still resolve as fallbacks. No hardcoded values.
 - **Console SDK hooks only** — `useK8sWatchResource` (via `useDRExecutions`) for data. No direct API calls, no polling.
-- **Imports from `react-router-dom`** — `Link` for toast action links. Test mocks use `jest.mock('react-router', ...)` per existing pattern.
+- **Imports from `react-router-dom`** — `Link`, `useHistory` from `react-router-dom` (React Router v5 on OCP 4.20). Test mocks use `jest.mock('react-router', ...)` at the mock layer.
 - **No external state libraries** — module-level singleton store. No Redux, Zustand, MobX.
 - **No separate CSS files** — inline styles with PatternFly tokens.
 - **Default exports** on page components — required by Console SDK `$codeRef`.
@@ -792,7 +792,7 @@ console-plugin/tests/
 - Mode labels: `disaster` → "Disaster Failover", `planned_migration` → "Planned Migration", etc.
 - `useDRExecution(name)` for single execution watch
 - `DRBreadcrumb` with planName from `spec.planName`
-- Monospace time display: `fontFamily: 'var(--pf-v5-global--FontFamily--monospace)'`
+- Monospace time display: `fontFamily: 'var(--pf-t--global--font--family--mono)'` (or `--pf-v5-global--FontFamily--monospace` fallback)
 - `aria-live="polite"` for wave transition announcements
 
 **Story 7.1 (Pre-flight Confirmation & Failover Trigger) established:**

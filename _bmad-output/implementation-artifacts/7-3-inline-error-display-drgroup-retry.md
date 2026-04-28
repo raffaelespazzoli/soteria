@@ -12,7 +12,7 @@ So that I can recover from failures without leaving the view.
 
 ## Acceptance Criteria
 
-1. **AC1 — Failed DRGroup error display:** When a DRGroup has failed during execution and the execution monitor renders, the failed DRGroup shows: red text/icon (`ExclamationCircleIcon` with `--pf-v5-global--danger-color--100`), error message inline, affected VM names, and the step where failure occurred. (FR39)
+1. **AC1 — Failed DRGroup error display:** When a DRGroup has failed during execution and the execution monitor renders, the failed DRGroup shows: red text/icon (`ExclamationCircleIcon` with `--pf-t--global--icon--color--status--danger--default` / `--pf-v5-global--danger-color--100`), error message inline, affected VM names, and the step where failure occurred. (FR39)
 
 2. **AC2 — Retry button on failed DRGroup:** A "Retry" button (PatternFly `Button`, `variant="primary"`) appears inline next to the failed DRGroup in the execution monitor. The button is only shown when the DRExecution has `result === 'PartiallySucceeded'` (execution must be complete — not during active execution).
 
@@ -320,9 +320,9 @@ The backend step names are human-readable: `"StopReplication"`, `"StartVM"`, `"W
 ### Non-Negotiable Constraints
 
 - **PatternFly 6 ONLY** — `Button`, `ExpandableSection`, `Alert`, `Tooltip`, `Spinner` from `@patternfly/react-core`. Icons from `@patternfly/react-icons`. No other UI libraries.
-- **CSS custom properties only** — `--pf-v5-global--*` tokens. No hardcoded colors, spacing, or font sizes.
+- **CSS custom properties only** — PF6 `--pf-t--global--*` tokens preferred; `--pf-v5-global--*` tokens still resolve as fallbacks. No hardcoded colors, spacing, or font sizes.
 - **Console SDK hooks only** — `useK8sWatchResource` for reads, `k8sPatch` for writes. No direct API calls, no polling.
-- **Imports from `react-router-dom`** — existing codebase convention (test mocks use `jest.mock('react-router', ...)`).
+- **Imports from `react-router-dom`** — `Link`, `useHistory`, `useParams` from `react-router-dom` (React Router v5 on OCP 4.20). Test mocks use `jest.mock('react-router', ...)` at the mock layer.
 - **No external state libraries** — `useState` / `useCallback` for retry state. No Redux, Zustand, MobX.
 - **No separate CSS files** — inline styles with PatternFly tokens.
 - **Default export** on `ExecutionDetailPage` — required by Console SDK `$codeRef`.
@@ -569,7 +569,7 @@ console-plugin/tests/
 - Error state already displayed for failed groups (red icon + error text) — Story 7.3 enhances this with detailed error view and retry action
 - `useDRExecution(name)` provides real-time updates via watch
 - `DRBreadcrumb` with planName + executionName 3-level hierarchy
-- Monospace time display pattern: `fontFamily: 'var(--pf-v5-global--FontFamily--monospace)'`
+- Monospace time display pattern: `fontFamily: 'var(--pf-t--global--font--family--mono)'` (or `--pf-v5-global--FontFamily--monospace` fallback)
 
 **Story 7.1 (Pre-flight Confirmation & Failover Trigger) established:**
 - `k8sCreate` usage pattern for DRExecution creation

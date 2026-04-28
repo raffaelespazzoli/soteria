@@ -16,7 +16,7 @@ So that I act with full confidence and never trigger failover accidentally.
 
 2. **AC2 — Disaster failover pre-flight content:** For a disaster failover, the modal displays:
    - VM count and wave count (e.g., "12 VMs across 3 waves")
-   - Estimated RPO prominently at `--pf-v5-global--FontSize--2xl` bold (time since last replication sync)
+   - Estimated RPO prominently at `--pf-t--global--font--size--heading--h1` (or `--pf-v5-global--FontSize--2xl` fallback) bold (time since last replication sync)
    - Estimated RTO based on last execution duration (e.g., "~18 min based on last execution")
    - DR site capacity assessment (sufficient / warning)
    - Summary of actions to be performed ("Force-promote volumes on DC2, start VMs wave by wave")
@@ -259,7 +259,8 @@ For v1 scope, the kebab menu actions can navigate to the plan detail page where 
 - Jest + jest-axe + RTL configured
 
 **From Story 6.2:**
-- React Router v7 import: `import { useParams, Link } from 'react-router'` (NOT `react-router-dom`)
+- React Router v5 imports from `react-router-dom`: `import { Link, useHistory, useParams } from 'react-router-dom'` (NOT `react-router` — OCP 4.20 ships RR v5, not v7)
+- Programmatic navigation: `const history = useHistory(); history.push('/path')` (NOT `useNavigate`)
 - Default exports on page components
 
 **From Story 6.3:**
@@ -318,9 +319,9 @@ If `k8sCreate` fails (e.g., admission webhook rejects the DRExecution — concur
 ### Non-Negotiable Constraints
 
 - **PatternFly 6 ONLY** — `@patternfly/react-core` Modal, TextInput, FormGroup, Button, Alert, DescriptionList. No other UI libraries.
-- **CSS custom properties only** — `--pf-v5-global--*` tokens. No hardcoded colors, spacing, or font sizes.
+- **CSS custom properties only** — PF6 `--pf-t--global--*` tokens preferred; `--pf-v5-global--*` tokens still resolve as fallbacks. No hardcoded colors, spacing, or font sizes.
 - **Console SDK hooks only** — `useK8sWatchResource` for reads, `k8sCreate` for writes. No direct API calls.
-- **Imports from `react-router`** — NOT `react-router-dom` (Story 6.2 established this).
+- **Imports from `react-router-dom`** — `Link`, `useHistory`, `useParams` from `react-router-dom` (React Router v5 on OCP 4.20). NOT `react-router` unified import (that's v7).
 - **No external state libraries** — useState/useCallback for modal state. No Redux, Zustand, MobX.
 - **One confirmation dialog** — the pre-flight modal IS the confirmation. No cascading "Are you sure?" dialogs.
 - **No separate CSS files** — inline styles with PatternFly tokens.
@@ -389,13 +390,13 @@ describe('PreflightConfirmationModal', () => {
   it('Confirm button uses danger variant for Failover', () => {
     render(<PreflightConfirmationModal {...defaultProps} />);
     const confirmBtn = screen.getByRole('button', { name: /confirm failover/i });
-    expect(confirmBtn.closest('.pf-v5-c-button')).toHaveClass('pf-m-danger');
+    expect(confirmBtn.closest('.pf-v6-c-button')).toHaveClass('pf-m-danger');
   });
 
   it('Confirm button uses primary variant for Reprotect', () => {
     render(<PreflightConfirmationModal {...defaultProps} action="Reprotect" preflightData={mockReprotectData} />);
     const confirmBtn = screen.getByRole('button', { name: /confirm reprotect/i });
-    expect(confirmBtn.closest('.pf-v5-c-button')).toHaveClass('pf-m-primary');
+    expect(confirmBtn.closest('.pf-v6-c-button')).toHaveClass('pf-m-primary');
   });
 
   it('Cancel closes modal with no side effects', async () => {
@@ -437,9 +438,9 @@ it('SteadyState edge shows both Failover and Planned Migration buttons', () => {
 it('Failover button uses danger variant, Planned Migration uses secondary', () => {
   const { container } = render(<DRLifecycleDiagram plan={mockSteadyStatePlan} onAction={jest.fn()} />);
   const failoverBtn = screen.getByRole('button', { name: /^failover$/i });
-  expect(failoverBtn.closest('.pf-v5-c-button')).toHaveClass('pf-m-danger');
+  expect(failoverBtn.closest('.pf-v6-c-button')).toHaveClass('pf-m-danger');
   const migrateBtn = screen.getByRole('button', { name: /planned migration/i });
-  expect(migrateBtn.closest('.pf-v5-c-button')).toHaveClass('pf-m-secondary');
+  expect(migrateBtn.closest('.pf-v6-c-button')).toHaveClass('pf-m-secondary');
 });
 ```
 
@@ -557,7 +558,7 @@ console-plugin/tests/
 **Story 6.6 (Status Badges, Empty States & Accessibility) established:**
 - jest-axe pattern: `const { container } = render(<Component />); expect(await axe(container)).toHaveNoViolations()`
 - Keyboard testing with `userEvent.setup()` + `userEvent.tab()` + `userEvent.keyboard('{Enter}')`
-- react-router mock: `jest.requireActual('react-router')` not `react-router-dom`
+- react-router mock: `jest.mock('react-router', ...)` with `jest.requireActual('react-router')` (mock layer operates at `react-router` level; runtime imports from `react-router-dom`)
 - PatternFly `Button` focus testing: use `screen.getByRole('button', { name: /.../ })` then `.focus()` or `userEvent.tab()`
 - DRLifecycleDiagram uses `role="figure"` (not `role="img"`) — avoids axe nested-interactive violation
 - All 291 tests pass across the full console-plugin test suite

@@ -24,7 +24,7 @@ So that I can monitor execution progress and share it on a bridge call.
 
 6. **AC6 — Execution completion state:** When all waves complete, the header shows: total duration, final result badge (Succeeded / PartiallySucceeded / Failed via `ExecutionResultBadge`), and total RPO. The elapsed time counter stops.
 
-7. **AC7 — Bridge-call readability:** All text is legible at 720p screen-share resolution. Minimum 14px for all text, critical numbers (RPO, time, VM count) at `--pf-v5-global--FontSize--lg` (18px+). Elapsed and remaining time use monospace font variant for stable-width display (no layout shift). Animations are subtle — no distracting motion during bridge calls.
+7. **AC7 — Bridge-call readability:** All text is legible at 720p screen-share resolution. Minimum 14px for all text, critical numbers (RPO, time, VM count) at `--pf-t--global--font--size--body--lg` / `--pf-v5-global--FontSize--lg` (18px+). Elapsed and remaining time use monospace font variant for stable-width display (no layout shift). Animations are subtle — no distracting motion during bridge calls.
 
 8. **AC8 — ARIA live region:** Screen readers announce wave completion events: "Wave 1 completed. Wave 2 starting." An ARIA live region (`aria-live="polite"`) updates on wave state transitions.
 
@@ -47,7 +47,7 @@ So that I can monitor execution progress and share it on a bridge call.
   - [ ] 2.3 Elapsed time: use `useElapsedTime(startTime)` hook — counts up every second while execution is active, stops on completion
   - [ ] 2.4 Estimated remaining: compute from (elapsed / completedWaves) * remainingWaves when completedWaves > 0; show "calculating..." otherwise
   - [ ] 2.5 Completion state: show total duration via `formatDuration`, `ExecutionResultBadge`, and total RPO via `formatRPO`
-  - [ ] 2.6 Monospace font for elapsed/remaining time: `fontFamily: 'var(--pf-v5-global--FontFamily--monospace)'`
+  - [ ] 2.6 Monospace font for elapsed/remaining time: `fontFamily: 'var(--pf-t--global--font--family--mono)'` (or `--pf-v5-global--FontFamily--monospace` fallback)
 
 - [ ] Task 3: Create `WaveProgressStep` component (AC: #3, #4, #5)
   - [ ] 3.1 Create `src/components/ExecutionDetail/WaveProgressStep.tsx` — renders a single `ProgressStep` with expandable DRGroup detail
@@ -208,11 +208,11 @@ Map to `ProgressStep` variant:
 
 | DRGroup Result | Icon | Color Token |
 |---|---|---|
-| Pending | `PendingIcon` | `--pf-v5-global--disabled-color--100` (gray) |
-| InProgress | `Spinner` (size="md") | `--pf-v5-global--info-color--100` (blue) |
-| Completed | `CheckCircleIcon` | `--pf-v5-global--success-color--100` (green) |
-| Failed | `ExclamationCircleIcon` | `--pf-v5-global--danger-color--100` (red) |
-| WaitingForVMReady | `Spinner` (size="md") | `--pf-v5-global--info-color--100` (blue) — same visual as InProgress |
+| Pending | `PendingIcon` | `--pf-t--global--icon--color--disabled` / `--pf-v5-global--disabled-color--100` (gray) |
+| InProgress | `Spinner` (size="md") | `--pf-t--global--icon--color--status--info--default` / `--pf-v5-global--info-color--100` (blue) |
+| Completed | `CheckCircleIcon` | `--pf-t--global--icon--color--status--success--default` / `--pf-v5-global--success-color--100` (green) |
+| Failed | `ExclamationCircleIcon` | `--pf-t--global--icon--color--status--danger--default` / `--pf-v5-global--danger-color--100` (red) |
+| WaitingForVMReady | `Spinner` (size="md") | `--pf-t--global--icon--color--status--info--default` / `--pf-v5-global--info-color--100` (blue) — same visual as InProgress |
 
 ### Mode Display Label Mapping
 
@@ -344,9 +344,9 @@ function estimateRemaining(elapsedMs: number, completedWaves: number, totalWaves
 ### Non-Negotiable Constraints
 
 - **PatternFly 6 ONLY** — `ProgressStepper`, `ProgressStep`, `ExpandableSection`, `Spinner`, `Label`, `Alert`, `Skeleton` from `@patternfly/react-core`. Icons from `@patternfly/react-icons`. No other UI libraries.
-- **CSS custom properties only** — `--pf-v5-global--*` tokens. No hardcoded colors, spacing, or font sizes.
+- **CSS custom properties only** — PF6 `--pf-t--global--*` tokens preferred; `--pf-v5-global--*` tokens still resolve as fallbacks. No hardcoded colors, spacing, or font sizes.
 - **Console SDK hooks only** — `useK8sWatchResource` via `useDRExecution` for real-time data. No direct API calls, no polling.
-- **Imports from `react-router-dom`** — existing codebase convention (despite Story 7.1 notes mentioning `react-router`, the actual source files use `react-router-dom`; test mocks use `jest.mock('react-router', ...)`).
+- **Imports from `react-router-dom`** — `Link`, `useHistory`, `useParams` from `react-router-dom` (React Router v5 on OCP 4.20). Test mocks use `jest.mock('react-router', ...)` at the mock layer.
 - **No external state libraries** — `useState` / `useEffect` / `useCallback` for component state. No Redux, Zustand, MobX.
 - **No separate CSS files** — inline styles with PatternFly tokens.
 - **Default export** on `ExecutionDetailPage` — required by Console SDK `$codeRef` in `console-extensions.json`.

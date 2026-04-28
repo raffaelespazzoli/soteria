@@ -272,7 +272,7 @@ Grafana's alert state panels demonstrate how to build trust in monitoring status
 
 PatternFly is not a choice — it's a requirement. The value of documenting it lies in understanding what PatternFly provides natively versus what requires custom development, and ensuring all custom components align with PatternFly's design tokens for visual consistency.
 
-> **Note:** This document was originally authored referencing PatternFly 5. Token names (e.g. `--pf-v5-global--*`) appearing in this spec are semantic placeholders — implementations must use the corresponding PatternFly 6 design token equivalents. PF6 component APIs are largely compatible with PF5 references below.
+> **Note (updated post-Epic 6 UAT):** This document was originally authored referencing PatternFly 5 token names. OCP 4.20 ships **PatternFly 6**, which uses the `--pf-t--global--*` token prefix (e.g. `--pf-t--global--icon--color--status--success--default`) instead of the `--pf-v5-global--*` prefix used throughout this spec. Token references below (e.g. `--pf-v5-global--success-color--100`) are **semantic placeholders** — implementations must map to the corresponding PF6 design token equivalents. PF6 component APIs are largely compatible; CSS class selectors use `pf-v6-c-*` prefix (not `pf-v5-c-*`). Additionally, OCP 4.20's Console runtime provides **React Router v5** (not v7) — all routing uses `react-router-dom` imports (`Link`, `useHistory`, `useParams`, `useLocation`), not the `react-router` unified import from v7.
 
 ### Rationale for Selection
 
