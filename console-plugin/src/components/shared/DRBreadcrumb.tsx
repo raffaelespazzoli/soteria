@@ -1,5 +1,5 @@
 import { Breadcrumb, BreadcrumbItem } from '@patternfly/react-core';
-import { Link } from 'react-router';
+import { Link } from 'react-router-dom';
 
 interface DRBreadcrumbProps {
   planName?: string;

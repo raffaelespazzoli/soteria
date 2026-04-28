@@ -8,7 +8,7 @@ import {
   Tabs,
   TabTitleText,
 } from '@patternfly/react-core';
-import { useParams } from 'react-router';
+import { useParams } from 'react-router-dom';
 import DRBreadcrumb from '../shared/DRBreadcrumb';
 import PlanHeader from './PlanHeader';
 import DRLifecycleDiagram from './DRLifecycleDiagram';

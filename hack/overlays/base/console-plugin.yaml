@@ -1,0 +1,119 @@
+# Console plugin deployment for Soteria DR dashboard.
+# Applied by stretched-local-test.sh; the CONSOLE_PLUGIN_IMG placeholder
+# is replaced at deploy time.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: soteria-console-plugin-nginx
+  namespace: soteria
+  labels:
+    app: soteria-console-plugin
+data:
+  tls.conf: |
+    server {
+        listen 9443 ssl;
+        ssl_certificate /var/serving-cert/tls.crt;
+        ssl_certificate_key /var/serving-cert/tls.key;
+        root /opt/app-root/src;
+
+        location / {
+            try_files $uri $uri/ =404;
+        }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: soteria-console-plugin
+  namespace: soteria
+  labels:
+    app: soteria-console-plugin
+    app.kubernetes.io/component: console-plugin
+    app.kubernetes.io/part-of: soteria
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: soteria-console-plugin
+  template:
+    metadata:
+      labels:
+        app: soteria-console-plugin
+    spec:
+      imagePullSecrets:
+        - name: quay-pull-secret
+      containers:
+        - name: console-plugin
+          image: CONSOLE_PLUGIN_IMG_PLACEHOLDER
+          ports:
+            - containerPort: 9443
+              name: https
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 10m
+              memory: 50Mi
+            limits:
+              memory: 100Mi
+          livenessProbe:
+            httpGet:
+              path: /plugin-manifest.json
+              port: 9443
+              scheme: HTTPS
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /plugin-manifest.json
+              port: 9443
+              scheme: HTTPS
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          volumeMounts:
+            - name: serving-cert
+              mountPath: /var/serving-cert
+              readOnly: true
+            - name: nginx-tls-conf
+              mountPath: /opt/app-root/etc/nginx.d
+              readOnly: true
+      volumes:
+        - name: serving-cert
+          secret:
+            secretName: soteria-console-plugin-serving-cert
+        - name: nginx-tls-conf
+          configMap:
+            name: soteria-console-plugin-nginx
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: soteria-console-plugin
+  namespace: soteria
+  labels:
+    app: soteria-console-plugin
+    app.kubernetes.io/component: console-plugin
+    app.kubernetes.io/part-of: soteria
+  annotations:
+    service.beta.openshift.io/serving-cert-secret-name: soteria-console-plugin-serving-cert
+spec:
+  selector:
+    app: soteria-console-plugin
+  ports:
+    - protocol: TCP
+      port: 9443
+      targetPort: 9443
+      name: https
+---
+apiVersion: console.openshift.io/v1
+kind: ConsolePlugin
+metadata:
+  name: soteria-console-plugin
+spec:
+  displayName: "Soteria DR Management"
+  backend:
+    type: Service
+    service:
+      name: soteria-console-plugin
+      namespace: soteria
+      port: 9443

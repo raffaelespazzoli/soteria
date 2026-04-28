@@ -48,6 +48,7 @@ cd "${SCRIPT_ROOT}"
 # Configuration
 # ---------------------------------------------------------------------------
 IMG="${IMG:-quay.io/raffaelespazzoli/soteria:latest}"
+CONSOLE_PLUGIN_IMG="${CONSOLE_PLUGIN_IMG:-quay.io/raffaelespazzoli/soteria-console-plugin:latest}"
 KEYSPACE="${KEYSPACE:-soteria}"
 NAMESPACE="soteria"
 DR_TEST_NS="soteria-dr-test"
@@ -89,6 +90,10 @@ stop() {
   for ctx in "${CTX_ETL7}" "${CTX_ETL6}"; do
     local overlay="${OVERLAY_ETL6}"
     [[ "${ctx}" == "${CTX_ETL7}" ]] && overlay="${OVERLAY_ETL7}"
+
+    echo "Deleting console plugin from context ${ctx}..."
+    kctl --context="${ctx}" delete consoleplugin soteria-console-plugin --ignore-not-found 2>/dev/null || true
+    kctl --context="${ctx}" -n "${NAMESPACE}" delete -f "${SCRIPT_ROOT}/hack/overlays/base/console-plugin.yaml" --ignore-not-found 2>/dev/null || true
 
     echo "Deleting resources from context ${ctx}..."
     kustomize_build "${overlay}" \
@@ -152,6 +157,15 @@ echo ""
 # ---------------------------------------------------------------------------
 echo "=== Building and pushing container image: ${IMG} ==="
 make -C "${SCRIPT_ROOT}" docker-build docker-push IMG="${IMG}"
+
+# ---------------------------------------------------------------------------
+# Build and push console plugin image
+# ---------------------------------------------------------------------------
+CONTAINER_TOOL="${CONTAINER_TOOL:-docker}"
+
+echo "=== Building and pushing console plugin image: ${CONSOLE_PLUGIN_IMG} ==="
+"${CONTAINER_TOOL}" build -t "${CONSOLE_PLUGIN_IMG}" "${SCRIPT_ROOT}/console-plugin"
+"${CONTAINER_TOOL}" push "${CONSOLE_PLUGIN_IMG}"
 
 # ---------------------------------------------------------------------------
 # Set container image in kustomize
@@ -230,7 +244,7 @@ wait_scylladb_ready() {
 # ---------------------------------------------------------------------------
 echo ""
 echo "=== Deploying to ${CTX_ETL6} (seed DC) ==="
-kustomize_build "${OVERLAY_ETL6}" | kctl --context="${CTX_ETL6}" apply --server-side -f -
+kustomize_build "${OVERLAY_ETL6}" | kctl --context="${CTX_ETL6}" apply --server-side --force-conflicts -f -
 
 MEMBERS_PER_RACK=2
 create_combined_ca "${CTX_ETL6}"
@@ -241,7 +255,7 @@ wait_scylladb_ready "${CTX_ETL6}" || exit 1
 # ---------------------------------------------------------------------------
 echo ""
 echo "=== Deploying to ${CTX_ETL7} (joining DC) ==="
-kustomize_build "${OVERLAY_ETL7}" | kctl --context="${CTX_ETL7}" apply --server-side -f -
+kustomize_build "${OVERLAY_ETL7}" | kctl --context="${CTX_ETL7}" apply --server-side --force-conflicts -f -
 
 create_combined_ca "${CTX_ETL7}"
 wait_scylladb_ready "${CTX_ETL7}" || exit 1
@@ -362,8 +376,46 @@ for ctx in "${CTX_ETL6}" "${CTX_ETL7}"; do
 done
 
 # ---------------------------------------------------------------------------
-# Populate sample data
+# Deploy console plugin
 # ---------------------------------------------------------------------------
+echo ""
+echo "=== Deploying console plugin ==="
+
+CONSOLE_PLUGIN_MANIFEST="${SCRIPT_ROOT}/hack/overlays/base/console-plugin.yaml"
+
+for ctx in "${CTX_ETL6}" "${CTX_ETL7}"; do
+  echo "  ${ctx}: deploying console plugin..."
+  sed "s|CONSOLE_PLUGIN_IMG_PLACEHOLDER|${CONSOLE_PLUGIN_IMG}|g" "${CONSOLE_PLUGIN_MANIFEST}" \
+    | kctl --context="${ctx}" apply --server-side -f -
+done
+
+echo "Waiting for console plugin rollout..."
+for ctx in "${CTX_ETL6}" "${CTX_ETL7}"; do
+  kctl --context="${ctx}" -n "${NAMESPACE}" \
+    rollout status deployment/soteria-console-plugin --timeout=120s || {
+      echo "Warning: Console plugin deployment on ${ctx} did not become ready" >&2
+      kctl --context="${ctx}" -n "${NAMESPACE}" describe deployment/soteria-console-plugin || true
+    }
+done
+
+echo "Enabling console plugin on OpenShift console..."
+for ctx in "${CTX_ETL6}" "${CTX_ETL7}"; do
+  CURRENT_PLUGINS=$(kctl --context="${ctx}" get consoles.operator.openshift.io cluster \
+    -o jsonpath='{.spec.plugins[*]}' 2>/dev/null || echo "")
+  if echo "${CURRENT_PLUGINS}" | grep -qw "soteria-console-plugin"; then
+    echo "  ${ctx}: console plugin already enabled"
+  else
+    if [[ -z "${CURRENT_PLUGINS}" ]]; then
+      kctl --context="${ctx}" patch consoles.operator.openshift.io cluster --type=merge \
+        -p '{"spec":{"plugins":["soteria-console-plugin"]}}' 2>/dev/null || true
+    else
+      kctl --context="${ctx}" patch consoles.operator.openshift.io cluster --type=json \
+        -p '[{"op":"add","path":"/spec/plugins/-","value":"soteria-console-plugin"}]' 2>/dev/null || true
+    fi
+    echo "  ${ctx}: console plugin enabled"
+  fi
+done
+
 # ---------------------------------------------------------------------------
 # Deploy DR test VMs (Fedora) with DRPlan
 # ---------------------------------------------------------------------------
@@ -481,6 +533,11 @@ cat <<SUMMARY
  Soteria API servers:
    etl6 : APIService v1alpha1.soteria.io (--scylladb-local-dc=etl6, --site-name=etl6)
    etl7 : APIService v1alpha1.soteria.io (--scylladb-local-dc=etl7, --site-name=etl7)
+
+ Console plugin:
+   Image: ${CONSOLE_PLUGIN_IMG}
+   Plugin: soteria-console-plugin (ConsolePlugin CR)
+   Service: soteria-console-plugin:9443 → nginx:9443 (TLS via OpenShift service-CA)
 
  DR test (namespace: ${DR_TEST_NS}):
    DRPlan: fedora-app (waveLabel: soteria.io/wave, maxConcurrentFailovers: 2)

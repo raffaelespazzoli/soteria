@@ -260,9 +260,9 @@ describe('getValidActions', () => {
     expect(getValidActions(plan).map((a) => a.key)).toEqual(['reprotect']);
   });
 
-  it('returns Failback for DRedSteadyState', () => {
+  it('returns Failback and Planned Migration for DRedSteadyState', () => {
     const plan = makePlan({ phase: 'DRedSteadyState' });
-    expect(getValidActions(plan).map((a) => a.key)).toEqual(['failback']);
+    expect(getValidActions(plan).map((a) => a.key)).toEqual(['failback', 'planned_failback']);
   });
 
   it('returns Restore for FailedBack', () => {

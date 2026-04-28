@@ -2,33 +2,75 @@ import { CSSProperties, useMemo } from 'react';
 import { Button } from '@patternfly/react-core';
 import { DRPlan } from '../../models/types';
 import { getEffectivePhase, RestPhase, TransientPhase } from '../../utils/drPlanUtils';
-import { isTransientPhase } from '../../utils/drPlanActions';
+import { isTransientPhase, getValidActions, DRAction } from '../../utils/drPlanActions';
 
-const REST_PHASES = [
-  { id: 'SteadyState' as const, label: 'Steady State', description: 'Normal operations',
-    vm: 'VMs on DC1', dc1: 'Active (source)', dc2: 'Passive (target)', replication: 'DC1 → DC2' },
-  { id: 'FailedOver' as const, label: 'Failed Over', description: 'Running on DR site',
-    vm: 'VMs on DC2', dc1: 'Passive / down', dc2: 'Active (promoted)', replication: 'None' },
-  { id: 'DRedSteadyState' as const, label: 'DR-ed Steady State', description: 'Protected on DR site',
-    vm: 'VMs on DC2', dc1: 'Passive (target)', dc2: 'Active (source)', replication: 'DC2 → DC1' },
-  { id: 'FailedBack' as const, label: 'Failed Back', description: 'Returned to origin',
-    vm: 'VMs on DC1', dc1: 'Active (promoted)', dc2: 'Passive / down', replication: 'None' },
-] as const;
+import steadyStateImg from '../../assets/state-steady-state.png';
+import failedOverImg from '../../assets/state-failed-over.png';
+import dredSteadyStateImg from '../../assets/state-dred-steady-state.png';
+import failedBackImg from '../../assets/state-failed-back.png';
+
+const PHASE_IMAGES: Record<string, string> = {
+  SteadyState: steadyStateImg,
+  FailedOver: failedOverImg,
+  DRedSteadyState: dredSteadyStateImg,
+  FailedBack: failedBackImg,
+};
+
+interface PhaseInfo {
+  id: RestPhase;
+  label: string;
+  activeLabel: (primary: string, secondary: string) => string;
+  passiveLabel: (primary: string, secondary: string) => string;
+  replication: string;
+}
+
+const REST_PHASES: PhaseInfo[] = [
+  {
+    id: 'SteadyState',
+    label: 'Steady State',
+    activeLabel: (p) => `VMs running in ${p}`,
+    passiveLabel: (_p, s) => `VMs stopped in ${s}`,
+    replication: 'on',
+  },
+  {
+    id: 'FailedOver',
+    label: 'Failed Over',
+    activeLabel: (_p, s) => `VMs running in ${s}`,
+    passiveLabel: (p) => `VMs stopped in ${p}`,
+    replication: 'off',
+  },
+  {
+    id: 'DRedSteadyState',
+    label: 'DR-ed Steady State',
+    activeLabel: (_p, s) => `VMs running in ${s}`,
+    passiveLabel: (p) => `VMs stopped in ${p}`,
+    replication: 'on',
+  },
+  {
+    id: 'FailedBack',
+    label: 'Failed Back',
+    activeLabel: (p) => `VMs running in ${p}`,
+    passiveLabel: (_p, s) => `VMs stopped in ${s}`,
+    replication: 'off',
+  },
+];
 
 export const TRANSITIONS = [
-  { from: 'SteadyState' as RestPhase, to: 'FailedOver' as RestPhase, action: 'Failover', transient: 'FailingOver' as TransientPhase, isDanger: true },
-  { from: 'FailedOver' as RestPhase, to: 'DRedSteadyState' as RestPhase, action: 'Reprotect', transient: 'Reprotecting' as TransientPhase, isDanger: false },
-  { from: 'DRedSteadyState' as RestPhase, to: 'FailedBack' as RestPhase, action: 'Failback', transient: 'FailingBack' as TransientPhase, isDanger: false },
-  { from: 'FailedBack' as RestPhase, to: 'SteadyState' as RestPhase, action: 'Restore', transient: 'Restoring' as TransientPhase, isDanger: false },
+  { from: 'SteadyState' as RestPhase, to: 'FailedOver' as RestPhase, transient: 'FailingOver' as TransientPhase },
+  { from: 'FailedOver' as RestPhase, to: 'DRedSteadyState' as RestPhase, transient: 'Reprotecting' as TransientPhase },
+  { from: 'DRedSteadyState' as RestPhase, to: 'FailedBack' as RestPhase, transient: 'FailingBack' as TransientPhase },
+  { from: 'FailedBack' as RestPhase, to: 'SteadyState' as RestPhase, transient: 'Restoring' as TransientPhase },
 ] as const;
 
 interface PhaseNodeProps {
-  phase: typeof REST_PHASES[number];
+  phase: PhaseInfo;
+  primarySite: string;
+  secondarySite: string;
   isActive: boolean;
   isTransitioning: boolean;
 }
 
-function PhaseNode({ phase, isActive, isTransitioning }: PhaseNodeProps) {
+function PhaseNode({ phase, primarySite, secondarySite, isActive, isTransitioning }: PhaseNodeProps) {
   const borderColor = isActive || isTransitioning
     ? 'var(--pf-v5-global--active-color--100)'
     : 'var(--pf-v5-global--BorderColor--100)';
@@ -38,39 +80,49 @@ function PhaseNode({ phase, isActive, isTransitioning }: PhaseNodeProps) {
     borderStyle: isTransitioning ? 'dashed' : 'solid',
     borderColor,
     borderRadius: 'var(--pf-v5-global--BorderRadius--sm)',
-    padding: 'var(--pf-v5-global--spacer--md)',
+    padding: 'var(--pf-v5-global--spacer--xs) var(--pf-v5-global--spacer--sm)',
     background: isActive ? 'var(--pf-v5-global--active-color--100)' : 'transparent',
     opacity: (isActive || isTransitioning) ? 1 : 0.35,
     color: isActive ? 'var(--pf-v5-global--Color--light-100)' : 'var(--pf-v5-global--Color--100)',
-    minWidth: '220px',
     textAlign: 'center' as const,
   };
+
+  const activeText = phase.activeLabel(primarySite, secondarySite);
+  const passiveText = phase.passiveLabel(primarySite, secondarySite);
+  const replicationText = `Volume Replication: ${phase.replication}`;
+  const imgSrc = PHASE_IMAGES[phase.id];
 
   return (
     <div
       role="group"
-      aria-label={`${phase.label}, ${isActive ? 'current phase, ' : ''}${isTransitioning ? 'transition destination, ' : ''}${phase.vm}, replication: ${phase.replication}`}
+      aria-label={`${phase.label}, ${isActive ? 'current phase, ' : ''}${isTransitioning ? 'transition destination, ' : ''}${activeText}, ${replicationText}`}
       style={nodeStyle}
       data-testid={`phase-node-${phase.id}`}
     >
       <div style={{ fontWeight: 'var(--pf-v5-global--FontWeight--bold)' as unknown as number, fontSize: 'var(--pf-v5-global--FontSize--md)', marginBottom: 'var(--pf-v5-global--spacer--xs)' }}>
         {phase.label}
       </div>
-      <div style={{ fontSize: 'var(--pf-v5-global--FontSize--md)', opacity: 0.85 }}>
-        {phase.description}
+      <div style={{ fontSize: 'var(--pf-v5-global--FontSize--sm)' }}>
+        {activeText}
       </div>
-      <div style={{ fontSize: 'var(--pf-v5-global--FontSize--md)', marginTop: 'var(--pf-v5-global--spacer--xs)' }}>
-        {phase.vm}
+      <div style={{ fontSize: 'var(--pf-v5-global--FontSize--sm)' }}>
+        {passiveText}
       </div>
-      <div style={{ fontSize: 'var(--pf-v5-global--FontSize--md)' }}>
-        DC1: {phase.dc1}
+      <div style={{ fontSize: 'var(--pf-v5-global--FontSize--sm)' }}>
+        {replicationText}
       </div>
-      <div style={{ fontSize: 'var(--pf-v5-global--FontSize--md)' }}>
-        DC2: {phase.dc2}
-      </div>
-      <div style={{ fontSize: 'var(--pf-v5-global--FontSize--md)' }}>
-        Replication: {phase.replication}
-      </div>
+      {imgSrc && (
+        <img
+          src={imgSrc}
+          alt={`${phase.label} topology: ${activeText}, ${replicationText}`}
+          style={{
+            marginTop: 'var(--pf-v5-global--spacer--sm)',
+            maxWidth: '37.5%',
+            height: 'auto',
+            borderRadius: 'var(--pf-v5-global--BorderRadius--sm)',
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -78,12 +130,13 @@ function PhaseNode({ phase, isActive, isTransitioning }: PhaseNodeProps) {
 interface TransitionEdgeProps {
   transition: typeof TRANSITIONS[number];
   state: 'idle' | 'available' | 'in-progress';
+  actions: DRAction[];
   plan: DRPlan;
   onAction: (action: string, plan: DRPlan) => void;
   direction: 'horizontal' | 'vertical';
 }
 
-function TransitionEdge({ transition, state, plan, onAction, direction }: TransitionEdgeProps) {
+function TransitionEdge({ transition, state, actions, plan, onAction, direction }: TransitionEdgeProps) {
   const isHorizontal = direction === 'horizontal';
 
   const containerStyle: CSSProperties = {
@@ -91,28 +144,34 @@ function TransitionEdge({ transition, state, plan, onAction, direction }: Transi
     flexDirection: isHorizontal ? 'column' : 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 'var(--pf-v5-global--spacer--xs)',
     padding: 'var(--pf-v5-global--spacer--sm)',
-    minWidth: isHorizontal ? '120px' : undefined,
+    minWidth: isHorizontal ? '160px' : undefined,
     minHeight: !isHorizontal ? '60px' : undefined,
   };
 
-  const arrowChar = isHorizontal ? '→' : '↓';
-  const reverseArrowChar = isHorizontal ? '←' : '↑';
+  const arrowChar = isHorizontal ? '\u2192' : '\u2193';
+  const reverseArrowChar = isHorizontal ? '\u2190' : '\u2191';
 
   const isForward = transition.from === 'SteadyState' || transition.from === 'FailedOver';
   const arrow = isForward ? arrowChar : reverseArrowChar;
 
+  const transitionLabel = transition.transient.replace(/([a-z])([A-Z])/g, '$1 $2');
+
   return (
-    <div style={containerStyle} data-testid={`transition-${transition.action.toLowerCase()}`}>
+    <div style={containerStyle} data-testid={`transition-${transition.from}-${transition.to}`}>
       {state === 'available' && (
         <>
-          <Button
-            variant={transition.isDanger ? 'danger' : 'secondary'}
-            onClick={() => onAction(transition.action, plan)}
-            size="sm"
-          >
-            {transition.action}
-          </Button>
+          {actions.map((a) => (
+            <Button
+              key={a.key}
+              variant={a.isDanger ? 'danger' : 'secondary'}
+              onClick={() => onAction(a.key, plan)}
+              size="sm"
+            >
+              {a.label}
+            </Button>
+          ))}
           <span style={{ fontSize: 'var(--pf-v5-global--FontSize--lg)', margin: '0 var(--pf-v5-global--spacer--xs)' }}>{arrow}</span>
         </>
       )}
@@ -131,7 +190,7 @@ function TransitionEdge({ transition, state, plan, onAction, direction }: Transi
       )}
       {state === 'idle' && (
         <span style={{ opacity: 0.35, fontSize: 'var(--pf-v5-global--FontSize--md)' }}>
-          {transition.action} {arrow}
+          {transitionLabel} {arrow}
         </span>
       )}
     </div>
@@ -153,6 +212,10 @@ const DRLifecycleDiagram: React.FC<DRLifecycleDiagramProps> = ({ plan, onAction,
   const restPhase = (plan.status?.phase ?? 'SteadyState') as RestPhase;
   const effectivePhase = getEffectivePhase(plan);
   const inTransition = isTransientPhase(effectivePhase);
+  const primarySite = plan.spec?.primarySite ?? 'Primary';
+  const secondarySite = plan.spec?.secondarySite ?? 'Secondary';
+
+  const validActions = useMemo(() => getValidActions(plan), [plan]);
 
   const activeTransition = useMemo(
     () => inTransition ? TRANSITIONS.find(t => t.transient === effectivePhase) : null,
@@ -164,6 +227,11 @@ const DRLifecycleDiagram: React.FC<DRLifecycleDiagramProps> = ({ plan, onAction,
       return t === activeTransition ? 'in-progress' : 'idle';
     }
     return t.from === restPhase ? 'available' : 'idle';
+  }
+
+  function getEdgeActions(t: typeof TRANSITIONS[number]): DRAction[] {
+    if (t.from !== restPhase || inTransition) return [];
+    return validActions;
   }
 
   const steadyState = REST_PHASES[0];
@@ -194,6 +262,10 @@ const DRLifecycleDiagram: React.FC<DRLifecycleDiagramProps> = ({ plan, onAction,
     padding: 'var(--pf-v5-global--spacer--lg)',
   };
 
+  const activeTransitionAction = activeTransition
+    ? activeTransition.transient.replace(/([a-z])([A-Z])/g, '$1 $2')
+    : '';
+
   return (
     <div
       role="figure"
@@ -202,19 +274,19 @@ const DRLifecycleDiagram: React.FC<DRLifecycleDiagramProps> = ({ plan, onAction,
       data-testid="dr-lifecycle-diagram"
     >
       {/* Row 1: SteadyState -> Failover -> FailedOver */}
-      <PhaseNode phase={steadyState} isActive={isActivePhase('SteadyState')} isTransitioning={isDestination('SteadyState')} />
-      <TransitionEdge transition={failoverT} state={getEdgeState(failoverT)} plan={plan} onAction={onAction} direction="horizontal" />
-      <PhaseNode phase={failedOver} isActive={isActivePhase('FailedOver')} isTransitioning={isDestination('FailedOver')} />
+      <PhaseNode phase={steadyState} primarySite={primarySite} secondarySite={secondarySite} isActive={isActivePhase('SteadyState')} isTransitioning={isDestination('SteadyState')} />
+      <TransitionEdge transition={failoverT} state={getEdgeState(failoverT)} actions={getEdgeActions(failoverT)} plan={plan} onAction={onAction} direction="horizontal" />
+      <PhaseNode phase={failedOver} primarySite={primarySite} secondarySite={secondarySite} isActive={isActivePhase('FailedOver')} isTransitioning={isDestination('FailedOver')} />
 
       {/* Row 2: Restore (vertical up) | empty | Reprotect (vertical down) */}
-      <TransitionEdge transition={restoreT} state={getEdgeState(restoreT)} plan={plan} onAction={onAction} direction="vertical" />
+      <TransitionEdge transition={restoreT} state={getEdgeState(restoreT)} actions={getEdgeActions(restoreT)} plan={plan} onAction={onAction} direction="vertical" />
       <div />
-      <TransitionEdge transition={reprotectT} state={getEdgeState(reprotectT)} plan={plan} onAction={onAction} direction="vertical" />
+      <TransitionEdge transition={reprotectT} state={getEdgeState(reprotectT)} actions={getEdgeActions(reprotectT)} plan={plan} onAction={onAction} direction="vertical" />
 
       {/* Row 3: FailedBack <- Failback <- DRedSteadyState */}
-      <PhaseNode phase={failedBack} isActive={isActivePhase('FailedBack')} isTransitioning={isDestination('FailedBack')} />
-      <TransitionEdge transition={failbackT} state={getEdgeState(failbackT)} plan={plan} onAction={onAction} direction="horizontal" />
-      <PhaseNode phase={dRedSteadyState} isActive={isActivePhase('DRedSteadyState')} isTransitioning={isDestination('DRedSteadyState')} />
+      <PhaseNode phase={failedBack} primarySite={primarySite} secondarySite={secondarySite} isActive={isActivePhase('FailedBack')} isTransitioning={isDestination('FailedBack')} />
+      <TransitionEdge transition={failbackT} state={getEdgeState(failbackT)} actions={getEdgeActions(failbackT)} plan={plan} onAction={onAction} direction="horizontal" />
+      <PhaseNode phase={dRedSteadyState} primarySite={primarySite} secondarySite={secondarySite} isActive={isActivePhase('DRedSteadyState')} isTransitioning={isDestination('DRedSteadyState')} />
 
       {/* ARIA live region for transition progress */}
       <div
@@ -224,8 +296,8 @@ const DRLifecycleDiagram: React.FC<DRLifecycleDiagramProps> = ({ plan, onAction,
       >
         {inTransition && activeTransition
           ? waveProgress
-            ? `${activeTransition.action} in progress, wave ${waveProgress.current} of ${waveProgress.total}`
-            : `${activeTransition.action} in progress`
+            ? `${activeTransitionAction} in progress, wave ${waveProgress.current} of ${waveProgress.total}`
+            : `${activeTransitionAction} in progress`
           : ''}
       </div>
     </div>

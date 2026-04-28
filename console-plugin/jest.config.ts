@@ -17,6 +17,7 @@ const config: Config = {
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json'],
   moduleNameMapper: {
     '\\.(css|less|scss)$': 'identity-obj-proxy',
+    '\\.(png|jpg|jpeg|gif|svg)$': '<rootDir>/tests/__mocks__/fileMock.ts',
   },
   testMatch: ['<rootDir>/tests/**/*.test.{ts,tsx}'],
   setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Alert } from '@patternfly/react-core';
-import { Link } from 'react-router';
+import { Link } from 'react-router-dom';
 import { DRExecution, DRPlan } from '../../models/types';
 import { getEffectivePhase } from '../../utils/drPlanUtils';
 import { TRANSITIONS } from './DRLifecycleDiagram';
@@ -66,7 +66,7 @@ const TransitionProgressBanner: React.FC<TransitionProgressBannerProps> = ({ pla
       <Alert
         variant="info"
         isInline
-        title={`${transition.action} in progress`}
+        title={`${transition.transient.replace(/([a-z])([A-Z])/g, '$1 $2')} in progress`}
         actionLinks={
           <Link to={`/disaster-recovery/executions/${plan.status?.activeExecution}`}>
             View execution details

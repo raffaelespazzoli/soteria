@@ -1,0 +1,9 @@
+node_modules
+dist
+.DS_Store
+.devcontainer
+integration-tests/videos
+integration-tests/screenshots
+.yarn/cache
+.yarn/unplugged
+.yarn/install-state.gz

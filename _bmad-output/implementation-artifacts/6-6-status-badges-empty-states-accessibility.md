@@ -1,6 +1,6 @@
 # Story 6.6: Status Badges, Empty States & Accessibility
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 

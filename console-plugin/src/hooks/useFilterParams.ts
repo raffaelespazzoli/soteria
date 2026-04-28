@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from 'react';
-import { useLocation, useNavigate } from 'react-router';
+import { useLocation, useHistory } from 'react-router-dom';
 
 export interface FilterState {
   search: string;
@@ -40,16 +40,16 @@ function filtersToURLParams(filters: FilterState): string {
 
 export function useFilterParams() {
   const location = useLocation();
-  const navigate = useNavigate();
+  const history = useHistory();
 
   const filters = useMemo(() => parseFiltersFromURL(location.search), [location.search]);
 
   const setFilters = useCallback(
     (newFilters: FilterState) => {
       const search = filtersToURLParams(newFilters);
-      navigate({ search }, { replace: true });
+      history.replace({ search });
     },
-    [navigate],
+    [history],
   );
 
   const clearAllFilters = useCallback(() => {

@@ -56,12 +56,15 @@ describe('DRLifecycleDiagram', () => {
     expect(fadedNode).toHaveStyle({ opacity: 0.35 });
   });
 
-  it('renders Failover button with danger variant from SteadyState', () => {
+  it('renders Failover and Planned Migration buttons from SteadyState', () => {
     const plan = makePlan({ phase: 'SteadyState' });
     render(<DRLifecycleDiagram plan={plan} onAction={mockOnAction} />);
-    const btn = screen.getByRole('button', { name: 'Failover' });
-    expect(btn).toBeInTheDocument();
-    expect(btn).toHaveClass('pf-m-danger');
+    const failoverBtn = screen.getByRole('button', { name: 'Failover' });
+    const pmBtn = screen.getByRole('button', { name: 'Planned Migration' });
+    expect(failoverBtn).toBeInTheDocument();
+    expect(failoverBtn).toHaveClass('pf-m-danger');
+    expect(pmBtn).toBeInTheDocument();
+    expect(pmBtn).toHaveClass('pf-m-secondary');
   });
 
   it('renders Reprotect button with secondary variant from FailedOver', () => {
@@ -72,12 +75,15 @@ describe('DRLifecycleDiagram', () => {
     expect(btn).toHaveClass('pf-m-secondary');
   });
 
-  it('renders Failback button with secondary variant from DRedSteadyState', () => {
+  it('renders Failback and Planned Migration buttons from DRedSteadyState', () => {
     const plan = makePlan({ phase: 'DRedSteadyState' });
     render(<DRLifecycleDiagram plan={plan} onAction={mockOnAction} />);
-    const btn = screen.getByRole('button', { name: 'Failback' });
-    expect(btn).toBeInTheDocument();
-    expect(btn).toHaveClass('pf-m-secondary');
+    const failbackBtn = screen.getByRole('button', { name: 'Failback' });
+    const pmBtn = screen.getByRole('button', { name: 'Planned Migration' });
+    expect(failbackBtn).toBeInTheDocument();
+    expect(failbackBtn).toHaveClass('pf-m-danger');
+    expect(pmBtn).toBeInTheDocument();
+    expect(pmBtn).toHaveClass('pf-m-secondary');
   });
 
   it('renders Restore button with secondary variant from FailedBack', () => {
@@ -96,6 +102,7 @@ describe('DRLifecycleDiagram', () => {
     });
     render(<DRLifecycleDiagram plan={plan} onAction={mockOnAction} />);
     expect(screen.queryByRole('button', { name: 'Failover' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Planned Migration' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Reprotect' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Failback' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Restore' })).toBeNull();
@@ -137,28 +144,42 @@ describe('DRLifecycleDiagram', () => {
     const plan = makePlan({ phase: 'SteadyState' });
     render(<DRLifecycleDiagram plan={plan} onAction={mockOnAction} />);
     fireEvent.click(screen.getByRole('button', { name: 'Failover' }));
-    expect(mockOnAction).toHaveBeenCalledWith('Failover', plan);
+    expect(mockOnAction).toHaveBeenCalledWith('failover', plan);
+  });
+
+  it('calls onAction with correct args when Planned Migration button is clicked from SteadyState', () => {
+    const plan = makePlan({ phase: 'SteadyState' });
+    render(<DRLifecycleDiagram plan={plan} onAction={mockOnAction} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Planned Migration' }));
+    expect(mockOnAction).toHaveBeenCalledWith('planned_migration', plan);
   });
 
   it('calls onAction with correct args when Reprotect button is clicked', () => {
     const plan = makePlan({ phase: 'FailedOver' });
     render(<DRLifecycleDiagram plan={plan} onAction={mockOnAction} />);
     fireEvent.click(screen.getByRole('button', { name: 'Reprotect' }));
-    expect(mockOnAction).toHaveBeenCalledWith('Reprotect', plan);
+    expect(mockOnAction).toHaveBeenCalledWith('reprotect', plan);
   });
 
   it('calls onAction with correct args when Failback button is clicked', () => {
     const plan = makePlan({ phase: 'DRedSteadyState' });
     render(<DRLifecycleDiagram plan={plan} onAction={mockOnAction} />);
     fireEvent.click(screen.getByRole('button', { name: 'Failback' }));
-    expect(mockOnAction).toHaveBeenCalledWith('Failback', plan);
+    expect(mockOnAction).toHaveBeenCalledWith('failback', plan);
+  });
+
+  it('calls onAction with correct args when Planned Migration button is clicked from DRedSteadyState', () => {
+    const plan = makePlan({ phase: 'DRedSteadyState' });
+    render(<DRLifecycleDiagram plan={plan} onAction={mockOnAction} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Planned Migration' }));
+    expect(mockOnAction).toHaveBeenCalledWith('planned_failback', plan);
   });
 
   it('calls onAction with correct args when Restore button is clicked', () => {
     const plan = makePlan({ phase: 'FailedBack' });
     render(<DRLifecycleDiagram plan={plan} onAction={mockOnAction} />);
     fireEvent.click(screen.getByRole('button', { name: 'Restore' }));
-    expect(mockOnAction).toHaveBeenCalledWith('Restore', plan);
+    expect(mockOnAction).toHaveBeenCalledWith('restore', plan);
   });
 
   it('renders diagram container with role="figure" and aria-label', () => {
@@ -186,7 +207,7 @@ describe('DRLifecycleDiagram', () => {
     render(<DRLifecycleDiagram plan={plan} onAction={mockOnAction} />);
     const liveRegion = screen.getByRole('status');
     expect(liveRegion).toHaveAttribute('aria-live', 'polite');
-    expect(liveRegion).toHaveTextContent('Failover in progress');
+    expect(liveRegion).toHaveTextContent('Failing Over in progress');
   });
 
   it('announces transition with wave progress when provided', () => {
@@ -197,7 +218,7 @@ describe('DRLifecycleDiagram', () => {
     });
     render(<DRLifecycleDiagram plan={plan} onAction={mockOnAction} waveProgress={{ current: 2, total: 3 }} />);
     const liveRegion = screen.getByRole('status');
-    expect(liveRegion).toHaveTextContent('Failover in progress, wave 2 of 3');
+    expect(liveRegion).toHaveTextContent('Failing Over in progress, wave 2 of 3');
   });
 
   it('ARIA live region is empty during rest state', () => {
@@ -225,23 +246,51 @@ describe('DRLifecycleDiagram', () => {
     expect(results).toHaveNoViolations();
   });
 
-  it('shows phase details: description, VM location, DC roles, replication', () => {
+  it('shows phase details with real site names', () => {
     const plan = makePlan({ phase: 'SteadyState' });
     render(<DRLifecycleDiagram plan={plan} onAction={mockOnAction} />);
-    expect(screen.getByText('Normal operations')).toBeInTheDocument();
     const steadyNode = screen.getByTestId('phase-node-SteadyState');
-    expect(steadyNode).toHaveTextContent('VMs on DC1');
-    expect(steadyNode).toHaveTextContent('DC1: Active (source)');
-    expect(steadyNode).toHaveTextContent('DC2: Passive (target)');
-    expect(steadyNode).toHaveTextContent('Replication: DC1 → DC2');
+    expect(steadyNode).toHaveTextContent('VMs running in dc1-prod');
+    expect(steadyNode).toHaveTextContent('VMs stopped in dc2-dr');
+    expect(steadyNode).toHaveTextContent('Volume Replication: on');
   });
 
-  it('renders FailedOver phase details', () => {
+  it('renders FailedOver phase details with reversed sites', () => {
     const plan = makePlan({ phase: 'FailedOver' });
     render(<DRLifecycleDiagram plan={plan} onAction={mockOnAction} />);
-    expect(screen.getByText('Running on DR site')).toBeInTheDocument();
     const failedOverNode = screen.getByTestId('phase-node-FailedOver');
-    expect(failedOverNode).toHaveTextContent('Replication: None');
+    expect(failedOverNode).toHaveTextContent('VMs running in dc2-dr');
+    expect(failedOverNode).toHaveTextContent('VMs stopped in dc1-prod');
+    expect(failedOverNode).toHaveTextContent('Volume Replication: off');
+  });
+
+  it('renders DRedSteadyState phase details', () => {
+    const plan = makePlan({ phase: 'DRedSteadyState' });
+    render(<DRLifecycleDiagram plan={plan} onAction={mockOnAction} />);
+    const node = screen.getByTestId('phase-node-DRedSteadyState');
+    expect(node).toHaveTextContent('VMs running in dc2-dr');
+    expect(node).toHaveTextContent('VMs stopped in dc1-prod');
+    expect(node).toHaveTextContent('Volume Replication: on');
+  });
+
+  it('renders FailedBack phase details', () => {
+    const plan = makePlan({ phase: 'FailedBack' });
+    render(<DRLifecycleDiagram plan={plan} onAction={mockOnAction} />);
+    const node = screen.getByTestId('phase-node-FailedBack');
+    expect(node).toHaveTextContent('VMs running in dc1-prod');
+    expect(node).toHaveTextContent('VMs stopped in dc2-dr');
+    expect(node).toHaveTextContent('Volume Replication: off');
+  });
+
+  it('renders state images in each phase node', () => {
+    const plan = makePlan();
+    render(<DRLifecycleDiagram plan={plan} onAction={mockOnAction} />);
+    const images = screen.getAllByRole('img');
+    expect(images).toHaveLength(4);
+    expect(images[0]).toHaveAttribute('alt', expect.stringContaining('Steady State topology'));
+    expect(images[1]).toHaveAttribute('alt', expect.stringContaining('Failed Over topology'));
+    expect(images[2]).toHaveAttribute('alt', expect.stringContaining('Failed Back topology'));
+    expect(images[3]).toHaveAttribute('alt', expect.stringContaining('DR-ed Steady State topology'));
   });
 
   it('defaults to SteadyState when status.phase is undefined', () => {

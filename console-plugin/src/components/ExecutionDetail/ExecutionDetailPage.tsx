@@ -1,6 +1,6 @@
 import { DocumentTitle } from '@openshift-console/dynamic-plugin-sdk';
 import { PageSection, Title, Content } from '@patternfly/react-core';
-import { useParams } from 'react-router';
+import { useParams } from 'react-router-dom';
 import DRBreadcrumb from '../shared/DRBreadcrumb';
 
 const ExecutionDetailPage: React.FC = () => {

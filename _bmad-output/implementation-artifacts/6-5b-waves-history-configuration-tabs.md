@@ -1,6 +1,6 @@
 # Story 6.5b: Waves, History & Configuration Tabs
 
-Status: review
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 

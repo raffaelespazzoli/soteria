@@ -13,7 +13,10 @@ const ACTIONS_BY_PHASE: Record<string, DRAction[]> = {
     { key: 'planned_migration', label: 'Planned Migration' },
   ],
   FailedOver: [{ key: 'reprotect', label: 'Reprotect' }],
-  DRedSteadyState: [{ key: 'failback', label: 'Failback' }],
+  DRedSteadyState: [
+    { key: 'failback', label: 'Failback', isDanger: true },
+    { key: 'planned_failback', label: 'Planned Migration' },
+  ],
   FailedBack: [{ key: 'restore', label: 'Restore' }],
 };
 

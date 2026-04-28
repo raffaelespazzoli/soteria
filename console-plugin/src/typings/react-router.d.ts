@@ -1,35 +1,13 @@
 /**
- * Type augmentation for react-router.
+ * Type augmentation for react-router-dom.
  *
- * The Console shell provides React Router v7 at runtime where `react-router`
- * and `react-router-dom` are unified into a single package. Our local devDeps
- * still carry react-router v5 types. This declaration re-exports the
- * DOM-specific symbols so that source code can import everything from
- * `react-router` (the v7 convention) while still type-checking against v5.
+ * OCP 4.20 ships React Router v5. The Console's shared module scope provides
+ * `react-router`, `react-router-dom`, and `react-router-dom-v5-compat`.
  *
- * Runtime safety: webpack's ConsoleRemotePlugin configures `react-router` as
- * a shared module provided by the Console shell, so the local npm package is
- * never bundled into the plugin output. Jest tests mock `react-router`
- * entirely via jest.mock(), so the local package exports are irrelevant there
- * as well. This shim is therefore types-only by design.
+ * In React Router v5:
+ *  - `react-router` exports: useHistory, useLocation, useParams, useRouteMatch, etc.
+ *  - `react-router-dom` re-exports the above and adds: Link, NavLink, BrowserRouter, etc.
+ *
+ * All plugin imports should use `react-router-dom` for consistency and
+ * to ensure DOM-specific components (Link, NavLink) resolve correctly.
  */
-declare module 'react-router' {
-  export {
-    Link,
-    NavLink,
-    BrowserRouter,
-    HashRouter,
-    MemoryRouter,
-    Route,
-    Switch,
-    useHistory,
-    useLocation,
-    useParams,
-    useRouteMatch,
-  } from 'react-router-dom';
-
-  type NavigateTo = string | { pathname?: string; search?: string; hash?: string };
-  type NavigateOptions = { replace?: boolean; state?: unknown };
-  type NavigateFunction = (to: NavigateTo, options?: NavigateOptions) => void;
-  export function useNavigate(): NavigateFunction;
-}

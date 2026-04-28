@@ -1,20 +1,23 @@
 [
   {
-    "type": "console.navigation/section",
+    "type": "console.navigation/href",
     "properties": {
-      "id": "disaster-recovery",
+      "id": "dr-dashboard-virt-perspective",
       "name": "Disaster Recovery",
-      "perspective": "admin"
+      "href": "/disaster-recovery",
+      "perspective": "virtualization-perspective",
+      "insertAfter": "virtualization-checkups-virt-perspective",
+      "startsWith": ["/disaster-recovery"]
     }
   },
   {
     "type": "console.navigation/href",
     "properties": {
-      "id": "dr-dashboard",
-      "name": "Dashboard",
+      "id": "dr-dashboard-admin",
+      "name": "Disaster Recovery",
       "href": "/disaster-recovery",
-      "section": "disaster-recovery",
-      "perspective": "admin",
+      "section": "virtualization",
+      "insertAfter": "virtualization-checkups",
       "startsWith": ["/disaster-recovery"]
     }
   },
@@ -23,8 +26,7 @@
     "properties": {
       "path": "/disaster-recovery/executions/:name",
       "exact": true,
-      "component": { "$codeRef": "ExecutionDetailPage" },
-      "perspective": "admin"
+      "component": { "$codeRef": "ExecutionDetailPage" }
     }
   },
   {
@@ -32,8 +34,7 @@
     "properties": {
       "path": "/disaster-recovery/plans/:name",
       "exact": true,
-      "component": { "$codeRef": "DRPlanDetailPage" },
-      "perspective": "admin"
+      "component": { "$codeRef": "DRPlanDetailPage" }
     }
   },
   {
@@ -41,8 +42,7 @@
     "properties": {
       "path": "/disaster-recovery",
       "exact": true,
-      "component": { "$codeRef": "DRDashboardPage" },
-      "perspective": "admin"
+      "component": { "$codeRef": "DRDashboardPage" }
     }
   }
 ]

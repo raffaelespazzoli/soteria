@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert } from '@patternfly/react-core';
 import { Table, Thead, Tr, Th, Tbody, Td, ThProps } from '@patternfly/react-table';
-import { Link } from 'react-router';
+import { Link } from 'react-router-dom';
 import { useDRPlans, useDRExecutions } from '../../hooks/useDRResources';
 import { useFilterParams, FilterState } from '../../hooks/useFilterParams';
 import { saveDashboardState, restoreDashboardState } from '../../hooks/useDashboardState';
