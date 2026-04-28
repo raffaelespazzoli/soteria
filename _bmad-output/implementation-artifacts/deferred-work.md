@@ -8,3 +8,7 @@
 
 - FailedOver→Reprotecting transition not yet defined in state machine — Story 4.8 will design the reprotect mechanism and mode, then add this transition edge to `validTransitions`.
 - Pre-existing test patterns: `StorageClass` creation in `suite_test.go` lacks AlreadyExists guard; manager Start goroutine error not propagated to test runner.
+
+## Deferred from: code review of 7-2-live-execution-monitor-progressstepper (2026-04-28)
+
+- Wave/group elapsed strings don't tick between K8s watch updates — `getWaveElapsed`/`getGroupElapsed` use `Date.now()` at render time but have no local interval. Values only refresh when K8s watch fires (every ~2-5s). Matches existing `TransitionProgressBanner` pattern. Adding per-wave/group tick intervals would increase complexity for marginal UX gain.
