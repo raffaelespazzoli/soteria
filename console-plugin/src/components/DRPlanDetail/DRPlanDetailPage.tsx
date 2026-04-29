@@ -10,6 +10,7 @@ import {
 } from '@patternfly/react-core';
 import { useParams } from 'react-router-dom';
 import DRBreadcrumb from '../shared/DRBreadcrumb';
+import ToastContainer from '../shared/ToastContainer';
 import PlanHeader from './PlanHeader';
 import DRLifecycleDiagram from './DRLifecycleDiagram';
 import TransitionProgressBanner from './TransitionProgressBanner';
@@ -19,6 +20,7 @@ import { PlanConfiguration } from './PlanConfiguration';
 import { PreflightConfirmationModal } from './PreflightConfirmationModal';
 import { useDRPlan, useDRExecution, useDRExecutions } from '../../hooks/useDRResources';
 import { useCreateDRExecution } from '../../hooks/useCreateDRExecution';
+import { useExecutionNotifications } from '../../hooks/useExecutionNotifications';
 import { getPreflightData } from '../../hooks/usePreflightData';
 import { DRPlan } from '../../models/types';
 import { getEffectivePhase } from '../../utils/drPlanUtils';
@@ -33,6 +35,7 @@ const DRPlanDetailPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string | number>(0);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const { create, isCreating, error: createError, clearError } = useCreateDRExecution();
+  useExecutionNotifications();
 
   const effectivePhase = plan ? getEffectivePhase(plan) : null;
   const restPhase = plan?.status?.phase;
@@ -72,6 +75,7 @@ const DRPlanDetailPage: React.FC = () => {
   return (
     <>
       <DocumentTitle>{`DR Plan: ${name}`}</DocumentTitle>
+      <ToastContainer />
       <PageSection>
         <DRBreadcrumb planName={name} />
       </PageSection>

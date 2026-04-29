@@ -15,6 +15,7 @@ jest.mock('@openshift-console/dynamic-plugin-sdk', () => ({
 jest.mock('react-router-dom', () => ({
   ...jest.requireActual('react-router-dom'),
   useParams: () => ({ name: 'erp-failover-1714327200000' }),
+  useHistory: () => ({ push: jest.fn() }),
   Link: ({ to, children }: { to: string; children: React.ReactNode }) => (
     <a href={to}>{children}</a>
   ),
@@ -27,6 +28,7 @@ const mockUseDRExecution = jest.fn<
 
 jest.mock('../../src/hooks/useDRResources', () => ({
   useDRExecution: (...args: [string]) => mockUseDRExecution(...args),
+  useDRExecutions: jest.fn().mockReturnValue([[], true, null]),
   useDRGroupStatuses: jest.fn().mockReturnValue([[], true, null]),
 }));
 
@@ -178,7 +180,7 @@ describe('ExecutionDetailPage', () => {
   it('renders completed execution with result badge and duration', () => {
     mockUseDRExecution.mockReturnValue([mockCompletedExecution, true, null]);
     render(<ExecutionDetailPage />);
-    expect(screen.getByText('Succeeded')).toBeInTheDocument();
+    expect(screen.getAllByText('Succeeded').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/Duration/)).toBeInTheDocument();
     expect(screen.getByText('RPO 47s')).toBeInTheDocument();
   });
@@ -339,7 +341,7 @@ describe('ExecutionDetailPage — retry', () => {
   it('renders PartiallySucceeded result badge', () => {
     mockUseDRExecution.mockReturnValue([mockPartialExecution, true, null]);
     render(<ExecutionDetailPage />);
-    expect(screen.getByText('Partial')).toBeInTheDocument();
+    expect(screen.getAllByText('Partial').length).toBeGreaterThanOrEqual(1);
   });
 
   it('has no accessibility violations (PartiallySucceeded)', async () => {

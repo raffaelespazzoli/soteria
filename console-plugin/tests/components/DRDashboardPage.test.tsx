@@ -87,6 +87,12 @@ describe('DRDashboardPage', () => {
     scrollToSpy.mockRestore();
   });
 
+  it('renders ToastContainer for execution notifications', () => {
+    render(<DRDashboardPage />);
+    const alertGroup = document.querySelector('[class*="pf-v6-c-alert-group"]');
+    expect(alertGroup).toBeInTheDocument();
+  });
+
   it('has no accessibility violations', async () => {
     const { container } = render(<DRDashboardPage />);
     const results = await axe(container);

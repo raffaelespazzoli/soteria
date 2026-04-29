@@ -8,16 +8,20 @@ import {
 } from '@patternfly/react-core';
 import { useParams } from 'react-router-dom';
 import DRBreadcrumb from '../shared/DRBreadcrumb';
+import ToastContainer from '../shared/ToastContainer';
 import { useDRExecution } from '../../hooks/useDRResources';
 import { useRetryDRGroup } from '../../hooks/useRetryDRGroup';
+import { useExecutionNotifications } from '../../hooks/useExecutionNotifications';
 import { DRGroupResultValue } from '../../models/types';
 import ExecutionHeader from './ExecutionHeader';
 import WaveProgressStep from './WaveProgressStep';
+import ExecutionSummary from './ExecutionSummary';
 
 const ExecutionDetailPage: React.FC = () => {
   const { name } = useParams<{ name: string }>();
   const [execution, execLoaded, execError] = useDRExecution(name);
   const { retry, retryAll, isRetrying, retryError, retriedGroup } = useRetryDRGroup(name, execution ?? null);
+  useExecutionNotifications();
   const planName = execution?.spec?.planName ?? '';
 
   const waves = execution?.status?.waves ?? [];
@@ -84,6 +88,7 @@ const ExecutionDetailPage: React.FC = () => {
   return (
     <>
       <DocumentTitle>{`DR Execution: ${execution.metadata?.name}`}</DocumentTitle>
+      <ToastContainer />
       <PageSection>
         <DRBreadcrumb planName={planName} executionName={execution.metadata?.name} />
         <ExecutionHeader
@@ -107,6 +112,9 @@ const ExecutionDetailPage: React.FC = () => {
             />
           ))}
         </ProgressStepper>
+        {execution.status?.completionTime && (
+          <ExecutionSummary execution={execution} />
+        )}
         <div
           ref={ariaRef}
           aria-live="polite"
