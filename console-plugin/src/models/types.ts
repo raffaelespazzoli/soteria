@@ -46,6 +46,7 @@ export const VolumeGroupHealthStatus = {
   Healthy: 'Healthy',
   Degraded: 'Degraded',
   Syncing: 'Syncing',
+  NotReplicating: 'NotReplicating',
   Error: 'Error',
   Unknown: 'Unknown',
 } as const;
@@ -90,7 +91,6 @@ export interface DRPlanStatus {
   discoveredVMCount?: number;
   preflight?: PreflightReport;
   replicationHealth?: VolumeGroupHealth[];
-  unprotectedVMCount?: number;
 }
 
 export interface WaveInfo {
@@ -116,7 +116,6 @@ export interface VolumeGroupHealth {
   namespace: string;
   health: VGHealthStatus;
   lastSyncTime?: string;
-  estimatedRPO: string;
   lastChecked: string;
   message?: string;
 }
@@ -128,7 +127,6 @@ export interface PreflightReport {
   activeExecution?: string;
   waves?: PreflightWave[];
   totalVMs: number;
-  unprotectedVMs?: DiscoveredVM[];
   warnings?: string[];
   generatedAt?: string;
 }
@@ -172,7 +170,6 @@ export interface DRExecutionStatus {
   waves?: WaveStatus[];
   startTime?: string;
   completionTime?: string;
-  rpoSeconds?: number;
   conditions?: Condition[];
 }
 

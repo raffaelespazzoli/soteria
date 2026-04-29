@@ -39,7 +39,6 @@ const completedExecution: DRExecution = {
     startTime: new Date(now - 10 * 60 * 1000).toISOString(),
     completionTime: new Date(now).toISOString(),
     result: 'Succeeded',
-    rpoSeconds: 47,
     waves: [
       {
         waveIndex: 0,
@@ -93,11 +92,6 @@ describe('ExecutionHeader', () => {
     expect(screen.getByText('Succeeded')).toBeInTheDocument();
   });
 
-  it('shows RPO when complete', () => {
-    render(<ExecutionHeader execution={completedExecution} />);
-    expect(screen.getByText('RPO 47s')).toBeInTheDocument();
-  });
-
   it('applies monospace font to time displays', () => {
     const { container } = render(<ExecutionHeader execution={baseExecution} />);
     const monoElements = container.querySelectorAll('[style*="mono"]');
@@ -141,7 +135,6 @@ const partialExecution: DRExecution = {
     startTime: new Date(now - 10 * 60 * 1000).toISOString(),
     completionTime: new Date(now).toISOString(),
     result: 'PartiallySucceeded',
-    rpoSeconds: 47,
     waves: [
       {
         waveIndex: 0,

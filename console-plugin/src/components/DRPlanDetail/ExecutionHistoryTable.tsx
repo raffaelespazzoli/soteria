@@ -8,7 +8,7 @@ import { Table, Thead, Tr, Th, Tbody, Td } from '@patternfly/react-table';
 import { useHistory } from 'react-router-dom';
 import ExecutionResultBadge from '../shared/ExecutionResultBadge';
 import { DRExecution, DRExecutionResult } from '../../models/types';
-import { formatDuration, formatRPO } from '../../utils/formatters';
+import { formatDuration } from '../../utils/formatters';
 
 function formatMode(mode: string | undefined): string {
   switch (mode) {
@@ -74,7 +74,6 @@ export const ExecutionHistoryTable: React.FC<ExecutionHistoryTableProps> = ({
           <Th>Mode</Th>
           <Th>Result</Th>
           <Th>Duration</Th>
-          <Th>RPO</Th>
           <Th>Triggered By</Th>
         </Tr>
       </Thead>
@@ -101,11 +100,6 @@ export const ExecutionHistoryTable: React.FC<ExecutionHistoryTableProps> = ({
               </Td>
               <Td dataLabel="Duration">
                 {formatDuration(exec.status?.startTime, exec.status?.completionTime) || 'N/A'}
-              </Td>
-              <Td dataLabel="RPO">
-                {exec.status?.rpoSeconds != null
-                  ? formatRPO(exec.status.rpoSeconds) || 'N/A'
-                  : 'N/A'}
               </Td>
               <Td dataLabel="Triggered By">
                 {exec.metadata?.annotations?.['soteria.io/triggered-by'] ?? 'N/A'}

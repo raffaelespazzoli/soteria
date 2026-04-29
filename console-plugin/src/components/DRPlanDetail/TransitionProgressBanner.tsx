@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Alert } from '@patternfly/react-core';
-import { Link } from 'react-router-dom';
+import { Button, Progress, ProgressMeasureLocation, ProgressVariant } from '@patternfly/react-core';
+import { useHistory } from 'react-router-dom';
 import { DRExecution, DRPlan } from '../../models/types';
 import { getEffectivePhase } from '../../utils/drPlanUtils';
 import { TRANSITIONS } from './DRLifecycleDiagram';
@@ -23,6 +23,7 @@ function formatElapsed(ms: number): string {
 }
 
 const TransitionProgressBanner: React.FC<TransitionProgressBannerProps> = ({ plan, execution }) => {
+  const history = useHistory();
   const effectivePhase = getEffectivePhase(plan);
   const restPhase = plan.status?.phase;
   const [elapsed, setElapsed] = useState('');
@@ -48,10 +49,18 @@ const TransitionProgressBanner: React.FC<TransitionProgressBannerProps> = ({ pla
   const waves = execution?.status?.waves;
   const completedWaves = waves ? waves.filter(w => w.completionTime).length : 0;
   const totalWaves = waves?.length ?? 0;
-  const currentWave = Math.min(completedWaves + 1, totalWaves);
-  const waveProgress = totalWaves > 0
-    ? `Wave ${currentWave} of ${totalWaves}`
-    : 'Starting...';
+  const pctComplete = totalWaves > 0 ? Math.round((completedWaves / totalWaves) * 100) : 0;
+
+  const transitionLabel = transition.transient.replace(/([a-z])([A-Z])/g, '$1 $2');
+
+  let waveLabel: string;
+  if (totalWaves === 0) {
+    waveLabel = 'Starting...';
+  } else if (completedWaves >= totalWaves) {
+    waveLabel = `${totalWaves} of ${totalWaves} waves complete — finalizing`;
+  } else {
+    waveLabel = `Wave ${completedWaves + 1} of ${totalWaves}`;
+  }
 
   let estimatedRemaining = 'calculating...';
   if (totalWaves > 0 && completedWaves > 0 && startTime) {
@@ -61,24 +70,45 @@ const TransitionProgressBanner: React.FC<TransitionProgressBannerProps> = ({ pla
     estimatedRemaining = `~${formatElapsed(remainingMs)}`;
   }
 
+  const activeExec = plan.status?.activeExecution;
+
   return (
     <div style={{ marginBottom: 'var(--pf-v5-global--spacer--md)' }}>
-      <Alert
-        variant="info"
-        isInline
-        title={`${transition.transient.replace(/([a-z])([A-Z])/g, '$1 $2')} in progress`}
-        actionLinks={
-          <Link to={`/disaster-recovery/executions/${plan.status?.activeExecution}`}>
-            View execution details
-          </Link>
-        }
+      <Progress
+        value={pctComplete}
+        title={`${transitionLabel} in progress`}
+        measureLocation={ProgressMeasureLocation.top}
+        variant={ProgressVariant.info}
+        label={`${pctComplete}%`}
+        aria-label={`${transitionLabel} progress: ${waveLabel}`}
+      />
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginTop: 'var(--pf-v5-global--spacer--xs)',
+          fontSize: 'var(--pf-v5-global--FontSize--sm)',
+          color: 'var(--pf-v5-global--Color--200)',
+        }}
       >
-        <span style={{ fontSize: 'var(--pf-v5-global--FontSize--lg)' }}>{waveProgress}</span>
-        {' — Elapsed: '}
-        <span style={{ fontSize: 'var(--pf-v5-global--FontSize--lg)' }}>{elapsed || '0s'}</span>
-        {' · Est. remaining: '}
-        <span style={{ fontSize: 'var(--pf-v5-global--FontSize--lg)' }}>{estimatedRemaining}</span>
-      </Alert>
+        <span>
+          {waveLabel}
+          {' — Elapsed: '}
+          <strong>{elapsed || '0s'}</strong>
+          {' · Est. remaining: '}
+          <strong>{estimatedRemaining}</strong>
+        </span>
+        {activeExec && (
+          <Button
+            variant="link"
+            isInline
+            onClick={() => history.push(`/disaster-recovery/executions/${activeExec}`)}
+          >
+            View execution details
+          </Button>
+        )}
+      </div>
     </div>
   );
 };

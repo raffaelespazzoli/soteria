@@ -8,22 +8,22 @@ expect.extend(toHaveNoViolations);
 describe('ReplicationHealthIndicator', () => {
   const cases: { health: ReplicationHealth; expectedLabel: string; expectedAria: string }[] = [
     {
-      health: { status: 'Healthy', rpoSeconds: 12 },
+      health: { status: 'Healthy' },
       expectedLabel: 'Healthy',
-      expectedAria: 'Replication healthy, RPO 12s',
+      expectedAria: 'Replication healthy',
     },
     {
-      health: { status: 'Degraded', rpoSeconds: 45 },
+      health: { status: 'Degraded' },
       expectedLabel: 'Degraded',
-      expectedAria: 'Replication degraded, RPO 45s',
+      expectedAria: 'Replication degraded',
     },
     {
-      health: { status: 'Error', rpoSeconds: null },
+      health: { status: 'Error' },
       expectedLabel: 'Error',
       expectedAria: 'Replication error',
     },
     {
-      health: { status: 'Unknown', rpoSeconds: null },
+      health: { status: 'Unknown' },
       expectedLabel: 'Unknown',
       expectedAria: 'Replication unknown',
     },
@@ -37,16 +37,6 @@ describe('ReplicationHealthIndicator', () => {
       expect(screen.getByRole('status')).toHaveAttribute('aria-label', expectedAria);
     },
   );
-
-  it('renders RPO text when rpoSeconds is provided', () => {
-    render(<ReplicationHealthIndicator health={{ status: 'Healthy', rpoSeconds: 120 }} />);
-    expect(screen.getByText('RPO 2m')).toBeInTheDocument();
-  });
-
-  it('does not render RPO text when rpoSeconds is null', () => {
-    render(<ReplicationHealthIndicator health={{ status: 'Unknown', rpoSeconds: null }} />);
-    expect(screen.queryByText(/RPO/)).not.toBeInTheDocument();
-  });
 
   it.each(cases)(
     'has no accessibility violations for $health.status',

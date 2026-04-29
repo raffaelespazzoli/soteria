@@ -4,11 +4,10 @@ export type RestPhase = 'SteadyState' | 'FailedOver' | 'DRedSteadyState' | 'Fail
 export type TransientPhase = 'FailingOver' | 'Reprotecting' | 'FailingBack' | 'Restoring';
 export type EffectivePhase = RestPhase | TransientPhase;
 
-export type ReplicationHealthStatus = 'Healthy' | 'Degraded' | 'Syncing' | 'Error' | 'Unknown';
+export type ReplicationHealthStatus = 'Healthy' | 'Degraded' | 'Syncing' | 'NotReplicating' | 'Error' | 'Unknown';
 
 export interface ReplicationHealth {
   status: ReplicationHealthStatus;
-  rpoSeconds: number | null;
 }
 
 /**
@@ -41,18 +40,15 @@ export function getEffectivePhase(plan: DRPlan): EffectivePhase {
  */
 export function getReplicationHealth(plan: DRPlan): ReplicationHealth {
   const condition = plan.status?.conditions?.find((c) => c.type === 'ReplicationHealthy');
-  if (!condition) return { status: 'Unknown', rpoSeconds: null };
-
-  const rpoStr = condition.message?.match(/RPO: (\d+)s/)?.[1];
-  const rpoSeconds = rpoStr ? parseInt(rpoStr, 10) : null;
+  if (!condition) return { status: 'Unknown' };
 
   switch (condition.status) {
     case 'True':
-      return { status: 'Healthy', rpoSeconds };
+      return { status: 'Healthy' };
     case 'False':
-      return { status: condition.reason === 'Degraded' ? 'Degraded' : 'Error', rpoSeconds };
+      return { status: condition.reason === 'Degraded' ? 'Degraded' : 'Error' };
     default:
-      return { status: 'Unknown', rpoSeconds: null };
+      return { status: 'Unknown' };
   }
 }
 
@@ -101,5 +97,6 @@ export const HEALTH_SORT_ORDER: Record<string, number> = {
   Degraded: 1,
   Syncing: 2,
   Unknown: 3,
-  Healthy: 4,
+  NotReplicating: 4,
+  Healthy: 5,
 };

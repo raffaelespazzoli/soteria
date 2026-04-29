@@ -34,7 +34,6 @@ const mockSucceededExecution: DRExecution = {
     result: 'Succeeded',
     startTime: new Date(now - 17 * 60 * 1000).toISOString(),
     completionTime: new Date(now).toISOString(),
-    rpoSeconds: 47,
     waves: [
       {
         waveIndex: 0,
@@ -59,7 +58,6 @@ const mockPartialExecution: DRExecution = {
     result: 'PartiallySucceeded',
     startTime: new Date(now - 10 * 60 * 1000).toISOString(),
     completionTime: new Date(now).toISOString(),
-    rpoSeconds: 30,
     waves: [
       {
         waveIndex: 0,
@@ -89,7 +87,6 @@ const mockReprotectExecution: DRExecution = {
     result: 'Succeeded',
     startTime: new Date(now - 3 * 60 * 1000).toISOString(),
     completionTime: new Date(now).toISOString(),
-    rpoSeconds: 0,
     waves: [],
   },
 };

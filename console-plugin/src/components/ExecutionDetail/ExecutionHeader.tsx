@@ -1,7 +1,7 @@
 import { Label, LabelProps, Button, Tooltip } from '@patternfly/react-core';
 import { DRExecution, DRExecutionMode, DRGroupResultValue, WaveStatus } from '../../models/types';
 import { useElapsedTime, formatElapsedMs } from '../../hooks/useElapsedTime';
-import { formatDuration, formatRPO } from '../../utils/formatters';
+import { formatDuration } from '../../utils/formatters';
 import ExecutionResultBadge from '../shared/ExecutionResultBadge';
 
 const MODE_LABELS: Record<string, { label: string; status: NonNullable<LabelProps['status']> }> = {
@@ -95,9 +95,6 @@ const ExecutionHeader: React.FC<ExecutionHeaderProps> = ({
             </span>
           </span>
           {status?.result && <ExecutionResultBadge result={status.result} />}
-          {status?.rpoSeconds != null && (
-            <span style={lgFontStyle}>{formatRPO(status.rpoSeconds)}</span>
-          )}
           {showRetryAll && (
             isRetryDisabled && retryTooltip ? (
               <Tooltip content={retryTooltip}>

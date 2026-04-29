@@ -123,7 +123,7 @@ func TestDriver_ReplicationLifecycle(t *testing.T) {
 			name:       "stop replication from source",
 			action:     func() error { return d.StopReplication(testCtx(), info.ID) },
 			wantRole:   drivers.RoleNonReplicated,
-			wantHealth: drivers.HealthUnknown,
+			wantHealth: drivers.HealthNotReplicating,
 		},
 	}
 
@@ -146,12 +146,6 @@ func TestDriver_ReplicationLifecycle(t *testing.T) {
 			if step.wantRole != drivers.RoleNonReplicated {
 				if status.LastSyncTime == nil {
 					t.Fatalf("after %s: expected non-nil LastSyncTime for replicating role", step.name)
-				}
-				if status.EstimatedRPO == nil {
-					t.Fatalf("after %s: expected non-nil EstimatedRPO for replicating role", step.name)
-				}
-				if *status.EstimatedRPO != 0 {
-					t.Fatalf("after %s: expected zero EstimatedRPO, got %v", step.name, *status.EstimatedRPO)
 				}
 			}
 		})
@@ -313,14 +307,11 @@ func TestDriver_GetReplicationStatus_NonReplicated(t *testing.T) {
 	if status.Role != drivers.RoleNonReplicated {
 		t.Fatalf("expected RoleNonReplicated, got %q", status.Role)
 	}
-	if status.Health != drivers.HealthUnknown {
-		t.Fatalf("expected HealthUnknown for NonReplicated, got %q", status.Health)
+	if status.Health != drivers.HealthNotReplicating {
+		t.Fatalf("expected HealthNotReplicating for NonReplicated, got %q", status.Health)
 	}
 	if status.LastSyncTime != nil {
 		t.Fatal("expected nil LastSyncTime for NonReplicated")
-	}
-	if status.EstimatedRPO != nil {
-		t.Fatal("expected nil EstimatedRPO for NonReplicated")
 	}
 }
 

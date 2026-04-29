@@ -118,15 +118,10 @@ type DRPlanStatus struct {
 	// every reconcile to give platform engineers visibility into plan structure
 	// before execution.
 	Preflight *PreflightReport `json:"preflight,omitempty"`
-	// ReplicationHealth reports per-volume-group replication status and RPO,
+	// ReplicationHealth reports per-volume-group replication status,
 	// populated by polling storage drivers on each reconcile cycle.
 	// +listType=atomic
 	ReplicationHealth []VolumeGroupHealth `json:"replicationHealth,omitempty"`
-	// UnprotectedVMCount is the cluster-wide count of VMs not belonging to
-	// any DRPlan (lacking the soteria.io/drplan label). Always present in
-	// JSON output — a zero value means "all VMs protected", which is
-	// semantically distinct from "not yet computed" (field absent).
-	UnprotectedVMCount int `json:"unprotectedVMCount"`
 }
 
 // PreflightReport is the pre-flight composition summary for a DRPlan. It
@@ -147,11 +142,6 @@ type PreflightReport struct {
 	Waves []PreflightWave `json:"waves,omitempty"`
 	// TotalVMs is the total number of VMs in the plan.
 	TotalVMs int `json:"totalVMs"`
-	// UnprotectedVMs lists VMs cluster-wide that lack the soteria.io/drplan
-	// label, capped at 100 entries sorted by namespace/name. When all VMs
-	// are protected, this field is empty.
-	// +listType=atomic
-	UnprotectedVMs []DiscoveredVM `json:"unprotectedVMs,omitempty"`
 	// Warnings contains non-blocking validation issues (e.g., unknown storage backend).
 	// +listType=atomic
 	Warnings []string `json:"warnings,omitempty"`
@@ -208,29 +198,27 @@ type PreflightChunk struct {
 type VolumeGroupHealthStatus string
 
 const (
-	HealthStatusHealthy  VolumeGroupHealthStatus = "Healthy"
-	HealthStatusDegraded VolumeGroupHealthStatus = "Degraded"
-	HealthStatusSyncing  VolumeGroupHealthStatus = "Syncing"
-	HealthStatusError    VolumeGroupHealthStatus = "Error"
-	HealthStatusUnknown  VolumeGroupHealthStatus = "Unknown"
+	HealthStatusHealthy        VolumeGroupHealthStatus = "Healthy"
+	HealthStatusDegraded       VolumeGroupHealthStatus = "Degraded"
+	HealthStatusSyncing        VolumeGroupHealthStatus = "Syncing"
+	HealthStatusNotReplicating VolumeGroupHealthStatus = "NotReplicating"
+	HealthStatusError          VolumeGroupHealthStatus = "Error"
+	HealthStatusUnknown        VolumeGroupHealthStatus = "Unknown"
 )
 
-// VolumeGroupHealth reports the replication health and RPO for a single
-// volume group within a DRPlan. Populated by the DRPlan controller on each
-// reconcile cycle from storage driver polling.
+// VolumeGroupHealth reports the replication health for a single volume group
+// within a DRPlan. Populated by the DRPlan controller on each reconcile cycle
+// from storage driver polling.
 type VolumeGroupHealth struct {
 	// Name is the volume group identifier (e.g. "ns-erp-database").
 	Name string `json:"name"`
 	// Namespace is the Kubernetes namespace for VMs in this group.
 	Namespace string `json:"namespace"`
 	// Health is the replication health status.
-	// +kubebuilder:validation:Enum=Healthy;Degraded;Syncing;Error;Unknown
+	// +kubebuilder:validation:Enum=Healthy;Degraded;Syncing;NotReplicating;Error;Unknown
 	Health VolumeGroupHealthStatus `json:"health"`
 	// LastSyncTime is when data was last successfully synchronized.
 	LastSyncTime *metav1.Time `json:"lastSyncTime,omitempty"`
-	// EstimatedRPO is the estimated recovery point objective as a duration
-	// string (e.g. "47s", "2m30s", "unknown").
-	EstimatedRPO string `json:"estimatedRPO"`
 	// LastChecked is when this health status was last polled.
 	LastChecked metav1.Time `json:"lastChecked"`
 	// Message contains an optional error or informational message.

@@ -194,19 +194,17 @@ func (d *Driver) GetReplicationStatus(
 		log.FromContext(ctx).V(1).Info("No-op: Got replication status", "volumeGroupID", id, "role", role)
 		return drivers.ReplicationStatus{
 			Role:   role,
-			Health: drivers.HealthUnknown,
+			Health: drivers.HealthNotReplicating,
 		}, nil
 	}
 
 	now := time.Now()
-	zero := time.Duration(0)
 
 	log.FromContext(ctx).V(1).Info("No-op: Got replication status", "volumeGroupID", id, "role", role)
 	return drivers.ReplicationStatus{
 		Role:         role,
 		Health:       drivers.HealthHealthy,
 		LastSyncTime: &now,
-		EstimatedRPO: &zero,
 	}, nil
 }
 

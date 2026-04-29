@@ -44,8 +44,6 @@ const (
 	reasonDegraded                  = "Degraded"
 
 	degradedRequeueInterval = 30 * time.Second
-
-	rpoUnknown = "unknown"
 )
 
 // pollReplicationHealth resolves a driver and VolumeGroupID for each VG in
@@ -70,7 +68,7 @@ func (r *DRPlanReconciler) pollReplicationHealth(
 			results = append(results, health)
 			logger.V(1).Info("Polled replication health",
 				"vg", vg.Name, "namespace", vg.Namespace,
-				"health", health.Health, "rpo", health.EstimatedRPO)
+				"health", health.Health)
 		}
 	}
 	return results
@@ -90,12 +88,11 @@ func (r *DRPlanReconciler) pollSingleVG(
 		logger.V(1).Info("Could not resolve driver for volume group",
 			"vg", vg.Name, "error", err)
 		return soteriav1alpha1.VolumeGroupHealth{
-			Name:         vg.Name,
-			Namespace:    vg.Namespace,
-			Health:       soteriav1alpha1.HealthStatusUnknown,
-			EstimatedRPO: rpoUnknown,
-			LastChecked:  now,
-			Message:      fmt.Sprintf("driver resolution failed: %v", err),
+			Name:        vg.Name,
+			Namespace:   vg.Namespace,
+			Health:      soteriav1alpha1.HealthStatusUnknown,
+			LastChecked: now,
+			Message:     fmt.Sprintf("driver resolution failed: %v", err),
 		}
 	}
 
@@ -104,12 +101,11 @@ func (r *DRPlanReconciler) pollSingleVG(
 		logger.V(1).Info("Could not resolve volume group ID",
 			"vg", vg.Name, "error", err)
 		return soteriav1alpha1.VolumeGroupHealth{
-			Name:         vg.Name,
-			Namespace:    vg.Namespace,
-			Health:       soteriav1alpha1.HealthStatusUnknown,
-			EstimatedRPO: rpoUnknown,
-			LastChecked:  now,
-			Message:      fmt.Sprintf("volume group ID resolution failed: %v", err),
+			Name:        vg.Name,
+			Namespace:   vg.Namespace,
+			Health:      soteriav1alpha1.HealthStatusUnknown,
+			LastChecked: now,
+			Message:     fmt.Sprintf("volume group ID resolution failed: %v", err),
 		}
 	}
 
@@ -118,12 +114,11 @@ func (r *DRPlanReconciler) pollSingleVG(
 		logger.V(1).Info("GetReplicationStatus failed",
 			"vg", vg.Name, "error", err)
 		return soteriav1alpha1.VolumeGroupHealth{
-			Name:         vg.Name,
-			Namespace:    vg.Namespace,
-			Health:       soteriav1alpha1.HealthStatusError,
-			EstimatedRPO: rpoUnknown,
-			LastChecked:  now,
-			Message:      err.Error(),
+			Name:        vg.Name,
+			Namespace:   vg.Namespace,
+			Health:      soteriav1alpha1.HealthStatusError,
+			LastChecked: now,
+			Message:     err.Error(),
 		}
 	}
 
@@ -224,7 +219,7 @@ func (r *DRPlanReconciler) resolveVolumeGroupID(
 }
 
 // mapReplicationStatus converts a driver ReplicationStatus into a
-// VolumeGroupHealth entry with health enum mapping and RPO computation.
+// VolumeGroupHealth entry with health enum mapping.
 func mapReplicationStatus(
 	vg soteriav1alpha1.VolumeGroupInfo,
 	status drivers.ReplicationStatus,
@@ -243,6 +238,8 @@ func mapReplicationStatus(
 		h.Health = soteriav1alpha1.HealthStatusDegraded
 	case drivers.HealthSyncing:
 		h.Health = soteriav1alpha1.HealthStatusSyncing
+	case drivers.HealthNotReplicating:
+		h.Health = soteriav1alpha1.HealthStatusNotReplicating
 	default:
 		h.Health = soteriav1alpha1.HealthStatusUnknown
 	}
@@ -252,30 +249,7 @@ func mapReplicationStatus(
 		h.LastSyncTime = &t
 	}
 
-	h.EstimatedRPO = computeRPO(status)
-
 	return h
-}
-
-// computeRPO determines the RPO string from driver-provided data.
-// Priority: driver EstimatedRPO > computed from LastSyncTime > "unknown".
-func computeRPO(status drivers.ReplicationStatus) string {
-	if status.EstimatedRPO != nil {
-		return formatDuration(*status.EstimatedRPO)
-	}
-	if status.LastSyncTime != nil {
-		return formatDuration(time.Since(*status.LastSyncTime))
-	}
-	return rpoUnknown
-}
-
-// formatDuration formats a duration as a human-readable Go duration string,
-// truncating to seconds for readability.
-func formatDuration(d time.Duration) string {
-	if d < 0 {
-		d = 0
-	}
-	return d.Truncate(time.Second).String()
 }
 
 // computeReplicationCondition builds the aggregate ReplicationHealthy
@@ -291,7 +265,8 @@ func computeReplicationCondition(
 
 	var degradedVGs []string
 	for _, h := range health {
-		if h.Health != soteriav1alpha1.HealthStatusHealthy {
+		if h.Health != soteriav1alpha1.HealthStatusHealthy &&
+			h.Health != soteriav1alpha1.HealthStatusNotReplicating {
 			degradedVGs = append(degradedVGs, h.Namespace+"/"+h.Name)
 		}
 	}
@@ -370,20 +345,24 @@ func detectHealthTransitions(
 	return degraded, recovered
 }
 
-// anyNonHealthy returns true if any VG reports a non-Healthy status.
+// anyNonHealthy returns true if any VG reports a problematic status.
+// NotReplicating is treated as neutral (not a problem).
 func anyNonHealthy(health []soteriav1alpha1.VolumeGroupHealth) bool {
 	for _, h := range health {
-		if h.Health != soteriav1alpha1.HealthStatusHealthy {
+		if h.Health != soteriav1alpha1.HealthStatusHealthy &&
+			h.Health != soteriav1alpha1.HealthStatusNotReplicating {
 			return true
 		}
 	}
 	return false
 }
 
-// allHealthy returns true if every VG reports Healthy status.
+// allHealthy returns true if every VG reports a non-problematic status
+// (Healthy or NotReplicating).
 func allHealthy(health []soteriav1alpha1.VolumeGroupHealth) bool {
 	for _, h := range health {
-		if h.Health != soteriav1alpha1.HealthStatusHealthy {
+		if h.Health != soteriav1alpha1.HealthStatusHealthy &&
+			h.Health != soteriav1alpha1.HealthStatusNotReplicating {
 			return false
 		}
 	}

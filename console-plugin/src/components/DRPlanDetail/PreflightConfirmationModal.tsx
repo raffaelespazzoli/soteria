@@ -42,33 +42,11 @@ export function PreflightConfirmationModal({
 
   const { label, keyword, confirmVariant } = config;
   const isConfirmEnabled = keywordInput === keyword && !isCreating;
-  const isDisasterFailover = actionKey === 'failover';
-
-  const rpoStyle = {
-    fontSize: isDisasterFailover
-      ? 'var(--pf-v5-global--FontSize--2xl)'
-      : 'var(--pf-v5-global--FontSize--xl)',
-    fontWeight: isDisasterFailover ? ('bold' as const) : ('normal' as const),
-  };
 
   return (
     <Modal variant={ModalVariant.large} isOpen={isOpen} onClose={onClose} aria-labelledby="preflight-modal-title">
       <ModalHeader title={`Confirm ${label}: ${planName}`} labelId="preflight-modal-title" />
       <ModalBody>
-        <div style={{ marginBottom: 'var(--pf-v5-global--spacer--lg)' }}>
-          <div
-            style={{
-              fontSize: 'var(--pf-v5-global--FontSize--sm)',
-              marginBottom: 'var(--pf-v5-global--spacer--xs)',
-            }}
-          >
-            {isDisasterFailover ? 'Estimated Data Loss (RPO)' : 'RPO'}
-          </div>
-          <div style={rpoStyle} data-testid="preflight-rpo">
-            {preflightData.estimatedRPO}
-          </div>
-        </div>
-
         <div
           style={{
             fontSize: 'var(--pf-v5-global--FontSize--xl)',

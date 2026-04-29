@@ -83,8 +83,8 @@ const mockPlanWithWaves: DRPlan = {
       },
     ],
     replicationHealth: [
-      { name: 'drgroup-1', namespace: 'erp-db', health: 'Healthy', estimatedRPO: '8', lastChecked: '2026-04-25T15:00:00Z' },
-      { name: 'drgroup-2', namespace: 'erp-apps', health: 'Healthy', estimatedRPO: '12', lastChecked: '2026-04-25T15:00:00Z' },
+      { name: 'drgroup-1', namespace: 'erp-db', health: 'Healthy', lastChecked: '2026-04-25T15:00:00Z' },
+      { name: 'drgroup-2', namespace: 'erp-apps', health: 'Healthy', lastChecked: '2026-04-25T15:00:00Z' },
     ],
   },
 };

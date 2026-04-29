@@ -468,11 +468,6 @@ func (in *PreflightReport) DeepCopyInto(out *PreflightReport) {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}
 	}
-	if in.UnprotectedVMs != nil {
-		in, out := &in.UnprotectedVMs, &out.UnprotectedVMs
-		*out = make([]DiscoveredVM, len(*in))
-		copy(*out, *in)
-	}
 	if in.Warnings != nil {
 		in, out := &in.Warnings, &out.Warnings
 		*out = make([]string, len(*in))

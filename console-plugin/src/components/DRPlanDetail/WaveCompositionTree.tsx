@@ -4,24 +4,21 @@ import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
   ExclamationCircleIcon,
+  MinusCircleIcon,
   QuestionCircleIcon,
   SyncAltIcon,
 } from '@patternfly/react-icons';
 import ReplicationHealthIndicator from '../shared/ReplicationHealthIndicator';
 import { DRPlan, DiscoveredVM, VolumeGroupInfo, VolumeGroupHealth } from '../../models/types';
-import { formatRPO } from '../../utils/formatters';
 import { ReplicationHealthStatus } from '../../utils/drPlanUtils';
 
 function getVGHealth(
   vgName: string,
   healthData: VolumeGroupHealth[],
-): { status: ReplicationHealthStatus; rpoSeconds: number | null } {
+): { status: ReplicationHealthStatus } {
   const vg = healthData.find((h) => h.name === vgName);
-  if (!vg) return { status: 'Unknown', rpoSeconds: null };
-  const rpoMatch = vg.estimatedRPO?.match(/^(\d+)/);
-  const parsed = rpoMatch ? parseInt(rpoMatch[1], 10) : NaN;
-  const rpoSeconds = isNaN(parsed) ? null : parsed;
-  return { status: vg.health as ReplicationHealthStatus, rpoSeconds };
+  if (!vg) return { status: 'Unknown' };
+  return { status: vg.health as ReplicationHealthStatus };
 }
 
 function getStorageBackend(
@@ -47,6 +44,7 @@ function getAggregateHealth(
   if (statuses.includes('Degraded')) return 'Degraded';
   if (statuses.includes('Syncing')) return 'Syncing';
   if (statuses.includes('Unknown')) return 'Unknown';
+  if (statuses.includes('NotReplicating')) return 'NotReplicating';
   return 'Healthy';
 }
 
@@ -54,6 +52,7 @@ const HEALTH_LABEL_COLORS: Record<ReplicationHealthStatus, 'green' | 'yellow' | 
   Healthy: 'green',
   Degraded: 'yellow',
   Syncing: 'blue',
+  NotReplicating: 'grey',
   Error: 'red',
   Unknown: 'grey',
 };
@@ -62,6 +61,7 @@ const HEALTH_ICONS: Record<ReplicationHealthStatus, React.ReactElement> = {
   Healthy: <CheckCircleIcon />,
   Degraded: <ExclamationTriangleIcon />,
   Syncing: <SyncAltIcon />,
+  NotReplicating: <MinusCircleIcon />,
   Error: <ExclamationCircleIcon />,
   Unknown: <QuestionCircleIcon />,
 };
@@ -102,15 +102,13 @@ function VMNodeContent({
   namespace: string;
   consistencyLevel: 'namespace' | 'vm';
   storageBackend: string;
-  health: { status: ReplicationHealthStatus; rpoSeconds: number | null };
+  health: { status: ReplicationHealthStatus };
 }) {
-  const rpoText = formatRPO(health.rpoSeconds);
   const ariaStr = [
     vmName,
     storageBackend,
     consistencyLevel === 'namespace' ? `namespace ${namespace}` : 'VM-level consistency',
     `replication ${health.status.toLowerCase()}`,
-    rpoText || undefined,
   ]
     .filter(Boolean)
     .join(', ');
@@ -166,7 +164,7 @@ function buildDiscoveredVMNodes(
       .find((p) => p.name === vm.name && p.namespace === vm.namespace);
     const vgHealth = preflightVM?.volumeGroupName
       ? getVGHealth(preflightVM.volumeGroupName, healthData)
-      : { status: 'Unknown' as ReplicationHealthStatus, rpoSeconds: null };
+      : { status: 'Unknown' as ReplicationHealthStatus };
 
     return {
       name: (

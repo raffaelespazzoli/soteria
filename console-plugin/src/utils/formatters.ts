@@ -1,10 +1,3 @@
-export function formatRPO(seconds: number | null): string {
-  if (seconds === null || seconds === undefined) return '';
-  if (seconds < 60) return `RPO ${seconds}s`;
-  if (seconds < 3600) return `RPO ${Math.floor(seconds / 60)}m`;
-  return `RPO ${Math.floor(seconds / 3600)}h`;
-}
-
 export function formatDuration(start: string | undefined, end: string | undefined): string {
   if (!start || !end) return '';
   const ms = new Date(end).getTime() - new Date(start).getTime();

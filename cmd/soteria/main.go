@@ -284,7 +284,6 @@ func main() {
 		Registry:                drivers.DefaultRegistry,
 		SCLister:                scLister,
 		PVCResolver:             pvcResolver,
-		UnprotectedVMDiscoverer: vmDiscoverer,
 		LocalSite:               siteName,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "DRPlan")

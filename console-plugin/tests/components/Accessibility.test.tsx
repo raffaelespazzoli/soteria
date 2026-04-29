@@ -57,7 +57,7 @@ const mockSteadyStatePlan: DRPlan = {
       },
     ],
     replicationHealth: [
-      { name: 'drgroup-1', namespace: 'erp-db', health: 'Healthy', estimatedRPO: '8', lastChecked: '2026-04-25T15:00:00Z' },
+      { name: 'drgroup-1', namespace: 'erp-db', health: 'Healthy', lastChecked: '2026-04-25T15:00:00Z' },
     ],
     conditions: [
       { type: 'ReplicationHealthy', status: 'True', reason: 'Healthy', message: 'RPO: 12s', lastTransitionTime: '2026-04-25T15:00:00Z' },
@@ -106,7 +106,6 @@ const mockExecutions: DRExecution[] = [
       result: 'Succeeded',
       startTime: '2026-04-24T10:00:00Z',
       completionTime: '2026-04-24T10:05:00Z',
-      rpoSeconds: 12,
     },
   },
   {
@@ -167,7 +166,7 @@ describe('Accessibility audit — ReplicationHealthIndicator', () => {
     '%s passes jest-axe',
     async (healthStatus) => {
       const { container } = render(
-        <ReplicationHealthIndicator health={{ status: healthStatus, rpoSeconds: 12 }} />,
+        <ReplicationHealthIndicator health={{ status: healthStatus }} />,
       );
       expect(await axe(container)).toHaveNoViolations();
     },

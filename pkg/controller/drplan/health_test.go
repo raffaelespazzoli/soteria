@@ -84,13 +84,11 @@ func TestPollReplicationHealth_HealthyVG(t *testing.T) {
 		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1-id", Name: "vm-default-vm-1"},
 	})
 	now := time.Now()
-	zero := time.Duration(0)
 	fakeDriver.OnGetReplicationStatus("vg-1-id").ReturnResult(fakedrv.Response{
 		ReplicationStatus: &drivers.ReplicationStatus{
 			Role:         drivers.RoleSource,
 			Health:       drivers.HealthHealthy,
 			LastSyncTime: &now,
-			EstimatedRPO: &zero,
 		},
 	})
 
@@ -123,9 +121,6 @@ func TestPollReplicationHealth_HealthyVG(t *testing.T) {
 	h := updated.Status.ReplicationHealth[0]
 	if h.Health != soteriav1alpha1.HealthStatusHealthy {
 		t.Errorf("Health = %q, want Healthy", h.Health)
-	}
-	if h.EstimatedRPO != "0s" {
-		t.Errorf("EstimatedRPO = %q, want 0s", h.EstimatedRPO)
 	}
 	if h.LastChecked.IsZero() {
 		t.Error("LastChecked should be populated")
@@ -204,6 +199,7 @@ func TestMapReplicationStatus_AllHealthStates(t *testing.T) {
 		{"Healthy", drivers.HealthHealthy, soteriav1alpha1.HealthStatusHealthy},
 		{"Degraded", drivers.HealthDegraded, soteriav1alpha1.HealthStatusDegraded},
 		{"Syncing", drivers.HealthSyncing, soteriav1alpha1.HealthStatusSyncing},
+		{"NotReplicating", drivers.HealthNotReplicating, soteriav1alpha1.HealthStatusNotReplicating},
 		{"Unknown", drivers.HealthUnknown, soteriav1alpha1.HealthStatusUnknown},
 	}
 
@@ -215,39 +211,6 @@ func TestMapReplicationStatus_AllHealthStates(t *testing.T) {
 				t.Errorf("Health = %q, want %q", result.Health, tt.wantStatus)
 			}
 		})
-	}
-}
-
-func TestComputeRPO_DriverEstimatedRPO(t *testing.T) {
-	d := 47 * time.Second
-	status := drivers.ReplicationStatus{
-		EstimatedRPO: &d,
-	}
-	got := computeRPO(status)
-	if got != "47s" {
-		t.Errorf("computeRPO = %q, want 47s", got)
-	}
-}
-
-func TestComputeRPO_FromLastSyncTime(t *testing.T) {
-	past := time.Now().Add(-2 * time.Minute)
-	status := drivers.ReplicationStatus{
-		LastSyncTime: &past,
-	}
-	got := computeRPO(status)
-	if got == rpoUnknown {
-		t.Errorf("computeRPO should not be unknown when LastSyncTime is set")
-	}
-	if got == "" {
-		t.Errorf("computeRPO should produce a non-empty string")
-	}
-}
-
-func TestComputeRPO_Unknown(t *testing.T) {
-	status := drivers.ReplicationStatus{}
-	got := computeRPO(status)
-	if got != rpoUnknown {
-		t.Errorf("computeRPO = %q, want %q", got, rpoUnknown)
 	}
 }
 
@@ -432,9 +395,6 @@ func TestReconcile_DriverError_ErrorHealth(t *testing.T) {
 	if !contains(h.Message, "storage array unreachable") {
 		t.Errorf("Message = %q, want to contain error text", h.Message)
 	}
-	if h.EstimatedRPO != rpoUnknown {
-		t.Errorf("EstimatedRPO = %q, want %q", h.EstimatedRPO, rpoUnknown)
-	}
 }
 
 func TestReconcile_RegistryNil_NoHealthFields(t *testing.T) {
@@ -558,11 +518,11 @@ func TestReplicationHealthChanged_SameHealth(t *testing.T) {
 	later := metav1.NewTime(now.Add(time.Minute))
 	old := []soteriav1alpha1.VolumeGroupHealth{
 		{Name: "vg-1", Namespace: "ns", Health: soteriav1alpha1.HealthStatusHealthy,
-			EstimatedRPO: "0s", LastChecked: now},
+			LastChecked: now},
 	}
 	new := []soteriav1alpha1.VolumeGroupHealth{
 		{Name: "vg-1", Namespace: "ns", Health: soteriav1alpha1.HealthStatusHealthy,
-			EstimatedRPO: "0s", LastChecked: later},
+			LastChecked: later},
 	}
 	if replicationHealthChanged(old, new) {
 		t.Error("Expected no change — only LastChecked differs")
@@ -579,25 +539,6 @@ func TestReplicationHealthChanged_DifferentLengths(t *testing.T) {
 	}
 	if !replicationHealthChanged(old, new) {
 		t.Error("Expected change detected for different lengths")
-	}
-}
-
-func TestFormatDuration(t *testing.T) {
-	tests := []struct {
-		in   time.Duration
-		want string
-	}{
-		{0, "0s"},
-		{47 * time.Second, "47s"},
-		{2*time.Minute + 30*time.Second, "2m30s"},
-		{time.Hour + 15*time.Minute, "1h15m0s"},
-		{-5 * time.Second, "0s"},
-	}
-	for _, tt := range tests {
-		got := formatDuration(tt.in)
-		if got != tt.want {
-			t.Errorf("formatDuration(%v) = %q, want %q", tt.in, got, tt.want)
-		}
 	}
 }
 

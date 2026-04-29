@@ -3,13 +3,10 @@ import { Table, Thead, Tr, Th, Tbody, Td } from '@patternfly/react-table';
 import ReplicationHealthIndicator from '../shared/ReplicationHealthIndicator';
 import { DRPlan, VolumeGroupHealth } from '../../models/types';
 import { ReplicationHealthStatus, getReplicationHealth } from '../../utils/drPlanUtils';
-import { formatRPO, formatRelativeTime } from '../../utils/formatters';
+import { formatRelativeTime } from '../../utils/formatters';
 
-function vgStatusToHealth(vg: VolumeGroupHealth): { status: ReplicationHealthStatus; rpoSeconds: number | null } {
-  const rpoMatch = vg.estimatedRPO?.match(/^(\d+)/);
-  const parsed = rpoMatch ? parseInt(rpoMatch[1], 10) : NaN;
-  const rpoSeconds = isNaN(parsed) ? null : parsed;
-  return { status: vg.health as ReplicationHealthStatus, rpoSeconds };
+function vgStatusToHealth(vg: VolumeGroupHealth): { status: ReplicationHealthStatus } {
+  return { status: vg.health as ReplicationHealthStatus };
 }
 
 interface ReplicationHealthExpandedProps {
@@ -37,7 +34,6 @@ export const ReplicationHealthExpanded: React.FC<ReplicationHealthExpandedProps>
         <Tr>
           <Th>Volume Group</Th>
           <Th>Health</Th>
-          <Th>RPO</Th>
           <Th>Last Checked</Th>
         </Tr>
       </Thead>
@@ -47,11 +43,6 @@ export const ReplicationHealthExpanded: React.FC<ReplicationHealthExpandedProps>
             <Td dataLabel="Volume Group">{vg.name}</Td>
             <Td dataLabel="Health">
               <ReplicationHealthIndicator health={vgStatusToHealth(vg)} />
-            </Td>
-            <Td dataLabel="RPO">
-              {vg.estimatedRPO != null
-                ? formatRPO(isNaN(parseInt(vg.estimatedRPO, 10)) ? null : parseInt(vg.estimatedRPO, 10))
-                : 'N/A'}
             </Td>
             <Td dataLabel="Last Checked">
               {vg.lastChecked ? formatRelativeTime(vg.lastChecked) : 'N/A'}

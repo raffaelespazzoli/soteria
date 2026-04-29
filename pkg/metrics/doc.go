@@ -34,8 +34,6 @@ limitations under the License.
 // # DRPlan metrics (instrumented by pkg/controller/drplan)
 //
 //   - soteria_drplan_vms_total              GaugeVec    (plan)                — VMs discovered per DRPlan
-//   - soteria_replication_lag_seconds       GaugeVec    (plan, volume_group)  — estimated RPO per volume group
-//   - soteria_unprotected_vms_total         Gauge                             — cluster-wide unprotected VM count
 //
 // # DRExecution metrics (instrumented by pkg/controller/drexecution)
 //

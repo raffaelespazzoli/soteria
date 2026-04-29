@@ -9,8 +9,6 @@ expect.extend(toHaveNoViolations);
 const mockFailoverData: PreflightData = {
   vmCount: 12,
   waveCount: 3,
-  estimatedRPO: '47 seconds',
-  estimatedRPOSeconds: 47,
   estimatedRTO: '~18 min based on last execution',
   capacityAssessment: 'sufficient',
   actionSummary: 'Force-promote volumes on dc2-prod, start VMs wave by wave',
@@ -21,24 +19,18 @@ const mockFailoverData: PreflightData = {
 
 const mockPlannedMigrationData: PreflightData = {
   ...mockFailoverData,
-  estimatedRPO: '0 — guaranteed (both DCs up, final sync before promote)',
-  estimatedRPOSeconds: null,
   actionSummary:
     'Step 0: Stop VMs on dc1-prod → wait for final replication sync → promote volumes on dc2-prod → start VMs wave by wave',
 };
 
 const mockReprotectData: PreflightData = {
   ...mockFailoverData,
-  estimatedRPO: 'N/A — no data movement, establishes reverse replication',
-  estimatedRPOSeconds: null,
   actionSummary:
     'Demote volumes on old active site, initiate replication resync, monitor until healthy',
 };
 
 const mockFailbackData: PreflightData = {
   ...mockFailoverData,
-  estimatedRPO: '0 — guaranteed (both DCs up, final sync before promote)',
-  estimatedRPOSeconds: null,
   actionSummary:
     'Step 0: Stop VMs on dc1-prod → wait for final replication sync → promote volumes on dc1-prod → start VMs wave by wave',
 };
@@ -67,8 +59,8 @@ describe('PreflightConfirmationModal', () => {
     it('renders modal with pre-flight summary for Failover', () => {
       render(<PreflightConfirmationModal {...defaultProps} />);
       expect(screen.getByText(/Confirm Failover: erp-full-stack/)).toBeInTheDocument();
-      expect(screen.getByText('47 seconds')).toBeInTheDocument();
       expect(screen.getByText(/12 VMs across 3 waves/)).toBeInTheDocument();
+      expect(screen.getByText(/~18 min based on last execution/)).toBeInTheDocument();
     });
 
     it('renders modal for Planned Migration', () => {
@@ -80,7 +72,6 @@ describe('PreflightConfirmationModal', () => {
         />,
       );
       expect(screen.getByText(/Confirm Planned Migration: erp-full-stack/)).toBeInTheDocument();
-      expect(screen.getByText(/0 — guaranteed/)).toBeInTheDocument();
     });
 
     it('renders modal for Reprotect', () => {
@@ -92,7 +83,6 @@ describe('PreflightConfirmationModal', () => {
         />,
       );
       expect(screen.getByText(/Confirm Reprotect: erp-full-stack/)).toBeInTheDocument();
-      expect(screen.getByText(/N\/A — no data movement/)).toBeInTheDocument();
     });
 
     it('renders modal for Failback', () => {
@@ -260,46 +250,6 @@ describe('PreflightConfirmationModal', () => {
       await user.type(input, 'FAILOVER');
       await user.click(screen.getByRole('button', { name: /confirm failover/i }));
       expect(onConfirm).toHaveBeenCalledTimes(1);
-    });
-  });
-
-  describe('RPO display', () => {
-    it('displays RPO prominently at 2xl size for disaster failover', () => {
-      render(<PreflightConfirmationModal {...defaultProps} />);
-      const rpo = screen.getByTestId('preflight-rpo');
-      expect(rpo).toHaveTextContent('47 seconds');
-      expect(rpo).toHaveStyle({ fontSize: 'var(--pf-v5-global--FontSize--2xl)' });
-      expect(rpo).toHaveStyle({ fontWeight: 'bold' });
-    });
-
-    it('displays RPO at xl size for planned migration', () => {
-      render(
-        <PreflightConfirmationModal
-          {...defaultProps}
-          action="planned_migration"
-          preflightData={mockPlannedMigrationData}
-        />,
-      );
-      const rpo = screen.getByTestId('preflight-rpo');
-      expect(rpo).toHaveTextContent(/0 — guaranteed/);
-      expect(rpo).toHaveStyle({ fontSize: 'var(--pf-v5-global--FontSize--xl)' });
-    });
-
-    it('shows "Estimated Data Loss (RPO)" label for disaster failover', () => {
-      render(<PreflightConfirmationModal {...defaultProps} />);
-      expect(screen.getByText('Estimated Data Loss (RPO)')).toBeInTheDocument();
-    });
-
-    it('shows "RPO" label for non-failover actions', () => {
-      render(
-        <PreflightConfirmationModal
-          {...defaultProps}
-          action="reprotect"
-          preflightData={mockReprotectData}
-        />,
-      );
-      expect(screen.getByText('RPO')).toBeInTheDocument();
-      expect(screen.queryByText('Estimated Data Loss (RPO)')).not.toBeInTheDocument();
     });
   });
 

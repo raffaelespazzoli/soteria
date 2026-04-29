@@ -59,7 +59,6 @@ const ExecutionSummary: React.FC<ExecutionSummaryProps> = ({ execution }) => {
     execution.status.startTime,
     execution.status.completionTime,
   );
-  const rpo = execution.status.rpoSeconds;
   const result = execution.status.result;
 
   return (
@@ -71,7 +70,6 @@ const ExecutionSummary: React.FC<ExecutionSummaryProps> = ({ execution }) => {
               ? `${vmCount} VMs recovered in ${duration}`
               : `${successCount} of ${vmCount} VMs recovered — ${failedCount} DRGroup failed`}
           </div>
-          {rpo != null && <div>RPO: {rpo} seconds</div>}
           <div>
             Result: <ExecutionResultBadge result={result!} />
           </div>

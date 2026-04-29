@@ -29,7 +29,6 @@ const mockExecutions: DRExecution[] = [
       result: 'PartiallySucceeded',
       startTime: '2026-03-18T03:14:00Z',
       completionTime: '2026-03-18T03:36:41Z',
-      rpoSeconds: 47,
     },
   },
   {
@@ -45,7 +44,6 @@ const mockExecutions: DRExecution[] = [
       result: 'Succeeded',
       startTime: '2026-04-20T14:32:00Z',
       completionTime: '2026-04-20T14:49:22Z',
-      rpoSeconds: 0,
     },
   },
 ];
@@ -65,7 +63,6 @@ describe('ExecutionHistoryTable', () => {
     expect(screen.getByText('Mode')).toBeInTheDocument();
     expect(screen.getByText('Result')).toBeInTheDocument();
     expect(screen.getByText('Duration')).toBeInTheDocument();
-    expect(screen.getByText('RPO')).toBeInTheDocument();
     expect(screen.getByText('Triggered By')).toBeInTheDocument();
   });
 
@@ -133,16 +130,6 @@ describe('ExecutionHistoryTable', () => {
   it('shows empty state when all executions belong to other plans', () => {
     render(<ExecutionHistoryTable executions={[otherPlanExecution]} planName="erp-full-stack" />);
     expect(screen.getByText('No executions yet')).toBeInTheDocument();
-  });
-
-  it('displays RPO for executions with rpoSeconds', () => {
-    render(<ExecutionHistoryTable executions={mockExecutions} planName="erp-full-stack" />);
-    expect(screen.getByText('RPO 47s')).toBeInTheDocument();
-  });
-
-  it('displays RPO 0s when rpoSeconds is 0', () => {
-    render(<ExecutionHistoryTable executions={mockExecutions} planName="erp-full-stack" />);
-    expect(screen.getByText('RPO 0s')).toBeInTheDocument();
   });
 
   it('renders table with aria-label', () => {

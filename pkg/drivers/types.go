@@ -53,19 +53,22 @@ const (
 type ReplicationHealth string
 
 const (
-	// HealthHealthy indicates replication is running and within target RPO.
+	// HealthHealthy indicates replication is running and in sync.
 	HealthHealthy ReplicationHealth = "Healthy"
 
-	// HealthDegraded indicates replication is running but behind target RPO.
+	// HealthDegraded indicates replication is running but falling behind.
 	HealthDegraded ReplicationHealth = "Degraded"
 
 	// HealthSyncing indicates a sync operation is in progress (initial sync
 	// after SetSource, or catch-up after a temporary disruption).
 	HealthSyncing ReplicationHealth = "Syncing"
 
-	// HealthUnknown indicates the driver cannot determine replication health.
-	// Returned when the volume is NonReplicated or when the storage backend
-	// is unreachable.
+	// HealthNotReplicating indicates the volume group has no active
+	// replication link. Returned when Role is NonReplicated.
+	HealthNotReplicating ReplicationHealth = "NotReplicating"
+
+	// HealthUnknown indicates the driver cannot determine replication health
+	// (e.g., the storage backend is unreachable).
 	HealthUnknown ReplicationHealth = "Unknown"
 )
 
@@ -100,20 +103,16 @@ type VolumeGroupInfo struct {
 
 // ReplicationStatus reports the current replication role and health for a
 // volume group. The workflow engine reads these fields to assess readiness
-// before failover and to report estimated RPO in DRExecution status.
+// before failover.
 type ReplicationStatus struct {
 	// Role is the current replication role of the volume group.
 	Role VolumeRole
 
-	// Health qualifies the replication link health. Meaningful only when
-	// Role is Source or Target; set to HealthUnknown for NonReplicated.
+	// Health qualifies the replication link health. Set to
+	// HealthNotReplicating when Role is NonReplicated.
 	Health ReplicationHealth
 
 	// LastSyncTime is the timestamp of the most recent successful data sync.
 	// Nil if the driver has never completed a sync or cannot report it.
 	LastSyncTime *time.Time
-
-	// EstimatedRPO is the driver's estimate of data loss if failover happened now.
-	// Nil if the driver cannot calculate RPO (e.g., replication not yet established).
-	EstimatedRPO *time.Duration
 }

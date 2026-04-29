@@ -831,7 +831,7 @@ func schema_pkg_apis_soteriaio_v1alpha1_DRPlanStatus(ref common.ReferenceCallbac
 							},
 						},
 						SchemaProps: spec.SchemaProps{
-							Description: "ReplicationHealth reports per-volume-group replication status and RPO, populated by polling storage drivers on each reconcile cycle.",
+							Description: "ReplicationHealth reports per-volume-group replication status, populated by polling storage drivers on each reconcile cycle.",
 							Type:        []string{"array"},
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
@@ -843,16 +843,7 @@ func schema_pkg_apis_soteriaio_v1alpha1_DRPlanStatus(ref common.ReferenceCallbac
 							},
 						},
 					},
-					"unprotectedVMCount": {
-						SchemaProps: spec.SchemaProps{
-							Description: "UnprotectedVMCount is the cluster-wide count of VMs not belonging to any DRPlan (lacking the soteria.io/drplan label). Always present in JSON output — a zero value means \"all VMs protected\", which is semantically distinct from \"not yet computed\" (field absent).",
-							Default:     0,
-							Type:        []string{"integer"},
-							Format:      "int32",
-						},
-					},
 				},
-				Required: []string{"unprotectedVMCount"},
 			},
 		},
 		Dependencies: []string{
@@ -1022,25 +1013,6 @@ func schema_pkg_apis_soteriaio_v1alpha1_PreflightReport(ref common.ReferenceCall
 							Format:      "int32",
 						},
 					},
-					"unprotectedVMs": {
-						VendorExtensible: spec.VendorExtensible{
-							Extensions: spec.Extensions{
-								"x-kubernetes-list-type": "atomic",
-							},
-						},
-						SchemaProps: spec.SchemaProps{
-							Description: "UnprotectedVMs lists VMs cluster-wide that lack the soteria.io/drplan label, capped at 100 entries sorted by namespace/name. When all VMs are protected, this field is empty.",
-							Type:        []string{"array"},
-							Items: &spec.SchemaOrArray{
-								Schema: &spec.Schema{
-									SchemaProps: spec.SchemaProps{
-										Default: map[string]interface{}{},
-										Ref:     ref("github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DiscoveredVM"),
-									},
-								},
-							},
-						},
-					},
 					"warnings": {
 						VendorExtensible: spec.VendorExtensible{
 							Extensions: spec.Extensions{
@@ -1072,7 +1044,7 @@ func schema_pkg_apis_soteriaio_v1alpha1_PreflightReport(ref common.ReferenceCall
 			},
 		},
 		Dependencies: []string{
-			"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DiscoveredVM", "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightWave", v1.Time{}.OpenAPIModelName()},
+			"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightWave", v1.Time{}.OpenAPIModelName()},
 	}
 }
 
@@ -1247,7 +1219,7 @@ func schema_pkg_apis_soteriaio_v1alpha1_VolumeGroupHealth(ref common.ReferenceCa
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "VolumeGroupHealth reports the replication health and RPO for a single volume group within a DRPlan. Populated by the DRPlan controller on each reconcile cycle from storage driver polling.",
+				Description: "VolumeGroupHealth reports the replication health for a single volume group within a DRPlan. Populated by the DRPlan controller on each reconcile cycle from storage driver polling.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"name": {
@@ -1280,14 +1252,6 @@ func schema_pkg_apis_soteriaio_v1alpha1_VolumeGroupHealth(ref common.ReferenceCa
 							Ref:         ref(v1.Time{}.OpenAPIModelName()),
 						},
 					},
-					"estimatedRPO": {
-						SchemaProps: spec.SchemaProps{
-							Description: "EstimatedRPO is the estimated recovery point objective as a duration string (e.g. \"47s\", \"2m30s\", \"unknown\").",
-							Default:     "",
-							Type:        []string{"string"},
-							Format:      "",
-						},
-					},
 					"lastChecked": {
 						SchemaProps: spec.SchemaProps{
 							Description: "LastChecked is when this health status was last polled.",
@@ -1302,7 +1266,7 @@ func schema_pkg_apis_soteriaio_v1alpha1_VolumeGroupHealth(ref common.ReferenceCa
 						},
 					},
 				},
-				Required: []string{"name", "namespace", "health", "estimatedRPO", "lastChecked"},
+				Required: []string{"name", "namespace", "health", "lastChecked"},
 			},
 		},
 		Dependencies: []string{

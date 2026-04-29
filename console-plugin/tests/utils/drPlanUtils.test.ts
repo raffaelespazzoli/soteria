@@ -6,7 +6,7 @@ import {
   HEALTH_SORT_ORDER,
 } from '../../src/utils/drPlanUtils';
 import { getValidActions, isTransientPhase } from '../../src/utils/drPlanActions';
-import { formatRPO, formatDuration, formatRelativeTime } from '../../src/utils/formatters';
+import { formatDuration, formatRelativeTime } from '../../src/utils/formatters';
 import { DRExecution, DRPlan } from '../../src/models/types';
 
 function makePlan(overrides: Partial<DRPlan['status']> = {}): DRPlan {
@@ -97,17 +97,17 @@ describe('getEffectivePhase', () => {
 
 describe('getReplicationHealth', () => {
   it('returns Unknown when no conditions', () => {
-    expect(getReplicationHealth(makePlan())).toEqual({ status: 'Unknown', rpoSeconds: null });
+    expect(getReplicationHealth(makePlan())).toEqual({ status: 'Unknown' });
   });
 
-  it('returns Healthy with RPO when condition is True', () => {
+  it('returns Healthy when condition is True', () => {
     expect(
       getReplicationHealth(
         makePlan({
           conditions: [{ type: 'ReplicationHealthy', status: 'True', message: 'RPO: 12s' }],
         }),
       ),
-    ).toEqual({ status: 'Healthy', rpoSeconds: 12 });
+    ).toEqual({ status: 'Healthy' });
   });
 
   it('returns Degraded when condition is False with Degraded reason', () => {
@@ -119,7 +119,7 @@ describe('getReplicationHealth', () => {
           ],
         }),
       ),
-    ).toEqual({ status: 'Degraded', rpoSeconds: 60 });
+    ).toEqual({ status: 'Degraded' });
   });
 
   it('returns Error when condition is False without Degraded reason', () => {
@@ -131,7 +131,7 @@ describe('getReplicationHealth', () => {
           ],
         }),
       ),
-    ).toEqual({ status: 'Error', rpoSeconds: null });
+    ).toEqual({ status: 'Error' });
   });
 
   it('returns Unknown when condition status is Unknown', () => {
@@ -141,7 +141,7 @@ describe('getReplicationHealth', () => {
           conditions: [{ type: 'ReplicationHealthy', status: 'Unknown' }],
         }),
       ),
-    ).toEqual({ status: 'Unknown', rpoSeconds: null });
+    ).toEqual({ status: 'Unknown' });
   });
 });
 
@@ -290,14 +290,6 @@ describe('isTransientPhase', () => {
     'returns false for %s',
     (phase) => expect(isTransientPhase(phase)).toBe(false),
   );
-});
-
-describe('formatRPO', () => {
-  it('returns empty string for null', () => expect(formatRPO(null)).toBe(''));
-  it('formats seconds', () => expect(formatRPO(12)).toBe('RPO 12s'));
-  it('formats minutes', () => expect(formatRPO(120)).toBe('RPO 2m'));
-  it('formats hours', () => expect(formatRPO(7200)).toBe('RPO 2h'));
-  it('handles zero', () => expect(formatRPO(0)).toBe('RPO 0s'));
 });
 
 describe('formatDuration', () => {

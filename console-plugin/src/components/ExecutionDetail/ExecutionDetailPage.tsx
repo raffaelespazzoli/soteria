@@ -9,7 +9,7 @@ import {
 import { useParams } from 'react-router-dom';
 import DRBreadcrumb from '../shared/DRBreadcrumb';
 import ToastContainer from '../shared/ToastContainer';
-import { useDRExecution } from '../../hooks/useDRResources';
+import { useDRExecutions } from '../../hooks/useDRResources';
 import { useRetryDRGroup } from '../../hooks/useRetryDRGroup';
 import { useExecutionNotifications } from '../../hooks/useExecutionNotifications';
 import { DRGroupResultValue } from '../../models/types';
@@ -19,8 +19,11 @@ import ExecutionSummary from './ExecutionSummary';
 
 const ExecutionDetailPage: React.FC = () => {
   const { name } = useParams<{ name: string }>();
-  const [execution, execLoaded, execError] = useDRExecution(name);
-  const { retry, retryAll, isRetrying, retryError, retriedGroup } = useRetryDRGroup(name, execution ?? null);
+  const [allExecutions, execListLoaded, execListError] = useDRExecutions();
+  const execution = execListLoaded ? allExecutions.find(e => e.metadata?.name === name) : undefined;
+  const execLoaded = execListLoaded;
+  const execError = execListError;
+  const { retry, retryAll, isRetrying, retryError, retriedGroup } = useRetryDRGroup(name ?? '', execution ?? null);
   useExecutionNotifications();
   const planName = execution?.spec?.planName ?? '';
 
@@ -71,7 +74,7 @@ const ExecutionDetailPage: React.FC = () => {
     );
   }
 
-  if (!execLoaded || !execution) {
+  if (!execLoaded) {
     return (
       <>
         <DocumentTitle>{`DR Execution: ${name}`}</DocumentTitle>
@@ -80,6 +83,20 @@ const ExecutionDetailPage: React.FC = () => {
           <Skeleton screenreaderText="Loading execution details" height="40px" style={{ marginBottom: 'var(--pf-t--global--spacer--md, var(--pf-v5-global--spacer--md))' }} />
           <Skeleton height="20px" width="60%" style={{ marginBottom: 'var(--pf-t--global--spacer--sm, var(--pf-v5-global--spacer--sm))' }} />
           <Skeleton height="200px" />
+        </PageSection>
+      </>
+    );
+  }
+
+  if (!execution) {
+    return (
+      <>
+        <DocumentTitle>{`DR Execution: ${name}`}</DocumentTitle>
+        <PageSection>
+          <DRBreadcrumb executionName={name} />
+          <Alert variant="warning" isInline title="Execution not found">
+            {`DRExecution "${name}" was not found. It may have been deleted.`}
+          </Alert>
         </PageSection>
       </>
     );

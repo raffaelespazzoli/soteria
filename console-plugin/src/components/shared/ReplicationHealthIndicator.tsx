@@ -2,11 +2,11 @@ import {
   CheckCircleIcon,
   ExclamationTriangleIcon,
   ExclamationCircleIcon,
+  MinusCircleIcon,
   QuestionCircleIcon,
   SyncAltIcon,
 } from '@patternfly/react-icons';
 import { ReplicationHealth, ReplicationHealthStatus } from '../../utils/drPlanUtils';
-import { formatRPO } from '../../utils/formatters';
 
 interface HealthConfig {
   Icon: React.ComponentType<{ style?: React.CSSProperties }>;
@@ -30,6 +30,11 @@ const HEALTH_CONFIG: Record<ReplicationHealthStatus, HealthConfig> = {
     colorVar: 'var(--pf-t--global--icon--color--status--info--default)',
     label: 'Syncing',
   },
+  NotReplicating: {
+    Icon: MinusCircleIcon,
+    colorVar: 'var(--pf-t--global--icon--color--disabled)',
+    label: 'Not replicating',
+  },
   Error: {
     Icon: ExclamationCircleIcon,
     colorVar: 'var(--pf-t--global--icon--color--status--danger--default)',
@@ -49,20 +54,15 @@ interface ReplicationHealthIndicatorProps {
 const ReplicationHealthIndicator: React.FC<ReplicationHealthIndicatorProps> = ({ health }) => {
   const config = HEALTH_CONFIG[health.status];
   const { Icon, colorVar, label } = config;
-  const rpoText = formatRPO(health.rpoSeconds);
-  const ariaLabel = rpoText
-    ? `Replication ${label.toLowerCase()}, ${rpoText}`
-    : `Replication ${label.toLowerCase()}`;
 
   return (
     <span
       style={{ display: 'inline-flex', alignItems: 'center', gap: '0.25rem', whiteSpace: 'nowrap' }}
-      aria-label={ariaLabel}
+      aria-label={`Replication ${label.toLowerCase()}`}
       role="status"
     >
       <Icon style={{ color: colorVar }} />
       <span>{label}</span>
-      {rpoText && <span>{rpoText}</span>}
     </span>
   );
 };

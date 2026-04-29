@@ -73,9 +73,9 @@ type StorageProvider interface {
 	// NonReplicated. Returns ErrVolumeGroupNotFound if the group does not exist.
 	StopReplication(ctx context.Context, id VolumeGroupID) error
 
-	// GetReplicationStatus returns the current replication role, health, and
-	// estimated RPO for a volume group. The workflow engine polls this method
-	// to assess readiness before failover. Returns ErrVolumeGroupNotFound if
-	// the group does not exist.
+	// GetReplicationStatus returns the current replication role and health for
+	// a volume group. The workflow engine polls this method to assess readiness
+	// before failover. Returns ErrVolumeGroupNotFound if the group does not
+	// exist.
 	GetReplicationStatus(ctx context.Context, id VolumeGroupID) (ReplicationStatus, error)
 }

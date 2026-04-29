@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import {
   K8sGroupVersionKind,
   useK8sWatchResource,
@@ -38,6 +39,18 @@ export function useDRPlan(name: string): [DRPlan | undefined, boolean, unknown] 
     isList: false,
   };
   const [data, loaded, error] = useK8sWatchResource<DRPlan>(resource);
+  const lastValidPlan = useRef<DRPlan | undefined>(undefined);
+
+  if (loaded && !error && data) {
+    lastValidPlan.current = data;
+  }
+
+  // After the initial load succeeds, keep returning the last known-good data
+  // during transient loading/error states so the UI never flashes defaults.
+  if (lastValidPlan.current) {
+    return [loaded && !error && data ? data : lastValidPlan.current, true, null];
+  }
+
   return [loaded && !error ? data : undefined, loaded, error];
 }
 
@@ -55,7 +68,21 @@ export function useDRExecution(name: string): [DRExecution | undefined, boolean,
     ? { groupVersionKind: drExecutionGVK, name, isList: false }
     : null;
   const [data, loaded, error] = useK8sWatchResource<DRExecution>(resource);
-  if (!name) return [undefined, true, null];
+  const lastValidExec = useRef<DRExecution | undefined>(undefined);
+
+  if (!name) {
+    lastValidExec.current = undefined;
+    return [undefined, true, null];
+  }
+
+  if (loaded && !error && data) {
+    lastValidExec.current = data;
+  }
+
+  if (lastValidExec.current) {
+    return [loaded && !error && data ? data : lastValidExec.current, true, null];
+  }
+
   return [loaded && !error ? data : undefined, loaded, error];
 }
 

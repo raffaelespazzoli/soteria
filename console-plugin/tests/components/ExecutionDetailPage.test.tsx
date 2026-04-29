@@ -21,14 +21,10 @@ jest.mock('react-router-dom', () => ({
   ),
 }));
 
-const mockUseDRExecution = jest.fn<
-  [DRExecution | undefined, boolean, unknown],
-  [string]
->();
+const mockUseDRExecutions = jest.fn();
 
 jest.mock('../../src/hooks/useDRResources', () => ({
-  useDRExecution: (...args: [string]) => mockUseDRExecution(...args),
-  useDRExecutions: jest.fn().mockReturnValue([[], true, null]),
+  useDRExecutions: () => mockUseDRExecutions(),
   useDRGroupStatuses: jest.fn().mockReturnValue([[], true, null]),
 }));
 
@@ -97,7 +93,6 @@ const mockCompletedExecution: DRExecution = {
     startTime: new Date(now - 10 * 60 * 1000).toISOString(),
     completionTime: new Date(now).toISOString(),
     result: 'Succeeded',
-    rpoSeconds: 47,
     waves: [
       {
         waveIndex: 0,
@@ -149,19 +144,19 @@ describe('ExecutionDetailPage', () => {
   afterEach(() => jest.restoreAllMocks());
 
   it('renders loading skeleton when execution is loading', () => {
-    mockUseDRExecution.mockReturnValue([undefined, false, null]);
+    mockUseDRExecutions.mockReturnValue([[], false, null]);
     render(<ExecutionDetailPage />);
     expect(screen.getByText('Loading execution details')).toBeInTheDocument();
   });
 
   it('renders error alert when execution fails to load', () => {
-    mockUseDRExecution.mockReturnValue([undefined, true, new Error('Not found')]);
+    mockUseDRExecutions.mockReturnValue([[], true, new Error('Not found')]);
     render(<ExecutionDetailPage />);
     expect(screen.getByText(/Failed to load execution/)).toBeInTheDocument();
   });
 
   it('renders ProgressStepper with waves for active execution', () => {
-    mockUseDRExecution.mockReturnValue([mockActiveExecution, true, null]);
+    mockUseDRExecutions.mockReturnValue([[mockActiveExecution], true, null]);
     render(<ExecutionDetailPage />);
     expect(screen.getByLabelText('Execution wave progress')).toBeInTheDocument();
     expect(screen.getByText(/Wave 1/)).toBeInTheDocument();
@@ -170,7 +165,7 @@ describe('ExecutionDetailPage', () => {
   });
 
   it('renders execution header with name and mode', () => {
-    mockUseDRExecution.mockReturnValue([mockActiveExecution, true, null]);
+    mockUseDRExecutions.mockReturnValue([[mockActiveExecution], true, null]);
     render(<ExecutionDetailPage />);
     const nameMatches = screen.getAllByText('erp-failover-1714327200000');
     expect(nameMatches.length).toBeGreaterThanOrEqual(1);
@@ -178,15 +173,14 @@ describe('ExecutionDetailPage', () => {
   });
 
   it('renders completed execution with result badge and duration', () => {
-    mockUseDRExecution.mockReturnValue([mockCompletedExecution, true, null]);
+    mockUseDRExecutions.mockReturnValue([[mockCompletedExecution], true, null]);
     render(<ExecutionDetailPage />);
     expect(screen.getAllByText('Succeeded').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/Duration/)).toBeInTheDocument();
-    expect(screen.getByText('RPO 47s')).toBeInTheDocument();
   });
 
   it('renders breadcrumb with plan name from execution spec', () => {
-    mockUseDRExecution.mockReturnValue([mockActiveExecution, true, null]);
+    mockUseDRExecutions.mockReturnValue([[mockActiveExecution], true, null]);
     render(<ExecutionDetailPage />);
     expect(screen.getByRole('navigation', { name: /breadcrumb/i })).toBeInTheDocument();
     const planLink = screen.getByText('erp-full-stack');
@@ -198,7 +192,7 @@ describe('ExecutionDetailPage', () => {
   });
 
   it('renders ARIA live region for screen readers', () => {
-    mockUseDRExecution.mockReturnValue([mockActiveExecution, true, null]);
+    mockUseDRExecutions.mockReturnValue([[mockActiveExecution], true, null]);
     const { container } = render(<ExecutionDetailPage />);
     const liveRegion = container.querySelector('[aria-live="polite"]');
     expect(liveRegion).toBeInTheDocument();
@@ -210,37 +204,37 @@ describe('ExecutionDetailPage', () => {
   });
 
   it('has no accessibility violations (active execution)', async () => {
-    mockUseDRExecution.mockReturnValue([mockActiveExecution, true, null]);
+    mockUseDRExecutions.mockReturnValue([[mockActiveExecution], true, null]);
     const { container } = render(<ExecutionDetailPage />);
     const results = await axe(container);
     expect(results).toHaveNoViolations();
   });
 
   it('has no accessibility violations (completed execution)', async () => {
-    mockUseDRExecution.mockReturnValue([mockCompletedExecution, true, null]);
+    mockUseDRExecutions.mockReturnValue([[mockCompletedExecution], true, null]);
     const { container } = render(<ExecutionDetailPage />);
     const results = await axe(container);
     expect(results).toHaveNoViolations();
   });
 
   it('has no accessibility violations (loading state)', async () => {
-    mockUseDRExecution.mockReturnValue([undefined, false, null]);
+    mockUseDRExecutions.mockReturnValue([[], false, null]);
     const { container } = render(<ExecutionDetailPage />);
     const results = await axe(container);
     expect(results).toHaveNoViolations();
   });
 
   it('has no accessibility violations (error state)', async () => {
-    mockUseDRExecution.mockReturnValue([undefined, true, new Error('Not found')]);
+    mockUseDRExecutions.mockReturnValue([[], true, new Error('Not found')]);
     const { container } = render(<ExecutionDetailPage />);
     const results = await axe(container);
     expect(results).toHaveNoViolations();
   });
 
-  it('calls useDRExecution with the name from URL params', () => {
-    mockUseDRExecution.mockReturnValue([undefined, false, null]);
+  it('calls useDRExecutions', () => {
+    mockUseDRExecutions.mockReturnValue([[], false, null]);
     render(<ExecutionDetailPage />);
-    expect(mockUseDRExecution).toHaveBeenCalledWith('erp-failover-1714327200000');
+    expect(mockUseDRExecutions).toHaveBeenCalled();
   });
 
 });
@@ -251,7 +245,6 @@ const mockPartialExecution: DRExecution = {
     startTime: new Date(now - 17 * 60 * 1000).toISOString(),
     completionTime: new Date(now).toISOString(),
     result: 'PartiallySucceeded',
-    rpoSeconds: 47,
     waves: [
       {
         waveIndex: 0,
@@ -326,33 +319,33 @@ describe('ExecutionDetailPage — retry', () => {
   afterEach(() => jest.restoreAllMocks());
 
   it('renders retry buttons for PartiallySucceeded execution', () => {
-    mockUseDRExecution.mockReturnValue([mockPartialExecution, true, null]);
+    mockUseDRExecutions.mockReturnValue([[mockPartialExecution], true, null]);
     render(<ExecutionDetailPage />);
     expect(screen.getByRole('button', { name: /retry drgroup-3/i })).toBeInTheDocument();
   });
 
   it('shows error detail for failed group in PartiallySucceeded execution', () => {
-    mockUseDRExecution.mockReturnValue([mockPartialExecution, true, null]);
+    mockUseDRExecutions.mockReturnValue([[mockPartialExecution], true, null]);
     render(<ExecutionDetailPage />);
     expect(screen.getByText(/storage driver timeout/)).toBeInTheDocument();
     expect(screen.getByText('StartVM')).toBeInTheDocument();
   });
 
   it('renders PartiallySucceeded result badge', () => {
-    mockUseDRExecution.mockReturnValue([mockPartialExecution, true, null]);
+    mockUseDRExecutions.mockReturnValue([[mockPartialExecution], true, null]);
     render(<ExecutionDetailPage />);
     expect(screen.getAllByText('Partial').length).toBeGreaterThanOrEqual(1);
   });
 
   it('has no accessibility violations (PartiallySucceeded)', async () => {
-    mockUseDRExecution.mockReturnValue([mockPartialExecution, true, null]);
+    mockUseDRExecutions.mockReturnValue([[mockPartialExecution], true, null]);
     const { container } = render(<ExecutionDetailPage />);
     const results = await axe(container);
     expect(results).toHaveNoViolations();
   });
 
   it('displays RetryRejected condition message on page load', () => {
-    mockUseDRExecution.mockReturnValue([mockPartialWithRejection, true, null]);
+    mockUseDRExecutions.mockReturnValue([[mockPartialWithRejection], true, null]);
     render(<ExecutionDetailPage />);
     expect(
       screen.getByText(/VM erp-app-1 is in an unpredictable state/),
@@ -360,7 +353,7 @@ describe('ExecutionDetailPage — retry', () => {
   });
 
   it('has no accessibility violations (PartiallySucceeded with rejection)', async () => {
-    mockUseDRExecution.mockReturnValue([mockPartialWithRejection, true, null]);
+    mockUseDRExecutions.mockReturnValue([[mockPartialWithRejection], true, null]);
     const { container } = render(<ExecutionDetailPage />);
     const results = await axe(container);
     expect(results).toHaveNoViolations();

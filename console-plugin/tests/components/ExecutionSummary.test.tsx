@@ -16,7 +16,6 @@ const mockSucceeded: DRExecution = {
     result: 'Succeeded',
     startTime: new Date(now - 17 * 60 * 1000).toISOString(),
     completionTime: new Date(now).toISOString(),
-    rpoSeconds: 47,
     waves: [
       {
         waveIndex: 0,
@@ -73,11 +72,6 @@ describe('ExecutionSummary', () => {
     expect(screen.getByText(/6 VMs recovered in/)).toBeInTheDocument();
   });
 
-  it('renders RPO in seconds', () => {
-    render(<ExecutionSummary execution={mockSucceeded} />);
-    expect(screen.getByText(/RPO: 47 seconds/)).toBeInTheDocument();
-  });
-
   it('renders result badge for Succeeded', () => {
     render(<ExecutionSummary execution={mockSucceeded} />);
     expect(screen.getByText('Succeeded')).toBeInTheDocument();
@@ -102,18 +96,6 @@ describe('ExecutionSummary', () => {
   it('renders with aria-label for the summary region', () => {
     render(<ExecutionSummary execution={mockSucceeded} />);
     expect(screen.getByRole('region', { name: 'Execution summary' })).toBeInTheDocument();
-  });
-
-  it('does not render RPO when rpoSeconds is undefined', () => {
-    const noRpo: DRExecution = {
-      ...mockSucceeded,
-      status: {
-        ...mockSucceeded.status!,
-        rpoSeconds: undefined,
-      },
-    };
-    render(<ExecutionSummary execution={noRpo} />);
-    expect(screen.queryByText(/RPO/)).not.toBeInTheDocument();
   });
 
   it('passes jest-axe (succeeded)', async () => {

@@ -73,8 +73,6 @@ const (
 	reasonGroupExceedsThrottle = "NamespaceGroupExceedsThrottle"
 
 	requeueInterval = 10 * time.Minute
-
-	maxUnprotectedVMs = 100
 )
 
 // +kubebuilder:rbac:groups=soteria.io,resources=drplans,verbs=get;list;watch;update;patch
@@ -102,10 +100,6 @@ type DRPlanReconciler struct {
 	Registry    *drivers.Registry
 	SCLister    drivers.StorageClassLister
 	PVCResolver engine.PVCResolver
-	// UnprotectedVMDiscoverer detects VMs cluster-wide that lack the
-	// soteria.io/drplan label. When nil, unprotected VM detection is
-	// skipped (backward compat).
-	UnprotectedVMDiscoverer engine.UnprotectedVMDiscoverer
 	// LocalSite is the --site-name flag value identifying which cluster
 	// this controller instance runs on. Used to optimize VM discovery
 	// and health polling to the local site.
@@ -157,14 +151,13 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		report := r.composePreflightReport(ctx, &plan, nil, nil, nil, nil)
 		report.Warnings = append(report.Warnings,
 			fmt.Sprintf("VM discovery failed: %v", err))
-		unprotected := r.detectUnprotectedVMs(ctx, report)
 		_, statusErr := r.updateStatus(ctx, req, &plan, nil, 0, report, metav1.Condition{
 			Type:               conditionTypeReady,
 			Status:             metav1.ConditionFalse,
 			Reason:             reasonError,
 			Message:            err.Error(),
 			ObservedGeneration: plan.Generation,
-		}, nil, unprotected)
+		}, nil)
 		if statusErr != nil {
 			logger.Error(statusErr, "Failed to update status after discovery error")
 		}
@@ -190,14 +183,13 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	if result.TotalVMs == 0 {
 		report := r.composePreflightReport(ctx, &plan, &result, nil, nil, vms)
-		unprotected := r.detectUnprotectedVMs(ctx, report)
 		return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, report, metav1.Condition{
 			Type:               conditionTypeReady,
 			Status:             metav1.ConditionFalse,
 			Reason:             reasonNoVMs,
 			Message:            "No VMs have the soteria.io/drplan label for this plan",
 			ObservedGeneration: plan.Generation,
-		}, nil, unprotected)
+		}, nil)
 	}
 
 	// Resolve volume group consistency from namespace annotations.
@@ -207,14 +199,13 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		report := r.composePreflightReport(ctx, &plan, &result, nil, nil, vms)
 		report.Warnings = append(report.Warnings,
 			fmt.Sprintf("Volume group resolution failed: %v", err))
-		unprotected := r.detectUnprotectedVMs(ctx, report)
 		return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, report, metav1.Condition{
 			Type:               conditionTypeReady,
 			Status:             metav1.ConditionFalse,
 			Reason:             reasonError,
 			Message:            fmt.Sprintf("Volume group resolution failed: %v", err),
 			ObservedGeneration: plan.Generation,
-		}, nil, unprotected)
+		}, nil)
 	}
 
 	if len(consistency.WaveConflicts) > 0 {
@@ -222,14 +213,13 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		logger.Info("Detected wave conflict", "conflicts", len(consistency.WaveConflicts))
 		r.event(&plan, "Warning", "WaveConflictDetected", msg)
 		report := r.composePreflightReport(ctx, &plan, &result, consistency, nil, vms)
-		unprotected := r.detectUnprotectedVMs(ctx, report)
 		return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, report, metav1.Condition{
 			Type:               conditionTypeReady,
 			Status:             metav1.ConditionFalse,
 			Reason:             reasonWaveConflict,
 			Message:            msg,
 			ObservedGeneration: plan.Generation,
-		}, nil, unprotected)
+		}, nil)
 	}
 
 	// Populate volume groups on each wave.
@@ -259,14 +249,13 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		r.event(&plan, "Warning", "ChunkingFailed", msg)
 		report := r.composePreflightReport(
 			ctx, &plan, &result, consistency, &chunkResult, vms)
-		unprotected := r.detectUnprotectedVMs(ctx, report)
 		return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, report, metav1.Condition{
 			Type:               conditionTypeReady,
 			Status:             metav1.ConditionFalse,
 			Reason:             reasonGroupExceedsThrottle,
 			Message:            msg,
 			ObservedGeneration: plan.Generation,
-		}, nil, unprotected)
+		}, nil)
 	}
 
 	r.event(&plan, "Normal", "ConsistencyResolved",
@@ -287,9 +276,6 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			"totalVGs", len(replicationHealth))
 	}
 
-	// Detect unprotected VMs (cluster-wide, not per-plan).
-	unprotected := r.detectUnprotectedVMs(ctx, report)
-
 	readyCond := metav1.Condition{
 		Type:               conditionTypeReady,
 		Status:             metav1.ConditionTrue,
@@ -298,69 +284,7 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		ObservedGeneration: plan.Generation,
 	}
 
-	return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, report, readyCond, replicationHealth, unprotected)
-}
-
-// emitUnprotectedVMEvents fires Kubernetes events when the unprotected VM
-// count crosses the 0↔N boundary. No event on first reconcile or on
-// N₁→N₂ transitions where both are non-zero.
-func (r *DRPlanReconciler) emitUnprotectedVMEvents(
-	plan *soteriav1alpha1.DRPlan,
-	unprotected *unprotectedVMResult,
-	oldCount int,
-	isFirstReconcile bool,
-) {
-	if unprotected == nil || isFirstReconcile {
-		return
-	}
-	if oldCount == 0 && unprotected.count > 0 {
-		r.event(plan, "Warning", "UnprotectedVMsDetected",
-			fmt.Sprintf("Detected %d unprotected VMs without soteria.io/drplan label", unprotected.count))
-	} else if oldCount > 0 && unprotected.count == 0 {
-		r.event(plan, "Normal", "AllVMsProtected",
-			"All VMs are now covered by a DRPlan")
-	}
-}
-
-// detectUnprotectedVMs calls the UnprotectedVMDiscoverer if wired, converts
-// the results to DiscoveredVM entries, and truncates at maxUnprotectedVMs.
-// Returns nil when the discoverer is not configured (backward compat).
-func (r *DRPlanReconciler) detectUnprotectedVMs(
-	ctx context.Context,
-	preflightReport *soteriav1alpha1.PreflightReport,
-) *unprotectedVMResult {
-	if r.UnprotectedVMDiscoverer == nil {
-		return nil
-	}
-	logger := log.FromContext(ctx)
-
-	refs, err := r.UnprotectedVMDiscoverer.ListUnprotectedVMs(ctx)
-	if err != nil {
-		logger.V(1).Info("Failed to list unprotected VMs", "error", err)
-		return nil
-	}
-
-	result := &unprotectedVMResult{count: len(refs)}
-
-	vms := make([]soteriav1alpha1.DiscoveredVM, len(refs))
-	for i, ref := range refs {
-		vms[i] = soteriav1alpha1.DiscoveredVM{
-			Name:      ref.Name,
-			Namespace: ref.Namespace,
-		}
-	}
-
-	if len(vms) > maxUnprotectedVMs {
-		result.vms = vms[:maxUnprotectedVMs]
-		if preflightReport != nil {
-			preflightReport.Warnings = append(preflightReport.Warnings,
-				fmt.Sprintf("Showing %d of %d unprotected VMs", maxUnprotectedVMs, len(vms)))
-		}
-	} else {
-		result.vms = vms
-	}
-
-	return result
+	return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, report, readyCond, replicationHealth)
 }
 
 func (r *DRPlanReconciler) event(
@@ -607,13 +531,6 @@ func (r *DRPlanReconciler) composePreflightReport(
 	return report
 }
 
-// unprotectedVMResult bundles the output of cluster-wide unprotected VM
-// detection so updateStatus can apply it without extra positional params.
-type unprotectedVMResult struct {
-	count int
-	vms   []soteriav1alpha1.DiscoveredVM
-}
-
 func (r *DRPlanReconciler) updateStatus(
 	ctx context.Context,
 	req ctrl.Request,
@@ -623,7 +540,6 @@ func (r *DRPlanReconciler) updateStatus(
 	preflightReport *soteriav1alpha1.PreflightReport,
 	condition metav1.Condition,
 	replicationHealth []soteriav1alpha1.VolumeGroupHealth,
-	unprotected *unprotectedVMResult,
 ) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
@@ -644,11 +560,8 @@ func (r *DRPlanReconciler) updateStatus(
 	reportChanged := preflightReportChanged(plan.Status.Preflight, preflightReport)
 	healthChanged := replicationHealthChanged(plan.Status.ReplicationHealth, replicationHealth)
 
-	unprotectedChanged := unprotected != nil &&
-		plan.Status.UnprotectedVMCount != unprotected.count
-
 	anyChanged := conditionChanged || wavesChanged || countChanged ||
-		genChanged || reportChanged || healthChanged || unprotectedChanged
+		genChanged || reportChanged || healthChanged
 	if !anyChanged {
 		logger.V(1).Info("Status unchanged, skipping patch")
 		requeue := requeueInterval
@@ -661,10 +574,6 @@ func (r *DRPlanReconciler) updateStatus(
 	// Detect health transitions for event emission before mutating status.
 	degradedVGs, recoveredVGs := detectHealthTransitions(
 		plan.Status.ReplicationHealth, replicationHealth)
-
-	// Capture old unprotected count before mutation for event transition detection.
-	oldUnprotectedCount := plan.Status.UnprotectedVMCount
-	isFirstReconcile := plan.Status.ObservedGeneration == 0
 
 	patch := client.MergeFrom(plan.DeepCopy())
 
@@ -684,14 +593,6 @@ func (r *DRPlanReconciler) updateStatus(
 		meta.RemoveStatusCondition(&plan.Status.Conditions, conditionTypeReplicationHealthy)
 	}
 
-	if unprotected != nil {
-		plan.Status.UnprotectedVMCount = unprotected.count
-		if preflightReport != nil {
-			preflightReport.UnprotectedVMs = unprotected.vms
-			plan.Status.Preflight = preflightReport
-		}
-	}
-
 	if err := r.Status().Patch(ctx, plan, patch); err != nil {
 		logger.Error(err, "Failed to patch DRPlan status")
 		return ctrl.Result{}, err
@@ -699,18 +600,6 @@ func (r *DRPlanReconciler) updateStatus(
 
 	// Record Prometheus metrics after a successful status patch.
 	metrics.RecordPlanVMs(plan.Name, totalVMs)
-	if replicationHealth != nil {
-		entries := buildReplicationLagEntries(replicationHealth)
-		metrics.RecordPlanReplicationHealth(plan.Name, entries)
-	} else {
-		// Health was cleared (e.g. active execution owns drivers) — remove
-		// stale lag series so they don't linger in Prometheus.
-		metrics.RecordPlanReplicationHealth(plan.Name, nil)
-	}
-	if unprotected != nil {
-		metrics.RecordUnprotectedVMs(unprotected.count)
-	}
-
 	if wavesChanged {
 		logger.Info("Discovery completed", "totalVMs", totalVMs, "waves", len(waves))
 		r.event(plan, "Normal", "DiscoveryCompleted",
@@ -727,8 +616,6 @@ func (r *DRPlanReconciler) updateStatus(
 		r.event(plan, "Normal", "ReplicationHealthy",
 			"All volume groups returned to healthy replication")
 	}
-
-	r.emitUnprotectedVMEvents(plan, unprotected, oldUnprotectedCount, isFirstReconcile)
 
 	requeue := requeueInterval
 	if anyNonHealthy(replicationHealth) {
@@ -747,7 +634,6 @@ func replicationHealthChanged(old, new []soteriav1alpha1.VolumeGroupHealth) bool
 		if old[i].Name != new[i].Name ||
 			old[i].Namespace != new[i].Namespace ||
 			old[i].Health != new[i].Health ||
-			old[i].EstimatedRPO != new[i].EstimatedRPO ||
 			old[i].Message != new[i].Message {
 			return true
 		}
@@ -778,28 +664,6 @@ func preflightReportChanged(old, new *soteriav1alpha1.PreflightReport) bool {
 	oldCopy.GeneratedAt = nil
 	newCopy.GeneratedAt = nil
 	return !reflect.DeepEqual(oldCopy, newCopy)
-}
-
-// buildReplicationLagEntries converts VolumeGroupHealth slices to metric entries
-// by parsing EstimatedRPO as a Go duration or falling back to time.Since(LastSyncTime).
-func buildReplicationLagEntries(health []soteriav1alpha1.VolumeGroupHealth) []metrics.ReplicationLagEntry {
-	var entries []metrics.ReplicationLagEntry
-	for _, vg := range health {
-		lagSeconds := float64(-1)
-		if d, err := time.ParseDuration(vg.EstimatedRPO); err == nil {
-			lagSeconds = d.Seconds()
-		} else if vg.LastSyncTime != nil {
-			lagSeconds = time.Since(vg.LastSyncTime.Time).Seconds()
-		}
-		if lagSeconds < 0 {
-			continue
-		}
-		entries = append(entries, metrics.ReplicationLagEntry{
-			VolumeGroup: vg.Name,
-			LagSeconds:  lagSeconds,
-		})
-	}
-	return entries
 }
 
 // vmRelevantChangePredicate filters VM events to only those that affect DRPlan
