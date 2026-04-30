@@ -72,18 +72,18 @@ interface PhaseNodeProps {
 
 function PhaseNode({ phase, primarySite, secondarySite, isActive, isTransitioning }: PhaseNodeProps) {
   const borderColor = isActive || isTransitioning
-    ? 'var(--pf-v5-global--active-color--100)'
-    : 'var(--pf-v5-global--BorderColor--100)';
+    ? 'var(--pf-t--global--color--brand--default, var(--pf-v5-global--active-color--100))'
+    : 'var(--pf-t--global--border--color--default, var(--pf-v5-global--BorderColor--100))';
 
   const nodeStyle: CSSProperties = {
     borderWidth: '2px',
     borderStyle: isTransitioning ? 'dashed' : 'solid',
     borderColor,
-    borderRadius: 'var(--pf-v5-global--BorderRadius--sm)',
-    padding: 'var(--pf-v5-global--spacer--xs) var(--pf-v5-global--spacer--sm)',
-    background: isActive ? 'var(--pf-v5-global--active-color--100)' : 'transparent',
+    borderRadius: 'var(--pf-t--global--border--radius--small, var(--pf-v5-global--BorderRadius--sm))',
+    padding: 'var(--pf-t--global--spacer--xs, var(--pf-v5-global--spacer--xs)) var(--pf-t--global--spacer--sm, var(--pf-v5-global--spacer--sm))',
+    background: isActive ? 'var(--pf-t--global--color--brand--default, var(--pf-v5-global--active-color--100))' : 'transparent',
     opacity: (isActive || isTransitioning) ? 1 : 0.35,
-    color: isActive ? 'var(--pf-v5-global--Color--light-100)' : 'var(--pf-v5-global--Color--100)',
+    color: isActive ? 'var(--pf-t--global--text--color--inverse, var(--pf-v5-global--Color--light-100))' : 'var(--pf-t--global--text--color--regular, var(--pf-v5-global--Color--100))',
     textAlign: 'center' as const,
   };
 
@@ -99,16 +99,16 @@ function PhaseNode({ phase, primarySite, secondarySite, isActive, isTransitionin
       style={nodeStyle}
       data-testid={`phase-node-${phase.id}`}
     >
-      <div style={{ fontWeight: 'var(--pf-v5-global--FontWeight--bold)' as unknown as number, fontSize: 'var(--pf-v5-global--FontSize--md)', marginBottom: 'var(--pf-v5-global--spacer--xs)' }}>
+      <div style={{ fontWeight: 'var(--pf-t--global--font--weight--body--bold, var(--pf-v5-global--FontWeight--bold))' as unknown as number, fontSize: 'var(--pf-t--global--font--size--body--default, var(--pf-v5-global--FontSize--md))', marginBottom: 'var(--pf-t--global--spacer--xs, var(--pf-v5-global--spacer--xs))' }}>
         {phase.label}
       </div>
-      <div style={{ fontSize: 'var(--pf-v5-global--FontSize--sm)' }}>
+      <div style={{ fontSize: 'var(--pf-t--global--font--size--body--sm, var(--pf-v5-global--FontSize--sm))' }}>
         {activeText}
       </div>
-      <div style={{ fontSize: 'var(--pf-v5-global--FontSize--sm)' }}>
+      <div style={{ fontSize: 'var(--pf-t--global--font--size--body--sm, var(--pf-v5-global--FontSize--sm))' }}>
         {passiveText}
       </div>
-      <div style={{ fontSize: 'var(--pf-v5-global--FontSize--sm)' }}>
+      <div style={{ fontSize: 'var(--pf-t--global--font--size--body--sm, var(--pf-v5-global--FontSize--sm))' }}>
         {replicationText}
       </div>
       {imgSrc && (
@@ -116,10 +116,10 @@ function PhaseNode({ phase, primarySite, secondarySite, isActive, isTransitionin
           src={imgSrc}
           alt={`${phase.label} topology: ${activeText}, ${replicationText}`}
           style={{
-            marginTop: 'var(--pf-v5-global--spacer--sm)',
+            marginTop: 'var(--pf-t--global--spacer--sm, var(--pf-v5-global--spacer--sm))',
             maxWidth: '37.5%',
             height: 'auto',
-            borderRadius: 'var(--pf-v5-global--BorderRadius--sm)',
+            borderRadius: 'var(--pf-t--global--border--radius--small, var(--pf-v5-global--BorderRadius--sm))',
           }}
         />
       )}
@@ -144,8 +144,8 @@ function TransitionEdge({ transition, state, actions, plan, onAction, direction 
     flexDirection: isHorizontal ? 'column' : 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 'var(--pf-v5-global--spacer--xs)',
-    padding: 'var(--pf-v5-global--spacer--sm)',
+    gap: 'var(--pf-t--global--spacer--xs, var(--pf-v5-global--spacer--xs))',
+    padding: 'var(--pf-t--global--spacer--sm, var(--pf-v5-global--spacer--sm))',
     minWidth: isHorizontal ? '160px' : undefined,
     minHeight: !isHorizontal ? '60px' : undefined,
   };
@@ -172,24 +172,24 @@ function TransitionEdge({ transition, state, actions, plan, onAction, direction 
               {a.label}
             </Button>
           ))}
-          <span style={{ fontSize: 'var(--pf-v5-global--FontSize--lg)', margin: '0 var(--pf-v5-global--spacer--xs)' }}>{arrow}</span>
+          <span style={{ fontSize: 'var(--pf-t--global--font--size--body--lg, var(--pf-v5-global--FontSize--lg))', margin: '0 var(--pf-t--global--spacer--xs, var(--pf-v5-global--spacer--xs))' }}>{arrow}</span>
         </>
       )}
       {state === 'in-progress' && (
         <span
           style={{
-            background: 'var(--pf-v5-global--info-color--100)',
-            color: 'var(--pf-v5-global--Color--light-100)',
-            padding: 'var(--pf-v5-global--spacer--xs) var(--pf-v5-global--spacer--sm)',
-            borderRadius: 'var(--pf-v5-global--BorderRadius--lg)',
-            fontSize: 'var(--pf-v5-global--FontSize--md)',
+            background: 'var(--pf-t--global--color--status--info--default, var(--pf-v5-global--info-color--100))',
+            color: 'var(--pf-t--global--text--color--inverse, var(--pf-v5-global--Color--light-100))',
+            padding: 'var(--pf-t--global--spacer--xs, var(--pf-v5-global--spacer--xs)) var(--pf-t--global--spacer--sm, var(--pf-v5-global--spacer--sm))',
+            borderRadius: 'var(--pf-t--global--border--radius--large, var(--pf-v5-global--BorderRadius--lg))',
+            fontSize: 'var(--pf-t--global--font--size--body--default, var(--pf-v5-global--FontSize--md))',
           }}
         >
           In progress...
         </span>
       )}
       {state === 'idle' && (
-        <span style={{ opacity: 0.35, fontSize: 'var(--pf-v5-global--FontSize--md)' }}>
+        <span style={{ opacity: 0.35, fontSize: 'var(--pf-t--global--font--size--body--default, var(--pf-v5-global--FontSize--md))' }}>
           {transitionLabel} {arrow}
         </span>
       )}
@@ -256,10 +256,10 @@ const DRLifecycleDiagram: React.FC<DRLifecycleDiagramProps> = ({ plan, onAction,
     display: 'grid',
     gridTemplateColumns: '1fr auto 1fr',
     gridTemplateRows: 'auto auto auto',
-    gap: 'var(--pf-v5-global--spacer--lg)',
+    gap: 'var(--pf-t--global--spacer--lg, var(--pf-v5-global--spacer--lg))',
     alignItems: 'center',
     justifyItems: 'center',
-    padding: 'var(--pf-v5-global--spacer--lg)',
+    padding: 'var(--pf-t--global--spacer--lg, var(--pf-v5-global--spacer--lg))',
   };
 
   const activeTransitionAction = activeTransition

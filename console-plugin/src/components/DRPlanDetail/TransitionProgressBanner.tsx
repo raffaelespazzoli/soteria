@@ -76,7 +76,7 @@ const TransitionProgressBanner: React.FC<TransitionProgressBannerProps> = ({ pla
   const execDetailPath = activeExec ? `/disaster-recovery/executions/${activeExec}` : '';
 
   return (
-    <div style={{ marginBottom: 'var(--pf-v5-global--spacer--md)' }}>
+    <div style={{ marginBottom: 'var(--pf-t--global--spacer--md, var(--pf-v5-global--spacer--md))' }}>
       <Progress
         value={pctComplete}
         title={`${transitionLabel} in progress`}
@@ -89,9 +89,9 @@ const TransitionProgressBanner: React.FC<TransitionProgressBannerProps> = ({ pla
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          marginTop: 'var(--pf-v5-global--spacer--xs)',
-          fontSize: 'var(--pf-v5-global--FontSize--sm)',
-          color: 'var(--pf-v5-global--Color--200)',
+          marginTop: 'var(--pf-t--global--spacer--xs, var(--pf-v5-global--spacer--xs))',
+          fontSize: 'var(--pf-t--global--font--size--body--sm, var(--pf-v5-global--FontSize--sm))',
+          color: 'var(--pf-t--global--text--color--subtle, var(--pf-v5-global--Color--200))',
         }}
       >
         <span>

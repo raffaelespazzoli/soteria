@@ -44,9 +44,9 @@ export const PlanConfiguration: React.FC<PlanConfigurationProps> = ({ plan }) =>
   );
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--pf-v5-global--spacer--xl)', alignItems: 'start' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--pf-t--global--spacer--xl, var(--pf-v5-global--spacer--xl))', alignItems: 'start' }}>
       {/* Left pane: Plan Information */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--pf-v5-global--spacer--lg)' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--pf-t--global--spacer--lg, var(--pf-v5-global--spacer--lg))' }}>
         <Content component={ContentVariants.h3}>Plan Information</Content>
         <DescriptionList isHorizontal isCompact>
           <DescriptionListGroup>
@@ -112,7 +112,7 @@ export const PlanConfiguration: React.FC<PlanConfigurationProps> = ({ plan }) =>
       </div>
 
       {/* Right pane: Replication Health */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--pf-v5-global--spacer--lg)' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--pf-t--global--spacer--lg, var(--pf-v5-global--spacer--lg))' }}>
         <Content component={ContentVariants.h3}>Replication Health</Content>
         <ReplicationHealthExpanded plan={plan} />
       </div>

@@ -35,7 +35,8 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-06
-last_updated: 2026-04-28
+last_updated: 2026-04-30
+# epic-7-retrospective done: 4/4 stories (100%), 223 new tests (533 total), ~15 review patches, 0 spawned stories, 0 splits; 8 UAT issues resolved (aggregated API single-resource watch, useParams outside Route, MutatingWebhook doesn't fire for aggregated API, estimatedRPO+UnprotectedVMs dead code removal, NotReplicating health status, stale closure race, component choice); process improvements codified in project-context.md (interaction-pattern spike rule #11, data-exists gate rule #10, Console SDK platform constraints section); PF5→PF6 CSS token migration complete (56 bare tokens across 5 files)
 # 7.4 review: Toast Notifications & Execution Summary — toastStore module-level singleton (addToast/removeToast/subscribe/getSnapshot, max 8, auto-dismiss setTimeout), useToastNotifications hook (useReducer+subscribe for React 17), ToastContainer (AlertGroup isToast+isLiveRegion, max 4 visible, AlertActionCloseButton dismiss, useHistory.push navigation), useExecutionNotifications hook (useDRExecutions watch, useRef Map prev-state transition detection, initial-load skip, mode-aware labels), ExecutionSummary (Card isCompact, --pf-t--global--font--size--heading--h3 bridge-call-ready plain language, VM count+duration+RPO+result), toast messages (info 8s started, success 15s completed, warning persistent partial, danger persistent failed, re-protect 8s), integration DRDashboardPage+DRPlanDetailPage+ExecutionDetailPage, jest-axe accessibility, 47 new tests (~5 new src files, ~2 new hooks, ~1 store module, ~3 modified pages, ~5 new test files, ~2 modified test files)
 # 7.3 done: code review fixes applied — JSON Patch path changed to per-key `/metadata/annotations/soteria.io~1retry-groups` (was overwriting all annotations), RetryRejected condition now surfaces on page load (not just during isRetrying), retryError scoped to retried group via retriedGroup tracking (was broadcasting to all failed groups), dead prevConditionsRef removed, unused retryInProgressWave fixture removed, page-level RetryRejected assertion added, 486 tests pass (29 suites), 0 lint errors
 # 7.3 review: Inline Error Display & DRGroup Retry — FailedGroupDetail component (ExpandableSection with error message, failed step, VM names, retry count), useRetryDRGroup hook (k8sPatch soteria.io/retry-groups annotation, RetryRejected condition detection, concurrent retry prevention), Retry button on failed DRGroups in WaveProgressStep (variant=primary, disabled during active retry, tooltip), Retry All Failed button in ExecutionHeader (all-failed sentinel), drExecutionModel extracted to shared k8sModels.ts, partiallyFailed waves auto-expand, jest-axe accessibility (~2 new src files, ~1 new hook, ~1 shared model, ~3 modified files, ~4 new test files, ~3 modified test files)
@@ -234,9 +235,18 @@ development_status:
   epic-6-retrospective: done
 
   # Epic 7: OCP Console — Execution & DR Operations
-  epic-7: in-progress
+  epic-7: done
   7-1-pre-flight-confirmation-failover-trigger: done
   7-2-live-execution-monitor-progressstepper: done
   7-3-inline-error-display-drgroup-retry: done
   7-4-toast-notifications-execution-summary: done
-  epic-7-retrospective: optional
+  epic-7-retrospective: done
+
+  # Epic 8: Cross-Site Discovery Agreement, API Simplification & UI Responsiveness
+  epic-8: backlog
+  8-1-remove-wavelabel-from-drplanspec: backlog
+  8-2-per-site-vm-discovery-reporting: backlog
+  8-3-cross-site-vm-agreement-plan-readiness-gating: backlog
+  8-4-console-ui-site-aware-plan-status-disagreement-display: backlog
+  8-5-optimistic-drexecution-detection-in-console: backlog
+  epic-8-retrospective: optional

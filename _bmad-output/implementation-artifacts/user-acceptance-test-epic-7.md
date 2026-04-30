@@ -199,9 +199,35 @@ export function useRouteParamName(match?: { params?: { name?: string } }): strin
 
 **Key insight for future Console plugin development:** Never rely on `useParams()` in `console.page/route` components. Use `window.location.pathname` extraction or check if the Console passes `match` as a component prop.
 
+### Issue 8: "Triggered By" column shows "N/A" — mutating webhook does not intercept aggregated API requests
+
+**Symptom:** After triggering a failback from the console, the History tab's "Triggered By" column showed "N/A" for all executions, including the one just created. The `soteria.io/triggered-by` annotation was absent from the `DRExecution` resource.
+
+**Root Cause:** A `MutatingWebhookConfiguration` was created at the kube-apiserver level to stamp the annotation via `req.UserInfo.Username`. However, `DRExecution` resources are served by the Soteria **aggregated API server**, and the kube-apiserver **proxies requests to aggregated APIs without running its admission webhook chain**. The mutating webhook endpoint was never called.
+
+Additionally, the `failurePolicy: Fail` on the non-functional `MutatingWebhookConfiguration` caused a secondary regression: the "View execution details" link stopped working, sending users back to the DRPlan list. Removing the webhook configuration resolved both issues simultaneously.
+
+**Investigation iterations:**
+
+1. **Attempt 1 — MutatingWebhookConfiguration:** Created a `MutatingWebhookConfiguration` with a handler that read `req.UserInfo.Username` and returned a JSON patch adding the annotation. Webhook config, cert-manager CA injection, and webhook handler all deployed correctly. Tests passed locally. Result: annotation never stamped; webhook endpoint never called by the kube-apiserver for aggregated API resources.
+
+2. **Attempt 2 — PrepareForCreate in registry strategy:** Moved the annotation stamping into the aggregated API server's `PrepareForCreate` method using `request.UserFrom(ctx)` from `k8s.io/apiserver/pkg/endpoints/request`. This runs inside the aggregated API server's request processing pipeline and has access to the authenticated user identity for every creation path. Result: **success** — annotation stamped correctly.
+
+**Fix:**
+
+| File | Change |
+|------|--------|
+| `pkg/apis/soteria.io/v1alpha1/types.go` | Added `TriggeredByAnnotation` constant (`soteria.io/triggered-by`) |
+| `pkg/registry/drexecution/strategy.go` | `PrepareForCreate` stamps annotation with `user.GetName()` from `request.UserFrom(ctx)` |
+| `pkg/registry/drexecution/strategy_test.go` | 4 tests: stamps annotation, preserves existing annotations, overwrites client-supplied values (anti-spoofing), skips when no user in context |
+
+**Key insight for aggregated API server development:** Kubernetes admission webhooks (`MutatingWebhookConfiguration`, `ValidatingWebhookConfiguration`) do **not** intercept requests to aggregated API servers. The kube-apiserver proxies requests directly to the extension API server without running its webhook admission chain. For server-side mutation of aggregated API resources, use the registry strategy's `PrepareForCreate`/`PrepareForUpdate` methods with `request.UserFrom(ctx)` to access the authenticated user identity. Note: the existing `ValidatingWebhookConfiguration` entries for DRExecution, DRPlan, and VirtualMachine work because they are registered on the **controller-runtime webhook server** (a separate HTTPS server in the same pod), not through the kube-apiserver's admission chain.
+
+**Status:** Verified working. New executions show the authenticated username in the History tab's "Triggered By" column.
+
 ## Summary
 
-Sprint 7 UAT on the live OCP 4.20 stretched cluster uncovered 7 issues across UI, controller, and API layers. The most significant findings were:
+Sprint 7 UAT on the live OCP 4.20 stretched cluster uncovered 8 issues across UI, controller, and API layers. The most significant findings were:
 
 1. **OpenShift Console SDK limitation — watch** (Issue 2): `useK8sWatchResource` does not support reliable single-resource WebSocket watches against aggregated API servers, requiring a list-based fallback.
 2. **Misplaced cluster-wide data** (Issue 3): Per-plan `UnprotectedVMs` caused a 30-second infinite status patch loop and UI flicker. Removed entirely — cluster-wide data belongs in a dedicated UI tab, not per-plan status.
@@ -209,3 +235,4 @@ Sprint 7 UAT on the live OCP 4.20 stretched cluster uncovered 7 issues across UI
 4. **Imprecise health semantics** (Issue 5): Non-replicating volumes reported `Unknown` (implying an error) instead of the intentional `NotReplicating`. New neutral status prevents false degraded conditions and unnecessary requeue pressure.
 5. **Stale closure navigation bug** (Issue 6): A race between plan watch updates and user clicks caused the banner link to navigate with `undefined`. Fixed with render-time path capture and a redirect guard.
 6. **OpenShift Console SDK limitation — routing** (Issue 7): `useParams()` does not work in `console.page/route` plugin components because the SDK renders them outside a React Router `<Route>` context. Fixed with pathname extraction fallback. This was a latent bug affecting all pages but only manifested on the execution detail page (where the name was essential for data lookup).
+7. **Aggregated API admission limitation** (Issue 8): `MutatingWebhookConfiguration` does not intercept requests to aggregated API servers. The `triggered-by` annotation must be stamped in the registry's `PrepareForCreate` using `request.UserFrom(ctx)`, not via a webhook. This also applies to any future server-side mutation of aggregated API resources.

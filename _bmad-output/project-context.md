@@ -61,9 +61,17 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 **TypeScript (Console Plugin):**
 
 - Data fetching: Console SDK hooks exclusively (`useK8sWatchResource`, `useK8sModel`) — no direct API calls
-- Styling: PatternFly CSS custom properties only — no hardcoded colors, spacing, or font sizes (ensures dark mode works)
+- Styling: PatternFly CSS custom properties only — no hardcoded colors, spacing, or font sizes (ensures dark mode works). Use PF6 `--pf-t--global--*` tokens as primary with `--pf-v5-global--*` as fallback: `var(--pf-t--global--spacer--md, var(--pf-v5-global--spacer--md))`
 - No external UI libraries — PatternFly 6 only, no Material UI, no Chakra
 - State management: Console SDK watch hooks — no Redux, no Zustand, no custom state libraries
+- Cross-page state: module-level singleton stores (plain TypeScript, no React) — webpack module federation keeps the module instance alive across page navigations; React Context cannot wrap Console plugin pages
+
+**OCP Console SDK Platform Constraints (discovered via UAT on OCP 4.20):**
+
+- **`useParams()` does not work in plugin pages** — the Console renders `console.page/route` components outside a React Router `<Route>` context, so route params are never populated. Use `useRouteParamName` hook (tries `match.params.name`, then `useParams().name`, then `window.location.pathname.split('/').pop()`)
+- **Single-resource watches fail against aggregated APIs** — `useK8sWatchResource` with `isList: false` hangs indefinitely for resources served by aggregated API servers. Use `useDRExecutions()` (list watch) with `.find()` instead of `useDRExecution(name)` on pages where the name is known
+- **Admission webhooks do not intercept aggregated API requests** — `MutatingWebhookConfiguration` and `ValidatingWebhookConfiguration` registered at the kube-apiserver level do not fire for resources served by aggregated API servers. For server-side mutation, use registry strategy `PrepareForCreate`/`PrepareForUpdate` with `request.UserFrom(ctx)`. Note: the existing controller-runtime webhook server (separate HTTPS endpoint on port 9443) works because kube-apiserver calls it before proxying — but only for VWC/MWC rules targeting resources the kube-apiserver owns (DRPlan via webhook), not for aggregated API resources (DRExecution via apiserver)
+- **React Router v5 on OCP 4.20** — import from `react-router-dom` (not `react-router`): `Link`, `useHistory`, `useParams`, `useLocation`. No `useNavigate` (that's v7+). Test mocks operate at `jest.mock('react-router', ...)` level
 
 ### Framework-Specific Rules
 
@@ -274,6 +282,11 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 8. **No `retry.DefaultRetry` for ScyllaDB-backed resources** — always use `engine.ScyllaRetry`; DefaultRetry's 10ms/5-step backoff exhausts retries before ScyllaDB propagates writes across DCs
 9. **No `client.Update` for metadata/label changes in multi-controller environments** — use `client.MergeFrom` strategic merge patch to reduce conflict surface
 
+**Epic Planning Gates:**
+
+10. **No UI for unpopulated data sources** — before building UI components (columns, badges, formatters, hooks) for a data field, verify the field is actually populated by at least one driver or controller in the current codebase. Speculative UI for future data sources becomes dead code that causes phantom behaviors (e.g., `estimatedRPO` built in Epic 5 was never populated, `UnprotectedVMs` caused a 30-second status patch loop)
+11. **Interaction-pattern spike before each epic** — when an epic introduces new SDK/API interaction patterns (not just new technology), deploy a minimal test exercising each distinct capability before writing story specs. For Console plugin epics, test each: write operation (k8sCreate, k8sPatch), watch pattern (single-resource vs list), routing mechanism (useParams, pathname extraction), and admission path (webhook vs registry strategy). A spike is for new *interaction patterns* within familiar stacks, not just new stacks
+
 **Domain-Specific Safety Rules:**
 
 - Human-triggered only: all failover requires explicit human initiation — no auto-failover, no failure detection (eliminates split-brain)
@@ -316,4 +329,4 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 - Review periodically for outdated rules
 - Remove rules that become obvious over time
 
-Last Updated: 2026-04-25
+Last Updated: 2026-04-30

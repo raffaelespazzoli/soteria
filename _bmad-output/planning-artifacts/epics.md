@@ -4,8 +4,8 @@ workflowCompleted: true
 completedAt: '2026-04-06'
 project_name: 'dr-orchestrator'
 user_name: 'Raffa'
-totalEpics: 8
-totalStories: 41
+totalEpics: 9
+totalStories: 46
 totalFRsCovered: 44
 totalNFRsAddressed: 19
 totalUXDRsCovered: 20
@@ -1938,3 +1938,224 @@ So that I stay informed and can report precise results to stakeholders.
 **Then** each toast includes a link to the relevant plan detail or execution monitor
 **And** toasts stack correctly when multiple appear simultaneously
 **And** screen readers announce toast content via ARIA live regions
+
+## Epic 8: Cross-Site Discovery Agreement, API Simplification & UI Responsiveness
+
+Both Soteria instances independently discover VMs on their local cluster and report to dedicated per-site status fields. Plans are validated and waves formed only when both sites agree on the VM inventory; otherwise the plan is blocked with a clear delta report. The `waveLabel` spec field is removed (wave label is always `soteria.io/wave` by convention). The Console plugin provides immediate visual feedback when an execution is triggered.
+
+### Story 8.1: Remove `waveLabel` from `DRPlanSpec`
+
+As a platform engineer,
+I want the wave label key to be a fixed convention (`soteria.io/wave`) rather than a configurable spec field,
+So that the API is simpler and there is no ambiguity about which label assigns VMs to waves.
+
+**Acceptance Criteria:**
+
+**Given** the `DRPlanSpec` type in `pkg/apis/soteria.io/v1alpha1/types.go`
+**When** the `WaveLabel` field is removed
+**Then** a new exported constant `WaveLabel = "soteria.io/wave"` is added alongside the existing `DRPlanLabel` constant
+**And** `WaveLabel` follows the same naming convention as `DRPlanLabel` (e.g., `soteria.io/<kebab-case>`)
+
+**Given** the `GroupByWave` function in `pkg/engine/discovery.go`
+**When** it partitions VMs into waves
+**Then** it uses the `WaveLabel` constant directly instead of accepting a `waveLabel` parameter
+**And** all callers (reconciler, consistency resolver) are updated to drop the parameter
+
+**Given** the admission webhook in `pkg/admission/vm_validator.go`
+**When** it validates wave consistency for sibling VMs
+**Then** it uses the `WaveLabel` constant instead of reading `plan.Spec.WaveLabel`
+
+**Given** an existing DRPlan resource that has `waveLabel` set in its spec
+**When** it is updated via the API
+**Then** `PrepareForUpdate` silently strips the `waveLabel` field (backward compatibility)
+**And** `PrepareForCreate` also strips it on new resources that include it
+
+**Given** the DRPlan sample YAML in `config/samples/`
+**When** updated
+**Then** the `waveLabel` field is removed from the example
+**And** a comment explains that the wave label is always `soteria.io/wave`
+
+**Given** all existing tests that reference `spec.waveLabel` or pass a wave label parameter
+**When** updated
+**Then** they use the `WaveLabel` constant
+**And** all unit and integration tests pass with zero regressions
+
+### Story 8.2: Per-Site VM Discovery Reporting
+
+As a platform engineer,
+I want each Soteria instance to discover VMs on its local cluster and report them to a dedicated per-site status section,
+So that the system has visibility into which VMs exist on each site independently.
+
+**Acceptance Criteria:**
+
+**Given** the `DRPlanStatus` type
+**When** per-site discovery fields are added
+**Then** two new explicit fields are added: `primarySiteDiscovery` and `secondarySiteDiscovery`, each of type `SiteDiscovery`
+**And** `SiteDiscovery` contains: `vms []DiscoveredVM`, `discoveredVMCount int`, and `lastDiscoveryTime metav1.Time`
+
+**Given** the DRPlan reconciler on the **active** site (where `LocalSite == activeSite`)
+**When** it discovers VMs
+**Then** it writes the discovered VMs to the `SiteDiscovery` field matching its site role (primary or secondary based on `spec.primarySite`/`spec.secondarySite` vs `LocalSite`)
+**And** it continues to form waves and update `status.waves` as before (wave formation behavior is unchanged in this story)
+
+**Given** the DRPlan reconciler on the **passive** site (where `LocalSite != activeSite`)
+**When** it runs
+**Then** it discovers VMs labeled `soteria.io/drplan=<planName>` on its local cluster
+**And** it writes the discovered VMs to its corresponding `SiteDiscovery` field
+**And** it does **not** modify `status.waves`, `status.discoveredVMCount`, `status.replicationHealth`, or any other status fields owned by the active site
+**And** it continues to requeue at 30-second intervals
+
+**Given** the status subresource strategy for DRPlan
+**When** both controllers write their per-site discovery concurrently
+**Then** each controller uses a strategic merge patch scoped to its own `SiteDiscovery` field
+**And** writes do not clobber each other even with ScyllaDB's eventual consistency
+
+**Given** the `SiteDiscovery.lastDiscoveryTime` field
+**When** a controller completes a discovery cycle
+**Then** it updates `lastDiscoveryTime` to the current time
+**And** this timestamp is visible in the plan status for debugging staleness
+
+**Given** all existing tests for the DRPlan reconciler
+**When** updated
+**Then** site-aware tests verify both active and passive controllers write to their respective `SiteDiscovery` fields
+**And** tests verify the passive controller does not modify wave, health, or preflight status
+**And** all unit and integration tests pass
+
+### Story 8.3: Cross-Site VM Agreement & Plan Readiness Gating
+
+As a platform engineer,
+I want plan validation and wave formation to require both sites to agree on the discovered VM set,
+So that executions never proceed against inconsistent infrastructure where VMs are missing from one site.
+
+**Acceptance Criteria:**
+
+**Given** the DRPlan reconciler on the active site
+**When** it has both `primarySiteDiscovery` and `secondarySiteDiscovery` populated
+**Then** it compares the VM sets by `{name, namespace}` tuples (order-independent)
+**And** if both sets are identical, it proceeds with wave formation as before
+
+**Given** that both site discovery VM sets are identical
+**When** the reconciler forms waves
+**Then** a condition `SitesInSync` is set to `True` with reason `VMsAgreed`
+**And** the `Ready` condition is evaluated as before (depends on `SitesInSync` among other checks)
+
+**Given** that the site discovery VM sets differ
+**When** the reconciler compares them
+**Then** a condition `SitesInSync` is set to `False` with reason `VMsMismatch`
+**And** the condition message lists the delta: "VMs on primary but not secondary: [ns/vm-a, ns/vm-b]; VMs on secondary but not primary: [ns/vm-c]"
+**And** `status.waves` is cleared (no valid wave formation with inconsistent VMs)
+**And** the `Ready` condition transitions to `False` with message "Plan blocked: sites do not agree on VM inventory"
+
+**Given** a DRPlan where `SitesInSync` is `False`
+**When** a user attempts to create a DRExecution for that plan
+**Then** the admission webhook rejects the creation with a clear error: "Cannot start execution: sites do not agree on VM inventory. Resolve VM differences first."
+**And** this applies to **all** execution modes (planned migration, disaster, and reprotect) — no exceptions
+
+**Given** that one site's `SiteDiscovery` has an empty VM list (discovery returned zero VMs) while the other has VMs
+**When** the reconciler evaluates agreement
+**Then** `SitesInSync` is set to `False`
+**And** the message indicates the empty-discovery site and suggests checking VM labels
+
+**Given** that one site's `SiteDiscovery` is not yet populated (`lastDiscoveryTime` is zero)
+**When** the reconciler evaluates agreement
+**Then** it treats this as "waiting for discovery" — `SitesInSync` is `False` with reason `WaitingForDiscovery`
+**And** the message indicates which site has not yet reported
+**And** this is the expected initial state on first deployment
+
+**Given** the preflight report
+**When** generated with `SitesInSync` information
+**Then** it includes a new `sitesInSync` boolean field and a `siteDiscoveryDelta` summary
+**And** the preflight warning section lists any VM mismatches
+
+**Given** all existing tests
+**When** updated for the agreement logic
+**Then** table-driven tests cover: both agree, primary-only VMs, secondary-only VMs, both-side extra VMs, one side empty, one side not yet discovered
+**And** admission webhook tests verify rejection when `SitesInSync` is `False`
+
+### Story 8.4: Console UI — Site-Aware Plan Status & Disagreement Display
+
+As an operator,
+I want the Console to show per-site VM inventory and clearly indicate when sites disagree,
+So that I can identify and resolve VM provisioning gaps before attempting a DR operation.
+
+**Acceptance Criteria:**
+
+**Given** the DRPlan detail page Configuration tab
+**When** `primarySiteDiscovery` and `secondarySiteDiscovery` are both populated
+**Then** a "Site Discovery" section shows two columns: primary site VMs and secondary site VMs
+**And** each column shows the site name, VM count, and last discovery timestamp
+**And** matching VMs are shown in default style; VMs present on only one site are highlighted with a warning indicator
+
+**Given** the `SitesInSync` condition is `False`
+**When** the plan detail page renders
+**Then** a PatternFly Alert (variant=danger, inline) appears prominently above the lifecycle diagram: "Sites do not agree on VM inventory — DR operations are blocked"
+**And** the alert includes an `AlertActionLink` that scrolls to or switches to the Configuration tab's site discovery section
+**And** the delta is summarized in the alert: e.g., "2 VMs on primary not found on secondary"
+
+**Given** the `SitesInSync` condition is `False`
+**When** the lifecycle diagram renders action buttons
+**Then** all transition action buttons are disabled
+**And** each disabled button shows a tooltip: "Blocked: sites do not agree on VM inventory"
+
+**Given** the DR Dashboard table
+**When** a plan has `SitesInSync: False`
+**Then** the plan row shows a warning icon in the health/status column
+**And** the kebab menu actions are disabled with a tooltip indicating the plan is blocked
+
+**Given** the `SitesInSync` condition transitions from `False` to `True`
+**When** the watch update arrives
+**Then** the danger alert disappears
+**And** action buttons become enabled
+**And** the site discovery section shows all VMs as matching
+
+**Given** the site discovery section
+**When** `lastDiscoveryTime` for one site is older than 5 minutes
+**Then** a subtle warning shows: "Discovery data from <site> is stale (last updated <time>)"
+
+**Given** the site-aware UI
+**When** tested for accessibility
+**Then** the danger alert uses ARIA live region to announce blocking state changes
+**And** the per-site VM comparison table is keyboard navigable
+**And** warning indicators have screen reader text explaining the mismatch
+
+### Story 8.5: Optimistic DRExecution Detection in Console
+
+As an operator,
+I want immediate visual feedback on the plan detail page when I trigger a DR execution,
+So that the UI feels responsive and I know my action was registered without waiting for the controller.
+
+**Acceptance Criteria:**
+
+**Given** the DRPlan detail page
+**When** the operator confirms an action in the pre-flight modal and `k8sCreate` succeeds
+**Then** the transition progress banner appears immediately (within the same render cycle) without waiting for `plan.status.activeExecution` to update
+**And** the banner shows: "Starting <mode>..." with the mode label and a spinning indicator
+**And** this optimistic state is driven by local React state set in the `k8sCreate` success handler
+
+**Given** the optimistic "Starting..." banner is displayed
+**When** the real `plan.status.activeExecution` watch update arrives (typically 1-3 seconds later)
+**Then** the optimistic state is replaced by the real execution data
+**And** the banner transitions smoothly to show actual wave progress
+**And** there is no visual flash or double-render between optimistic and real states
+
+**Given** `k8sCreate` succeeds but the controller has not yet updated the plan
+**When** the user navigates away from the plan detail page and returns
+**Then** the plan detail page uses the standard watch-driven mechanism (no optimistic state is persisted across navigations)
+**And** once the controller updates `activeExecution`, the transition banner appears normally
+
+**Given** `k8sCreate` fails
+**When** the error is returned
+**Then** no optimistic banner is shown
+**And** the error is displayed in the pre-flight modal as before (existing behavior)
+
+**Given** the optimistic state
+**When** the real execution data arrives and the execution is already showing wave progress
+**Then** the `useDRExecution(activeExecName)` hook provides live data
+**And** the elapsed time counter starts from the execution's actual `startTime`
+
+**Given** the optimistic execution detection
+**When** tested
+**Then** tests verify the immediate banner render after mock `k8sCreate` resolves
+**And** tests verify the transition from optimistic to real state
+**And** tests verify no optimistic state on `k8sCreate` failure
+**And** jest-axe accessibility audit passes on the optimistic banner state

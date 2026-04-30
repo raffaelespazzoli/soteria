@@ -49,19 +49,19 @@ export function PreflightConfirmationModal({
       <ModalBody>
         <div
           style={{
-            fontSize: 'var(--pf-v5-global--FontSize--xl)',
+            fontSize: 'var(--pf-t--global--font--size--heading--h3, var(--pf-v5-global--FontSize--xl))',
             fontWeight: 600,
-            marginBottom: 'var(--pf-v5-global--spacer--sm)',
+            marginBottom: 'var(--pf-t--global--spacer--sm, var(--pf-v5-global--spacer--sm))',
           }}
         >
           {preflightData.vmCount} VMs across {preflightData.waveCount} waves
         </div>
 
-        <div style={{ marginBottom: 'var(--pf-v5-global--spacer--sm)' }}>
+        <div style={{ marginBottom: 'var(--pf-t--global--spacer--sm, var(--pf-v5-global--spacer--sm))' }}>
           Estimated duration: {preflightData.estimatedRTO}
         </div>
 
-        <div style={{ marginBottom: 'var(--pf-v5-global--spacer--lg)' }}>
+        <div style={{ marginBottom: 'var(--pf-t--global--spacer--lg, var(--pf-v5-global--spacer--lg))' }}>
           DR site capacity:{' '}
           {preflightData.capacityAssessment.charAt(0).toUpperCase() +
             preflightData.capacityAssessment.slice(1)}
@@ -70,13 +70,13 @@ export function PreflightConfirmationModal({
         <hr
           style={{
             border: 'none',
-            borderTop: '1px solid var(--pf-v5-global--BorderColor--100)',
-            margin: 'var(--pf-v5-global--spacer--md) 0',
+            borderTop: '1px solid var(--pf-t--global--border--color--default, var(--pf-v5-global--BorderColor--100))',
+            margin: 'var(--pf-t--global--spacer--md, var(--pf-v5-global--spacer--md)) 0',
           }}
         />
 
-        <div style={{ marginBottom: 'var(--pf-v5-global--spacer--lg)' }}>
-          <div style={{ fontWeight: 'bold', marginBottom: 'var(--pf-v5-global--spacer--xs)' }}>
+        <div style={{ marginBottom: 'var(--pf-t--global--spacer--lg, var(--pf-v5-global--spacer--lg))' }}>
+          <div style={{ fontWeight: 'bold', marginBottom: 'var(--pf-t--global--spacer--xs, var(--pf-v5-global--spacer--xs))' }}>
             Summary of actions:
           </div>
           <div>{preflightData.actionSummary}</div>
@@ -85,8 +85,8 @@ export function PreflightConfirmationModal({
         <hr
           style={{
             border: 'none',
-            borderTop: '1px solid var(--pf-v5-global--BorderColor--100)',
-            margin: 'var(--pf-v5-global--spacer--md) 0',
+            borderTop: '1px solid var(--pf-t--global--border--color--default, var(--pf-v5-global--BorderColor--100))',
+            margin: 'var(--pf-t--global--spacer--md, var(--pf-v5-global--spacer--md)) 0',
           }}
         />
 
@@ -96,8 +96,8 @@ export function PreflightConfirmationModal({
             value={keywordInput}
             onChange={(_event, value) => setKeywordInput(value)}
             style={{
-              fontFamily: 'var(--pf-v5-global--FontFamily--monospace)',
-              fontSize: 'var(--pf-v5-global--FontSize--lg)',
+              fontFamily: 'var(--pf-t--global--font--family--mono, var(--pf-v5-global--FontFamily--monospace))',
+              fontSize: 'var(--pf-t--global--font--size--body--lg, var(--pf-v5-global--FontSize--lg))',
             }}
             aria-label={`Type ${keyword} to confirm`}
           />
@@ -108,7 +108,7 @@ export function PreflightConfirmationModal({
             variant="danger"
             isInline
             title="Failed to create execution"
-            style={{ marginTop: 'var(--pf-v5-global--spacer--md)' }}
+            style={{ marginTop: 'var(--pf-t--global--spacer--md, var(--pf-v5-global--spacer--md))' }}
           >
             {error}
           </Alert>
