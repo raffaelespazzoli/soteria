@@ -23,6 +23,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	"k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/storage"
 	"k8s.io/apiserver/pkg/storage/names"
 
@@ -41,10 +42,17 @@ var Strategy = drexecutionStrategy{soteriainstall.Scheme, names.SimpleNameGenera
 // so the execution must also be cluster-scoped to avoid cross-scope references.
 func (drexecutionStrategy) NamespaceScoped() bool { return false }
 
-func (drexecutionStrategy) PrepareForCreate(_ context.Context, obj runtime.Object) {
+func (drexecutionStrategy) PrepareForCreate(ctx context.Context, obj runtime.Object) {
 	exec := obj.(*soteriav1alpha1.DRExecution)
 	exec.Status = soteriav1alpha1.DRExecutionStatus{}
 	exec.Generation = 1
+
+	if user, ok := request.UserFrom(ctx); ok {
+		if exec.Annotations == nil {
+			exec.Annotations = make(map[string]string)
+		}
+		exec.Annotations[soteriav1alpha1.TriggeredByAnnotation] = user.GetName()
+	}
 }
 
 // PrepareForUpdate freezes both spec and status on main-resource updates.

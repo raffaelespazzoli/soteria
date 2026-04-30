@@ -23,6 +23,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apiserver/pkg/authentication/user"
+	"k8s.io/apiserver/pkg/endpoints/request"
 
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
 )
@@ -30,6 +32,97 @@ import (
 func TestStrategy_NamespaceScoped_ReturnsFalse(t *testing.T) {
 	if Strategy.NamespaceScoped() {
 		t.Error("DRExecution strategy must be cluster-scoped (NamespaceScoped() == false)")
+	}
+}
+
+func TestPrepareForCreate_StampsTriggeredByAnnotation(t *testing.T) {
+	ctx := request.WithUser(context.Background(), &user.DefaultInfo{
+		Name: "carlos@corp",
+	})
+
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "exec-1"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-1",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+	}
+
+	Strategy.PrepareForCreate(ctx, exec)
+
+	got := exec.Annotations[soteriav1alpha1.TriggeredByAnnotation]
+	if got != "carlos@corp" {
+		t.Errorf("expected triggered-by annotation %q, got %q", "carlos@corp", got)
+	}
+}
+
+func TestPrepareForCreate_PreservesExistingAnnotations(t *testing.T) {
+	ctx := request.WithUser(context.Background(), &user.DefaultInfo{
+		Name: "maya@corp",
+	})
+
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        "exec-2",
+			Annotations: map[string]string{"custom": "value"},
+		},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-1",
+			Mode:     soteriav1alpha1.ExecutionModeDisaster,
+		},
+	}
+
+	Strategy.PrepareForCreate(ctx, exec)
+
+	if exec.Annotations["custom"] != "value" {
+		t.Error("existing annotations must be preserved")
+	}
+	if exec.Annotations[soteriav1alpha1.TriggeredByAnnotation] != "maya@corp" {
+		t.Errorf("expected triggered-by %q, got %q", "maya@corp", exec.Annotations[soteriav1alpha1.TriggeredByAnnotation])
+	}
+}
+
+func TestPrepareForCreate_OverwritesClientSuppliedTriggeredBy(t *testing.T) {
+	ctx := request.WithUser(context.Background(), &user.DefaultInfo{
+		Name: "server-identity",
+	})
+
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "exec-3",
+			Annotations: map[string]string{
+				soteriav1alpha1.TriggeredByAnnotation: "spoofed-user",
+			},
+		},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-1",
+			Mode:     soteriav1alpha1.ExecutionModeReprotect,
+		},
+	}
+
+	Strategy.PrepareForCreate(ctx, exec)
+
+	got := exec.Annotations[soteriav1alpha1.TriggeredByAnnotation]
+	if got != "server-identity" {
+		t.Errorf("triggered-by must be overwritten with server identity, got %q", got)
+	}
+}
+
+func TestPrepareForCreate_NoUserInContext_SkipsAnnotation(t *testing.T) {
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "exec-4"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-1",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+	}
+
+	Strategy.PrepareForCreate(context.Background(), exec)
+
+	if exec.Annotations != nil {
+		if _, ok := exec.Annotations[soteriav1alpha1.TriggeredByAnnotation]; ok {
+			t.Error("should not stamp triggered-by when no user in context")
+		}
 	}
 }
 

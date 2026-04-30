@@ -56,6 +56,11 @@ const ConsistencyAnnotation = "soteria.io/consistency-level"
 // structurally enforces one-plan-per-VM exclusivity without runtime checks.
 const DRPlanLabel = "soteria.io/drplan"
 
+// TriggeredByAnnotation records the authenticated user who created a DRExecution.
+// Stamped server-side in the aggregated API's PrepareForCreate so it captures
+// every creation path (console, kubectl, automation).
+const TriggeredByAnnotation = "soteria.io/triggered-by"
+
 // DRPlan defines a disaster recovery plan for a set of VMs selected by labels.
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 type DRPlan struct {
