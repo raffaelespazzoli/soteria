@@ -41,14 +41,14 @@ export function useDRPlan(name: string): [DRPlan | undefined, boolean, unknown] 
   const [data, loaded, error] = useK8sWatchResource<DRPlan>(resource);
   const lastValidPlan = useRef<DRPlan | undefined>(undefined);
 
-  if (loaded && !error && data) {
+  const dataHasContent = !!(data && data.metadata?.name);
+
+  if (loaded && !error && dataHasContent) {
     lastValidPlan.current = data;
   }
 
-  // After the initial load succeeds, keep returning the last known-good data
-  // during transient loading/error states so the UI never flashes defaults.
   if (lastValidPlan.current) {
-    return [loaded && !error && data ? data : lastValidPlan.current, true, null];
+    return [loaded && !error && dataHasContent ? data : lastValidPlan.current, true, null];
   }
 
   return [loaded && !error ? data : undefined, loaded, error];
@@ -75,12 +75,14 @@ export function useDRExecution(name: string): [DRExecution | undefined, boolean,
     return [undefined, true, null];
   }
 
-  if (loaded && !error && data) {
+  const dataHasContent = !!(data && data.metadata?.name);
+
+  if (loaded && !error && dataHasContent) {
     lastValidExec.current = data;
   }
 
   if (lastValidExec.current) {
-    return [loaded && !error && data ? data : lastValidExec.current, true, null];
+    return [loaded && !error && dataHasContent ? data : lastValidExec.current, true, null];
   }
 
   return [loaded && !error ? data : undefined, loaded, error];

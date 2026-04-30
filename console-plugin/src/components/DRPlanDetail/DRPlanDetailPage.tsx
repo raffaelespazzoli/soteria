@@ -8,7 +8,6 @@ import {
   Tabs,
   TabTitleText,
 } from '@patternfly/react-core';
-import { useParams } from 'react-router-dom';
 import DRBreadcrumb from '../shared/DRBreadcrumb';
 import ToastContainer from '../shared/ToastContainer';
 import PlanHeader from './PlanHeader';
@@ -24,10 +23,15 @@ import { useExecutionNotifications } from '../../hooks/useExecutionNotifications
 import { getPreflightData } from '../../hooks/usePreflightData';
 import { DRPlan } from '../../models/types';
 import { getEffectivePhase } from '../../utils/drPlanUtils';
+import { useRouteParamName } from '../../hooks/useRouteParamName';
 import { WaveProgress } from './DRLifecycleDiagram';
 
-const DRPlanDetailPage: React.FC = () => {
-  const { name } = useParams<{ name: string }>();
+interface DRPlanDetailPageProps {
+  match?: { params?: { name?: string } };
+}
+
+const DRPlanDetailPage: React.FC<DRPlanDetailPageProps> = (props) => {
+  const name = useRouteParamName(props.match);
   const [plan, planLoaded, planError] = useDRPlan(name!);
   const activeExecName = plan?.status?.activeExecution ?? '';
   const [execution] = useDRExecution(activeExecName);

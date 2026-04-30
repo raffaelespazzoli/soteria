@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Button, Progress, ProgressMeasureLocation, ProgressVariant } from '@patternfly/react-core';
+import { Button, Progress, ProgressMeasureLocation } from '@patternfly/react-core';
 import { useHistory } from 'react-router-dom';
 import { DRExecution, DRPlan } from '../../models/types';
 import { getEffectivePhase } from '../../utils/drPlanUtils';
@@ -71,6 +71,9 @@ const TransitionProgressBanner: React.FC<TransitionProgressBannerProps> = ({ pla
   }
 
   const activeExec = plan.status?.activeExecution;
+  // Capture as a string constant at render time so the closure holds
+  // the primitive value, immune to object mutation by the SDK.
+  const execDetailPath = activeExec ? `/disaster-recovery/executions/${activeExec}` : '';
 
   return (
     <div style={{ marginBottom: 'var(--pf-v5-global--spacer--md)' }}>
@@ -78,7 +81,6 @@ const TransitionProgressBanner: React.FC<TransitionProgressBannerProps> = ({ pla
         value={pctComplete}
         title={`${transitionLabel} in progress`}
         measureLocation={ProgressMeasureLocation.top}
-        variant={ProgressVariant.info}
         label={`${pctComplete}%`}
         aria-label={`${transitionLabel} progress: ${waveLabel}`}
       />
@@ -99,11 +101,11 @@ const TransitionProgressBanner: React.FC<TransitionProgressBannerProps> = ({ pla
           {' · Est. remaining: '}
           <strong>{estimatedRemaining}</strong>
         </span>
-        {activeExec && (
+        {execDetailPath && (
           <Button
             variant="link"
             isInline
-            onClick={() => history.push(`/disaster-recovery/executions/${activeExec}`)}
+            onClick={() => history.push(execDetailPath)}
           >
             View execution details
           </Button>

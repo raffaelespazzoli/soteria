@@ -65,7 +65,7 @@ List-based watches (`isList: true`) to the same aggregated API work correctly, a
 - `useDRExecutions()` (list) works on every page because list watches to aggregated APIs are handled differently by the SDK — they use standard HTTP long-polling rather than per-resource WebSocket watches.
 - The `ExecutionDetailPage` now shares the same data-fetching approach as the dashboard, ensuring consistent behavior.
 
-**Status:** Pending final verification. The progress bar fix is confirmed working. The execution detail page fix (attempt 3) is deployed and awaiting user re-test.
+**Status:** Verified working. The execution detail page loads correctly via the list-based fetch when navigated with a valid execution name.
 
 ### Issue 3: DRPlan overview page flickers on periodic status updates
 
@@ -94,6 +94,118 @@ List-based watches (`isList: true`) to the same aggregated API work correctly, a
 
 **TODO:** Add an "Unprotected VMs" tab to the Disaster Recovery dashboard overview page as a pure UI feature. This would query unprotected VMs on-demand (using the existing `ListUnprotectedVMs` engine capability) rather than embedding the data in each DRPlan's status. This is a UI/UX enhancement and does not require any controller changes.
 
+### Issue 4: `estimatedRPO` field displayed `unknown` and had no real backing data
+
+**Symptom:** The DRPlan status showed `estimatedRPO: unknown` for every volume group. The UI had RPO columns in multiple tables, a formatRPO utility, RPO display in the preflight modal, execution header, execution summary, and history table — all fed by data that was never populated by the controller.
+
+**Root Cause:** The `estimatedRPO` field on `VolumeGroupHealth` was intended to report RPO from the storage driver's `ReplicationStatus.EstimatedRPO`. However, the fallback noop driver always returned `nil` for this field, and no real storage driver was integrated yet. The controller's `computeRPO`/`formatDuration`/`buildReplicationLagEntries` functions produced `"unknown"` or zero values. The UI's `rpoSeconds` parsing (regex on condition messages) was dead code — the controller never included RPO data in condition messages. The `soteria_replication_lag_seconds` Prometheus metric was similarly always zero.
+
+**Fix:** Removed `estimatedRPO` end-to-end across the full stack:
+
+| Layer | Files | Change |
+|-------|-------|--------|
+| API types (Go) | `types.go` | Removed `EstimatedRPO` from `VolumeGroupHealth` |
+| Driver types (Go) | `drivers/types.go` | Removed `EstimatedRPO *time.Duration` from `ReplicationStatus` |
+| Controller | `health.go`, `reconciler.go` | Removed `computeRPO`, `formatDuration`, `buildReplicationLagEntries`, RPO logging |
+| Metrics | `metrics.go`, `doc.go` | Removed `ReplicationLagSeconds` GaugeVec, `RecordPlanReplicationHealth`, `ReplicationLagEntry` |
+| Noop driver | `noop/driver.go` | Removed `EstimatedRPO: &zero` return |
+| UI types | `models/types.ts` | Removed `estimatedRPO` from `VolumeGroupHealth`, `rpoSeconds` from `DRExecutionStatus` |
+| UI hooks | `usePreflightData.ts` | Removed `estimatedRPO`, `estimatedRPOSeconds`, `formatRPOHuman`, `getEstimatedRPO` |
+| UI utils | `formatters.ts`, `drPlanUtils.ts` | Removed `formatRPO`, `rpoSeconds` from `ReplicationHealth` |
+| UI components | `ReplicationHealthIndicator.tsx`, `ReplicationHealthExpanded.tsx`, `WaveCompositionTree.tsx`, `PreflightConfirmationModal.tsx`, `ExecutionHeader.tsx`, `ExecutionSummary.tsx`, `ExecutionHistoryTable.tsx` | Removed RPO columns, RPO display, RPO aria-labels |
+| Tests | Multiple Go + Jest test files | Removed RPO-related assertions, fixtures, mock data |
+
+### Issue 5: Non-replicating volumes reported `Unknown` health instead of a meaningful status
+
+**Symptom:** Volume groups backed by the fallback noop driver (no PVC storage class found) showed `health: Unknown` in the DRPlan status. The controller treated `Unknown` as degraded, triggering the 30-second requeue interval. "Unknown" implied the system couldn't determine the state, when in reality the volumes simply weren't replicated.
+
+**Root Cause:** The noop driver's `GetReplicationStatus` returned `Health: HealthUnknown` for `RoleNonReplicated` volumes. The controller's `anyNonHealthy` and `allHealthy` helpers counted `Unknown` as a degraded state, and `computeReplicationCondition` classified it as contributing to a `Degraded` condition reason.
+
+**Fix:** Introduced `NotReplicating` as a distinct, neutral health status:
+
+| Layer | Files | Change |
+|-------|-------|--------|
+| Driver types | `drivers/types.go` | Added `HealthNotReplicating` constant |
+| API types | `types.go` | Added `NotReplicating` to `VolumeGroupHealthStatus` enum and kubebuilder validation |
+| Noop driver | `noop/driver.go` | Returns `HealthNotReplicating` for `RoleNonReplicated` |
+| Controller | `health.go`, `reconciler.go` | `mapReplicationStatus` maps `HealthNotReplicating`; `anyNonHealthy`/`allHealthy` treat `NotReplicating` as neutral (not degraded, doesn't block "all healthy"); `computeReplicationCondition` excludes it from degradation |
+| UI types | `models/types.ts` | Added `NotReplicating` to `VolumeGroupHealthStatus` |
+| UI utils | `drPlanUtils.ts` | Added `NotReplicating: 4` to `HEALTH_SORT_ORDER` |
+| UI components | `ReplicationHealthIndicator.tsx` | Added `NotReplicating` config with `MinusCircleIcon`, disabled color, label "Not replicating" |
+| UI components | `WaveCompositionTree.tsx` | Added `NotReplicating` to aggregate health, icons, label colors |
+| Tests | `noop/driver_test.go`, multiple Go/Jest tests | Updated expectations to `HealthNotReplicating` |
+
+**Result:** Volume groups with no replication now show "Not replicating" with a neutral grey icon. The ReplicationHealthy condition is `True` with `Reason: AllHealthy` (instead of `False`/`Degraded`), and the controller uses the normal 10-minute requeue interval.
+
+### Issue 6: "View execution details" navigated to `/disaster-recovery/executions/undefined`
+
+**Symptom:** After triggering an execution from the DRPlan detail page, clicking "View execution details" in the `TransitionProgressBanner` navigated to a URL with the literal string `undefined` as the execution name. The execution detail page showed: "DRExecution 'undefined' was not found. It may have been deleted."
+
+**Root Cause:** The banner's click handler captured `activeExec` from the render closure via `plan.status?.activeExecution`. A suspected timing race between the plan watch update (controller clearing `activeExecution` on completion) and the user's click caused `activeExec` to be the JS `undefined` value, which JavaScript's template literal coerced to the string `"undefined"`. The `{activeExec && ...}` render guard should have hidden the button, but the race window between React's reconciliation and the DOM event could leave a stale button interactable.
+
+**Fix:** Two defensive changes:
+
+| File | Change |
+|------|--------|
+| `TransitionProgressBanner.tsx` | Captures `execDetailPath` as a string constant at render time (primitive value, immune to object mutation). Button only rendered when `execDetailPath` is truthy. |
+| `ExecutionDetailPage.tsx` | Added `Redirect` to `/disaster-recovery` when resolved name is falsy. |
+
+**Status:** Initial fix resolved the `undefined` navigation, but revealed Issue 7 below.
+
+### Issue 7: `useParams()` returns `undefined` for `:name` route parameter in OpenShift Console plugin pages
+
+**Symptom:** After fixing Issue 6, clicking "View execution details" navigated to the correct URL (confirmed by `window.location.pathname`), but the `ExecutionDetailPage` immediately redirected back to `/disaster-recovery`. Debug logging showed:
+```
+[ExecutionDetailPage] mount/render {
+  params: {…},     // object exists but name key is undefined
+  name: undefined,
+  pathname: '/disaster-recovery/executions/fedora-app-planned-migration-1777518537936'
+}
+```
+The component mounted, the URL was correct, but `useParams<{ name: string }>()` returned `{ name: undefined }`.
+
+**Root Cause:** The OpenShift Console plugin SDK renders `console.page/route` components **outside** of a React Router `<Route>` context that provides route parameters. Despite the route being declared with `:name` in `console-extensions.json`:
+```json
+{ "type": "console.page/route", "properties": { "path": "/disaster-recovery/executions/:name", ... } }
+```
+the SDK's internal routing mechanism matches the path and renders the component, but does **not** wrap it in a React Router `<Route path="/disaster-recovery/executions/:name">` that would populate the `useParams()` context. The React Router `useParams()` hook therefore reads from a parent Route context that has no `:name` parameter.
+
+This affects **all** `console.page/route` extensions, not just the execution page. The `DRPlanDetailPage` appeared to work because `useDRPlan(undefined)` with a single-resource watch against the aggregated API happened to return the only existing DRPlan by coincidence — the `name: undefined` was silently ignored by the SDK's watch mechanism.
+
+**Investigation iterations:**
+
+1. **Attempt 1 — Re-read `activeExecution` at click time:** Modified the banner's click handler to re-read `plan.status?.activeExecution` fresh. Result: no change; the URL pushed was already correct. The problem was on the receiving end.
+
+2. **Attempt 2 — Accept `match` prop:** Changed `ExecutionDetailPage` to accept a `match` prop (React Router v5 passes route props to components rendered via `<Route component={...}>`). Result: `props.match` was also `undefined`, confirming the Console doesn't use React Router's `<Route>` to render plugin components.
+
+3. **Attempt 3 — Pathname extraction fallback:** Added `window.location.pathname.split('/').pop()` as a third fallback after `match.params.name` and `useParams().name`. Result: **success** — the execution name was correctly extracted from the URL.
+
+**Fix:** Created a shared `useRouteParamName` hook with a three-level fallback strategy:
+
+```typescript
+export function useRouteParamName(match?: { params?: { name?: string } }): string | undefined {
+  const routerParams = useParams<{ name: string }>();
+  return match?.params?.name ?? routerParams?.name ?? window.location.pathname.split('/').pop() ?? undefined;
+}
+```
+
+| File | Change |
+|------|--------|
+| `console-plugin/src/hooks/useRouteParamName.ts` | New shared hook: tries `match.params.name`, then `useParams().name`, then pathname extraction |
+| `console-plugin/src/components/ExecutionDetail/ExecutionDetailPage.tsx` | Uses `useRouteParamName(props.match)` instead of `useParams()` |
+| `console-plugin/src/components/DRPlanDetail/DRPlanDetailPage.tsx` | Uses `useRouteParamName(props.match)` instead of `useParams()` — fixes the latent bug where `name` was always `undefined` |
+
+**Status:** Verified working. Both plan detail and execution detail pages correctly extract the resource name from the URL.
+
+**Key insight for future Console plugin development:** Never rely on `useParams()` in `console.page/route` components. Use `window.location.pathname` extraction or check if the Console passes `match` as a component prop.
+
 ## Summary
 
-Sprint 7 UAT on the live OCP 4.20 stretched cluster uncovered 3 issues. The most significant finding was the OpenShift Console SDK's `useK8sWatchResource` not supporting reliable single-resource WebSocket watches against aggregated API servers, requiring a list-based fallback on the execution detail page. The transition progress banner was corrected from an Alert to a proper Progress bar, the execution detail page loading issue was resolved by switching to a list-based data fetch, and a 30-second status patch loop causing UI flicker was eliminated by removing misplaced cluster-wide data from the per-plan status and adding stale-while-revalidate caching to the UI hooks.
+Sprint 7 UAT on the live OCP 4.20 stretched cluster uncovered 7 issues across UI, controller, and API layers. The most significant findings were:
+
+1. **OpenShift Console SDK limitation — watch** (Issue 2): `useK8sWatchResource` does not support reliable single-resource WebSocket watches against aggregated API servers, requiring a list-based fallback.
+2. **Misplaced cluster-wide data** (Issue 3): Per-plan `UnprotectedVMs` caused a 30-second infinite status patch loop and UI flicker. Removed entirely — cluster-wide data belongs in a dedicated UI tab, not per-plan status.
+3. **Dead RPO code** (Issue 4): The `estimatedRPO` field was never populated by any real driver, yet had extensive UI rendering code. Full end-to-end removal across Go types, controller, metrics, drivers, and 7+ UI components.
+4. **Imprecise health semantics** (Issue 5): Non-replicating volumes reported `Unknown` (implying an error) instead of the intentional `NotReplicating`. New neutral status prevents false degraded conditions and unnecessary requeue pressure.
+5. **Stale closure navigation bug** (Issue 6): A race between plan watch updates and user clicks caused the banner link to navigate with `undefined`. Fixed with render-time path capture and a redirect guard.
+6. **OpenShift Console SDK limitation — routing** (Issue 7): `useParams()` does not work in `console.page/route` plugin components because the SDK renders them outside a React Router `<Route>` context. Fixed with pathname extraction fallback. This was a latent bug affecting all pages but only manifested on the execution detail page (where the name was essential for data lookup).

@@ -6,19 +6,25 @@ import {
   Skeleton,
   Alert,
 } from '@patternfly/react-core';
-import { useParams } from 'react-router-dom';
+import { Redirect } from 'react-router-dom';
 import DRBreadcrumb from '../shared/DRBreadcrumb';
 import ToastContainer from '../shared/ToastContainer';
 import { useDRExecutions } from '../../hooks/useDRResources';
 import { useRetryDRGroup } from '../../hooks/useRetryDRGroup';
 import { useExecutionNotifications } from '../../hooks/useExecutionNotifications';
 import { DRGroupResultValue } from '../../models/types';
+import { useRouteParamName } from '../../hooks/useRouteParamName';
 import ExecutionHeader from './ExecutionHeader';
 import WaveProgressStep from './WaveProgressStep';
 import ExecutionSummary from './ExecutionSummary';
 
-const ExecutionDetailPage: React.FC = () => {
-  const { name } = useParams<{ name: string }>();
+interface ExecutionDetailPageProps {
+  match?: { params?: { name?: string } };
+}
+
+const ExecutionDetailPage: React.FC<ExecutionDetailPageProps> = (props) => {
+  const name = useRouteParamName(props.match);
+
   const [allExecutions, execListLoaded, execListError] = useDRExecutions();
   const execution = execListLoaded ? allExecutions.find(e => e.metadata?.name === name) : undefined;
   const execLoaded = execListLoaded;
@@ -59,6 +65,10 @@ const ExecutionDetailPage: React.FC = () => {
       }
     }
   }, [completedCount, execution?.status?.completionTime, execution?.status?.result, waves.length]);
+
+  if (!name) {
+    return <Redirect to="/disaster-recovery" />;
+  }
 
   if (execError) {
     return (
