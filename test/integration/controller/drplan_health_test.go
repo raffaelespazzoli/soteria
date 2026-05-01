@@ -70,7 +70,7 @@ func TestDRPlanReconciler_ReplicationHealth_Populated(t *testing.T) {
 	}
 }
 
-func TestDRPlanReconciler_ReplicationHealthy_DegradedForNonReplicated(t *testing.T) {
+func TestDRPlanReconciler_ReplicationHealthy_NotReplicatingIsNeutral(t *testing.T) {
 	ctx := context.Background()
 	ns := "test-repl-cond"
 	createNamespace(t, ctx, ns)
@@ -82,9 +82,10 @@ func TestDRPlanReconciler_ReplicationHealthy_DegradedForNonReplicated(t *testing
 
 	createDRPlan(t, ctx, "plan-repl-cond", "soteria.io/wave")
 
-	// The noop driver returns HealthUnknown for NonReplicated volume groups
-	// (no SetSource/SetTarget has been called). The aggregate condition should
-	// be False/Degraded because Unknown is non-Healthy. Source/Target happy
+	// The noop driver returns HealthNotReplicating for NonReplicated VGs
+	// (no SetSource/SetTarget has been called). NotReplicating is treated as
+	// a neutral status — the aggregate condition is True/AllHealthy because
+	// the absence of replication is not a degradation. Source/Target happy
 	// path is covered by unit tests with the programmable fake driver.
 	plan, err := waitForReplicationHealth(ctx, "plan-repl-cond", 1, testTimeout)
 	if err != nil {
@@ -92,19 +93,19 @@ func TestDRPlanReconciler_ReplicationHealthy_DegradedForNonReplicated(t *testing
 	}
 
 	h := plan.Status.ReplicationHealth[0]
-	if h.Health != soteriav1alpha1.HealthStatusUnknown {
-		t.Errorf("Health = %q, want Unknown (noop NonReplicated VG)", h.Health)
+	if h.Health != soteriav1alpha1.HealthStatusNotReplicating {
+		t.Errorf("Health = %q, want NotReplicating (noop NonReplicated VG)", h.Health)
 	}
 
 	replCond := findTestCondition(plan.Status.Conditions, "ReplicationHealthy")
 	if replCond == nil {
 		t.Fatal("ReplicationHealthy condition not found")
 	}
-	if replCond.Status != metav1.ConditionFalse {
-		t.Errorf("ReplicationHealthy.Status = %v, want False (noop NonReplicated VG)", replCond.Status)
+	if replCond.Status != metav1.ConditionTrue {
+		t.Errorf("ReplicationHealthy.Status = %v, want True (NotReplicating is neutral)", replCond.Status)
 	}
-	if replCond.Reason != "Degraded" {
-		t.Errorf("ReplicationHealthy.Reason = %q, want Degraded", replCond.Reason)
+	if replCond.Reason != "AllHealthy" {
+		t.Errorf("ReplicationHealthy.Reason = %q, want AllHealthy", replCond.Reason)
 	}
 }
 
