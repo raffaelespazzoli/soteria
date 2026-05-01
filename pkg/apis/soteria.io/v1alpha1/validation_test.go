@@ -31,7 +31,6 @@ func TestValidateDRPlan(t *testing.T) {
 			name: "valid plan",
 			plan: &DRPlan{
 				Spec: DRPlanSpec{
-					WaveLabel:              "soteria.io/wave",
 					MaxConcurrentFailovers: 4,
 					PrimarySite:            "dc-west",
 					SecondarySite:          "dc-east",
@@ -40,23 +39,9 @@ func TestValidateDRPlan(t *testing.T) {
 			wantErrors: 0,
 		},
 		{
-			name: "empty waveLabel",
-			plan: &DRPlan{
-				Spec: DRPlanSpec{
-					WaveLabel:              "",
-					MaxConcurrentFailovers: 4,
-					PrimarySite:            "dc-west",
-					SecondarySite:          "dc-east",
-				},
-			},
-			wantErrors: 1,
-			wantFields: []string{"spec.waveLabel"},
-		},
-		{
 			name: "maxConcurrentFailovers zero",
 			plan: &DRPlan{
 				Spec: DRPlanSpec{
-					WaveLabel:              "soteria.io/wave",
 					MaxConcurrentFailovers: 0,
 					PrimarySite:            "dc-west",
 					SecondarySite:          "dc-east",
@@ -69,7 +54,6 @@ func TestValidateDRPlan(t *testing.T) {
 			name: "maxConcurrentFailovers negative",
 			plan: &DRPlan{
 				Spec: DRPlanSpec{
-					WaveLabel:              "soteria.io/wave",
 					MaxConcurrentFailovers: -1,
 					PrimarySite:            "dc-west",
 					SecondarySite:          "dc-east",
@@ -79,23 +63,9 @@ func TestValidateDRPlan(t *testing.T) {
 			wantFields: []string{"spec.maxConcurrentFailovers"},
 		},
 		{
-			name: "multiple errors: empty waveLabel + maxConcurrent zero",
-			plan: &DRPlan{
-				Spec: DRPlanSpec{
-					WaveLabel:              "",
-					MaxConcurrentFailovers: 0,
-					PrimarySite:            "dc-west",
-					SecondarySite:          "dc-east",
-				},
-			},
-			wantErrors: 2,
-			wantFields: []string{"spec.waveLabel", "spec.maxConcurrentFailovers"},
-		},
-		{
 			name: "minimal valid plan",
 			plan: &DRPlan{
 				Spec: DRPlanSpec{
-					WaveLabel:              "soteria.io/wave",
 					MaxConcurrentFailovers: 2,
 					PrimarySite:            "dc-west",
 					SecondarySite:          "dc-east",
@@ -107,7 +77,6 @@ func TestValidateDRPlan(t *testing.T) {
 			name: "missing primarySite",
 			plan: &DRPlan{
 				Spec: DRPlanSpec{
-					WaveLabel:              "soteria.io/wave",
 					MaxConcurrentFailovers: 4,
 					PrimarySite:            "",
 					SecondarySite:          "dc-east",
@@ -120,7 +89,6 @@ func TestValidateDRPlan(t *testing.T) {
 			name: "missing secondarySite",
 			plan: &DRPlan{
 				Spec: DRPlanSpec{
-					WaveLabel:              "soteria.io/wave",
 					MaxConcurrentFailovers: 4,
 					PrimarySite:            "dc-west",
 					SecondarySite:          "",
@@ -133,7 +101,6 @@ func TestValidateDRPlan(t *testing.T) {
 			name: "primarySite equals secondarySite",
 			plan: &DRPlan{
 				Spec: DRPlanSpec{
-					WaveLabel:              "soteria.io/wave",
 					MaxConcurrentFailovers: 4,
 					PrimarySite:            "dc-west",
 					SecondarySite:          "dc-west",
@@ -309,7 +276,6 @@ func TestValidateDRExecutionUpdate(t *testing.T) {
 func TestValidateDRPlanUpdate(t *testing.T) {
 	validPlan := &DRPlan{
 		Spec: DRPlanSpec{
-			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 4,
 			PrimarySite:            "dc-west",
 			SecondarySite:          "dc-east",
@@ -317,7 +283,6 @@ func TestValidateDRPlanUpdate(t *testing.T) {
 	}
 	invalidPlan := &DRPlan{
 		Spec: DRPlanSpec{
-			WaveLabel:              "",
 			MaxConcurrentFailovers: 0,
 			PrimarySite:            "dc-west",
 			SecondarySite:          "dc-east",
@@ -341,7 +306,6 @@ func TestValidateDRPlanUpdate(t *testing.T) {
 	t.Run("primarySite changed", func(t *testing.T) {
 		changed := &DRPlan{
 			Spec: DRPlanSpec{
-				WaveLabel:              "soteria.io/wave",
 				MaxConcurrentFailovers: 4,
 				PrimarySite:            "dc-north",
 				SecondarySite:          "dc-east",
@@ -359,7 +323,6 @@ func TestValidateDRPlanUpdate(t *testing.T) {
 	t.Run("secondarySite changed", func(t *testing.T) {
 		changed := &DRPlan{
 			Spec: DRPlanSpec{
-				WaveLabel:              "soteria.io/wave",
 				MaxConcurrentFailovers: 4,
 				PrimarySite:            "dc-west",
 				SecondarySite:          "dc-south",
@@ -377,7 +340,6 @@ func TestValidateDRPlanUpdate(t *testing.T) {
 	t.Run("both sites changed", func(t *testing.T) {
 		changed := &DRPlan{
 			Spec: DRPlanSpec{
-				WaveLabel:              "soteria.io/wave",
 				MaxConcurrentFailovers: 4,
 				PrimarySite:            "dc-north",
 				SecondarySite:          "dc-south",

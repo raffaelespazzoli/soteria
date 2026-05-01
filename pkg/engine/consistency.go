@@ -100,7 +100,6 @@ var _ NamespaceLookup = (*DefaultNamespaceLookup)(nil)
 func ResolveVolumeGroups(
 	ctx context.Context,
 	vms []VMReference,
-	waveLabel string,
 	nsLookup NamespaceLookup,
 ) (*ConsistencyResult, error) {
 	if len(vms) == 0 {
@@ -164,7 +163,7 @@ func ResolveVolumeGroups(
 			// different times, breaking the atomicity guarantee.
 			waveSet := make(map[string]bool)
 			for _, vm := range g.vms {
-				waveSet[vm.Labels[waveLabel]] = true
+				waveSet[vm.Labels[soteriav1alpha1.WaveLabel]] = true
 			}
 			if len(waveSet) > 1 {
 				waveKeys := make([]string, 0, len(waveSet))

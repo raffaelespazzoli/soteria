@@ -695,14 +695,6 @@ func schema_pkg_apis_soteriaio_v1alpha1_DRPlanSpec(ref common.ReferenceCallback)
 			SchemaProps: spec.SchemaProps{
 				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
-					"waveLabel": {
-						SchemaProps: spec.SchemaProps{
-							Description: "WaveLabel is the label key used to assign VMs to execution waves.",
-							Default:     "",
-							Type:        []string{"string"},
-							Format:      "",
-						},
-					},
 					"maxConcurrentFailovers": {
 						SchemaProps: spec.SchemaProps{
 							Description: "MaxConcurrentFailovers limits concurrent VM failovers per wave chunk.",
@@ -734,7 +726,7 @@ func schema_pkg_apis_soteriaio_v1alpha1_DRPlanSpec(ref common.ReferenceCallback)
 						},
 					},
 				},
-				Required: []string{"waveLabel", "maxConcurrentFailovers", "primarySite", "secondarySite"},
+				Required: []string{"maxConcurrentFailovers", "primarySite", "secondarySite"},
 			},
 		},
 		Dependencies: []string{

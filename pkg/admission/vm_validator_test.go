@@ -56,7 +56,6 @@ func TestVMValidator_PlanExistence(t *testing.T) {
 	planERP := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "plan-erp"},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			WaveLabel:              "wave",
 			MaxConcurrentFailovers: 4,
 			PrimarySite:            "dc-west",
 			SecondarySite:          "dc-east",
@@ -155,15 +154,14 @@ func TestVMValidator_WaveConflict(t *testing.T) {
 	planERP := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "plan-erp"},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			WaveLabel:              "wave",
 			MaxConcurrentFailovers: 4,
 			PrimarySite:            "dc-west",
 			SecondarySite:          "dc-east",
 		},
 	}
 
-	erpW1Labels := map[string]string{soteriav1alpha1.DRPlanLabel: "plan-erp", "wave": "1"}
-	erpW2Labels := map[string]string{soteriav1alpha1.DRPlanLabel: "plan-erp", "wave": "2"}
+	erpW1Labels := map[string]string{soteriav1alpha1.DRPlanLabel: "plan-erp", soteriav1alpha1.WaveLabel: "1"}
+	erpW2Labels := map[string]string{soteriav1alpha1.DRPlanLabel: "plan-erp", soteriav1alpha1.WaveLabel: "2"}
 
 	tests := []struct {
 		name        string
@@ -182,7 +180,7 @@ func TestVMValidator_WaveConflict(t *testing.T) {
 					Name: "vm-1", Namespace: "default",
 					Labels: map[string]string{
 						soteriav1alpha1.DRPlanLabel: "plan-erp",
-						"wave":                      "2",
+						soteriav1alpha1.WaveLabel:   "2",
 					},
 				},
 			},
@@ -197,7 +195,7 @@ func TestVMValidator_WaveConflict(t *testing.T) {
 					Name: "vm-new", Namespace: "erp-db",
 					Labels: map[string]string{
 						soteriav1alpha1.DRPlanLabel: "plan-erp",
-						"wave":                      "1",
+						soteriav1alpha1.WaveLabel:   "1",
 					},
 				},
 			},
@@ -218,7 +216,7 @@ func TestVMValidator_WaveConflict(t *testing.T) {
 					Name: "vm-new", Namespace: "erp-db",
 					Labels: map[string]string{
 						soteriav1alpha1.DRPlanLabel: "plan-erp",
-						"wave":                      "2",
+						soteriav1alpha1.WaveLabel:   "2",
 					},
 				},
 			},
@@ -240,7 +238,7 @@ func TestVMValidator_WaveConflict(t *testing.T) {
 					Name: "vm-existing", Namespace: "erp-db",
 					Labels: map[string]string{
 						soteriav1alpha1.DRPlanLabel: "plan-erp",
-						"wave":                      "2",
+						soteriav1alpha1.WaveLabel:   "2",
 					},
 				},
 			},
@@ -263,7 +261,7 @@ func TestVMValidator_WaveConflict(t *testing.T) {
 					Name: "vm-solo", Namespace: "erp-db",
 					Labels: map[string]string{
 						soteriav1alpha1.DRPlanLabel: "plan-erp",
-						"wave":                      "1",
+						soteriav1alpha1.WaveLabel:   "1",
 					},
 				},
 			},

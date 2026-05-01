@@ -28,10 +28,6 @@ func ValidateDRPlan(plan *DRPlan) field.ErrorList {
 	allErrs := field.ErrorList{}
 	specPath := field.NewPath("spec")
 
-	if plan.Spec.WaveLabel == "" {
-		allErrs = append(allErrs, field.Required(specPath.Child("waveLabel"), ""))
-	}
-
 	if plan.Spec.MaxConcurrentFailovers <= 0 {
 		allErrs = append(allErrs, field.Invalid(
 			specPath.Child("maxConcurrentFailovers"),

@@ -14,7 +14,7 @@ function makePlan(overrides: Partial<DRPlan['status']> = {}): DRPlan {
     apiVersion: 'soteria.io/v1alpha1',
     kind: 'DRPlan',
     metadata: { name: 'test', uid: '1', creationTimestamp: '' },
-    spec: { waveLabel: 'w', maxConcurrentFailovers: 1, primarySite: 'a', secondarySite: 'b' },
+    spec: { maxConcurrentFailovers: 1, primarySite: 'a', secondarySite: 'b' },
     status: { phase: 'SteadyState', ...overrides },
   };
 }

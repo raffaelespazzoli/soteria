@@ -21,7 +21,6 @@ const mockSteadyStatePlan: DRPlan = {
   kind: 'DRPlan',
   metadata: { name: 'erp-full-stack', uid: '1', creationTimestamp: '' },
   spec: {
-    waveLabel: 'soteria.io/wave',
     maxConcurrentFailovers: 4,
     primarySite: 'dc1-prod',
     secondarySite: 'dc2-dr',

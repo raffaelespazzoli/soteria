@@ -22,7 +22,6 @@ const mockPlans: DRPlan[] = [
     kind: 'DRPlan',
     metadata: { name: 'plan-alpha', uid: '1', creationTimestamp: '' },
     spec: {
-      waveLabel: 'wave',
       maxConcurrentFailovers: 1,
       primarySite: 'site-a',
       secondarySite: 'site-b',
@@ -44,7 +43,6 @@ const mockPlans: DRPlan[] = [
     kind: 'DRPlan',
     metadata: { name: 'plan-beta', uid: '2', creationTimestamp: '' },
     spec: {
-      waveLabel: 'wave',
       maxConcurrentFailovers: 1,
       primarySite: 'site-a',
       secondarySite: 'site-b',

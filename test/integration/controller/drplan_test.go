@@ -62,7 +62,7 @@ func createVM(t *testing.T, ctx context.Context, name, namespace string, labels 
 	return vm
 }
 
-func createDRPlan(t *testing.T, ctx context.Context, name, waveLabel string) *soteriav1alpha1.DRPlan {
+func createDRPlan(t *testing.T, ctx context.Context, name string) *soteriav1alpha1.DRPlan {
 	t.Helper()
 	plan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{
@@ -71,7 +71,6 @@ func createDRPlan(t *testing.T, ctx context.Context, name, waveLabel string) *so
 		Spec: soteriav1alpha1.DRPlanSpec{
 			PrimarySite:            "dc-west",
 			SecondarySite:          "dc-east",
-			WaveLabel:              waveLabel,
 			MaxConcurrentFailovers: 5,
 		},
 	}
@@ -90,7 +89,7 @@ func TestDRPlanReconciler_DiscoverVMs_WavesPopulated(t *testing.T) {
 	createVM(t, ctx, "vm-w1-b", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-discover", "soteria.io/wave": "1"})
 	createVM(t, ctx, "vm-w2-a", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-discover", "soteria.io/wave": "2"})
 
-	createDRPlan(t, ctx, "plan-discover", "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-discover")
 
 	plan, err := waitForCondition(ctx, "plan-discover", "", "Ready", metav1.ConditionTrue, testTimeout)
 	if err != nil {
@@ -115,7 +114,7 @@ func TestDRPlanReconciler_NewVMAdded_WatchTriggersReconcile(t *testing.T) {
 	createNamespace(t, ctx, ns)
 
 	createVM(t, ctx, "vm-initial", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-add", "soteria.io/wave": "1"})
-	createDRPlan(t, ctx, "plan-add", "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-add")
 
 	_, err := waitForVMCount(ctx, "plan-add", "", 1, testTimeout)
 	if err != nil {
@@ -134,14 +133,14 @@ func TestDRPlanReconciler_NewVMAdded_WatchTriggersReconcile(t *testing.T) {
 	}
 }
 
-func TestDRPlanReconciler_WaveLabelChanged_WatchTriggersReconcile(t *testing.T) {
+func TestDRPlanReconciler_WaveValueChanged_WatchTriggersReconcile(t *testing.T) {
 	ctx := context.Background()
 	ns := "test-wave-change"
 	createNamespace(t, ctx, ns)
 
 	vm := createVM(t, ctx, "vm-move", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-wave", "soteria.io/wave": "1"})
 	createVM(t, ctx, "vm-stay", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-wave", "soteria.io/wave": "1"})
-	createDRPlan(t, ctx, "plan-wave", "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-wave")
 
 	plan, err := waitForCondition(ctx, "plan-wave", "", "Ready", metav1.ConditionTrue, testTimeout)
 	if err != nil {
@@ -176,7 +175,7 @@ func TestDRPlanReconciler_VMDeleted_WatchTriggersReconcile(t *testing.T) {
 
 	vm := createVM(t, ctx, "vm-delete-me", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-delete", "soteria.io/wave": "1"})
 	createVM(t, ctx, "vm-keep", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-delete", "soteria.io/wave": "1"})
-	createDRPlan(t, ctx, "plan-delete", "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-delete")
 
 	_, err := waitForVMCount(ctx, "plan-delete", "", 2, testTimeout)
 	if err != nil {
@@ -198,7 +197,7 @@ func TestDRPlanReconciler_ReadyCondition_ReflectsDiscovery(t *testing.T) {
 	ns := "test-ready-cond"
 	createNamespace(t, ctx, ns)
 
-	createDRPlan(t, ctx, "plan-empty", "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-empty")
 
 	plan, err := waitForCondition(ctx, "plan-empty", "", "Ready", metav1.ConditionFalse, testTimeout)
 	if err != nil {
@@ -228,7 +227,7 @@ func TestDRPlanReconciler_50VMs_CompletesWithin10s(t *testing.T) {
 	}
 
 	start := time.Now()
-	createDRPlan(t, ctx, "plan-perf", "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-perf")
 
 	plan, err := waitForVMCount(ctx, "plan-perf", "", 50, testTimeout)
 	elapsed := time.Since(start)

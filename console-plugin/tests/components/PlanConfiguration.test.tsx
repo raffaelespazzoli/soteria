@@ -26,8 +26,6 @@ const mockPlan: DRPlan = {
     },
   },
   spec: {
-    labelSelector: 'app.kubernetes.io/part-of=erp-system',
-    waveLabel: 'soteria.io/wave',
     maxConcurrentFailovers: 4,
     primarySite: 'dc1-prod',
     secondarySite: 'dc2-prod',
@@ -66,7 +64,6 @@ const mockPlanMinimal: DRPlan = {
   kind: 'DRPlan',
   metadata: { name: 'minimal-plan', uid: '2', creationTimestamp: '' },
   spec: {
-    waveLabel: 'soteria.io/wave',
     maxConcurrentFailovers: 1,
     primarySite: 'site-a',
     secondarySite: 'site-b',
@@ -82,17 +79,11 @@ describe('PlanConfiguration', () => {
       expect(screen.getByText('erp-full-stack')).toBeInTheDocument();
     });
 
-    it('renders label selector', () => {
-      render(<PlanConfiguration plan={mockPlan} />);
-      expect(screen.getByText('Label Selector')).toBeInTheDocument();
-      const matches = screen.getAllByText('app.kubernetes.io/part-of=erp-system');
-      expect(matches.length).toBeGreaterThanOrEqual(2);
-    });
-
-    it('renders wave label', () => {
+    it('renders fixed wave label convention', () => {
       render(<PlanConfiguration plan={mockPlan} />);
       expect(screen.getByText('Wave Label')).toBeInTheDocument();
       expect(screen.getByText('soteria.io/wave')).toBeInTheDocument();
+      expect(screen.getByText(/\(fixed convention\)/)).toBeInTheDocument();
     });
 
     it('renders max concurrent failovers', () => {
@@ -169,10 +160,12 @@ describe('PlanConfiguration', () => {
       expect(screen.getByText('minimal-plan')).toBeInTheDocument();
     });
 
-    it('shows Label Selector as "None" when not present', () => {
+    it('shows fixed wave label convention for minimal plans', () => {
       render(<PlanConfiguration plan={mockPlanMinimal} />);
-      expect(screen.getByText('Label Selector')).toBeInTheDocument();
-      expect(screen.getByText('None')).toBeInTheDocument();
+      expect(screen.getByText('Wave Label')).toBeInTheDocument();
+      expect(screen.getByText('soteria.io/wave')).toBeInTheDocument();
+      expect(screen.getByText(/\(fixed convention\)/)).toBeInTheDocument();
+      expect(screen.queryByText('Label Selector')).not.toBeInTheDocument();
     });
   });
 

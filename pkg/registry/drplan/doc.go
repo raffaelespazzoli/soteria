@@ -16,8 +16,8 @@ limitations under the License.
 
 // Package drplan implements the REST storage registry for DRPlan resources.
 // It provides create/update/delete strategies following the k8s.io/apiserver
-// generic registry pattern, including validation of waveLabel and
-// maxConcurrentFailovers, defaulting the initial phase to SteadyState, and
+// generic registry pattern, including validation of maxConcurrentFailovers
+// and site names, defaulting the initial phase to SteadyState, and
 // a separate StatusStrategy that freezes spec on status-subresource updates.
 // NewREST wires the strategy to a genericregistry.Store backed by the
 // ScyllaDB storage.Interface (optionally cacher-wrapped).

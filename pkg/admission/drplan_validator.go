@@ -17,7 +17,7 @@ limitations under the License.
 // Tier 2 – Architecture:
 // DRPlanValidator is a lightweight validating admission webhook that intercepts
 // DRPlan CREATE and UPDATE requests and performs field-level validation only
-// (waveLabel, maxConcurrentFailovers). Cross-resource constraints — VM
+// (maxConcurrentFailovers, site names, vmReadyTimeout). Cross-resource constraints — VM
 // exclusivity, namespace wave consistency, and throttle capacity — are
 // delegated to the controller's reconciliation loop, which enforces them via
 // Ready=False status conditions (WaveConflict, NamespaceGroupExceedsThrottle).

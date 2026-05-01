@@ -66,18 +66,18 @@ type VMDiscoverer interface {
 	DiscoverVMs(ctx context.Context, planName string) ([]VMReference, error)
 }
 
-// GroupByWave partitions VMs into waves keyed by the value of waveLabel.
+// GroupByWave partitions VMs into waves keyed by the value of soteria.io/wave.
 // VMs that lack the wave label are placed in a wave with an empty-string key
 // so they are never silently dropped. Waves are sorted lexicographically by
 // key for deterministic status output.
-func GroupByWave(vms []VMReference, waveLabel string) DiscoveryResult {
+func GroupByWave(vms []VMReference) DiscoveryResult {
 	if len(vms) == 0 {
 		return DiscoveryResult{}
 	}
 
 	groups := make(map[string][]VMReference)
 	for _, vm := range vms {
-		key := vm.Labels[waveLabel]
+		key := vm.Labels[soteriav1alpha1.WaveLabel]
 		groups[key] = append(groups[key], vm)
 	}
 

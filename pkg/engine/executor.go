@@ -217,15 +217,15 @@ func (e *WaveExecutor) Execute(ctx context.Context, input ExecuteInput) error {
 		return e.finishExecution(ctx, exec, plan, soteriav1alpha1.ExecutionResultSucceeded, "")
 	}
 
-	discovery := GroupByWave(vms, plan.Spec.WaveLabel)
-	consistency, err := ResolveVolumeGroups(ctx, vms, plan.Spec.WaveLabel, e.NamespaceLookup)
+	discovery := GroupByWave(vms)
+	consistency, err := ResolveVolumeGroups(ctx, vms, e.NamespaceLookup)
 	if err != nil {
 		logger.Error(err, "Volume group resolution failed during execution")
 		return e.finishExecution(ctx, exec, plan, soteriav1alpha1.ExecutionResultFailed,
 			fmt.Sprintf("Volume group resolution failed: %v", err))
 	}
 
-	chunkInput := buildChunkInput(discovery, consistency, vms, plan.Spec.WaveLabel)
+	chunkInput := buildChunkInput(discovery, consistency, vms)
 	chunkResult := ChunkWaves(chunkInput, plan.Spec.MaxConcurrentFailovers)
 
 	exec.Status.Waves = make([]soteriav1alpha1.WaveStatus, len(chunkResult.Waves))
@@ -285,15 +285,15 @@ func (e *WaveExecutor) InitializeWaves(
 		return e.finishExecution(ctx, exec, plan, soteriav1alpha1.ExecutionResultSucceeded, "")
 	}
 
-	discovery := GroupByWave(vms, plan.Spec.WaveLabel)
-	consistency, err := ResolveVolumeGroups(ctx, vms, plan.Spec.WaveLabel, e.NamespaceLookup)
+	discovery := GroupByWave(vms)
+	consistency, err := ResolveVolumeGroups(ctx, vms, e.NamespaceLookup)
 	if err != nil {
 		logger.Error(err, "Volume group resolution failed during execution")
 		return e.finishExecution(ctx, exec, plan, soteriav1alpha1.ExecutionResultFailed,
 			fmt.Sprintf("Volume group resolution failed: %v", err))
 	}
 
-	chunkInput := buildChunkInput(discovery, consistency, vms, plan.Spec.WaveLabel)
+	chunkInput := buildChunkInput(discovery, consistency, vms)
 	chunkResult := ChunkWaves(chunkInput, plan.Spec.MaxConcurrentFailovers)
 
 	exec.Status.Waves = make([]soteriav1alpha1.WaveStatus, len(chunkResult.Waves))
@@ -1179,13 +1179,13 @@ func (e *WaveExecutor) BuildExecutionGroups(
 		return nil, nil
 	}
 
-	discovery := GroupByWave(vms, plan.Spec.WaveLabel)
-	consistency, err := ResolveVolumeGroups(ctx, vms, plan.Spec.WaveLabel, e.NamespaceLookup)
+	discovery := GroupByWave(vms)
+	consistency, err := ResolveVolumeGroups(ctx, vms, e.NamespaceLookup)
 	if err != nil {
 		return nil, fmt.Errorf("volume group resolution failed: %w", err)
 	}
 
-	chunkInput := buildChunkInput(discovery, consistency, vms, plan.Spec.WaveLabel)
+	chunkInput := buildChunkInput(discovery, consistency, vms)
 	chunkResult := ChunkWaves(chunkInput, plan.Spec.MaxConcurrentFailovers)
 
 	var groups []ExecutionGroup
@@ -1589,12 +1589,11 @@ func buildChunkInput(
 	discovery DiscoveryResult,
 	consistency *ConsistencyResult,
 	vms []VMReference,
-	waveLabel string,
 ) ChunkInput {
 	vmWave := make(map[string]string, len(vms))
 	for _, vm := range vms {
 		key := vm.Namespace + "/" + vm.Name
-		vmWave[key] = vm.Labels[waveLabel]
+		vmWave[key] = vm.Labels[soteriav1alpha1.WaveLabel]
 	}
 
 	waveGroups := make(map[string][]soteriav1alpha1.VolumeGroupInfo)

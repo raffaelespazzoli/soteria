@@ -105,7 +105,6 @@ describe('DRDashboardPage', () => {
       kind: 'DRPlan',
       metadata: { name: 'broken-plan', uid: 'uid-1', creationTimestamp: '' },
       spec: {
-        waveLabel: 'wave',
         maxConcurrentFailovers: 1,
         primarySite: 'site-a',
         secondarySite: 'site-b',

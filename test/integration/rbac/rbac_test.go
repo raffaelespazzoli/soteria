@@ -44,7 +44,6 @@ func newDRPlan(name string) *unstructured.Unstructured {
 			"kind":       "DRPlan",
 			"metadata":   map[string]any{"name": name},
 			"spec": map[string]any{
-				"waveLabel":              "wave",
 				"maxConcurrentFailovers": int64(2),
 			},
 		},

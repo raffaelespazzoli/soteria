@@ -275,16 +275,16 @@ func main() {
 	eventRecorder := eventBroadcaster.NewRecorder("drplan-controller")
 
 	if err := (&drplan.DRPlanReconciler{
-		Client:                  mgr.GetClient(),
-		Scheme:                  mgr.GetScheme(),
-		VMDiscoverer:            vmDiscoverer,
-		NamespaceLookup:         nsLookup,
-		StorageResolver:         storageResolver,
-		Recorder:                eventRecorder,
-		Registry:                drivers.DefaultRegistry,
-		SCLister:                scLister,
-		PVCResolver:             pvcResolver,
-		LocalSite:               siteName,
+		Client:          mgr.GetClient(),
+		Scheme:          mgr.GetScheme(),
+		VMDiscoverer:    vmDiscoverer,
+		NamespaceLookup: nsLookup,
+		StorageResolver: storageResolver,
+		Recorder:        eventRecorder,
+		Registry:        drivers.DefaultRegistry,
+		SCLister:        scLister,
+		PVCResolver:     pvcResolver,
+		LocalSite:       siteName,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "DRPlan")
 		os.Exit(1)

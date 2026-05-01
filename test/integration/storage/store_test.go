@@ -147,7 +147,6 @@ func newDRPlan(name string) *v1alpha1.DRPlan {
 		Spec: v1alpha1.DRPlanSpec{
 			PrimarySite:            "dc-west",
 			SecondarySite:          "dc-east",
-			WaveLabel:              "wave",
 			MaxConcurrentFailovers: 2,
 		},
 	}
@@ -250,9 +249,6 @@ func TestStore_Get_ExistingObject(t *testing.T) {
 
 	if out.Name != "get-existing" {
 		t.Fatalf("expected name 'get-existing', got %q", out.Name)
-	}
-	if out.Spec.WaveLabel != "wave" {
-		t.Fatalf("expected waveLabel 'wave', got %q", out.Spec.WaveLabel)
 	}
 	if out.ResourceVersion == "" {
 		t.Fatal("expected non-empty resourceVersion")
@@ -525,7 +521,6 @@ func TestStore_GuaranteedUpdate_IgnoreNotFound_Creates(t *testing.T) {
 			p.Name = "update-create"
 			p.Spec.PrimarySite = "dc-west"
 			p.Spec.SecondarySite = "dc-east"
-			p.Spec.WaveLabel = "wave"
 			return p, nil, nil
 		}, nil)
 	if err != nil {
@@ -537,8 +532,9 @@ func TestStore_GuaranteedUpdate_IgnoreNotFound_Creates(t *testing.T) {
 	if err := store.Get(ctx, key, storage.GetOptions{}, got); err != nil {
 		t.Fatalf("Get after GuaranteedUpdate failed: %v", err)
 	}
-	if got.Spec.WaveLabel != "wave" {
-		t.Fatalf("expected WaveLabel 'wave', got %q", got.Spec.WaveLabel)
+	if got.Name != "update-create" || got.Spec.PrimarySite != "dc-west" || got.Spec.SecondarySite != "dc-east" {
+		t.Fatalf("unexpected object after create via GuaranteedUpdate: name=%q primary=%q secondary=%q",
+			got.Name, got.Spec.PrimarySite, got.Spec.SecondarySite)
 	}
 }
 

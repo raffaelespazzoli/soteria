@@ -32,7 +32,6 @@ func TestGroupByWave(t *testing.T) {
 	tests := []struct {
 		name           string
 		vms            []VMReference
-		waveLabel      string
 		wantWaveCount  int
 		wantTotalVMs   int
 		wantWaveKeys   []string
@@ -47,7 +46,6 @@ func TestGroupByWave(t *testing.T) {
 				{Name: "vm-4", Namespace: "ns", Labels: map[string]string{"soteria.io/wave": "1"}},
 				{Name: "vm-5", Namespace: "ns", Labels: map[string]string{"soteria.io/wave": "1"}},
 			},
-			waveLabel:      "soteria.io/wave",
 			wantWaveCount:  1,
 			wantTotalVMs:   5,
 			wantWaveKeys:   []string{"1"},
@@ -67,7 +65,6 @@ func TestGroupByWave(t *testing.T) {
 				{Name: "vm-9", Namespace: "ns", Labels: map[string]string{"soteria.io/wave": "3"}},
 				{Name: "vm-10", Namespace: "ns", Labels: map[string]string{"soteria.io/wave": "3"}},
 			},
-			waveLabel:      "soteria.io/wave",
 			wantWaveCount:  3,
 			wantTotalVMs:   10,
 			wantWaveKeys:   []string{"1", "2", "3"},
@@ -80,7 +77,6 @@ func TestGroupByWave(t *testing.T) {
 				{Name: "vm-2", Namespace: "ns", Labels: map[string]string{"app": "erp"}},
 				{Name: "vm-3", Namespace: "ns", Labels: nil},
 			},
-			waveLabel:      "soteria.io/wave",
 			wantWaveCount:  1,
 			wantTotalVMs:   3,
 			wantWaveKeys:   []string{""},
@@ -89,7 +85,6 @@ func TestGroupByWave(t *testing.T) {
 		{
 			name:           "empty input",
 			vms:            nil,
-			waveLabel:      "soteria.io/wave",
 			wantWaveCount:  0,
 			wantTotalVMs:   0,
 			wantWaveKeys:   nil,
@@ -103,7 +98,6 @@ func TestGroupByWave(t *testing.T) {
 				{Name: "vm-3", Namespace: "ns", Labels: map[string]string{"soteria.io/wave": "2"}},
 				{Name: "vm-4", Namespace: "ns", Labels: nil},
 			},
-			waveLabel:      "soteria.io/wave",
 			wantWaveCount:  3,
 			wantTotalVMs:   4,
 			wantWaveKeys:   []string{"", "1", "2"},
@@ -116,7 +110,6 @@ func TestGroupByWave(t *testing.T) {
 				{Name: "vm-2", Namespace: "ns", Labels: map[string]string{"soteria.io/wave": "1"}},
 				{Name: "vm-3", Namespace: "ns", Labels: map[string]string{"soteria.io/wave": "2"}},
 			},
-			waveLabel:      "soteria.io/wave",
 			wantWaveCount:  3,
 			wantTotalVMs:   3,
 			wantWaveKeys:   []string{"1", "2", "3"},
@@ -126,7 +119,7 @@ func TestGroupByWave(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := GroupByWave(tt.vms, tt.waveLabel)
+			result := GroupByWave(tt.vms)
 
 			if result.TotalVMs != tt.wantTotalVMs {
 				t.Errorf("TotalVMs = %d, want %d", result.TotalVMs, tt.wantTotalVMs)
@@ -271,4 +264,3 @@ func TestTypedVMDiscoverer(t *testing.T) {
 		}
 	})
 }
-

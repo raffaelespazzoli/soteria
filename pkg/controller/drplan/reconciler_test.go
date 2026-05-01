@@ -80,7 +80,6 @@ func newTestPlan() *soteriav1alpha1.DRPlan {
 			Generation: 1,
 		},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 5,
 			PrimarySite:            "dc-west",
 			SecondarySite:          "dc-east",
@@ -258,7 +257,7 @@ func TestReconcile_VMAdded_StatusUpdated(t *testing.T) {
 	}
 }
 
-func TestReconcile_WaveLabelChanged_VMMoved(t *testing.T) {
+func TestReconcile_WaveLabelValueChanged_VMMoved(t *testing.T) {
 	plan := newTestPlan()
 	vms := []engine.VMReference{
 		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},

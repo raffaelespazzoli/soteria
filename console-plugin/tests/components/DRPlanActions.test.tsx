@@ -10,7 +10,7 @@ function makePlan(phase: string, activeExecution?: string, activeExecutionMode?:
     apiVersion: 'soteria.io/v1alpha1',
     kind: 'DRPlan',
     metadata: { name: 'test-plan', uid: '1', creationTimestamp: '' },
-    spec: { waveLabel: 'w', maxConcurrentFailovers: 1, primarySite: 'a', secondarySite: 'b' },
+    spec: { maxConcurrentFailovers: 1, primarySite: 'a', secondarySite: 'b' },
     status: {
       phase,
       ...(activeExecution ? { activeExecution } : {}),

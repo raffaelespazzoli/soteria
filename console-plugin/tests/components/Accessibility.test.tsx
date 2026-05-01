@@ -38,7 +38,6 @@ const mockSteadyStatePlan: DRPlan = {
     annotations: { 'soteria.io/description': 'ERP DR plan' },
   },
   spec: {
-    waveLabel: 'soteria.io/wave',
     maxConcurrentFailovers: 4,
     primarySite: 'dc1-prod',
     secondarySite: 'dc2-dr',

@@ -81,7 +81,6 @@ func TestDRExecutionReconciler_ResumeInProgress_EmitsEvent(t *testing.T) {
 	plan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "plan-1"},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 4,
 			PrimarySite:            "dc-west",
 			SecondarySite:          "dc-east",
@@ -170,7 +169,6 @@ func TestDRExecutionReconciler_NewExecution_NormalPath(t *testing.T) {
 	plan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "plan-1"},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 4,
 			PrimarySite:            "dc-west",
 			SecondarySite:          "dc-east",
@@ -306,7 +304,6 @@ func TestDRExecutionReconciler_PlanNameLabel_SetOnFirstReconcile(t *testing.T) {
 	plan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "erp-full-stack"},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 4,
 			PrimarySite:            "dc-west",
 			SecondarySite:          "dc-east",
@@ -370,7 +367,6 @@ func TestDRExecutionReconciler_PlanNameLabel_Idempotent(t *testing.T) {
 	plan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "erp-full-stack"},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 4,
 			PrimarySite:            "dc-west",
 			SecondarySite:          "dc-east",
@@ -418,7 +414,6 @@ func newSiteAwarePlan(name, primary, secondary, phase string) *soteriav1alpha1.D
 	return &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 4,
 			PrimarySite:            primary,
 			SecondarySite:          secondary,
@@ -911,7 +906,6 @@ func newWaveGatePlan(name string) *soteriav1alpha1.DRPlan {
 	return &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 4,
 			PrimarySite:            "dc-west",
 			SecondarySite:          "dc-east",
@@ -1304,7 +1298,6 @@ func TestMapVMToDRExecution(t *testing.T) {
 	plan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "plan-map"},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 4,
 			PrimarySite:            "dc-west",
 			SecondarySite:          "dc-east",
@@ -1347,7 +1340,6 @@ func TestMapVMToDRExecution(t *testing.T) {
 	plan2 := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "plan-idle"},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 4,
 			PrimarySite:            "dc-west",
 			SecondarySite:          "dc-east",

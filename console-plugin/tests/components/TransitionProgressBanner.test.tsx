@@ -2,7 +2,6 @@ import { render, screen } from '@testing-library/react';
 import { axe, toHaveNoViolations } from 'jest-axe';
 import TransitionProgressBanner from '../../src/components/DRPlanDetail/TransitionProgressBanner';
 import { DRExecution, DRPlan } from '../../src/models/types';
-
 expect.extend(toHaveNoViolations);
 
 jest.mock('react-router-dom', () => ({
@@ -18,7 +17,6 @@ function makePlan(overrides: Partial<DRPlan['status']> = {}): DRPlan {
     kind: 'DRPlan',
     metadata: { name: 'erp-full-stack', uid: '1', creationTimestamp: '' },
     spec: {
-      waveLabel: 'soteria.io/wave',
       maxConcurrentFailovers: 4,
       primarySite: 'dc1-prod',
       secondarySite: 'dc2-dr',
@@ -101,15 +99,14 @@ describe('TransitionProgressBanner', () => {
     expect(screen.getByText(/Starting\.\.\./)).toBeInTheDocument();
   });
 
-  it('contains link to execution detail view', () => {
+  it('renders execution details control during transition', () => {
     const plan = makePlan({
       phase: 'SteadyState',
       activeExecution: 'exec-001',
       activeExecutionMode: 'disaster',
     });
     render(<TransitionProgressBanner plan={plan} execution={makeExecution()} />);
-    const link = screen.getByText('View execution details');
-    expect(link.closest('a')).toHaveAttribute('href', '/disaster-recovery/executions/exec-001');
+    expect(screen.getByRole('button', { name: 'View execution details' })).toBeInTheDocument();
   });
 
   it('renders elapsed time', () => {

@@ -95,7 +95,7 @@ func TestDRPlanReconciler_Preflight_BasicComposition(t *testing.T) {
 	createVMWithPVC(t, ctx, "vm-pf-1", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-pf-basic", "soteria.io/wave": "1"}, "vm-pf-1-root")
 	createVMWithPVC(t, ctx, "vm-pf-2", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-pf-basic", "soteria.io/wave": "1"}, "vm-pf-2-root")
 
-	createDRPlan(t, ctx, "plan-pf-basic", "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-pf-basic")
 
 	plan, err := waitForPreflight(ctx, "plan-pf-basic", "", testTimeout)
 	if err != nil {
@@ -137,7 +137,7 @@ func TestDRPlanReconciler_Preflight_NamespaceConsistency(t *testing.T) {
 	createVMWithPVC(t, ctx, "vm-pfns-1", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-pf-nscons", "soteria.io/wave": "1"}, "vm-pfns-1-root")
 	createVMWithPVC(t, ctx, "vm-pfns-2", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-pf-nscons", "soteria.io/wave": "1"}, "vm-pfns-2-root")
 
-	createDRPlan(t, ctx, "plan-pf-nscons", "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-pf-nscons")
 
 	plan, err := waitForPreflight(ctx, "plan-pf-nscons", "", testTimeout)
 	if err != nil {
@@ -167,7 +167,7 @@ func TestDRPlanReconciler_Preflight_StorageBackendUnknown(t *testing.T) {
 	createPVC(t, ctx, "vm-pfu-root", ns, "unlisted-storage-class")
 	createVMWithPVC(t, ctx, "vm-pfu-1", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-pf-unknown", "soteria.io/wave": "1"}, "vm-pfu-root")
 
-	createDRPlan(t, ctx, "plan-pf-unknown", "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-pf-unknown")
 
 	plan, err := waitForPreflight(ctx, "plan-pf-unknown", "", testTimeout)
 	if err != nil {
@@ -194,7 +194,7 @@ func TestDRPlanReconciler_Preflight_KubectlAccess(t *testing.T) {
 	createPVC(t, ctx, "vm-pfk-root", ns, "test-odf")
 	createVMWithPVC(t, ctx, "vm-pfk-1", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-pf-kubectl", "soteria.io/wave": "1"}, "vm-pfk-root")
 
-	createDRPlan(t, ctx, "plan-pf-kubectl", "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-pf-kubectl")
 
 	plan, err := waitForPreflight(ctx, "plan-pf-kubectl", "", testTimeout)
 	if err != nil {
@@ -242,7 +242,7 @@ func TestDRPlanReconciler_Preflight_MultiWaveChunking(t *testing.T) {
 		createVMWithPVC(t, ctx, vmName, ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-pf-multiwave", "soteria.io/wave": wave}, pvcName)
 	}
 
-	createDRPlan(t, ctx, "plan-pf-multiwave", "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-pf-multiwave")
 
 	plan, err := waitForPreflight(ctx, "plan-pf-multiwave", "", testTimeout)
 	if err != nil {
@@ -276,7 +276,7 @@ func TestDRPlanReconciler_Preflight_WarningsPopulated(t *testing.T) {
 	createPVC(t, ctx, "vm-pfw-root", ns, "mystery-class")
 	createVMWithPVC(t, ctx, "vm-pfw-1", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-pf-warnings", "soteria.io/wave": "1"}, "vm-pfw-root")
 
-	createDRPlan(t, ctx, "plan-pf-warnings", "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-pf-warnings")
 
 	deadline := time.Now().Add(testTimeout)
 	for time.Now().Before(deadline) {

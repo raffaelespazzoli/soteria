@@ -164,7 +164,7 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, err
 	}
 
-	result := engine.GroupByWave(vms, plan.Spec.WaveLabel)
+	result := engine.GroupByWave(vms)
 
 	waves := make([]soteriav1alpha1.WaveInfo, len(result.Waves))
 	for i, wg := range result.Waves {
@@ -193,7 +193,7 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	// Resolve volume group consistency from namespace annotations.
-	consistency, err := engine.ResolveVolumeGroups(ctx, vms, plan.Spec.WaveLabel, r.NamespaceLookup)
+	consistency, err := engine.ResolveVolumeGroups(ctx, vms, r.NamespaceLookup)
 	if err != nil {
 		logger.Error(err, "Failed to resolve volume groups")
 		report := r.composePreflightReport(ctx, &plan, &result, nil, nil, vms)
@@ -223,7 +223,7 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	// Populate volume groups on each wave.
-	groupsByWave := buildGroupsByWave(consistency.VolumeGroups, vms, plan.Spec.WaveLabel)
+	groupsByWave := buildGroupsByWave(consistency.VolumeGroups, vms)
 	for i := range waves {
 		waves[i].Groups = groupsByWave[waves[i].WaveKey]
 	}
@@ -464,12 +464,11 @@ func formatChunkErrors(
 func buildGroupsByWave(
 	groups []soteriav1alpha1.VolumeGroupInfo,
 	vms []engine.VMReference,
-	waveLabel string,
 ) map[string][]soteriav1alpha1.VolumeGroupInfo {
 	vmWave := make(map[string]string, len(vms))
 	for _, vm := range vms {
 		key := vm.Namespace + "/" + vm.Name
-		vmWave[key] = vm.Labels[waveLabel]
+		vmWave[key] = vm.Labels[soteriav1alpha1.WaveLabel]
 	}
 
 	result := make(map[string][]soteriav1alpha1.VolumeGroupInfo)

@@ -15,8 +15,8 @@ limitations under the License.
 */
 
 // Package admission implements validating admission webhooks for Soteria
-// resources. The DRPlan webhook validates field-level constraints (waveLabel,
-// maxConcurrentFailovers) as defense-in-depth alongside the aggregated API
+// resources. The DRPlan webhook validates field-level constraints
+// (maxConcurrentFailovers, site names) as defense-in-depth alongside the aggregated API
 // server's strategy layer. The VirtualMachine webhook validates plan existence
 // (issuing a warning when the referenced DRPlan is missing, to support GitOps
 // ordering) and namespace-level wave consistency (rejecting VMs whose wave

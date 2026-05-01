@@ -399,7 +399,6 @@ func newTestDRPlan(name, primarySite, secondarySite string) *soteriav1alpha1.DRP
 		Spec: soteriav1alpha1.DRPlanSpec{
 			PrimarySite:            primarySite,
 			SecondarySite:          secondarySite,
-			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 5,
 		},
 	}

@@ -113,7 +113,6 @@ func TestAPIServer_DRPlan_CRUD(t *testing.T) {
 				"name": "test-plan",
 			},
 			"spec": map[string]any{
-				"waveLabel":              "wave",
 				"maxConcurrentFailovers": int64(2),
 				"primarySite":            "dc-west",
 				"secondarySite":          "dc-east",
@@ -196,7 +195,6 @@ func TestAPIServer_DRPlan_StatusSubresource(t *testing.T) {
 				"name": "plan-status-test",
 			},
 			"spec": map[string]any{
-				"waveLabel":              "wave",
 				"maxConcurrentFailovers": int64(1),
 				"primarySite":            "dc-west",
 				"secondarySite":          "dc-east",
@@ -225,33 +223,9 @@ func TestAPIServer_DRPlan_StatusSubresource(t *testing.T) {
 	}
 
 	// Verify spec was preserved during status update
-	waveLabel, _, _ := unstructured.NestedString(statusUpdated.Object, "spec", "waveLabel")
-	if waveLabel != "wave" {
-		t.Errorf("expected spec.waveLabel to be preserved as 'wave', got %q", waveLabel)
-	}
-}
-
-func TestAPIServer_DRPlan_Validation_MissingWaveLabel(t *testing.T) {
-	client := newDynamicClient(t)
-	ctx := context.Background()
-
-	invalidPlan := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": "soteria.io/v1alpha1",
-			"kind":       "DRPlan",
-			"metadata": map[string]any{
-				"name": "invalid-plan",
-			},
-			"spec": map[string]any{
-				"waveLabel":              "",
-				"maxConcurrentFailovers": int64(1),
-			},
-		},
-	}
-
-	_, err := client.Resource(drplanGVR()).Create(ctx, invalidPlan, metav1.CreateOptions{})
-	if err == nil {
-		t.Fatal("expected validation error for missing waveLabel")
+	maxConcurrent, _, _ := unstructured.NestedInt64(statusUpdated.Object, "spec", "maxConcurrentFailovers")
+	if maxConcurrent != int64(1) {
+		t.Errorf("expected spec.maxConcurrentFailovers to be preserved as 1, got %d", maxConcurrent)
 	}
 }
 
@@ -519,7 +493,6 @@ func TestAPIServer_DRPlan_Watch(t *testing.T) {
 				"name": "watched-plan",
 			},
 			"spec": map[string]any{
-				"waveLabel":              "wave",
 				"maxConcurrentFailovers": int64(1),
 				"primarySite":            "dc-west",
 				"secondarySite":          "dc-east",

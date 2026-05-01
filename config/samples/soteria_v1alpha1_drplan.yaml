@@ -3,8 +3,7 @@ kind: DRPlan
 metadata:
   name: erp-full-stack
 spec:
-  # Wave label key used to group VMs into ordered waves for failover execution.
-  waveLabel: soteria.io/wave
+  # Wave label is always soteria.io/wave (fixed convention, not configurable).
   # Maximum number of VMs that may fail over concurrently within a single wave.
   maxConcurrentFailovers: 4
   # Primary and secondary sites define the failover direction.

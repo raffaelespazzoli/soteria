@@ -56,6 +56,11 @@ const ConsistencyAnnotation = "soteria.io/consistency-level"
 // structurally enforces one-plan-per-VM exclusivity without runtime checks.
 const DRPlanLabel = "soteria.io/drplan"
 
+// WaveLabel is the label key used to assign VMs to execution waves.
+// This is a fixed convention — every VM's wave membership is read from
+// this label. The value is not configurable.
+const WaveLabel = "soteria.io/wave"
+
 // TriggeredByAnnotation records the authenticated user who created a DRExecution.
 // Stamped server-side in the aggregated API's PrepareForCreate so it captures
 // every creation path (console, kubectl, automation).
@@ -71,8 +76,6 @@ type DRPlan struct {
 }
 
 type DRPlanSpec struct {
-	// WaveLabel is the label key used to assign VMs to execution waves.
-	WaveLabel string `json:"waveLabel"`
 	// MaxConcurrentFailovers limits concurrent VM failovers per wave chunk.
 	// +kubebuilder:validation:Minimum=1
 	MaxConcurrentFailovers int `json:"maxConcurrentFailovers"`

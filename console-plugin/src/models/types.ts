@@ -72,8 +72,6 @@ export interface DRPlan extends K8sResourceCommon {
 }
 
 export interface DRPlanSpec {
-  labelSelector?: string;
-  waveLabel: string;
   maxConcurrentFailovers: number;
   primarySite: string;
   secondarySite: string;

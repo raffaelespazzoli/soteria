@@ -42,7 +42,6 @@ func TestDRExecutionReconciler_SuccessfulSetup(t *testing.T) {
 		Spec: soteriav1alpha1.DRPlanSpec{
 			PrimarySite:            "dc-west",
 			SecondarySite:          "dc-east",
-			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 4,
 		},
 	}
@@ -134,7 +133,6 @@ func TestDRExecutionReconciler_InvalidPhase(t *testing.T) {
 		Spec: soteriav1alpha1.DRPlanSpec{
 			PrimarySite:            "dc-west",
 			SecondarySite:          "dc-east",
-			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 4,
 		},
 	}
@@ -194,7 +192,6 @@ func TestDRExecutionReconciler_IdempotentRereconcile(t *testing.T) {
 		Spec: soteriav1alpha1.DRPlanSpec{
 			PrimarySite:            "dc-west",
 			SecondarySite:          "dc-east",
-			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 4,
 		},
 	}
@@ -258,7 +255,6 @@ func TestDRExecutionReconciler_DisasterMode(t *testing.T) {
 		Spec: soteriav1alpha1.DRPlanSpec{
 			PrimarySite:            "dc-west",
 			SecondarySite:          "dc-east",
-			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 4,
 		},
 	}
@@ -335,7 +331,6 @@ func TestDRExecutionReconciler_FailbackModes(t *testing.T) {
 				Spec: soteriav1alpha1.DRPlanSpec{
 					PrimarySite:            "dc-west",
 					SecondarySite:          "dc-east",
-					WaveLabel:              "soteria.io/wave",
 					MaxConcurrentFailovers: 4,
 				},
 			}
@@ -392,7 +387,6 @@ func TestDRExecutionReconciler_SiteAware_OnlyTargetOwns(t *testing.T) {
 		Spec: soteriav1alpha1.DRPlanSpec{
 			PrimarySite:            "east",
 			SecondarySite:          "west",
-			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 4,
 		},
 	}

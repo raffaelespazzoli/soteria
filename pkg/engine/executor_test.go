@@ -146,7 +146,6 @@ func newTestPlan(name string) *soteriav1alpha1.DRPlan {
 	return &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 4,
 			PrimarySite:            "dc-west",
 			SecondarySite:          "dc-east",
@@ -2076,7 +2075,7 @@ func TestBuildChunkInput(t *testing.T) {
 		"beta":  {"vm-b1"},
 	})
 
-	discovery := GroupByWave(vms, "soteria.io/wave")
+	discovery := GroupByWave(vms)
 	consistency := &ConsistencyResult{
 		VolumeGroups: []soteriav1alpha1.VolumeGroupInfo{
 			{
@@ -2094,7 +2093,7 @@ func TestBuildChunkInput(t *testing.T) {
 		},
 	}
 
-	input := buildChunkInput(discovery, consistency, vms, "soteria.io/wave")
+	input := buildChunkInput(discovery, consistency, vms)
 
 	if len(input.WaveGroups) != 2 {
 		t.Fatalf("expected 2 wave groups, got %d", len(input.WaveGroups))

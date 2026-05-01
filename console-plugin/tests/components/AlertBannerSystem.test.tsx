@@ -16,7 +16,6 @@ function makePlan(
     kind: 'DRPlan',
     metadata: { name, uid: name, creationTimestamp: '' },
     spec: {
-      waveLabel: 'wave',
       maxConcurrentFailovers: 1,
       primarySite: 'site-a',
       secondarySite: 'site-b',

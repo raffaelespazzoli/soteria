@@ -40,7 +40,7 @@ func TestDRPlanReconciler_ReplicationHealth_Populated(t *testing.T) {
 		"soteria.io/wave":          "1",
 	})
 
-	createDRPlan(t, ctx, "plan-repl-health", "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-repl-health")
 
 	plan, err := waitForCondition(ctx, "plan-repl-health", "", "Ready", metav1.ConditionTrue, testTimeout)
 	if err != nil {
@@ -80,7 +80,7 @@ func TestDRPlanReconciler_ReplicationHealthy_NotReplicatingIsNeutral(t *testing.
 		"soteria.io/wave":          "1",
 	})
 
-	createDRPlan(t, ctx, "plan-repl-cond", "soteria.io/wave")
+	createDRPlan(t, ctx, "plan-repl-cond")
 
 	// The noop driver returns HealthNotReplicating for NonReplicated VGs
 	// (no SetSource/SetTarget has been called). NotReplicating is treated as

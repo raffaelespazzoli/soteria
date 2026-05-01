@@ -89,7 +89,6 @@ func TestMatchDRPlan_UsesGetAttrs(t *testing.T) {
 func TestPrepareForCreate_SetsActiveSiteToPrimarySite(t *testing.T) {
 	plan := &soteriav1alpha1.DRPlan{
 		Spec: soteriav1alpha1.DRPlanSpec{
-			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 4,
 			PrimarySite:            "dc-west",
 			SecondarySite:          "dc-east",
@@ -109,7 +108,6 @@ func TestPrepareForCreate_SetsActiveSiteToPrimarySite(t *testing.T) {
 func TestPrepareForCreate_InitializesActiveExecution(t *testing.T) {
 	plan := &soteriav1alpha1.DRPlan{
 		Spec: soteriav1alpha1.DRPlanSpec{
-			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 4,
 			PrimarySite:            "dc-west",
 			SecondarySite:          "dc-east",
@@ -129,7 +127,6 @@ func TestPrepareForCreate_InitializesActiveExecution(t *testing.T) {
 func TestPrepareForUpdate_PreservesStatus(t *testing.T) {
 	oldPlan := &soteriav1alpha1.DRPlan{
 		Spec: soteriav1alpha1.DRPlanSpec{
-			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 4,
 			PrimarySite:            "dc-west",
 			SecondarySite:          "dc-east",
@@ -141,7 +138,6 @@ func TestPrepareForUpdate_PreservesStatus(t *testing.T) {
 	}
 	newPlan := &soteriav1alpha1.DRPlan{
 		Spec: soteriav1alpha1.DRPlanSpec{
-			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 8,
 			PrimarySite:            "dc-west",
 			SecondarySite:          "dc-east",

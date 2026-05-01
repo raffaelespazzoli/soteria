@@ -539,7 +539,6 @@ func newDRPlan(name string) *v1alpha1.DRPlan {
 		Spec: v1alpha1.DRPlanSpec{
 			PrimarySite:            "dc-west",
 			SecondarySite:          "dc-east",
-			WaveLabel:              "wave",
 			MaxConcurrentFailovers: 2,
 		},
 	}

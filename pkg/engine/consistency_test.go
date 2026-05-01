@@ -45,7 +45,6 @@ func TestResolveVolumeGroups(t *testing.T) {
 	tests := []struct {
 		name              string
 		vms               []VMReference
-		waveLabel         string
 		nsLevels          map[string]soteriav1alpha1.ConsistencyLevel
 		wantGroupCount    int
 		wantConflictCount int
@@ -55,11 +54,10 @@ func TestResolveVolumeGroups(t *testing.T) {
 		{
 			name: "all VM-level (no annotation) — individual VolumeGroups",
 			vms: []VMReference{
-				{Name: "vm-1", Namespace: "ns-a", Labels: map[string]string{"wave": "1"}},
-				{Name: "vm-2", Namespace: "ns-a", Labels: map[string]string{"wave": "1"}},
-				{Name: "vm-3", Namespace: "ns-b", Labels: map[string]string{"wave": "1"}},
+				{Name: "vm-1", Namespace: "ns-a", Labels: map[string]string{soteriav1alpha1.WaveLabel: "1"}},
+				{Name: "vm-2", Namespace: "ns-a", Labels: map[string]string{soteriav1alpha1.WaveLabel: "1"}},
+				{Name: "vm-3", Namespace: "ns-b", Labels: map[string]string{soteriav1alpha1.WaveLabel: "1"}},
 			},
-			waveLabel:         "wave",
 			nsLevels:          map[string]soteriav1alpha1.ConsistencyLevel{},
 			wantGroupCount:    3,
 			wantConflictCount: 0,
@@ -68,11 +66,10 @@ func TestResolveVolumeGroups(t *testing.T) {
 		{
 			name: "namespace-level — single VolumeGroup per namespace",
 			vms: []VMReference{
-				{Name: "vm-1", Namespace: "erp-db", Labels: map[string]string{"wave": "1"}},
-				{Name: "vm-2", Namespace: "erp-db", Labels: map[string]string{"wave": "1"}},
-				{Name: "vm-3", Namespace: "erp-db", Labels: map[string]string{"wave": "1"}},
+				{Name: "vm-1", Namespace: "erp-db", Labels: map[string]string{soteriav1alpha1.WaveLabel: "1"}},
+				{Name: "vm-2", Namespace: "erp-db", Labels: map[string]string{soteriav1alpha1.WaveLabel: "1"}},
+				{Name: "vm-3", Namespace: "erp-db", Labels: map[string]string{soteriav1alpha1.WaveLabel: "1"}},
 			},
-			waveLabel: "wave",
 			nsLevels: map[string]soteriav1alpha1.ConsistencyLevel{
 				"erp-db": soteriav1alpha1.ConsistencyLevelNamespace,
 			},
@@ -83,12 +80,11 @@ func TestResolveVolumeGroups(t *testing.T) {
 		{
 			name: "mixed: 1 namespace-level, 2 VM-level namespaces",
 			vms: []VMReference{
-				{Name: "vm-1", Namespace: "ns-level", Labels: map[string]string{"wave": "1"}},
-				{Name: "vm-2", Namespace: "ns-level", Labels: map[string]string{"wave": "1"}},
-				{Name: "vm-3", Namespace: "vm-a", Labels: map[string]string{"wave": "1"}},
-				{Name: "vm-4", Namespace: "vm-b", Labels: map[string]string{"wave": "2"}},
+				{Name: "vm-1", Namespace: "ns-level", Labels: map[string]string{soteriav1alpha1.WaveLabel: "1"}},
+				{Name: "vm-2", Namespace: "ns-level", Labels: map[string]string{soteriav1alpha1.WaveLabel: "1"}},
+				{Name: "vm-3", Namespace: "vm-a", Labels: map[string]string{soteriav1alpha1.WaveLabel: "1"}},
+				{Name: "vm-4", Namespace: "vm-b", Labels: map[string]string{soteriav1alpha1.WaveLabel: "2"}},
 			},
-			waveLabel: "wave",
 			nsLevels: map[string]soteriav1alpha1.ConsistencyLevel{
 				"ns-level": soteriav1alpha1.ConsistencyLevelNamespace,
 			},
@@ -99,10 +95,9 @@ func TestResolveVolumeGroups(t *testing.T) {
 		{
 			name: "namespace-level, same wave — no conflicts",
 			vms: []VMReference{
-				{Name: "vm-1", Namespace: "erp-db", Labels: map[string]string{"wave": "1"}},
-				{Name: "vm-2", Namespace: "erp-db", Labels: map[string]string{"wave": "1"}},
+				{Name: "vm-1", Namespace: "erp-db", Labels: map[string]string{soteriav1alpha1.WaveLabel: "1"}},
+				{Name: "vm-2", Namespace: "erp-db", Labels: map[string]string{soteriav1alpha1.WaveLabel: "1"}},
 			},
-			waveLabel: "wave",
 			nsLevels: map[string]soteriav1alpha1.ConsistencyLevel{
 				"erp-db": soteriav1alpha1.ConsistencyLevelNamespace,
 			},
@@ -112,10 +107,9 @@ func TestResolveVolumeGroups(t *testing.T) {
 		{
 			name: "namespace-level, different waves — WaveConflict",
 			vms: []VMReference{
-				{Name: "vm-1", Namespace: "erp-db", Labels: map[string]string{"wave": "1"}},
-				{Name: "vm-2", Namespace: "erp-db", Labels: map[string]string{"wave": "2"}},
+				{Name: "vm-1", Namespace: "erp-db", Labels: map[string]string{soteriav1alpha1.WaveLabel: "1"}},
+				{Name: "vm-2", Namespace: "erp-db", Labels: map[string]string{soteriav1alpha1.WaveLabel: "2"}},
 			},
-			waveLabel: "wave",
 			nsLevels: map[string]soteriav1alpha1.ConsistencyLevel{
 				"erp-db": soteriav1alpha1.ConsistencyLevelNamespace,
 			},
@@ -126,12 +120,11 @@ func TestResolveVolumeGroups(t *testing.T) {
 		{
 			name: "multiple namespace-level namespaces with different-wave conflicts",
 			vms: []VMReference{
-				{Name: "vm-1", Namespace: "ns-a", Labels: map[string]string{"wave": "1"}},
-				{Name: "vm-2", Namespace: "ns-a", Labels: map[string]string{"wave": "2"}},
-				{Name: "vm-3", Namespace: "ns-b", Labels: map[string]string{"wave": "3"}},
-				{Name: "vm-4", Namespace: "ns-b", Labels: map[string]string{"wave": "4"}},
+				{Name: "vm-1", Namespace: "ns-a", Labels: map[string]string{soteriav1alpha1.WaveLabel: "1"}},
+				{Name: "vm-2", Namespace: "ns-a", Labels: map[string]string{soteriav1alpha1.WaveLabel: "2"}},
+				{Name: "vm-3", Namespace: "ns-b", Labels: map[string]string{soteriav1alpha1.WaveLabel: "3"}},
+				{Name: "vm-4", Namespace: "ns-b", Labels: map[string]string{soteriav1alpha1.WaveLabel: "4"}},
 			},
-			waveLabel: "wave",
 			nsLevels: map[string]soteriav1alpha1.ConsistencyLevel{
 				"ns-a": soteriav1alpha1.ConsistencyLevelNamespace,
 				"ns-b": soteriav1alpha1.ConsistencyLevelNamespace,
@@ -143,7 +136,6 @@ func TestResolveVolumeGroups(t *testing.T) {
 		{
 			name:              "empty VM list — empty result",
 			vms:               nil,
-			waveLabel:         "wave",
 			nsLevels:          map[string]soteriav1alpha1.ConsistencyLevel{},
 			wantGroupCount:    0,
 			wantConflictCount: 0,
@@ -151,9 +143,8 @@ func TestResolveVolumeGroups(t *testing.T) {
 		{
 			name: "single VM in namespace-level namespace — 1 VolumeGroup with 1 VM",
 			vms: []VMReference{
-				{Name: "vm-solo", Namespace: "erp-db", Labels: map[string]string{"wave": "1"}},
+				{Name: "vm-solo", Namespace: "erp-db", Labels: map[string]string{soteriav1alpha1.WaveLabel: "1"}},
 			},
-			waveLabel: "wave",
 			nsLevels: map[string]soteriav1alpha1.ConsistencyLevel{
 				"erp-db": soteriav1alpha1.ConsistencyLevelNamespace,
 			},
@@ -166,7 +157,7 @@ func TestResolveVolumeGroups(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mock := &MockNamespaceLookup{Levels: tt.nsLevels}
-			result, err := ResolveVolumeGroups(context.Background(), tt.vms, tt.waveLabel, mock)
+			result, err := ResolveVolumeGroups(context.Background(), tt.vms, mock)
 			if err != nil {
 				t.Fatalf("ResolveVolumeGroups() error: %v", err)
 			}

@@ -109,7 +109,6 @@ var (
 		},
 		[]string{"mode", "result"},
 	)
-
 )
 
 func init() {

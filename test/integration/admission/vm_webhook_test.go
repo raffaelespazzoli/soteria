@@ -89,7 +89,6 @@ func TestVMWebhook_PlanExists_Allowed(t *testing.T) {
 		Spec: soteriav1alpha1.DRPlanSpec{
 			PrimarySite:            "dc-west",
 			SecondarySite:          "dc-east",
-			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 10,
 		},
 	}
@@ -181,7 +180,6 @@ func TestVMWebhook_WaveConflict_Rejected(t *testing.T) {
 		Spec: soteriav1alpha1.DRPlanSpec{
 			PrimarySite:            "dc-west",
 			SecondarySite:          "dc-east",
-			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 10,
 		},
 	}
@@ -238,7 +236,6 @@ func TestVMWebhook_WaveConflict_SameWave_Allowed(t *testing.T) {
 		Spec: soteriav1alpha1.DRPlanSpec{
 			PrimarySite:            "dc-west",
 			SecondarySite:          "dc-east",
-			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 10,
 		},
 	}
@@ -289,7 +286,6 @@ func TestVMWebhook_DELETE_Allowed(t *testing.T) {
 		Spec: soteriav1alpha1.DRPlanSpec{
 			PrimarySite:            "dc-west",
 			SecondarySite:          "dc-east",
-			WaveLabel:              "soteria.io/wave",
 			MaxConcurrentFailovers: 10,
 		},
 	}

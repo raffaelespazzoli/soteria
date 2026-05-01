@@ -135,7 +135,7 @@ func (v *VMValidator) checkWaveConflictForPlan(
 		return nil, nil
 	}
 
-	waveLabel := plan.Spec.WaveLabel
+	waveLabel := soteriav1alpha1.WaveLabel
 	thisVMWave := vmLabels[waveLabel]
 
 	siblingVMs, err := v.VMDiscoverer.DiscoverVMs(ctx, plan.Name)

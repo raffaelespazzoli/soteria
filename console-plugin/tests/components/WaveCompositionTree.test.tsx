@@ -20,7 +20,6 @@ const mockPlanWithWaves: DRPlan = {
     annotations: { 'soteria.io/description': 'ERP full-stack DR plan' },
   },
   spec: {
-    waveLabel: 'soteria.io/wave',
     maxConcurrentFailovers: 4,
     primarySite: 'dc1-prod',
     secondarySite: 'dc2-prod',
@@ -131,7 +130,6 @@ const mockPlanNoWaves: DRPlan = {
   kind: 'DRPlan',
   metadata: { name: 'empty-plan', uid: '2', creationTimestamp: '' },
   spec: {
-    waveLabel: 'soteria.io/wave',
     maxConcurrentFailovers: 2,
     primarySite: 'dc1',
     secondarySite: 'dc2',

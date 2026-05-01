@@ -36,6 +36,7 @@
 
 generated: 2026-04-06
 last_updated: 2026-05-01
+# 8.1 done: Remove waveLabel from DRPlanSpec — WaveLabel field removed from DRPlanSpec struct, WaveLabel constant added, GroupByWave/ResolveVolumeGroups/buildChunkInput signatures simplified (dropped waveLabel param, use constant), reconciler+executor+webhook callers updated, validation check removed, sample YAML updated, backward compat automatic (JSON ignores unknown fields), console plugin updated (types.ts interface + PlanConfiguration fixed convention display + 14 test files), stale doc comments fixed (admission/doc.go, drplan_validator.go, registry/drplan/doc.go), ~54 files modified
 # 8.5 created: Optimistic DRExecution Detection in Console — optimistic local state in DRPlanDetailPage (capture k8sCreate return value, setOptimisticExec), TransitionProgressBanner optimisticExec prop (Spinner + "Starting <mode>..." when real execution not yet available), useEffect to clear optimistic state when plan.status.activeExecution watch update arrives, 30s safety timeout, isInTransition extended to include optimistic, seamless no-flash transition from optimistic to real banner, MODE_LABELS map, jest-axe accessibility (~2 modified src files, ~2 test files updated/created)
 # 8.4 created: Console UI — Site-Aware Plan Status & Disagreement Display — SiteDiscovery TS interface added to types.ts, getSitesInSync+parseSiteDiscoveryDelta utils, SiteDiscoverySection component (two-column VM comparison with mismatch highlighting+stale warning), SiteDisagreementAlert component (danger Alert+AlertActionLink tab-switch), DRPlanDetailPage integration (alert above overview, onSwitchToConfig scroll, isBlocked passed to diagram), PlanConfiguration integration (SiteDiscoverySection above existing two-pane), DRLifecycleDiagram isBlocked/blockedTooltip props (disable all TransitionEdge buttons), DRDashboard warning icon+disabled kebab via getSitesInSync on EnrichedPlan, DRPlanActions isDisabled/disabledTooltip, ARIA live region+keyboard nav+screen reader text, jest-axe on all states (~2 new src files, ~9 modified files, ~2 new test files, ~6 modified test files, ~1 new util test file)
 # 8.3 created: Cross-Site VM Agreement & Plan Readiness Gating — compareSiteDiscovery pure function ({namespace/name} set comparison, delta message with cap), SitesInSync condition (VMsAgreed/VMsMismatch/WaitingForDiscovery), reconciler integration (blocks wave formation on mismatch, proceeds on waiting-for-discovery to avoid first-deploy deadlock), updateStatus gets *metav1.Condition sitesInSyncCond param, DRExecution admission webhook rejects when SitesInSync=False, PreflightReport gains sitesInSync+siteDiscoveryDelta fields, backward compat (skip when LocalSite=="" or both SiteDiscovery nil), ~11 unit tests + 2 admission tests + 2 integration tests (~3 prod files modified, ~3 test files)
@@ -249,7 +250,7 @@ development_status:
 
   # Epic 8: Cross-Site Discovery Agreement, API Simplification & UI Responsiveness
   epic-8: in-progress
-  8-1-remove-wavelabel-from-drplanspec: ready-for-dev
+  8-1-remove-wavelabel-from-drplanspec: done
   8-2-per-site-vm-discovery-reporting: ready-for-dev
   8-3-cross-site-vm-agreement-plan-readiness-gating: ready-for-dev
   8-4-console-ui-site-aware-plan-status-disagreement-display: ready-for-dev

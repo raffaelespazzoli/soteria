@@ -54,14 +54,8 @@ export const PlanConfiguration: React.FC<PlanConfigurationProps> = ({ plan }) =>
             <DescriptionListDescription>{plan.metadata?.name}</DescriptionListDescription>
           </DescriptionListGroup>
           <DescriptionListGroup>
-            <DescriptionListTerm>Label Selector</DescriptionListTerm>
-            <DescriptionListDescription>
-              {plan.spec?.labelSelector ? <code>{plan.spec.labelSelector}</code> : <i>None</i>}
-            </DescriptionListDescription>
-          </DescriptionListGroup>
-          <DescriptionListGroup>
             <DescriptionListTerm>Wave Label</DescriptionListTerm>
-            <DescriptionListDescription>{plan.spec?.waveLabel}</DescriptionListDescription>
+            <DescriptionListDescription><code>soteria.io/wave</code> (fixed convention)</DescriptionListDescription>
           </DescriptionListGroup>
           <DescriptionListGroup>
             <DescriptionListTerm>Max Concurrent Failovers</DescriptionListTerm>
