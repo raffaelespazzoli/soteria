@@ -79,7 +79,7 @@ func (d *Driver) CreateVolumeGroup(ctx context.Context, spec drivers.VolumeGroup
 	d.volumeGroups[vgID] = &volumeGroupState{
 		info:      info,
 		namespace: spec.Namespace,
-		role:      drivers.RoleNonReplicated,
+		role:      drivers.RoleSource,
 		createdAt: time.Now(),
 	}
 

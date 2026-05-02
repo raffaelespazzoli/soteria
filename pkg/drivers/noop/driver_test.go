@@ -114,8 +114,8 @@ func TestDriver_ReplicationLifecycle(t *testing.T) {
 		wantHealth drivers.ReplicationHealth
 	}{
 		{
-			name:       "set source",
-			action:     func() error { return d.SetSource(testCtx(), info.ID) },
+			name:       "initial state is source",
+			action:     func() error { return nil },
 			wantRole:   drivers.RoleSource,
 			wantHealth: drivers.HealthHealthy,
 		},
@@ -124,6 +124,12 @@ func TestDriver_ReplicationLifecycle(t *testing.T) {
 			action:     func() error { return d.StopReplication(testCtx(), info.ID) },
 			wantRole:   drivers.RoleNonReplicated,
 			wantHealth: drivers.HealthNotReplicating,
+		},
+		{
+			name:       "re-establish source after stop",
+			action:     func() error { return d.SetSource(testCtx(), info.ID) },
+			wantRole:   drivers.RoleSource,
+			wantHealth: drivers.HealthHealthy,
 		},
 	}
 
@@ -279,9 +285,13 @@ func TestDriver_Idempotency_StopReplication(t *testing.T) {
 		t.Fatalf("CreateVolumeGroup: %v", err)
 	}
 
+	if err := d.StopReplication(testCtx(), info.ID); err != nil {
+		t.Fatalf("first StopReplication: %v", err)
+	}
+
 	// StopReplication on NonReplicated is idempotent
 	if err := d.StopReplication(testCtx(), info.ID); err != nil {
-		t.Fatalf("StopReplication on NonReplicated: %v", err)
+		t.Fatalf("second StopReplication (idempotent): %v", err)
 	}
 
 	status, err := d.GetReplicationStatus(testCtx(), info.ID)
@@ -293,9 +303,9 @@ func TestDriver_Idempotency_StopReplication(t *testing.T) {
 	}
 }
 
-func TestDriver_GetReplicationStatus_NonReplicated(t *testing.T) {
+func TestDriver_GetReplicationStatus_AfterCreate(t *testing.T) {
 	d := New()
-	info, err := d.CreateVolumeGroup(testCtx(), drivers.VolumeGroupSpec{Name: "non-repl"})
+	info, err := d.CreateVolumeGroup(testCtx(), drivers.VolumeGroupSpec{Name: "after-create"})
 	if err != nil {
 		t.Fatalf("CreateVolumeGroup: %v", err)
 	}
@@ -304,14 +314,14 @@ func TestDriver_GetReplicationStatus_NonReplicated(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetReplicationStatus: %v", err)
 	}
-	if status.Role != drivers.RoleNonReplicated {
-		t.Fatalf("expected RoleNonReplicated, got %q", status.Role)
+	if status.Role != drivers.RoleSource {
+		t.Fatalf("expected RoleSource after create, got %q", status.Role)
 	}
-	if status.Health != drivers.HealthNotReplicating {
-		t.Fatalf("expected HealthNotReplicating for NonReplicated, got %q", status.Health)
+	if status.Health != drivers.HealthHealthy {
+		t.Fatalf("expected HealthHealthy after create, got %q", status.Health)
 	}
-	if status.LastSyncTime != nil {
-		t.Fatal("expected nil LastSyncTime for NonReplicated")
+	if status.LastSyncTime == nil {
+		t.Fatal("expected non-nil LastSyncTime for Source role")
 	}
 }
 

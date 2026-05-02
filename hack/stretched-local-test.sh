@@ -483,9 +483,10 @@ declare -A VM_WAVES=(
   ["fedora-appserver-2"]="2"
   ["fedora-webserver-1"]="3"
   ["fedora-webserver-2"]="3"
+  ["fedora-webserver-3"]="3"
 )
 
-for vm_name in fedora-db fedora-appserver-1 fedora-appserver-2 fedora-webserver-1 fedora-webserver-2; do
+for vm_name in fedora-db fedora-appserver-1 fedora-appserver-2 fedora-webserver-1 fedora-webserver-2 fedora-webserver-3; do
   wave="${VM_WAVES[${vm_name}]}"
   create_fedora_vm "${CTX_ETL6}" "${vm_name}" "${wave}" "Always"
   create_fedora_vm "${CTX_ETL7}" "${vm_name}" "${wave}" "Halted"
@@ -503,7 +504,6 @@ metadata:
   name: fedora-app
   namespace: soteria-dr-test
 spec:
-  waveLabel: soteria.io/wave
   maxConcurrentFailovers: 2
   primarySite: etl6
   secondarySite: etl7
@@ -543,7 +543,7 @@ cat <<SUMMARY
    DRPlan: fedora-app (waveLabel: soteria.io/wave, maxConcurrentFailovers: 2)
    Wave 1: fedora-db
    Wave 2: fedora-appserver-1, fedora-appserver-2
-   Wave 3: fedora-webserver-1, fedora-webserver-2
+   Wave 3: fedora-webserver-1, fedora-webserver-2, fedora-webserver-3
    ${CTX_ETL6}: VMs running (runStrategy: Always)
    ${CTX_ETL7}: VMs stopped (runStrategy: Halted)
 
