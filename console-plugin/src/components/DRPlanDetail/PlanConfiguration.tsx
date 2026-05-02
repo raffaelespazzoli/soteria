@@ -10,6 +10,7 @@ import {
 } from '@patternfly/react-core';
 import { DRPlan } from '../../models/types';
 import { ReplicationHealthExpanded } from './ReplicationHealthExpanded';
+import { SiteDiscoverySection } from './SiteDiscoverySection';
 
 const INTERNAL_ANNOTATION_PREFIXES = [
   'kubernetes.io/',
@@ -42,9 +43,12 @@ export const PlanConfiguration: React.FC<PlanConfigurationProps> = ({ plan }) =>
   const externalAnnotations = Object.entries(annotations).filter(
     ([key]) => !isInternalAnnotation(key),
   );
+  const hasSiteTopology = !!(plan.spec?.primarySite && plan.spec?.secondarySite);
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--pf-t--global--spacer--xl, var(--pf-v5-global--spacer--xl))', alignItems: 'start' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--pf-t--global--spacer--xl, var(--pf-v5-global--spacer--xl))' }}>
+      {hasSiteTopology && <SiteDiscoverySection plan={plan} />}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--pf-t--global--spacer--xl, var(--pf-v5-global--spacer--xl))', alignItems: 'start' }}>
       {/* Left pane: Plan Information */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--pf-t--global--spacer--lg, var(--pf-v5-global--spacer--lg))' }}>
         <Content component={ContentVariants.h3}>Plan Information</Content>
@@ -109,6 +113,7 @@ export const PlanConfiguration: React.FC<PlanConfigurationProps> = ({ plan }) =>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--pf-t--global--spacer--lg, var(--pf-v5-global--spacer--lg))' }}>
         <Content component={ContentVariants.h3}>Replication Health</Content>
         <ReplicationHealthExpanded plan={plan} />
+      </div>
       </div>
     </div>
   );

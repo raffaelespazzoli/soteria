@@ -151,4 +151,61 @@ describe('DRDashboard', () => {
     const results = await axe(container);
     expect(results).toHaveNoViolations();
   });
+
+  describe('SitesInSync warning indicator', () => {
+    const plansWithSitesMismatch: DRPlan[] = [
+      {
+        apiVersion: 'soteria.io/v1alpha1',
+        kind: 'DRPlan',
+        metadata: { name: 'plan-mismatch', uid: '3', creationTimestamp: '' },
+        spec: { maxConcurrentFailovers: 1, primarySite: 'site-a', secondarySite: 'site-b' },
+        status: {
+          phase: 'SteadyState',
+          activeSite: 'site-a',
+          conditions: [
+            { type: 'ReplicationHealthy', status: 'True', message: 'RPO: 12s' },
+            { type: 'SitesInSync', status: 'False', reason: 'VMsMismatch', message: 'VMs on primary but not secondary: [ns/vm-a]' },
+          ],
+        },
+      },
+    ];
+
+    beforeEach(() => {
+      const { useK8sWatchResource } = jest.requireMock('@openshift-console/dynamic-plugin-sdk');
+      useK8sWatchResource.mockImplementation(
+        (resource: { groupVersionKind?: { kind?: string } }) => {
+          if (resource.groupVersionKind?.kind === 'DRExecution') return [[], true, null];
+          return [plansWithSitesMismatch, true, null];
+        },
+      );
+    });
+
+    afterEach(() => {
+      const { useK8sWatchResource } = jest.requireMock('@openshift-console/dynamic-plugin-sdk');
+      useK8sWatchResource.mockImplementation(
+        (resource: { groupVersionKind?: { kind?: string } }) => {
+          if (resource.groupVersionKind?.kind === 'DRExecution')
+            return [mockExecutions, true, null];
+          return [mockPlans, true, null];
+        },
+      );
+    });
+
+    it('shows warning icon for plan with SitesInSync=False', () => {
+      render(<DRDashboard />);
+      expect(screen.getByLabelText('Sites disagree on VM inventory')).toBeInTheDocument();
+    });
+
+    it('has disabled kebab menu for plan with SitesInSync=False', () => {
+      render(<DRDashboard />);
+      const kebab = screen.getByRole('button', { name: /actions for plan-mismatch/i });
+      expect(kebab).toBeDisabled();
+    });
+
+    it('has no accessibility violations when a plan is blocked', async () => {
+      const { container } = render(<DRDashboard />);
+      const results = await axe(container);
+      expect(results).toHaveNoViolations();
+    });
+  });
 });

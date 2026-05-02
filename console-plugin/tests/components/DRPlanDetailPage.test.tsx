@@ -151,4 +151,58 @@ describe('DRPlanDetailPage', () => {
     const results = await axe(container);
     expect(results).toHaveNoViolations();
   });
+
+  describe('SiteDisagreementAlert integration', () => {
+    const planWithSitesOutOfSync: DRPlan = {
+      ...mockPlan,
+      status: {
+        ...mockPlan.status,
+        conditions: [
+          { type: 'ReplicationHealthy', status: 'True', reason: 'Healthy', message: 'RPO: 12s' },
+          {
+            type: 'SitesInSync',
+            status: 'False',
+            reason: 'VMsMismatch',
+            message: 'VMs on primary but not secondary: [ns1/vm-a]; VMs on secondary but not primary: [ns1/vm-b]',
+          },
+        ],
+      },
+    };
+
+    it('renders danger alert when plan has SitesInSync=False', () => {
+      mockUseDRPlan.mockReturnValue([planWithSitesOutOfSync, true, null]);
+      render(<DRPlanDetailPage />);
+      expect(
+        screen.getByText('Sites do not agree on VM inventory — DR operations are blocked'),
+      ).toBeInTheDocument();
+    });
+
+    it('clicking "View site differences" switches to Configuration tab', () => {
+      mockUseDRPlan.mockReturnValue([planWithSitesOutOfSync, true, null]);
+      render(<DRPlanDetailPage />);
+      fireEvent.click(screen.getByText('View site differences'));
+      expect(screen.getByRole('tab', { name: 'Configuration' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+    });
+
+    it('renders no alert when plan has SitesInSync=True', () => {
+      const planInSync: DRPlan = {
+        ...mockPlan,
+        status: {
+          ...mockPlan.status,
+          conditions: [
+            { type: 'ReplicationHealthy', status: 'True', reason: 'Healthy', message: 'RPO: 12s' },
+            { type: 'SitesInSync', status: 'True', reason: 'VMsAgreed' },
+          ],
+        },
+      };
+      mockUseDRPlan.mockReturnValue([planInSync, true, null]);
+      render(<DRPlanDetailPage />);
+      expect(
+        screen.queryByText('Sites do not agree on VM inventory — DR operations are blocked'),
+      ).not.toBeInTheDocument();
+    });
+  });
 });

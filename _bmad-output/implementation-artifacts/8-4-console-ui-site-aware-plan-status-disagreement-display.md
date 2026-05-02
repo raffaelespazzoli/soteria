@@ -1,6 +1,6 @@
 # Story 8.4: Console UI — Site-Aware Plan Status & Disagreement Display
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -28,8 +28,8 @@ So that I can identify and resolve VM provisioning gaps before attempting a DR o
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Extend TypeScript types for SiteDiscovery and PreflightReport (AC: #1, #2)
-  - [ ] 1.1 In `console-plugin/src/models/types.ts`, add `SiteDiscovery` interface:
+- [x] Task 1: Extend TypeScript types for SiteDiscovery and PreflightReport (AC: #1, #2)
+  - [x] 1.1 In `console-plugin/src/models/types.ts`, add `SiteDiscovery` interface:
     ```ts
     export interface SiteDiscovery {
       vms?: DiscoveredVM[];
@@ -37,11 +37,11 @@ So that I can identify and resolve VM provisioning gaps before attempting a DR o
       lastDiscoveryTime?: string;
     }
     ```
-  - [ ] 1.2 Add `primarySiteDiscovery` and `secondarySiteDiscovery` fields (both `SiteDiscovery | undefined`) to the `DRPlanStatus` interface
-  - [ ] 1.3 Add `sitesInSync` and `siteDiscoveryDelta` fields to `PreflightReport` (from Story 8.3's backend enrichment)
+  - [x] 1.2 Add `primarySiteDiscovery` and `secondarySiteDiscovery` fields (both `SiteDiscovery | undefined`) to the `DRPlanStatus` interface
+  - [x] 1.3 Add `sitesInSync` and `siteDiscoveryDelta` fields to `PreflightReport` (from Story 8.3's backend enrichment)
 
-- [ ] Task 2: Add `getSitesInSync` helper to drPlanUtils (AC: #2, #3, #4)
-  - [ ] 2.1 In `console-plugin/src/utils/drPlanUtils.ts`, add:
+- [x] Task 2: Add `getSitesInSync` helper to drPlanUtils (AC: #2, #3, #4)
+  - [x] 2.1 In `console-plugin/src/utils/drPlanUtils.ts`, add:
     ```ts
     export interface SitesInSyncStatus {
       inSync: boolean;
@@ -51,59 +51,59 @@ So that I can identify and resolve VM provisioning gaps before attempting a DR o
     export function getSitesInSync(plan: DRPlan): SitesInSyncStatus
     ```
     Implementation: find `SitesInSync` condition in `plan.status.conditions`; if not found return `{ inSync: true }` (backward compat — plans without the condition are not blocked); if `status === 'True'` return `inSync: true`; otherwise return `{ inSync: false, reason, message }`
-  - [ ] 2.2 Add `parseSiteDiscoveryDelta(message: string): { primaryOnly: string[]; secondaryOnly: string[] }` pure function that parses the structured delta message from the `SitesInSync` condition (format: `"VMs on primary but not secondary: [ns/vm-a, ns/vm-b]; VMs on secondary but not primary: [ns/vm-c]"`)
+  - [x] 2.2 Add `parseSiteDiscoveryDelta(message: string): { primaryOnly: string[]; secondaryOnly: string[] }` pure function that parses the structured delta message from the `SitesInSync` condition (format: `"VMs on primary but not secondary: [ns/vm-a, ns/vm-b]; VMs on secondary but not primary: [ns/vm-c]"`)
 
-- [ ] Task 3: Create `SiteDiscoverySection` component (AC: #1, #6)
-  - [ ] 3.1 Create `console-plugin/src/components/DRPlanDetail/SiteDiscoverySection.tsx`
-  - [ ] 3.2 Props: `plan: DRPlan`
-  - [ ] 3.3 Render two-column layout (CSS Grid `1fr 1fr`) with:
+- [x] Task 3: Create `SiteDiscoverySection` component (AC: #1, #6)
+  - [x] 3.1 Create `console-plugin/src/components/DRPlanDetail/SiteDiscoverySection.tsx`
+  - [x] 3.2 Props: `plan: DRPlan`
+  - [x] 3.3 Render two-column layout (CSS Grid `1fr 1fr`) with:
     - Column header: site name (from `plan.spec.primarySite` / `plan.spec.secondarySite`)
     - VM count badge: `"N VMs discovered"`
     - Last discovery timestamp (via `formatRelativeTime` from `utils/formatters.ts`)
     - VM list: `Table` (compact) with `Name` and `Namespace` columns
     - Matching VMs: default style
     - VMs present on only one site: row highlighted with `--pf-t--global--color--status--warning--default` background and `ExclamationTriangleIcon` in an extra "Status" column cell
-  - [ ] 3.4 When either `SiteDiscovery` is nil/undefined, show informational text: "Waiting for <site> to report discovery data"
-  - [ ] 3.5 When both are nil, show: "Site discovery not yet available. Ensure both Soteria instances are running with --site-name."
-  - [ ] 3.6 Staleness check: if `lastDiscoveryTime` is > 5 minutes old, show `Alert` (variant=warning, isInline, isPlain) beneath that column: "Discovery data from <site> is stale (last updated <relative time>)"
-  - [ ] 3.7 Add `id="site-discovery-section"` on the root element for scroll-to anchor from the danger alert
-  - [ ] 3.8 Use PatternFly `Content` (h3) header: "Site Discovery"
+  - [x] 3.4 When either `SiteDiscovery` is nil/undefined, show informational text: "Waiting for <site> to report discovery data"
+  - [x] 3.5 When both are nil, show: "Site discovery not yet available. Ensure both Soteria instances are running with --site-name."
+  - [x] 3.6 Staleness check: if `lastDiscoveryTime` is > 5 minutes old, show `Alert` (variant=warning, isInline, isPlain) beneath that column: "Discovery data from <site> is stale (last updated <relative time>)"
+  - [x] 3.7 Add `id="site-discovery-section"` on the root element for scroll-to anchor from the danger alert
+  - [x] 3.8 Use PatternFly `Content` (h3) header: "Site Discovery"
 
-- [ ] Task 4: Create `SiteDisagreementAlert` component (AC: #2, #5)
-  - [ ] 4.1 Create `console-plugin/src/components/DRPlanDetail/SiteDisagreementAlert.tsx`
-  - [ ] 4.2 Props: `plan: DRPlan`, `onSwitchToConfig: () => void`
-  - [ ] 4.3 Render `Alert` (variant=danger, isInline) with title: "Sites do not agree on VM inventory — DR operations are blocked"
-  - [ ] 4.4 Alert body summarizes the delta from condition message. Parse the `SitesInSync` condition message to extract counts: "N VMs on primary not found on secondary, M VMs on secondary not found on primary"
-  - [ ] 4.5 `AlertActionLink` with text "View site differences" that calls `onSwitchToConfig()` — parent handler switches to Configuration tab (eventKey=3) and scrolls to `#site-discovery-section`
-  - [ ] 4.6 Wrap in `div` with `aria-live="assertive"` so screen readers announce when the blocking alert appears/disappears
+- [x] Task 4: Create `SiteDisagreementAlert` component (AC: #2, #5)
+  - [x] 4.1 Create `console-plugin/src/components/DRPlanDetail/SiteDisagreementAlert.tsx`
+  - [x] 4.2 Props: `plan: DRPlan`, `onSwitchToConfig: () => void`
+  - [x] 4.3 Render `Alert` (variant=danger, isInline) with title: "Sites do not agree on VM inventory — DR operations are blocked"
+  - [x] 4.4 Alert body summarizes the delta from condition message. Parse the `SitesInSync` condition message to extract counts: "N VMs on primary not found on secondary, M VMs on secondary not found on primary"
+  - [x] 4.5 `AlertActionLink` with text "View site differences" that calls `onSwitchToConfig()` — parent handler switches to Configuration tab (eventKey=3) and scrolls to `#site-discovery-section`
+  - [x] 4.6 Wrap in `div` with `aria-live="assertive"` so screen readers announce when the blocking alert appears/disappears
 
-- [ ] Task 5: Integrate SiteDisagreementAlert into DRPlanDetailPage (AC: #2, #5)
-  - [ ] 5.1 In `DRPlanDetailPage.tsx`, import `SiteDisagreementAlert` and `getSitesInSync`
-  - [ ] 5.2 Compute `sitesInSync = getSitesInSync(plan)` below `effectivePhase`
-  - [ ] 5.3 If `!sitesInSync.inSync`, render `<SiteDisagreementAlert>` in the Overview tab, above `PlanHeader` (or between `PlanHeader` and `TransitionProgressBanner`)
-  - [ ] 5.4 The `onSwitchToConfig` handler: `setActiveTab(3)` then `setTimeout(() => document.getElementById('site-discovery-section')?.scrollIntoView({ behavior: 'smooth' }), 100)`
-  - [ ] 5.5 When `SitesInSync` transitions True→False→True via watch, the alert appears/disappears reactively (no extra logic needed — `useDRPlan` watch provides updated conditions)
+- [x] Task 5: Integrate SiteDisagreementAlert into DRPlanDetailPage (AC: #2, #5)
+  - [x] 5.1 In `DRPlanDetailPage.tsx`, import `SiteDisagreementAlert` and `getSitesInSync`
+  - [x] 5.2 Compute `sitesInSync = getSitesInSync(plan)` below `effectivePhase`
+  - [x] 5.3 If `!sitesInSync.inSync`, render `<SiteDisagreementAlert>` in the Overview tab, above `PlanHeader` (or between `PlanHeader` and `TransitionProgressBanner`)
+  - [x] 5.4 The `onSwitchToConfig` handler: `setActiveTab(3)` then `setTimeout(() => document.getElementById('site-discovery-section')?.scrollIntoView({ behavior: 'smooth' }), 100)`
+  - [x] 5.5 When `SitesInSync` transitions True→False→True via watch, the alert appears/disappears reactively (no extra logic needed — `useDRPlan` watch provides updated conditions)
 
-- [ ] Task 6: Integrate SiteDiscoverySection into PlanConfiguration (AC: #1)
-  - [ ] 6.1 In `PlanConfiguration.tsx`, import `SiteDiscoverySection`
-  - [ ] 6.2 Add `SiteDiscoverySection` as a full-width row ABOVE the existing two-column grid (Plan Information + Replication Health). Use a wrapper `div` so Site Discovery spans the full width, then the existing two-pane layout sits below it
-  - [ ] 6.3 Only render `SiteDiscoverySection` when site-aware mode is active: check `plan.spec?.primarySite && plan.spec?.secondarySite` — if neither is set, skip the section entirely (backward compat for plans without site topology)
+- [x] Task 6: Integrate SiteDiscoverySection into PlanConfiguration (AC: #1)
+  - [x] 6.1 In `PlanConfiguration.tsx`, import `SiteDiscoverySection`
+  - [x] 6.2 Add `SiteDiscoverySection` as a full-width row ABOVE the existing two-column grid (Plan Information + Replication Health). Use a wrapper `div` so Site Discovery spans the full width, then the existing two-pane layout sits below it
+  - [x] 6.3 Only render `SiteDiscoverySection` when site-aware mode is active: check `plan.spec?.primarySite && plan.spec?.secondarySite` — if neither is set, skip the section entirely (backward compat for plans without site topology)
 
-- [ ] Task 7: Disable lifecycle diagram actions when blocked (AC: #3)
-  - [ ] 7.1 In `DRLifecycleDiagram.tsx`, add a `isBlocked?: boolean` prop and `blockedTooltip?: string` prop
-  - [ ] 7.2 When `isBlocked` is true, all `TransitionEdge` buttons render as `isDisabled` with a `Tooltip` wrapping: "Blocked: sites do not agree on VM inventory"
-  - [ ] 7.3 In `TransitionEdge`, when in `available` state but parent passes `isBlocked`, render buttons as disabled with tooltip instead of clickable
-  - [ ] 7.4 In `DRPlanDetailPage.tsx`, pass `isBlocked={!sitesInSync.inSync}` and `blockedTooltip="Blocked: sites do not agree on VM inventory"` to `DRLifecycleDiagram`
+- [x] Task 7: Disable lifecycle diagram actions when blocked (AC: #3)
+  - [x] 7.1 In `DRLifecycleDiagram.tsx`, add a `isBlocked?: boolean` prop and `blockedTooltip?: string` prop
+  - [x] 7.2 When `isBlocked` is true, all `TransitionEdge` buttons render as `isDisabled` with a `Tooltip` wrapping: "Blocked: sites do not agree on VM inventory"
+  - [x] 7.3 In `TransitionEdge`, when in `available` state but parent passes `isBlocked`, render buttons as disabled with tooltip instead of clickable
+  - [x] 7.4 In `DRPlanDetailPage.tsx`, pass `isBlocked={!sitesInSync.inSync}` and `blockedTooltip="Blocked: sites do not agree on VM inventory"` to `DRLifecycleDiagram`
 
-- [ ] Task 8: Dashboard table warning indicator for SitesInSync=False (AC: #4)
-  - [ ] 8.1 In `DRDashboard.tsx`, import `getSitesInSync` and add `sitesInSync: SitesInSyncStatus` to `EnrichedPlan`
-  - [ ] 8.2 In `enrichPlans()`, add `sitesInSync: getSitesInSync(plan)` to each enriched plan
-  - [ ] 8.3 In the `Protected` column (`Td` at index 3), when `ep.sitesInSync.inSync === false`, render an `ExclamationTriangleIcon` (color: `--pf-t--global--icon--color--status--warning--default`) with a `Tooltip`: "Sites do not agree on VM inventory" — render this BEFORE the `ReplicationHealthIndicator` so it's visible at a glance
-  - [ ] 8.4 In `DRPlanActions.tsx`, add an `isDisabled?: boolean` and `disabledTooltip?: string` prop. When `isDisabled`, render the kebab `MenuToggle` inside a `Tooltip` with the tooltip text, and set `isDisabled` on the `MenuToggle`
-  - [ ] 8.5 In `DRDashboard.tsx`, pass `isDisabled={!ep.sitesInSync.inSync}` and `disabledTooltip="Plan blocked: sites do not agree on VM inventory"` to `DRPlanActions`
+- [x] Task 8: Dashboard table warning indicator for SitesInSync=False (AC: #4)
+  - [x] 8.1 In `DRDashboard.tsx`, import `getSitesInSync` and add `sitesInSync: SitesInSyncStatus` to `EnrichedPlan`
+  - [x] 8.2 In `enrichPlans()`, add `sitesInSync: getSitesInSync(plan)` to each enriched plan
+  - [x] 8.3 In the `Protected` column (`Td` at index 3), when `ep.sitesInSync.inSync === false`, render an `ExclamationTriangleIcon` (color: `--pf-t--global--icon--color--status--warning--default`) with a `Tooltip`: "Sites do not agree on VM inventory" — render this BEFORE the `ReplicationHealthIndicator` so it's visible at a glance
+  - [x] 8.4 In `DRPlanActions.tsx`, add an `isDisabled?: boolean` and `disabledTooltip?: string` prop. When `isDisabled`, render the kebab `MenuToggle` inside a `Tooltip` with the tooltip text, and set `isDisabled` on the `MenuToggle`
+  - [x] 8.5 In `DRDashboard.tsx`, pass `isDisabled={!ep.sitesInSync.inSync}` and `disabledTooltip="Plan blocked: sites do not agree on VM inventory"` to `DRPlanActions`
 
-- [ ] Task 9: Unit tests (AC: #7)
-  - [ ] 9.1 Create `console-plugin/tests/components/SiteDiscoverySection.test.tsx`:
+- [x] Task 9: Unit tests (AC: #7)
+  - [x] 9.1 Create `console-plugin/tests/components/SiteDiscoverySection.test.tsx`:
     - Both sites populated with matching VMs — all rows default style, no warning icons
     - Both populated with mismatched VMs — extra VMs highlighted, warning icons present
     - One site nil — informational waiting text displayed
@@ -111,39 +111,47 @@ So that I can identify and resolve VM provisioning gaps before attempting a DR o
     - Stale discovery time (> 5 min) — stale warning rendered
     - Fresh discovery time — no stale warning
     - jest-axe passes on all states
-  - [ ] 9.2 Create `console-plugin/tests/components/SiteDisagreementAlert.test.tsx`:
+  - [x] 9.2 Create `console-plugin/tests/components/SiteDisagreementAlert.test.tsx`:
     - SitesInSync=False — danger alert rendered with correct title and delta summary
     - SitesInSync=True — no alert rendered
     - No SitesInSync condition — no alert rendered (backward compat)
     - AlertActionLink click calls `onSwitchToConfig`
     - Alert disappears on rerender with SitesInSync=True
     - jest-axe passes on alert-visible and alert-absent states
-  - [ ] 9.3 Update `console-plugin/tests/components/DRPlanDetailPage.test.tsx`:
+  - [x] 9.3 Update `console-plugin/tests/components/DRPlanDetailPage.test.tsx`:
     - Add test: plan with SitesInSync=False renders danger alert above overview
     - Add test: clicking "View site differences" switches to Configuration tab
     - Add test: plan with SitesInSync=True (or no condition) renders no alert
-  - [ ] 9.4 Update `console-plugin/tests/components/DRLifecycleDiagram.test.tsx`:
+  - [x] 9.4 Update `console-plugin/tests/components/DRLifecycleDiagram.test.tsx`:
     - Add test: `isBlocked=true` disables all action buttons
     - Add test: `isBlocked=false` actions work normally (regression)
-  - [ ] 9.5 Update `console-plugin/tests/components/DRDashboard.test.tsx`:
+  - [x] 9.5 Update `console-plugin/tests/components/DRDashboard.test.tsx`:
     - Add test: plan with SitesInSync=False shows warning icon in table row
     - Add test: plan with SitesInSync=False has disabled kebab menu
-  - [ ] 9.6 Update `console-plugin/tests/components/DRPlanActions.test.tsx`:
+  - [x] 9.6 Update `console-plugin/tests/components/DRPlanActions.test.tsx`:
     - Add test: `isDisabled=true` renders disabled kebab with tooltip
-  - [ ] 9.7 Update `console-plugin/tests/components/PlanConfiguration.test.tsx`:
+  - [x] 9.7 Update `console-plugin/tests/components/PlanConfiguration.test.tsx`:
     - Add test: plan with site discovery renders SiteDiscoverySection
     - Add test: plan without primarySite/secondarySite skips SiteDiscoverySection
-  - [ ] 9.8 Create or update `console-plugin/tests/utils/drPlanUtils.test.ts`:
+  - [x] 9.8 Create or update `console-plugin/tests/utils/drPlanUtils.test.ts`:
     - `getSitesInSync` with True condition → `{ inSync: true }`
     - `getSitesInSync` with False/VMsMismatch → `{ inSync: false, reason, message }`
     - `getSitesInSync` with no condition → `{ inSync: true }` (backward compat)
     - `parseSiteDiscoveryDelta` parses structured message correctly
     - `parseSiteDiscoveryDelta` with empty/malformed message returns empty arrays
 
-- [ ] Task 10: Verify build and lint (AC: #7)
-  - [ ] 10.1 Run `cd console-plugin && yarn build` — zero errors
-  - [ ] 10.2 Run `cd console-plugin && yarn test` — all tests pass
-  - [ ] 10.3 Run `cd console-plugin && yarn lint` — zero new lint errors (if lint target exists)
+- [x] Task 10: Verify build and lint (AC: #7)
+  - [x] 10.1 Run `cd console-plugin && yarn build` — zero errors
+  - [x] 10.2 Run `cd console-plugin && yarn test` — all tests pass
+  - [x] 10.3 Run `cd console-plugin && yarn lint` — zero new lint errors (if lint target exists)
+
+### Review Findings
+
+- [x] [Review][Patch] Disabled dashboard kebab tooltip is attached to a disabled control, so the blocked-plan explanation may never appear [`console-plugin/src/components/DRDashboard/DRPlanActions.tsx:46`] — **Fixed**: wrapped disabled Dropdown in `<span>` so Tooltip receives pointer events
+- [x] [Review][Patch] `SiteDisagreementAlert` undercounts mismatches when the backend message is capped with `... and N more` [`console-plugin/src/utils/drPlanUtils.ts:135`] — **Fixed**: `parseSiteDiscoveryDelta` now extracts `primaryMoreCount`/`secondaryMoreCount` from "and N more" suffix; alert sums named VMs + extra count
+- [x] [Review][Patch] The blocking-state live region is unmounted as soon as plans return in sync, so the unblock transition may not be announced [`console-plugin/src/components/DRPlanDetail/DRPlanDetailPage.tsx:109`] — **Fixed**: moved `aria-live="assertive"` wrapper to always-rendered parent div in DRPlanDetailPage; alert content renders conditionally inside it
+- [x] [Review][Patch] `jest-axe` coverage is missing for several new states required by AC7, including stale and one-site-missing discovery states plus the dashboard blocked state [`console-plugin/tests/components/SiteDiscoverySection.test.tsx:115`] — **Fixed**: added axe tests for one-site-nil and stale-discovery states in SiteDiscoverySection, plus dashboard blocked-row state in DRDashboard
+- [x] [Review][Patch] The dashboard Protected column introduces hardcoded spacing instead of PatternFly tokens [`console-plugin/src/components/DRDashboard/DRDashboard.tsx:271`] — **Fixed**: replaced `gap: '0.5rem'` with `var(--pf-t--global--spacer--sm, var(--pf-v5-global--spacer--sm))` in both Protected and Last Execution columns
 
 ## Dev Notes
 
@@ -389,9 +397,40 @@ function makePlanWithSiteDiscovery(
 ## Dev Agent Record
 
 ### Agent Model Used
+Opus 4.6 (Cursor Agent)
 
 ### Debug Log References
+- All 547 tests pass (40 new tests added from 507 baseline, including 3 post-review axe coverage additions)
+- Webpack production build succeeds (zero errors, pre-existing asset size warning only)
+- Go unit and integration tests pass (no regressions)
 
 ### Completion Notes List
+- Task 1: Added `SiteDiscovery` interface and extended `DRPlanStatus` + `PreflightReport` types
+- Task 2: Added `getSitesInSync` and `parseSiteDiscoveryDelta` utilities following existing condition-reading pattern
+- Task 3: Created `SiteDiscoverySection` with two-column VM comparison, staleness warning, and mismatch highlighting
+- Task 4: Created `SiteDisagreementAlert` with danger alert, delta summary parsing, and aria-live region
+- Task 5: Integrated alert into DRPlanDetailPage Overview tab with tab-switch and scroll-to-anchor handler
+- Task 6: Integrated SiteDiscoverySection into PlanConfiguration above existing grid, guarded by site topology check
+- Task 7: Added `isBlocked`/`blockedTooltip` props to DRLifecycleDiagram, disabling action buttons with tooltip
+- Task 8: Added warning icon + disabled kebab in DRDashboard for plans with SitesInSync=False
+- Task 9: Created comprehensive unit tests (SiteDiscoverySection, SiteDisagreementAlert, drPlanUtils) and updated 5 existing test files
+- Task 10: Verified build, lint, and full regression suite green
 
 ### File List
+- console-plugin/src/models/types.ts (modified — added SiteDiscovery interface, extended DRPlanStatus + PreflightReport)
+- console-plugin/src/utils/drPlanUtils.ts (modified — added getSitesInSync, SitesInSyncStatus, parseSiteDiscoveryDelta, SiteDiscoveryDelta)
+- console-plugin/src/components/DRPlanDetail/SiteDiscoverySection.tsx (new — site VM comparison component)
+- console-plugin/src/components/DRPlanDetail/SiteDisagreementAlert.tsx (new — danger alert for blocked plans)
+- console-plugin/src/components/DRPlanDetail/DRPlanDetailPage.tsx (modified — integrated alert + isBlocked + onSwitchToConfig)
+- console-plugin/src/components/DRPlanDetail/PlanConfiguration.tsx (modified — added SiteDiscoverySection above grid)
+- console-plugin/src/components/DRPlanDetail/DRLifecycleDiagram.tsx (modified — added isBlocked/blockedTooltip props)
+- console-plugin/src/components/DRDashboard/DRDashboard.tsx (modified — added warning icon + disabled kebab + sitesInSync enrichment)
+- console-plugin/src/components/DRDashboard/DRPlanActions.tsx (modified — added isDisabled/disabledTooltip props)
+- console-plugin/tests/components/SiteDiscoverySection.test.tsx (new)
+- console-plugin/tests/components/SiteDisagreementAlert.test.tsx (new)
+- console-plugin/tests/components/DRPlanDetailPage.test.tsx (modified — 3 new tests)
+- console-plugin/tests/components/DRLifecycleDiagram.test.tsx (modified — 2 new tests)
+- console-plugin/tests/components/DRDashboard.test.tsx (modified — 2 new tests)
+- console-plugin/tests/components/DRPlanActions.test.tsx (modified — 1 new test)
+- console-plugin/tests/components/PlanConfiguration.test.tsx (modified — 2 new tests)
+- console-plugin/tests/utils/drPlanUtils.test.ts (modified — 11 new tests for getSitesInSync + parseSiteDiscoveryDelta)

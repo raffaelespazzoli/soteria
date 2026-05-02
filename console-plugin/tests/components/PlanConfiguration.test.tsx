@@ -169,6 +169,38 @@ describe('PlanConfiguration', () => {
     });
   });
 
+  describe('SiteDiscoverySection integration', () => {
+    it('renders SiteDiscoverySection when plan has site discovery data', () => {
+      const planWithDiscovery: DRPlan = {
+        ...mockPlan,
+        status: {
+          ...mockPlan.status,
+          primarySiteDiscovery: {
+            vms: [{ name: 'vm-a', namespace: 'ns1' }],
+            discoveredVMCount: 1,
+            lastDiscoveryTime: new Date().toISOString(),
+          },
+          secondarySiteDiscovery: {
+            vms: [{ name: 'vm-a', namespace: 'ns1' }],
+            discoveredVMCount: 1,
+            lastDiscoveryTime: new Date().toISOString(),
+          },
+        },
+      };
+      render(<PlanConfiguration plan={planWithDiscovery} />);
+      expect(screen.getByText('Site Discovery')).toBeInTheDocument();
+    });
+
+    it('does not render SiteDiscoverySection when plan has no primarySite/secondarySite', () => {
+      const planNoSites: DRPlan = {
+        ...mockPlanMinimal,
+        spec: { ...mockPlanMinimal.spec, primarySite: '', secondarySite: '' },
+      };
+      render(<PlanConfiguration plan={planNoSites} />);
+      expect(screen.queryByText('Site Discovery')).not.toBeInTheDocument();
+    });
+  });
+
   describe('accessibility', () => {
     it('has no accessibility violations with full data', async () => {
       const { container } = render(<PlanConfiguration plan={mockPlan} />);

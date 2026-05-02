@@ -100,3 +100,71 @@ export const HEALTH_SORT_ORDER: Record<string, number> = {
   NotReplicating: 4,
   Healthy: 5,
 };
+
+// --- SitesInSync helpers ---
+
+export interface SitesInSyncStatus {
+  inSync: boolean;
+  reason?: string;
+  message?: string;
+}
+
+/**
+ * Extracts the SitesInSync status from the DRPlan's conditions.
+ * Returns { inSync: true } when the condition is absent (backward compat —
+ * plans without the condition are not blocked).
+ */
+export function getSitesInSync(plan: DRPlan): SitesInSyncStatus {
+  const condition = plan.status?.conditions?.find((c) => c.type === 'SitesInSync');
+  if (!condition) return { inSync: true };
+  if (condition.status === 'True') return { inSync: true };
+  return { inSync: false, reason: condition.reason, message: condition.message };
+}
+
+export interface SiteDiscoveryDelta {
+  primaryOnly: string[];
+  secondaryOnly: string[];
+}
+
+/**
+ * Parses the structured delta message from the SitesInSync condition.
+ * Expected format:
+ *   "VMs on primary but not secondary: [ns/vm-a, ns/vm-b]; VMs on secondary but not primary: [ns/vm-c]"
+ * Handles "... and N more" suffixes and malformed messages gracefully.
+ */
+export function parseSiteDiscoveryDelta(message: string | undefined): SiteDiscoveryDelta & { primaryMoreCount: number; secondaryMoreCount: number } {
+  if (!message) return { primaryOnly: [], secondaryOnly: [], primaryMoreCount: 0, secondaryMoreCount: 0 };
+
+  const primaryOnly: string[] = [];
+  const secondaryOnly: string[] = [];
+  let primaryMoreCount = 0;
+  let secondaryMoreCount = 0;
+
+  const primaryMatch = message.match(/VMs on primary but not secondary:\s*\[([^\]]*)\]/);
+  if (primaryMatch?.[1]) {
+    const parts = primaryMatch[1].split(',').map((s) => s.trim());
+    for (const part of parts) {
+      const moreMatch = part.match(/^\.\.\.\s*and\s+(\d+)\s+more$/);
+      if (moreMatch) {
+        primaryMoreCount = parseInt(moreMatch[1], 10);
+      } else if (part && !part.startsWith('...')) {
+        primaryOnly.push(part);
+      }
+    }
+  }
+
+  const secondaryMatch = message.match(/VMs on secondary but not primary:\s*\[([^\]]*)\]/);
+  if (secondaryMatch?.[1]) {
+    const parts = secondaryMatch[1].split(',').map((s) => s.trim());
+    for (const part of parts) {
+      const moreMatch = part.match(/^\.\.\.\s*and\s+(\d+)\s+more$/);
+      if (moreMatch) {
+        secondaryMoreCount = parseInt(moreMatch[1], 10);
+      } else if (part && !part.startsWith('...')) {
+        secondaryOnly.push(part);
+      }
+    }
+  }
+
+  return { primaryOnly, secondaryOnly, primaryMoreCount, secondaryMoreCount };
+}

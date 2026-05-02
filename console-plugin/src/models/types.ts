@@ -78,6 +78,12 @@ export interface DRPlanSpec {
   vmReadyTimeout?: string;
 }
 
+export interface SiteDiscovery {
+  vms?: DiscoveredVM[];
+  discoveredVMCount?: number;
+  lastDiscoveryTime?: string;
+}
+
 export interface DRPlanStatus {
   phase?: string;
   activeExecution?: string;
@@ -89,6 +95,8 @@ export interface DRPlanStatus {
   discoveredVMCount?: number;
   preflight?: PreflightReport;
   replicationHealth?: VolumeGroupHealth[];
+  primarySiteDiscovery?: SiteDiscovery;
+  secondarySiteDiscovery?: SiteDiscovery;
 }
 
 export interface WaveInfo {
@@ -127,6 +135,8 @@ export interface PreflightReport {
   totalVMs: number;
   warnings?: string[];
   generatedAt?: string;
+  sitesInSync?: boolean;
+  siteDiscoveryDelta?: string;
 }
 
 export interface PreflightWave {

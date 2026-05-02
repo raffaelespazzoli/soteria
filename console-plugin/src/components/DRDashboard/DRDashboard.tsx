@@ -8,12 +8,16 @@ import { saveDashboardState, restoreDashboardState } from '../../hooks/useDashbo
 import {
   getEffectivePhase,
   getReplicationHealth,
+  getSitesInSync,
   buildLatestExecutionMap,
   HEALTH_SORT_ORDER,
   EffectivePhase,
   ReplicationHealth,
+  SitesInSyncStatus,
 } from '../../utils/drPlanUtils';
 import { formatRelativeTime } from '../../utils/formatters';
+import { ExclamationTriangleIcon } from '@patternfly/react-icons';
+import { Tooltip } from '@patternfly/react-core';
 import PhaseBadge from '../shared/PhaseBadge';
 import ExecutionResultBadge from '../shared/ExecutionResultBadge';
 import ReplicationHealthIndicator from '../shared/ReplicationHealthIndicator';
@@ -40,6 +44,7 @@ interface EnrichedPlan {
   effectivePhase: EffectivePhase;
   health: ReplicationHealth;
   lastExec: DRExecution | null;
+  sitesInSync: SitesInSyncStatus;
 }
 
 function enrichPlans(plans: DRPlan[], executions: DRExecution[]): EnrichedPlan[] {
@@ -49,6 +54,7 @@ function enrichPlans(plans: DRPlan[], executions: DRExecution[]): EnrichedPlan[]
     effectivePhase: getEffectivePhase(plan),
     health: getReplicationHealth(plan),
     lastExec: latestByPlan.get(plan.metadata?.name ?? '') ?? null,
+    sitesInSync: getSitesInSync(plan),
   }));
 }
 
@@ -262,7 +268,17 @@ export default function DRDashboard() {
                 </Td>
                 <Td dataLabel={COLUMN_NAMES[2]}>{ep.plan.status?.activeSite ?? ''}</Td>
                 <Td dataLabel={COLUMN_NAMES[3]}>
-                  <ReplicationHealthIndicator health={ep.health} />
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--pf-t--global--spacer--sm, var(--pf-v5-global--spacer--sm))' }}>
+                    {!ep.sitesInSync.inSync && (
+                      <Tooltip content="Sites do not agree on VM inventory">
+                        <ExclamationTriangleIcon
+                          color="var(--pf-t--global--icon--color--status--warning--default, var(--pf-v5-global--warning-color--100))"
+                          aria-label="Sites disagree on VM inventory"
+                        />
+                      </Tooltip>
+                    )}
+                    <ReplicationHealthIndicator health={ep.health} />
+                  </span>
                 </Td>
                 <Td dataLabel={COLUMN_NAMES[4]}>
                   <LastExecutionCell enrichedPlan={ep} />
@@ -273,6 +289,8 @@ export default function DRDashboard() {
                     onAction={(_action, p) =>
                       history.push(`/disaster-recovery/plans/${p.metadata?.name ?? ''}`)
                     }
+                    isDisabled={!ep.sitesInSync.inSync}
+                    disabledTooltip="Plan blocked: sites do not agree on VM inventory"
                   />
                 </Td>
               </Tr>
@@ -291,7 +309,7 @@ function LastExecutionCell({ enrichedPlan }: { enrichedPlan: EnrichedPlan }) {
   const result = lastExec.status?.result as DRExecutionResult | undefined;
   const time = lastExec.status?.completionTime ?? lastExec.status?.startTime;
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--pf-t--global--spacer--sm, var(--pf-v5-global--spacer--sm))' }}>
       {time && <span>{formatRelativeTime(time)}</span>}
       {result && <ExecutionResultBadge result={result} />}
     </span>

@@ -1,6 +1,8 @@
 import {
   getEffectivePhase,
   getReplicationHealth,
+  getSitesInSync,
+  parseSiteDiscoveryDelta,
   getLastExecution,
   buildLatestExecutionMap,
   HEALTH_SORT_ORDER,
@@ -320,5 +322,121 @@ describe('formatRelativeTime', () => {
   it('returns days ago', () => {
     const twoDaysAgo = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
     expect(formatRelativeTime(twoDaysAgo)).toBe('2d ago');
+  });
+});
+
+describe('getSitesInSync', () => {
+  it('returns inSync: true when no conditions exist', () => {
+    expect(getSitesInSync(makePlan())).toEqual({ inSync: true });
+  });
+
+  it('returns inSync: true when SitesInSync condition is True', () => {
+    expect(
+      getSitesInSync(
+        makePlan({
+          conditions: [{ type: 'SitesInSync', status: 'True', reason: 'VMsAgreed' }],
+        }),
+      ),
+    ).toEqual({ inSync: true });
+  });
+
+  it('returns inSync: false with reason and message when SitesInSync is False', () => {
+    const result = getSitesInSync(
+      makePlan({
+        conditions: [
+          {
+            type: 'SitesInSync',
+            status: 'False',
+            reason: 'VMsMismatch',
+            message: 'VMs on primary but not secondary: [ns/vm-a]; VMs on secondary but not primary: [ns/vm-c]',
+          },
+        ],
+      }),
+    );
+    expect(result).toEqual({
+      inSync: false,
+      reason: 'VMsMismatch',
+      message: 'VMs on primary but not secondary: [ns/vm-a]; VMs on secondary but not primary: [ns/vm-c]',
+    });
+  });
+
+  it('returns inSync: true when condition is absent (backward compat)', () => {
+    expect(
+      getSitesInSync(
+        makePlan({
+          conditions: [{ type: 'ReplicationHealthy', status: 'True' }],
+        }),
+      ),
+    ).toEqual({ inSync: true });
+  });
+});
+
+describe('parseSiteDiscoveryDelta', () => {
+  it('parses structured delta message correctly', () => {
+    const msg =
+      'VMs on primary but not secondary: [ns/vm-a, ns/vm-b]; VMs on secondary but not primary: [ns/vm-c]';
+    expect(parseSiteDiscoveryDelta(msg)).toEqual({
+      primaryOnly: ['ns/vm-a', 'ns/vm-b'],
+      secondaryOnly: ['ns/vm-c'],
+      primaryMoreCount: 0,
+      secondaryMoreCount: 0,
+    });
+  });
+
+  it('handles only-primary mismatch', () => {
+    const msg = 'VMs on primary but not secondary: [ns/vm-x]';
+    expect(parseSiteDiscoveryDelta(msg)).toEqual({
+      primaryOnly: ['ns/vm-x'],
+      secondaryOnly: [],
+      primaryMoreCount: 0,
+      secondaryMoreCount: 0,
+    });
+  });
+
+  it('handles only-secondary mismatch', () => {
+    const msg = 'VMs on secondary but not primary: [ns/vm-y, ns/vm-z]';
+    expect(parseSiteDiscoveryDelta(msg)).toEqual({
+      primaryOnly: [],
+      secondaryOnly: ['ns/vm-y', 'ns/vm-z'],
+      primaryMoreCount: 0,
+      secondaryMoreCount: 0,
+    });
+  });
+
+  it('handles "... and N more" suffix and exposes the extra count', () => {
+    const msg =
+      'VMs on primary but not secondary: [ns/vm-1, ns/vm-2, ... and 5 more]; VMs on secondary but not primary: [ns/vm-3, ... and 3 more]';
+    const result = parseSiteDiscoveryDelta(msg);
+    expect(result.primaryOnly).toEqual(['ns/vm-1', 'ns/vm-2']);
+    expect(result.primaryMoreCount).toBe(5);
+    expect(result.secondaryOnly).toEqual(['ns/vm-3']);
+    expect(result.secondaryMoreCount).toBe(3);
+  });
+
+  it('returns empty arrays and zero counts for undefined message', () => {
+    expect(parseSiteDiscoveryDelta(undefined)).toEqual({
+      primaryOnly: [],
+      secondaryOnly: [],
+      primaryMoreCount: 0,
+      secondaryMoreCount: 0,
+    });
+  });
+
+  it('returns empty arrays and zero counts for empty string', () => {
+    expect(parseSiteDiscoveryDelta('')).toEqual({
+      primaryOnly: [],
+      secondaryOnly: [],
+      primaryMoreCount: 0,
+      secondaryMoreCount: 0,
+    });
+  });
+
+  it('returns empty arrays and zero counts for malformed message', () => {
+    expect(parseSiteDiscoveryDelta('Site dc-east discovered 0 VMs')).toEqual({
+      primaryOnly: [],
+      secondaryOnly: [],
+      primaryMoreCount: 0,
+      secondaryMoreCount: 0,
+    });
   });
 });

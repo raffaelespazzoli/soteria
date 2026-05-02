@@ -84,4 +84,16 @@ describe('DRPlanActions', () => {
     const results = await axe(container);
     expect(results).toHaveNoViolations();
   });
+
+  it('renders disabled kebab with tooltip when isDisabled=true', () => {
+    render(
+      <DRPlanActions
+        plan={makePlan('SteadyState')}
+        isDisabled={true}
+        disabledTooltip="Plan blocked: sites do not agree on VM inventory"
+      />,
+    );
+    const kebab = screen.getByRole('button', { name: /actions for test-plan/i });
+    expect(kebab).toBeDisabled();
+  });
 });

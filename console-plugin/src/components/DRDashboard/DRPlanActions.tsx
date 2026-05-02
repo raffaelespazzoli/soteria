@@ -5,6 +5,7 @@ import {
   DropdownList,
   MenuToggle,
   MenuToggleElement,
+  Tooltip,
 } from '@patternfly/react-core';
 import { EllipsisVIcon } from '@patternfly/react-icons';
 import { DRPlan } from '../../models/types';
@@ -13,9 +14,11 @@ import { DRAction, getValidActions } from '../../utils/drPlanActions';
 interface DRPlanActionsProps {
   plan: DRPlan;
   onAction?: (actionKey: string, plan: DRPlan) => void;
+  isDisabled?: boolean;
+  disabledTooltip?: string;
 }
 
-const DRPlanActions: React.FC<DRPlanActionsProps> = ({ plan, onAction }) => {
+const DRPlanActions: React.FC<DRPlanActionsProps> = ({ plan, onAction, isDisabled, disabledTooltip }) => {
   const [isOpen, setIsOpen] = useState(false);
   const actions = getValidActions(plan);
 
@@ -28,20 +31,39 @@ const DRPlanActions: React.FC<DRPlanActionsProps> = ({ plan, onAction }) => {
     setIsOpen(false);
   };
 
+  const toggle = (toggleRef: React.Ref<MenuToggleElement>) => (
+    <MenuToggle
+      ref={toggleRef}
+      variant="plain"
+      onClick={() => !isDisabled && setIsOpen((prev) => !prev)}
+      aria-label={`Actions for ${plan.metadata?.name}`}
+      isDisabled={isDisabled}
+    >
+      <EllipsisVIcon />
+    </MenuToggle>
+  );
+
+  if (isDisabled && disabledTooltip) {
+    return (
+      <Tooltip content={disabledTooltip}>
+        <span style={{ display: 'inline-block' }}>
+          <Dropdown
+            isOpen={false}
+            onOpenChange={() => {}}
+            toggle={toggle}
+          >
+            <DropdownList />
+          </Dropdown>
+        </span>
+      </Tooltip>
+    );
+  }
+
   return (
     <Dropdown
       isOpen={isOpen}
       onOpenChange={setIsOpen}
-      toggle={(toggleRef: React.Ref<MenuToggleElement>) => (
-        <MenuToggle
-          ref={toggleRef}
-          variant="plain"
-          onClick={() => setIsOpen((prev) => !prev)}
-          aria-label={`Actions for ${plan.metadata?.name}`}
-        >
-          <EllipsisVIcon />
-        </MenuToggle>
-      )}
+      toggle={toggle}
     >
       <DropdownList>
         {actions.map((action) => (

@@ -1,5 +1,5 @@
 import { CSSProperties, useMemo } from 'react';
-import { Button } from '@patternfly/react-core';
+import { Button, Tooltip } from '@patternfly/react-core';
 import { DRPlan } from '../../models/types';
 import { getEffectivePhase, RestPhase, TransientPhase } from '../../utils/drPlanUtils';
 import { isTransientPhase, getValidActions, DRAction } from '../../utils/drPlanActions';
@@ -134,9 +134,11 @@ interface TransitionEdgeProps {
   plan: DRPlan;
   onAction: (action: string, plan: DRPlan) => void;
   direction: 'horizontal' | 'vertical';
+  isBlocked?: boolean;
+  blockedTooltip?: string;
 }
 
-function TransitionEdge({ transition, state, actions, plan, onAction, direction }: TransitionEdgeProps) {
+function TransitionEdge({ transition, state, actions, plan, onAction, direction, isBlocked, blockedTooltip }: TransitionEdgeProps) {
   const isHorizontal = direction === 'horizontal';
 
   const containerStyle: CSSProperties = {
@@ -162,16 +164,26 @@ function TransitionEdge({ transition, state, actions, plan, onAction, direction 
     <div style={containerStyle} data-testid={`transition-${transition.from}-${transition.to}`}>
       {state === 'available' && (
         <>
-          {actions.map((a) => (
-            <Button
-              key={a.key}
-              variant={a.isDanger ? 'danger' : 'secondary'}
-              onClick={() => onAction(a.key, plan)}
-              size="sm"
-            >
-              {a.label}
-            </Button>
-          ))}
+          {actions.map((a) => {
+            const btn = (
+              <Button
+                key={a.key}
+                variant={a.isDanger ? 'danger' : 'secondary'}
+                onClick={() => onAction(a.key, plan)}
+                size="sm"
+                isDisabled={isBlocked}
+              >
+                {a.label}
+              </Button>
+            );
+            return isBlocked && blockedTooltip ? (
+              <Tooltip key={a.key} content={blockedTooltip}>
+                <span>{btn}</span>
+              </Tooltip>
+            ) : (
+              btn
+            );
+          })}
           <span style={{ fontSize: 'var(--pf-t--global--font--size--body--lg, var(--pf-v5-global--FontSize--lg))', margin: '0 var(--pf-t--global--spacer--xs, var(--pf-v5-global--spacer--xs))' }}>{arrow}</span>
         </>
       )}
@@ -206,9 +218,11 @@ interface DRLifecycleDiagramProps {
   plan: DRPlan;
   onAction: (action: string, plan: DRPlan) => void;
   waveProgress?: WaveProgress | null;
+  isBlocked?: boolean;
+  blockedTooltip?: string;
 }
 
-const DRLifecycleDiagram: React.FC<DRLifecycleDiagramProps> = ({ plan, onAction, waveProgress }) => {
+const DRLifecycleDiagram: React.FC<DRLifecycleDiagramProps> = ({ plan, onAction, waveProgress, isBlocked, blockedTooltip }) => {
   const restPhase = (plan.status?.phase ?? 'SteadyState') as RestPhase;
   const effectivePhase = getEffectivePhase(plan);
   const inTransition = isTransientPhase(effectivePhase);
@@ -275,17 +289,17 @@ const DRLifecycleDiagram: React.FC<DRLifecycleDiagramProps> = ({ plan, onAction,
     >
       {/* Row 1: SteadyState -> Failover -> FailedOver */}
       <PhaseNode phase={steadyState} primarySite={primarySite} secondarySite={secondarySite} isActive={isActivePhase('SteadyState')} isTransitioning={isDestination('SteadyState')} />
-      <TransitionEdge transition={failoverT} state={getEdgeState(failoverT)} actions={getEdgeActions(failoverT)} plan={plan} onAction={onAction} direction="horizontal" />
+      <TransitionEdge transition={failoverT} state={getEdgeState(failoverT)} actions={getEdgeActions(failoverT)} plan={plan} onAction={onAction} direction="horizontal" isBlocked={isBlocked} blockedTooltip={blockedTooltip} />
       <PhaseNode phase={failedOver} primarySite={primarySite} secondarySite={secondarySite} isActive={isActivePhase('FailedOver')} isTransitioning={isDestination('FailedOver')} />
 
       {/* Row 2: Restore (vertical up) | empty | Reprotect (vertical down) */}
-      <TransitionEdge transition={restoreT} state={getEdgeState(restoreT)} actions={getEdgeActions(restoreT)} plan={plan} onAction={onAction} direction="vertical" />
+      <TransitionEdge transition={restoreT} state={getEdgeState(restoreT)} actions={getEdgeActions(restoreT)} plan={plan} onAction={onAction} direction="vertical" isBlocked={isBlocked} blockedTooltip={blockedTooltip} />
       <div />
-      <TransitionEdge transition={reprotectT} state={getEdgeState(reprotectT)} actions={getEdgeActions(reprotectT)} plan={plan} onAction={onAction} direction="vertical" />
+      <TransitionEdge transition={reprotectT} state={getEdgeState(reprotectT)} actions={getEdgeActions(reprotectT)} plan={plan} onAction={onAction} direction="vertical" isBlocked={isBlocked} blockedTooltip={blockedTooltip} />
 
       {/* Row 3: FailedBack <- Failback <- DRedSteadyState */}
       <PhaseNode phase={failedBack} primarySite={primarySite} secondarySite={secondarySite} isActive={isActivePhase('FailedBack')} isTransitioning={isDestination('FailedBack')} />
-      <TransitionEdge transition={failbackT} state={getEdgeState(failbackT)} actions={getEdgeActions(failbackT)} plan={plan} onAction={onAction} direction="horizontal" />
+      <TransitionEdge transition={failbackT} state={getEdgeState(failbackT)} actions={getEdgeActions(failbackT)} plan={plan} onAction={onAction} direction="horizontal" isBlocked={isBlocked} blockedTooltip={blockedTooltip} />
       <PhaseNode phase={dRedSteadyState} primarySite={primarySite} secondarySite={secondarySite} isActive={isActivePhase('DRedSteadyState')} isTransitioning={isDestination('DRedSteadyState')} />
 
       {/* ARIA live region for transition progress */}

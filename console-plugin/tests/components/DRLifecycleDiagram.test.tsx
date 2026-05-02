@@ -299,4 +299,33 @@ describe('DRLifecycleDiagram', () => {
     const node = screen.getByTestId('phase-node-SteadyState');
     expect(node).toHaveStyle({ opacity: 1 });
   });
+
+  describe('isBlocked prop', () => {
+    it('disables all action buttons when isBlocked=true', () => {
+      const plan = makePlan({ phase: 'SteadyState' });
+      render(
+        <DRLifecycleDiagram
+          plan={plan}
+          onAction={mockOnAction}
+          isBlocked={true}
+          blockedTooltip="Blocked: sites do not agree on VM inventory"
+        />,
+      );
+      const buttons = screen.getAllByRole('button');
+      buttons.forEach((btn) => {
+        expect(btn).toBeDisabled();
+      });
+    });
+
+    it('keeps action buttons enabled when isBlocked=false', () => {
+      const plan = makePlan({ phase: 'SteadyState' });
+      render(
+        <DRLifecycleDiagram plan={plan} onAction={mockOnAction} isBlocked={false} />,
+      );
+      const buttons = screen.getAllByRole('button');
+      buttons.forEach((btn) => {
+        expect(btn).not.toBeDisabled();
+      });
+    });
+  });
 });

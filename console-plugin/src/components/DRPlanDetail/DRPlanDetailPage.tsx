@@ -13,6 +13,7 @@ import ToastContainer from '../shared/ToastContainer';
 import PlanHeader from './PlanHeader';
 import DRLifecycleDiagram from './DRLifecycleDiagram';
 import TransitionProgressBanner from './TransitionProgressBanner';
+import { SiteDisagreementAlert } from './SiteDisagreementAlert';
 import { WaveCompositionTree } from './WaveCompositionTree';
 import { ExecutionHistoryTable } from './ExecutionHistoryTable';
 import { PlanConfiguration } from './PlanConfiguration';
@@ -22,7 +23,7 @@ import { useCreateDRExecution } from '../../hooks/useCreateDRExecution';
 import { useExecutionNotifications } from '../../hooks/useExecutionNotifications';
 import { getPreflightData } from '../../hooks/usePreflightData';
 import { DRPlan } from '../../models/types';
-import { getEffectivePhase } from '../../utils/drPlanUtils';
+import { getEffectivePhase, getSitesInSync } from '../../utils/drPlanUtils';
 import { useRouteParamName } from '../../hooks/useRouteParamName';
 import { WaveProgress } from './DRLifecycleDiagram';
 
@@ -42,6 +43,7 @@ const DRPlanDetailPage: React.FC<DRPlanDetailPageProps> = (props) => {
   useExecutionNotifications();
 
   const effectivePhase = plan ? getEffectivePhase(plan) : null;
+  const sitesInSync = plan ? getSitesInSync(plan) : { inSync: true };
   const restPhase = plan?.status?.phase;
   const isInTransition = effectivePhase !== null && effectivePhase !== restPhase;
 
@@ -71,6 +73,11 @@ const DRPlanDetailPage: React.FC<DRPlanDetailPageProps> = (props) => {
     clearError();
   }, [clearError]);
 
+  const handleSwitchToConfig = useCallback(() => {
+    setActiveTab(3);
+    setTimeout(() => document.getElementById('site-discovery-section')?.scrollIntoView({ behavior: 'smooth' }), 100);
+  }, []);
+
   const preflightData =
     pendingAction && plan && executionsLoaded
       ? getPreflightData(plan, pendingAction, executions)
@@ -99,11 +106,22 @@ const DRPlanDetailPage: React.FC<DRPlanDetailPageProps> = (props) => {
         {planLoaded && plan && (
           <Tabs activeKey={activeTab} onSelect={(_e, key) => setActiveTab(key)}>
             <Tab eventKey={0} title={<TabTitleText>Overview</TabTitleText>}>
+              <div aria-live="assertive" aria-atomic="true">
+                {!sitesInSync.inSync && (
+                  <SiteDisagreementAlert plan={plan} onSwitchToConfig={handleSwitchToConfig} />
+                )}
+              </div>
               <PlanHeader plan={plan} />
               {isInTransition && (
                 <TransitionProgressBanner plan={plan} execution={execution ?? null} />
               )}
-              <DRLifecycleDiagram plan={plan} onAction={handleAction} waveProgress={isInTransition ? waveProgress : null} />
+              <DRLifecycleDiagram
+                plan={plan}
+                onAction={handleAction}
+                waveProgress={isInTransition ? waveProgress : null}
+                isBlocked={!sitesInSync.inSync}
+                blockedTooltip="Blocked: sites do not agree on VM inventory"
+              />
             </Tab>
             <Tab eventKey={1} title={<TabTitleText>Waves</TabTitleText>}>
               <WaveCompositionTree plan={plan} />
