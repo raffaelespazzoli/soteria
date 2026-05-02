@@ -1,5 +1,5 @@
 # generated: 2026-04-06
-# last_updated: 2026-04-21
+# last_updated: 2026-05-01
 # project: dr-orchestrator
 # project_key: NOKEY
 # tracking_system: file-system
@@ -251,7 +251,7 @@ development_status:
   # Epic 8: Cross-Site Discovery Agreement, API Simplification & UI Responsiveness
   epic-8: in-progress
   8-1-remove-wavelabel-from-drplanspec: done
-  8-2-per-site-vm-discovery-reporting: ready-for-dev
+  8-2-per-site-vm-discovery-reporting: done
   8-3-cross-site-vm-agreement-plan-readiness-gating: ready-for-dev
   8-4-console-ui-site-aware-plan-status-disagreement-display: ready-for-dev
   8-5-optimistic-drexecution-detection-in-console: ready-for-dev

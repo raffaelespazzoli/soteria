@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -64,6 +65,11 @@ func (m *mockNamespaceLookup) GetConsistencyLevel(
 	return soteriav1alpha1.ConsistencyLevelVM, nil
 }
 
+const (
+	testPrimarySite   = "dc-west"
+	testSecondarySite = "dc-east"
+)
+
 var planKey = types.NamespacedName{Name: "plan-1"}
 
 func newTestScheme() *runtime.Scheme {
@@ -81,12 +87,12 @@ func newTestPlan() *soteriav1alpha1.DRPlan {
 		},
 		Spec: soteriav1alpha1.DRPlanSpec{
 			MaxConcurrentFailovers: 5,
-			PrimarySite:            "dc-west",
-			SecondarySite:          "dc-east",
+			PrimarySite:            testPrimarySite,
+			SecondarySite:          testSecondarySite,
 		},
 		Status: soteriav1alpha1.DRPlanStatus{
 			Phase:      soteriav1alpha1.PhaseSteadyState,
-			ActiveSite: "dc-west",
+			ActiveSite: testPrimarySite,
 		},
 	}
 }
@@ -1125,6 +1131,310 @@ func TestReconcile_Preflight_UpdatesEveryReconcileCycle(t *testing.T) {
 	if second.Status.Preflight == nil || second.Status.Preflight.TotalVMs != 2 {
 		t.Errorf("Second preflight TotalVMs = %d, want 2",
 			second.Status.Preflight.TotalVMs)
+	}
+}
+
+func TestReconcile_PassiveSite_WritesSiteDiscovery(t *testing.T) {
+	plan := newTestPlan()
+	vms := []engine.VMReference{
+		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+		{Name: "vm-2", Namespace: "ns-b", Labels: map[string]string{"soteria.io/wave": "1"}},
+	}
+
+	r, c := newReconciler([]client.Object{plan}, &mockVMDiscoverer{vms: vms})
+	r.LocalSite = testSecondarySite // passive (plan ActiveSite == "dc-west")
+
+	result, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "plan-1"},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+	if result.RequeueAfter != 30*time.Second {
+		t.Errorf("RequeueAfter = %v, want 30s", result.RequeueAfter)
+	}
+
+	var updated soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &updated); err != nil {
+		t.Fatalf("Failed to get plan: %v", err)
+	}
+
+	if updated.Status.SecondarySiteDiscovery == nil {
+		t.Fatal("SecondarySiteDiscovery should be populated")
+	}
+	if updated.Status.SecondarySiteDiscovery.DiscoveredVMCount != 2 {
+		t.Errorf("DiscoveredVMCount = %d, want 2",
+			updated.Status.SecondarySiteDiscovery.DiscoveredVMCount)
+	}
+	if updated.Status.SecondarySiteDiscovery.LastDiscoveryTime.IsZero() {
+		t.Error("LastDiscoveryTime should not be zero")
+	}
+
+	// Passive site must NOT modify active-site-owned fields.
+	if len(updated.Status.Waves) != 0 {
+		t.Errorf("Waves should not be modified by passive site, got %d", len(updated.Status.Waves))
+	}
+	if updated.Status.DiscoveredVMCount != 0 {
+		t.Errorf("DiscoveredVMCount (active) should be 0, got %d", updated.Status.DiscoveredVMCount)
+	}
+	if updated.Status.Preflight != nil {
+		t.Error("Preflight should not be modified by passive site")
+	}
+}
+
+func TestReconcile_ActiveSite_WritesSiteDiscovery(t *testing.T) {
+	plan := newTestPlan()
+	vms := []engine.VMReference{
+		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+		{Name: "vm-2", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+		{Name: "vm-3", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "2"}},
+	}
+
+	r, c := newReconciler([]client.Object{plan}, &mockVMDiscoverer{vms: vms})
+	r.LocalSite = testPrimarySite // active
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "plan-1"},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	var updated soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &updated); err != nil {
+		t.Fatalf("Failed to get plan: %v", err)
+	}
+
+	if updated.Status.PrimarySiteDiscovery == nil {
+		t.Fatal("PrimarySiteDiscovery should be populated")
+	}
+	if updated.Status.PrimarySiteDiscovery.DiscoveredVMCount != 3 {
+		t.Errorf("PrimarySiteDiscovery.DiscoveredVMCount = %d, want 3",
+			updated.Status.PrimarySiteDiscovery.DiscoveredVMCount)
+	}
+	if updated.Status.PrimarySiteDiscovery.LastDiscoveryTime.IsZero() {
+		t.Error("LastDiscoveryTime should not be zero")
+	}
+
+	// Active-site normal behavior should still work.
+	if len(updated.Status.Waves) != 2 {
+		t.Errorf("Waves = %d, want 2", len(updated.Status.Waves))
+	}
+	if updated.Status.DiscoveredVMCount != 3 {
+		t.Errorf("DiscoveredVMCount = %d, want 3", updated.Status.DiscoveredVMCount)
+	}
+	readyCond := findReadyCondition(updated.Status.Conditions)
+	if readyCond == nil || readyCond.Status != metav1.ConditionTrue {
+		t.Error("Expected Ready=True")
+	}
+}
+
+func TestReconcile_PassiveSite_DoesNotModifyActiveStatus(t *testing.T) {
+	plan := newTestPlan()
+	// Pre-populate active-site-owned fields from a prior active reconcile.
+	plan.Status.Waves = []soteriav1alpha1.WaveInfo{
+		{WaveKey: "1", VMs: []soteriav1alpha1.DiscoveredVM{{Name: "vm-1", Namespace: "default"}}},
+	}
+	plan.Status.DiscoveredVMCount = 5
+	plan.Status.Conditions = []metav1.Condition{
+		{Type: conditionTypeReady, Status: metav1.ConditionTrue, Reason: reasonDiscovered,
+			LastTransitionTime: metav1.Now()},
+	}
+
+	vms := []engine.VMReference{
+		{Name: "vm-peer-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+	}
+
+	r, c := newReconciler([]client.Object{plan}, &mockVMDiscoverer{vms: vms})
+	r.LocalSite = testSecondarySite // passive
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "plan-1"},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	var updated soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &updated); err != nil {
+		t.Fatalf("Failed to get plan: %v", err)
+	}
+
+	// Active-owned fields must remain unchanged.
+	if len(updated.Status.Waves) != 1 {
+		t.Errorf("Waves should remain 1, got %d", len(updated.Status.Waves))
+	}
+	if updated.Status.DiscoveredVMCount != 5 {
+		t.Errorf("DiscoveredVMCount should remain 5, got %d", updated.Status.DiscoveredVMCount)
+	}
+	readyCond := findReadyCondition(updated.Status.Conditions)
+	if readyCond == nil || readyCond.Status != metav1.ConditionTrue {
+		t.Error("Ready condition should remain True")
+	}
+
+	// Passive site's own field is populated.
+	if updated.Status.SecondarySiteDiscovery == nil {
+		t.Fatal("SecondarySiteDiscovery should be populated")
+	}
+	if updated.Status.SecondarySiteDiscovery.DiscoveredVMCount != 1 {
+		t.Errorf("SecondarySiteDiscovery.DiscoveredVMCount = %d, want 1",
+			updated.Status.SecondarySiteDiscovery.DiscoveredVMCount)
+	}
+}
+
+func TestReconcile_PassiveSite_DiscoveryError_NoStatusCorruption(t *testing.T) {
+	plan := newTestPlan()
+	plan.Status.Waves = []soteriav1alpha1.WaveInfo{
+		{WaveKey: "1", VMs: []soteriav1alpha1.DiscoveredVM{{Name: "vm-1", Namespace: "default"}}},
+	}
+	plan.Status.DiscoveredVMCount = 1
+
+	r, c := newReconciler([]client.Object{plan}, &mockVMDiscoverer{err: fmt.Errorf("timeout")})
+	r.LocalSite = testSecondarySite // passive
+
+	result, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "plan-1"},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() should return nil error on passive discovery failure, got: %v", err)
+	}
+	if result.RequeueAfter != 30*time.Second {
+		t.Errorf("RequeueAfter = %v, want 30s", result.RequeueAfter)
+	}
+
+	var updated soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &updated); err != nil {
+		t.Fatalf("Failed to get plan: %v", err)
+	}
+
+	// No status patch should have been made.
+	if updated.Status.SecondarySiteDiscovery != nil {
+		t.Error("SecondarySiteDiscovery should remain nil on discovery error")
+	}
+	if len(updated.Status.Waves) != 1 {
+		t.Errorf("Waves should remain unchanged, got %d", len(updated.Status.Waves))
+	}
+	if updated.Status.DiscoveredVMCount != 1 {
+		t.Errorf("DiscoveredVMCount should remain 1, got %d", updated.Status.DiscoveredVMCount)
+	}
+}
+
+func TestReconcile_NoLocalSite_NoSiteDiscovery(t *testing.T) {
+	plan := newTestPlan()
+	vms := []engine.VMReference{
+		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+	}
+
+	r, c := newReconciler([]client.Object{plan}, &mockVMDiscoverer{vms: vms})
+	// LocalSite is "" (backward compat)
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "plan-1"},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	var updated soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &updated); err != nil {
+		t.Fatalf("Failed to get plan: %v", err)
+	}
+
+	if updated.Status.PrimarySiteDiscovery != nil {
+		t.Error("PrimarySiteDiscovery should be nil when LocalSite is empty")
+	}
+	if updated.Status.SecondarySiteDiscovery != nil {
+		t.Error("SecondarySiteDiscovery should be nil when LocalSite is empty")
+	}
+
+	// Normal reconcile behavior should still work.
+	if updated.Status.DiscoveredVMCount != 1 {
+		t.Errorf("DiscoveredVMCount = %d, want 1", updated.Status.DiscoveredVMCount)
+	}
+}
+
+func TestReconcile_ActiveSite_DiscoveryError_PreservesSiteDiscovery(t *testing.T) {
+	plan := newTestPlan()
+	existingDiscovery := &soteriav1alpha1.SiteDiscovery{
+		VMs:               []soteriav1alpha1.DiscoveredVM{{Name: "vm-prior", Namespace: "default"}},
+		DiscoveredVMCount: 1,
+		LastDiscoveryTime: metav1.Now(),
+	}
+	plan.Status.PrimarySiteDiscovery = existingDiscovery
+
+	r, c := newReconciler([]client.Object{plan}, &mockVMDiscoverer{err: fmt.Errorf("net timeout")})
+	r.LocalSite = testPrimarySite // active
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "plan-1"},
+	})
+	if err == nil {
+		t.Fatal("Reconcile() should return error on active-site discovery failure")
+	}
+
+	var updated soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &updated); err != nil {
+		t.Fatalf("Failed to get plan: %v", err)
+	}
+
+	if updated.Status.PrimarySiteDiscovery == nil {
+		t.Fatal("PrimarySiteDiscovery should be preserved on discovery error")
+	}
+	if updated.Status.PrimarySiteDiscovery.DiscoveredVMCount != 1 {
+		t.Errorf("PrimarySiteDiscovery.DiscoveredVMCount = %d, want 1 (preserved)",
+			updated.Status.PrimarySiteDiscovery.DiscoveredVMCount)
+	}
+}
+
+func TestReconcile_ActiveSite_PreservesPeerSiteDiscovery(t *testing.T) {
+	plan := newTestPlan()
+	// Pre-populate SecondarySiteDiscovery (simulating passive site already wrote).
+	plan.Status.SecondarySiteDiscovery = &soteriav1alpha1.SiteDiscovery{
+		VMs:               []soteriav1alpha1.DiscoveredVM{{Name: "peer-vm-1", Namespace: "default"}},
+		DiscoveredVMCount: 1,
+		LastDiscoveryTime: metav1.Now(),
+	}
+
+	vms := []engine.VMReference{
+		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+		{Name: "vm-2", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+	}
+
+	r, c := newReconciler([]client.Object{plan}, &mockVMDiscoverer{vms: vms})
+	r.LocalSite = testPrimarySite // active
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "plan-1"},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	var updated soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &updated); err != nil {
+		t.Fatalf("Failed to get plan: %v", err)
+	}
+
+	// Active site's SiteDiscovery is populated.
+	if updated.Status.PrimarySiteDiscovery == nil {
+		t.Fatal("PrimarySiteDiscovery should be populated")
+	}
+	if updated.Status.PrimarySiteDiscovery.DiscoveredVMCount != 2 {
+		t.Errorf("PrimarySiteDiscovery.DiscoveredVMCount = %d, want 2",
+			updated.Status.PrimarySiteDiscovery.DiscoveredVMCount)
+	}
+
+	// Peer site's SiteDiscovery is preserved.
+	if updated.Status.SecondarySiteDiscovery == nil {
+		t.Fatal("SecondarySiteDiscovery should be preserved")
+	}
+	if updated.Status.SecondarySiteDiscovery.DiscoveredVMCount != 1 {
+		t.Errorf("SecondarySiteDiscovery.DiscoveredVMCount = %d, want 1",
+			updated.Status.SecondarySiteDiscovery.DiscoveredVMCount)
+	}
+	if updated.Status.SecondarySiteDiscovery.VMs[0].Name != "peer-vm-1" {
+		t.Errorf("SecondarySiteDiscovery VM name = %q, want peer-vm-1",
+			updated.Status.SecondarySiteDiscovery.VMs[0].Name)
 	}
 }
 

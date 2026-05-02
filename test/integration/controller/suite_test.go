@@ -493,6 +493,30 @@ func waitForPreflight(ctx context.Context, name, namespace string, timeout time.
 	return nil, fmt.Errorf("timed out waiting for preflight report on %s/%s", namespace, name)
 }
 
+// waitForSiteDiscovery polls until the DRPlan has the specified SiteDiscovery field populated.
+func waitForSiteDiscovery(ctx context.Context, name, site string, timeout time.Duration) (*soteriav1alpha1.DRPlan, error) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		var plan soteriav1alpha1.DRPlan
+		if err := testClient.Get(ctx, client.ObjectKey{Name: name}, &plan); err != nil {
+			time.Sleep(200 * time.Millisecond)
+			continue
+		}
+		switch site {
+		case "primary":
+			if plan.Status.PrimarySiteDiscovery != nil {
+				return &plan, nil
+			}
+		case "secondary":
+			if plan.Status.SecondarySiteDiscovery != nil {
+				return &plan, nil
+			}
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	return nil, fmt.Errorf("timed out waiting for %sSiteDiscovery on %s", site, name)
+}
+
 // newNoopRegistry creates a driver registry with only the noop driver
 // registered and set as the fallback. Reusable across suite setup and
 // individual test reconcilers.

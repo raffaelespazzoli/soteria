@@ -27,9 +27,12 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
+	"github.com/soteria-project/soteria/pkg/controller/drplan"
+	"github.com/soteria-project/soteria/pkg/engine"
 )
 
 const (
@@ -213,6 +216,151 @@ func TestDRPlanReconciler_ReadyCondition_ReflectsDiscovery(t *testing.T) {
 		}
 	}
 	t.Error("Ready condition not found")
+}
+
+func TestDRPlanReconciler_SiteAware_BothSitesWriteDiscovery(t *testing.T) {
+	ctx := context.Background()
+	ns := "test-site-both"
+	createNamespace(t, ctx, ns)
+
+	createVM(t, ctx, "vm-site-1", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-site-both", "soteria.io/wave": "1"})
+	createVM(t, ctx, "vm-site-2", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-site-both", "soteria.io/wave": "1"})
+	createVM(t, ctx, "vm-site-3", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-site-both", "soteria.io/wave": "2"})
+
+	createDRPlan(t, ctx, "plan-site-both")
+
+	// Wait for default reconciler (no LocalSite) to populate waves.
+	_, err := waitForCondition(ctx, "plan-site-both", "", "Ready", metav1.ConditionTrue, testTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Reconcile as active site (dc-west = PrimarySite = ActiveSite).
+	activeReconciler := &drplan.DRPlanReconciler{
+		Client:          testClient,
+		Scheme:          testScheme,
+		VMDiscoverer:    engine.NewTypedVMDiscoverer(testClient),
+		NamespaceLookup: &engine.DefaultNamespaceLookup{Client: testClientset.CoreV1()},
+		Recorder:        nil,
+		LocalSite:       "dc-west",
+	}
+	_, err = activeReconciler.Reconcile(ctx, ctrl.Request{
+		NamespacedName: client.ObjectKey{Name: "plan-site-both"},
+	})
+	if err != nil {
+		t.Fatalf("Active site Reconcile() error: %v", err)
+	}
+
+	// Wait for PrimarySiteDiscovery to appear in the cache.
+	plan, err := waitForSiteDiscovery(ctx, "plan-site-both", "primary", testTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Reconcile as passive site (dc-east = SecondarySite).
+	passiveReconciler := &drplan.DRPlanReconciler{
+		Client:          testClient,
+		Scheme:          testScheme,
+		VMDiscoverer:    engine.NewTypedVMDiscoverer(testClient),
+		NamespaceLookup: &engine.DefaultNamespaceLookup{Client: testClientset.CoreV1()},
+		Recorder:        nil,
+		LocalSite:       "dc-east",
+	}
+	_, err = passiveReconciler.Reconcile(ctx, ctrl.Request{
+		NamespacedName: client.ObjectKey{Name: "plan-site-both"},
+	})
+	if err != nil {
+		t.Fatalf("Passive site Reconcile() error: %v", err)
+	}
+
+	// Wait for SecondarySiteDiscovery to appear in the cache.
+	plan, err = waitForSiteDiscovery(ctx, "plan-site-both", "secondary", testTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Both SiteDiscovery fields populated.
+	if plan.Status.PrimarySiteDiscovery == nil {
+		t.Fatal("PrimarySiteDiscovery should be populated by active site")
+	}
+	if plan.Status.SecondarySiteDiscovery == nil {
+		t.Fatal("SecondarySiteDiscovery should be populated by passive site")
+	}
+	if plan.Status.PrimarySiteDiscovery.DiscoveredVMCount != 3 {
+		t.Errorf("PrimarySiteDiscovery.DiscoveredVMCount = %d, want 3",
+			plan.Status.PrimarySiteDiscovery.DiscoveredVMCount)
+	}
+	if plan.Status.SecondarySiteDiscovery.DiscoveredVMCount != 3 {
+		t.Errorf("SecondarySiteDiscovery.DiscoveredVMCount = %d, want 3",
+			plan.Status.SecondarySiteDiscovery.DiscoveredVMCount)
+	}
+
+	// Waves only populated by active site reconcile (verified by default reconciler earlier).
+	if len(plan.Status.Waves) == 0 {
+		t.Error("Waves should be populated by active-site reconcile")
+	}
+}
+
+func TestDRPlanReconciler_PassiveSite_DiscoversVMsLocally(t *testing.T) {
+	ctx := context.Background()
+	ns := "test-site-passive"
+	createNamespace(t, ctx, ns)
+
+	createVM(t, ctx, "vm-passive-1", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-site-passive", "soteria.io/wave": "1"})
+	createVM(t, ctx, "vm-passive-2", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-site-passive", "soteria.io/wave": "2"})
+
+	plan := createDRPlan(t, ctx, "plan-site-passive")
+
+	// Wait for default reconciler to process (sets Ready condition).
+	_, err := waitForCondition(ctx, "plan-site-passive", "", "Ready", metav1.ConditionTrue, testTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Reconcile as passive site (dc-east = SecondarySite, plan ActiveSite defaults to PrimarySite=dc-west).
+	passiveReconciler := &drplan.DRPlanReconciler{
+		Client:          testClient,
+		Scheme:          testScheme,
+		VMDiscoverer:    engine.NewTypedVMDiscoverer(testClient),
+		NamespaceLookup: &engine.DefaultNamespaceLookup{Client: testClientset.CoreV1()},
+		Recorder:        nil,
+		LocalSite:       "dc-east",
+	}
+	result, err := passiveReconciler.Reconcile(ctx, ctrl.Request{
+		NamespacedName: client.ObjectKey{Name: plan.Name},
+	})
+	if err != nil {
+		t.Fatalf("Passive Reconcile() error: %v", err)
+	}
+	if result.RequeueAfter != 30*time.Second {
+		t.Errorf("RequeueAfter = %v, want 30s", result.RequeueAfter)
+	}
+
+	// Wait for SecondarySiteDiscovery to appear in the cache.
+	updated, err := waitForSiteDiscovery(ctx, plan.Name, "secondary", testTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if updated.Status.SecondarySiteDiscovery.DiscoveredVMCount != 2 {
+		t.Errorf("SecondarySiteDiscovery.DiscoveredVMCount = %d, want 2",
+			updated.Status.SecondarySiteDiscovery.DiscoveredVMCount)
+	}
+	if updated.Status.SecondarySiteDiscovery.LastDiscoveryTime.IsZero() {
+		t.Error("LastDiscoveryTime should not be zero")
+	}
+
+	// Passive site must not overwrite or form waves — verify waves remain
+	// exactly as the prior active-site reconcile left them (2 waves from 2 VMs).
+	if len(updated.Status.Waves) != 2 {
+		t.Errorf("Waves should remain unchanged from active-site reconcile, got %d want 2",
+			len(updated.Status.Waves))
+	}
+
+	// PrimarySiteDiscovery must NOT be set by the passive reconcile.
+	if updated.Status.PrimarySiteDiscovery != nil {
+		t.Error("PrimarySiteDiscovery should not be populated by passive-site reconcile")
+	}
 }
 
 func TestDRPlanReconciler_50VMs_CompletesWithin10s(t *testing.T) {

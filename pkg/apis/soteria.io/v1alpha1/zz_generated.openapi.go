@@ -49,6 +49,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightReport":        schema_pkg_apis_soteriaio_v1alpha1_PreflightReport(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightVM":            schema_pkg_apis_soteriaio_v1alpha1_PreflightVM(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightWave":          schema_pkg_apis_soteriaio_v1alpha1_PreflightWave(ref),
+		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.SiteDiscovery":          schema_pkg_apis_soteriaio_v1alpha1_SiteDiscovery(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.StepStatus":             schema_pkg_apis_soteriaio_v1alpha1_StepStatus(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.VolumeGroupHealth":      schema_pkg_apis_soteriaio_v1alpha1_VolumeGroupHealth(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.VolumeGroupInfo":        schema_pkg_apis_soteriaio_v1alpha1_VolumeGroupInfo(ref),
@@ -835,11 +836,23 @@ func schema_pkg_apis_soteriaio_v1alpha1_DRPlanStatus(ref common.ReferenceCallbac
 							},
 						},
 					},
+					"primarySiteDiscovery": {
+						SchemaProps: spec.SchemaProps{
+							Description: "PrimarySiteDiscovery contains VMs discovered on the primary site cluster. Written exclusively by the Soteria instance running on the primary site.",
+							Ref:         ref("github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.SiteDiscovery"),
+						},
+					},
+					"secondarySiteDiscovery": {
+						SchemaProps: spec.SchemaProps{
+							Description: "SecondarySiteDiscovery contains VMs discovered on the secondary site cluster. Written exclusively by the Soteria instance running on the secondary site.",
+							Ref:         ref("github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.SiteDiscovery"),
+						},
+					},
 				},
 			},
 		},
 		Dependencies: []string{
-			"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightReport", "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.VolumeGroupHealth", "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.WaveInfo", v1.Condition{}.OpenAPIModelName()},
+			"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightReport", "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.SiteDiscovery", "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.VolumeGroupHealth", "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.WaveInfo", v1.Condition{}.OpenAPIModelName()},
 	}
 }
 
@@ -1161,6 +1174,55 @@ func schema_pkg_apis_soteriaio_v1alpha1_PreflightWave(ref common.ReferenceCallba
 		},
 		Dependencies: []string{
 			"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightChunk", "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightVM"},
+	}
+}
+
+func schema_pkg_apis_soteriaio_v1alpha1_SiteDiscovery(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "SiteDiscovery contains VM discovery results from a single site's perspective. Each Soteria instance writes exclusively to the SiteDiscovery field matching its own site role (primary or secondary).",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"vms": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "atomic",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "VMs lists the VMs discovered on this site.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: map[string]interface{}{},
+										Ref:     ref("github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DiscoveredVM"),
+									},
+								},
+							},
+						},
+					},
+					"discoveredVMCount": {
+						SchemaProps: spec.SchemaProps{
+							Description: "DiscoveredVMCount is the number of VMs discovered on this site.",
+							Default:     0,
+							Type:        []string{"integer"},
+							Format:      "int32",
+						},
+					},
+					"lastDiscoveryTime": {
+						SchemaProps: spec.SchemaProps{
+							Description: "LastDiscoveryTime is when the last discovery cycle completed on this site.",
+							Ref:         ref(v1.Time{}.OpenAPIModelName()),
+						},
+					},
+				},
+				Required: []string{"discoveredVMCount", "lastDiscoveryTime"},
+			},
+		},
+		Dependencies: []string{
+			"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DiscoveredVM", v1.Time{}.OpenAPIModelName()},
 	}
 }
 

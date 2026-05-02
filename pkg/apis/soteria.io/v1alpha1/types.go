@@ -130,6 +130,14 @@ type DRPlanStatus struct {
 	// populated by polling storage drivers on each reconcile cycle.
 	// +listType=atomic
 	ReplicationHealth []VolumeGroupHealth `json:"replicationHealth,omitempty"`
+	// PrimarySiteDiscovery contains VMs discovered on the primary site cluster.
+	// Written exclusively by the Soteria instance running on the primary site.
+	// +optional
+	PrimarySiteDiscovery *SiteDiscovery `json:"primarySiteDiscovery,omitempty"`
+	// SecondarySiteDiscovery contains VMs discovered on the secondary site cluster.
+	// Written exclusively by the Soteria instance running on the secondary site.
+	// +optional
+	SecondarySiteDiscovery *SiteDiscovery `json:"secondarySiteDiscovery,omitempty"`
 }
 
 // PreflightReport is the pre-flight composition summary for a DRPlan. It
@@ -239,6 +247,19 @@ type DiscoveredVM struct {
 	Name string `json:"name"`
 	// Namespace is the VM's namespace.
 	Namespace string `json:"namespace"`
+}
+
+// SiteDiscovery contains VM discovery results from a single site's perspective.
+// Each Soteria instance writes exclusively to the SiteDiscovery field matching
+// its own site role (primary or secondary).
+type SiteDiscovery struct {
+	// VMs lists the VMs discovered on this site.
+	// +listType=atomic
+	VMs []DiscoveredVM `json:"vms,omitempty"`
+	// DiscoveredVMCount is the number of VMs discovered on this site.
+	DiscoveredVMCount int `json:"discoveredVMCount"`
+	// LastDiscoveryTime is when the last discovery cycle completed on this site.
+	LastDiscoveryTime metav1.Time `json:"lastDiscoveryTime"`
 }
 
 // VolumeGroupInfo describes a group of VM disks that must be snapshotted

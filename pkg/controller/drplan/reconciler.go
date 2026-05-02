@@ -35,6 +35,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 	"time"
 
@@ -132,13 +133,8 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			"primarySite", plan.Spec.PrimarySite,
 			"secondarySite", plan.Spec.SecondarySite)
 
-		// Each Soteria instance only talks to its local kube-apiserver
-		// and local ScyllaDB. VMs exist exclusively on the active site,
-		// so discovery on the non-active site returns 0 VMs and would
-		// overwrite the correct plan status via ScyllaDB replication.
 		if r.LocalSite != activeSite {
-			logger.V(1).Info("Skipping discovery and health polling, not the active site")
-			return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+			return r.reconcilePassiveSite(ctx, req, &plan)
 		}
 	}
 
@@ -285,6 +281,110 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, report, readyCond, replicationHealth)
+}
+
+// siteDiscoveryField returns "primary" if LocalSite matches the plan's
+// PrimarySite, "secondary" if it matches SecondarySite, or "" if neither
+// matches (misconfiguration).
+func (r *DRPlanReconciler) siteDiscoveryField(plan *soteriav1alpha1.DRPlan) string {
+	switch r.LocalSite {
+	case plan.Spec.PrimarySite:
+		return "primary"
+	case plan.Spec.SecondarySite:
+		return "secondary"
+	default:
+		return ""
+	}
+}
+
+// reconcilePassiveSite performs VM discovery on the passive site and writes
+// the result to the appropriate SiteDiscovery field. It does NOT modify
+// active-site-owned fields (waves, conditions, preflight, health, etc.).
+func (r *DRPlanReconciler) reconcilePassiveSite(
+	ctx context.Context, req ctrl.Request, plan *soteriav1alpha1.DRPlan,
+) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+
+	siteField := r.siteDiscoveryField(plan)
+	if siteField == "" {
+		logger.Error(nil, "LocalSite matches neither primarySite nor secondarySite, skipping SiteDiscovery",
+			"localSite", r.LocalSite,
+			"primarySite", plan.Spec.PrimarySite,
+			"secondarySite", plan.Spec.SecondarySite)
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+
+	logger.V(1).Info("Passive site discovering local VMs", "siteField", siteField)
+
+	vms, err := r.VMDiscoverer.DiscoverVMs(ctx, plan.Name)
+	if err != nil {
+		logger.V(1).Info("Passive site discovery failed", "error", err)
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+
+	discoveredVMs := make([]soteriav1alpha1.DiscoveredVM, len(vms))
+	for i, vm := range vms {
+		discoveredVMs[i] = soteriav1alpha1.DiscoveredVM{
+			Name:      vm.Name,
+			Namespace: vm.Namespace,
+		}
+	}
+	sortDiscoveredVMs(discoveredVMs)
+
+	discovery := &soteriav1alpha1.SiteDiscovery{
+		VMs:               discoveredVMs,
+		DiscoveredVMCount: len(discoveredVMs),
+		LastDiscoveryTime: metav1.Now(),
+	}
+
+	if err := r.Get(ctx, req.NamespacedName, plan); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	patch := client.MergeFrom(plan.DeepCopy())
+	setSiteDiscovery(plan, siteField, discovery)
+
+	if err := r.Status().Patch(ctx, plan, patch); err != nil {
+		logger.Error(err, "Failed to patch passive site SiteDiscovery")
+		return ctrl.Result{}, err
+	}
+
+	logger.V(1).Info("Passive site discovery written",
+		"siteField", siteField, "vmCount", len(discoveredVMs))
+	return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+}
+
+// setSiteDiscovery sets the SiteDiscovery field on the plan for the given site role.
+func setSiteDiscovery(plan *soteriav1alpha1.DRPlan, siteField string, discovery *soteriav1alpha1.SiteDiscovery) {
+	switch siteField {
+	case "primary":
+		plan.Status.PrimarySiteDiscovery = discovery
+	case "secondary":
+		plan.Status.SecondarySiteDiscovery = discovery
+	}
+}
+
+// sortDiscoveredVMs sorts by Namespace then Name for deterministic output.
+func sortDiscoveredVMs(vms []soteriav1alpha1.DiscoveredVM) {
+	sort.Slice(vms, func(i, j int) bool {
+		if vms[i].Namespace != vms[j].Namespace {
+			return vms[i].Namespace < vms[j].Namespace
+		}
+		return vms[i].Name < vms[j].Name
+	})
+}
+
+// collectVMsFromWaves gathers all DiscoveredVMs across all waves into a flat slice.
+func collectVMsFromWaves(waves []soteriav1alpha1.WaveInfo) []soteriav1alpha1.DiscoveredVM {
+	n := 0
+	for _, w := range waves {
+		n += len(w.VMs)
+	}
+	all := make([]soteriav1alpha1.DiscoveredVM, 0, n)
+	for _, w := range waves {
+		all = append(all, w.VMs...)
+	}
+	return all
 }
 
 func (r *DRPlanReconciler) event(
@@ -559,8 +659,9 @@ func (r *DRPlanReconciler) updateStatus(
 	reportChanged := preflightReportChanged(plan.Status.Preflight, preflightReport)
 	healthChanged := replicationHealthChanged(plan.Status.ReplicationHealth, replicationHealth)
 
+	siteDiscoveryDue := r.LocalSite != "" && r.siteDiscoveryField(plan) != ""
 	anyChanged := conditionChanged || wavesChanged || countChanged ||
-		genChanged || reportChanged || healthChanged
+		genChanged || reportChanged || healthChanged || siteDiscoveryDue
 	if !anyChanged {
 		logger.V(1).Info("Status unchanged, skipping patch")
 		requeue := requeueInterval
@@ -590,6 +691,19 @@ func (r *DRPlanReconciler) updateStatus(
 	} else if plan.Status.ReplicationHealth != nil {
 		plan.Status.ReplicationHealth = nil
 		meta.RemoveStatusCondition(&plan.Status.Conditions, conditionTypeReplicationHealthy)
+	}
+
+	if r.LocalSite != "" && waves != nil {
+		siteField := r.siteDiscoveryField(plan)
+		if siteField != "" {
+			allVMs := collectVMsFromWaves(waves)
+			sortDiscoveredVMs(allVMs)
+			setSiteDiscovery(plan, siteField, &soteriav1alpha1.SiteDiscovery{
+				VMs:               allVMs,
+				DiscoveredVMCount: len(allVMs),
+				LastDiscoveryTime: metav1.Now(),
+			})
+		}
 	}
 
 	if err := r.Status().Patch(ctx, plan, patch); err != nil {

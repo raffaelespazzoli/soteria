@@ -10,6 +10,7 @@ API rule violation: list_type_missing,github.com/soteria-project/soteria/pkg/api
 API rule violation: list_type_missing,github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1,WaveInfo,Groups
 API rule violation: list_type_missing,github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1,WaveStatus,Groups
 API rule violation: names_match,github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1,PreflightWave,VMs
+API rule violation: names_match,github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1,SiteDiscovery,VMs
 API rule violation: names_match,github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1,WaveInfo,VMs
 API rule violation: names_match,k8s.io/apimachinery/pkg/api/resource,Quantity,Format
 API rule violation: names_match,k8s.io/apimachinery/pkg/api/resource,Quantity,d
