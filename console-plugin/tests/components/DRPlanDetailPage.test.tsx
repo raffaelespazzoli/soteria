@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import { axe, toHaveNoViolations } from 'jest-axe';
 import DRPlanDetailPage from '../../src/components/DRPlanDetail/DRPlanDetailPage';
 import { DRPlan } from '../../src/models/types';
@@ -30,7 +30,6 @@ const mockPlan: DRPlan = {
 };
 
 const mockUseDRPlan = jest.fn<[DRPlan | undefined, boolean, unknown], [string]>();
-const mockUseDRExecution = jest.fn();
 const mockUseDRExecutions = jest.fn();
 
 jest.mock('@openshift-console/dynamic-plugin-sdk', () => ({
@@ -40,8 +39,18 @@ jest.mock('@openshift-console/dynamic-plugin-sdk', () => ({
 
 jest.mock('../../src/hooks/useDRResources', () => ({
   useDRPlan: (...args: [string]) => mockUseDRPlan(...args),
-  useDRExecution: (...args: unknown[]) => mockUseDRExecution(...args),
   useDRExecutions: (...args: unknown[]) => mockUseDRExecutions(...args),
+}));
+
+const mockCreate = jest.fn();
+const mockClearError = jest.fn();
+jest.mock('../../src/hooks/useCreateDRExecution', () => ({
+  useCreateDRExecution: () => ({
+    create: mockCreate,
+    isCreating: false,
+    error: undefined,
+    clearError: mockClearError,
+  }),
 }));
 
 jest.mock('react-router-dom', () => ({
@@ -53,10 +62,13 @@ jest.mock('react-router-dom', () => ({
   ),
 }));
 
+beforeAll(() => {
+  Element.prototype.scrollIntoView = jest.fn();
+});
+
 describe('DRPlanDetailPage', () => {
   beforeEach(() => {
     mockUseDRPlan.mockReturnValue([mockPlan, true, null]);
-    mockUseDRExecution.mockReturnValue([undefined, true, null]);
     mockUseDRExecutions.mockReturnValue([[], true, null]);
   });
 
@@ -203,6 +215,140 @@ describe('DRPlanDetailPage', () => {
       expect(
         screen.queryByText('Sites do not agree on VM inventory — DR operations are blocked'),
       ).not.toBeInTheDocument();
+    });
+  });
+
+  describe('optimistic execution state', () => {
+    beforeEach(() => {
+      mockCreate.mockReset();
+    });
+
+    async function triggerFailoverConfirm() {
+      fireEvent.click(screen.getByRole('button', { name: 'Failover' }));
+      const keywordInput = screen.getByLabelText('Type FAILOVER to confirm');
+      fireEvent.change(keywordInput, { target: { value: 'FAILOVER' } });
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm Failover' }));
+      });
+    }
+
+    it('shows optimistic banner immediately after successful create', async () => {
+      mockCreate.mockResolvedValue({
+        apiVersion: 'soteria.io/v1alpha1',
+        kind: 'DRExecution',
+        metadata: { name: 'erp-full-stack-failover-123', uid: 'uid-1', creationTimestamp: '' },
+        spec: { planName: 'erp-full-stack', mode: 'disaster' },
+      });
+      render(<DRPlanDetailPage />);
+      await triggerFailoverConfirm();
+
+      expect(screen.getByText('Starting Failover...')).toBeInTheDocument();
+      expect(screen.getByLabelText('Execution starting')).toBeInTheDocument();
+    });
+
+    it('replaces optimistic banner with real data when activeExecution arrives', async () => {
+      mockCreate.mockResolvedValue({
+        apiVersion: 'soteria.io/v1alpha1',
+        kind: 'DRExecution',
+        metadata: { name: 'erp-full-stack-failover-123', uid: 'uid-1', creationTimestamp: '' },
+        spec: { planName: 'erp-full-stack', mode: 'disaster' },
+      });
+      const { rerender } = render(<DRPlanDetailPage />);
+      await triggerFailoverConfirm();
+      expect(screen.getByText('Starting Failover...')).toBeInTheDocument();
+
+      const updatedPlan: DRPlan = {
+        ...mockPlan,
+        status: {
+          ...mockPlan.status,
+          activeExecution: 'erp-full-stack-failover-123',
+          activeExecutionMode: 'disaster',
+        },
+      };
+      const exec = {
+        apiVersion: 'soteria.io/v1alpha1',
+        kind: 'DRExecution',
+        metadata: { name: 'erp-full-stack-failover-123', uid: 'uid-1', creationTimestamp: '' },
+        spec: { planName: 'erp-full-stack', mode: 'disaster' as const },
+        status: {
+          startTime: new Date().toISOString(),
+          waves: [{ waveIndex: 0 }, { waveIndex: 1 }],
+        },
+      };
+      mockUseDRPlan.mockReturnValue([updatedPlan, true, null]);
+      mockUseDRExecutions.mockReturnValue([[exec], true, null]);
+
+      await act(async () => {
+        rerender(<DRPlanDetailPage />);
+      });
+
+      expect(screen.queryByText('Starting Failover...')).not.toBeInTheDocument();
+      expect(screen.getByText('Failing Over in progress')).toBeInTheDocument();
+    });
+
+    it('does not show optimistic banner on create failure', async () => {
+      mockCreate.mockRejectedValue(new Error('concurrent execution already active'));
+      render(<DRPlanDetailPage />);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Failover' }));
+      const keywordInput = screen.getByLabelText('Type FAILOVER to confirm');
+      fireEvent.change(keywordInput, { target: { value: 'FAILOVER' } });
+      await act(async () => {
+        fireEvent.click(screen.getByRole('button', { name: 'Confirm Failover' }));
+      });
+
+      expect(screen.queryByText(/Starting Failover/)).not.toBeInTheDocument();
+    });
+
+    it('clears optimistic state after 30s safety timeout', async () => {
+      jest.useFakeTimers();
+      mockCreate.mockResolvedValue({
+        apiVersion: 'soteria.io/v1alpha1',
+        kind: 'DRExecution',
+        metadata: { name: 'erp-full-stack-failover-123', uid: 'uid-1', creationTimestamp: '' },
+        spec: { planName: 'erp-full-stack', mode: 'disaster' },
+      });
+      render(<DRPlanDetailPage />);
+      await triggerFailoverConfirm();
+      expect(screen.getByText('Starting Failover...')).toBeInTheDocument();
+
+      act(() => {
+        jest.advanceTimersByTime(30_000);
+      });
+
+      expect(screen.queryByText('Starting Failover...')).not.toBeInTheDocument();
+      jest.useRealTimers();
+    });
+
+    it('optimistic state is not persisted across unmount/remount', async () => {
+      mockCreate.mockResolvedValue({
+        apiVersion: 'soteria.io/v1alpha1',
+        kind: 'DRExecution',
+        metadata: { name: 'erp-full-stack-failover-123', uid: 'uid-1', creationTimestamp: '' },
+        spec: { planName: 'erp-full-stack', mode: 'disaster' },
+      });
+      const { unmount } = render(<DRPlanDetailPage />);
+      await triggerFailoverConfirm();
+      expect(screen.getByText('Starting Failover...')).toBeInTheDocument();
+
+      unmount();
+      render(<DRPlanDetailPage />);
+      expect(screen.queryByText('Starting Failover...')).not.toBeInTheDocument();
+    });
+
+    it('has no accessibility violations with optimistic banner', async () => {
+      mockCreate.mockResolvedValue({
+        apiVersion: 'soteria.io/v1alpha1',
+        kind: 'DRExecution',
+        metadata: { name: 'erp-full-stack-failover-123', uid: 'uid-1', creationTimestamp: '' },
+        spec: { planName: 'erp-full-stack', mode: 'disaster' },
+      });
+      const { container } = render(<DRPlanDetailPage />);
+      await triggerFailoverConfirm();
+      expect(screen.getByText('Starting Failover...')).toBeInTheDocument();
+
+      const results = await axe(container);
+      expect(results).toHaveNoViolations();
     });
   });
 });

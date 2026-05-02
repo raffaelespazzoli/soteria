@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { DocumentTitle } from '@openshift-console/dynamic-plugin-sdk';
 import {
   Alert,
@@ -18,7 +18,7 @@ import { WaveCompositionTree } from './WaveCompositionTree';
 import { ExecutionHistoryTable } from './ExecutionHistoryTable';
 import { PlanConfiguration } from './PlanConfiguration';
 import { PreflightConfirmationModal } from './PreflightConfirmationModal';
-import { useDRPlan, useDRExecution, useDRExecutions } from '../../hooks/useDRResources';
+import { useDRPlan, useDRExecutions } from '../../hooks/useDRResources';
 import { useCreateDRExecution } from '../../hooks/useCreateDRExecution';
 import { useExecutionNotifications } from '../../hooks/useExecutionNotifications';
 import { getPreflightData } from '../../hooks/usePreflightData';
@@ -34,18 +34,29 @@ interface DRPlanDetailPageProps {
 const DRPlanDetailPage: React.FC<DRPlanDetailPageProps> = (props) => {
   const name = useRouteParamName(props.match);
   const [plan, planLoaded, planError] = useDRPlan(name!);
-  const activeExecName = plan?.status?.activeExecution ?? '';
-  const [execution] = useDRExecution(activeExecName);
   const [executions, executionsLoaded] = useDRExecutions(name!);
+  const activeExecName = plan?.status?.activeExecution ?? '';
+  const execution = activeExecName
+    ? executions.find(e => e.metadata?.name === activeExecName) ?? null
+    : null;
   const [activeTab, setActiveTab] = useState<string | number>(0);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const { create, isCreating, error: createError, clearError } = useCreateDRExecution();
   useExecutionNotifications();
+  const [optimisticExec, setOptimisticExec] = useState<{ name: string; action: string } | null>(null);
 
   const effectivePhase = plan ? getEffectivePhase(plan) : null;
   const sitesInSync = plan ? getSitesInSync(plan) : { inSync: true };
   const restPhase = plan?.status?.phase;
-  const isInTransition = effectivePhase !== null && effectivePhase !== restPhase;
+  const realActiveExec = plan?.status?.activeExecution;
+  const effectiveOptimisticExec = realActiveExec ? null : optimisticExec;
+  const isInTransition = (effectivePhase !== null && effectivePhase !== restPhase) || effectiveOptimisticExec !== null;
+
+  useEffect(() => {
+    if (!optimisticExec) return;
+    const timer = setTimeout(() => setOptimisticExec(null), 30_000);
+    return () => clearTimeout(timer);
+  }, [optimisticExec]);
 
   const waveProgress: WaveProgress | null = (() => {
     const waves = execution?.status?.waves;
@@ -61,7 +72,8 @@ const DRPlanDetailPage: React.FC<DRPlanDetailPageProps> = (props) => {
   const handleConfirm = useCallback(async () => {
     if (!pendingAction || !plan) return;
     try {
-      await create(plan.metadata!.name!, pendingAction);
+      const result = await create(plan.metadata!.name!, pendingAction);
+      setOptimisticExec({ name: result.metadata!.name!, action: pendingAction });
       setPendingAction(null);
     } catch {
       // Error is stored in the hook state and displayed in the modal
@@ -113,7 +125,7 @@ const DRPlanDetailPage: React.FC<DRPlanDetailPageProps> = (props) => {
               </div>
               <PlanHeader plan={plan} />
               {isInTransition && (
-                <TransitionProgressBanner plan={plan} execution={execution ?? null} />
+                <TransitionProgressBanner plan={plan} execution={execution ?? null} optimisticExec={effectiveOptimisticExec} />
               )}
               <DRLifecycleDiagram
                 plan={plan}

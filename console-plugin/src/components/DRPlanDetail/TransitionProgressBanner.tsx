@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
-import { Button, Progress, ProgressMeasureLocation } from '@patternfly/react-core';
+import { Button, Progress, ProgressMeasureLocation, Spinner } from '@patternfly/react-core';
 import { useHistory } from 'react-router-dom';
 import { DRExecution, DRPlan } from '../../models/types';
 import { getEffectivePhase } from '../../utils/drPlanUtils';
+import { ACTION_CONFIG } from '../../utils/drPlanActions';
 import { TRANSITIONS } from './DRLifecycleDiagram';
 
 interface TransitionProgressBannerProps {
   plan: DRPlan;
   execution: DRExecution | null;
+  optimisticExec?: { name: string; action: string } | null;
 }
 
 function formatElapsed(ms: number): string {
@@ -22,7 +24,7 @@ function formatElapsed(ms: number): string {
   return `${hours}h ${remainingMinutes}m`;
 }
 
-const TransitionProgressBanner: React.FC<TransitionProgressBannerProps> = ({ plan, execution }) => {
+const TransitionProgressBanner: React.FC<TransitionProgressBannerProps> = ({ plan, execution, optimisticExec }) => {
   const history = useHistory();
   const effectivePhase = getEffectivePhase(plan);
   const restPhase = plan.status?.phase;
@@ -41,7 +43,34 @@ const TransitionProgressBanner: React.FC<TransitionProgressBannerProps> = ({ pla
     return () => clearInterval(timer);
   }, [startTime]);
 
-  if (effectivePhase === restPhase) return null;
+  const isRealTransition = effectivePhase !== restPhase;
+  const showOptimistic = !execution && !!optimisticExec;
+
+  if (!isRealTransition && !showOptimistic) return null;
+
+  if (showOptimistic) {
+    const actionLabel = ACTION_CONFIG[optimisticExec!.action]?.label ?? optimisticExec!.action;
+    return (
+      <div
+        style={{ marginBottom: 'var(--pf-t--global--spacer--md, var(--pf-v5-global--spacer--md))' }}
+        data-testid="transition-progress-banner"
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 'var(--pf-t--global--spacer--sm, var(--pf-v5-global--spacer--sm))',
+            fontSize: 'var(--pf-t--global--font--size--body--default, var(--pf-v5-global--FontSize--md))',
+          }}
+          role="status"
+          aria-live="polite"
+        >
+          <Spinner size="md" aria-label="Execution starting" />
+          <span>Starting {actionLabel}...</span>
+        </div>
+      </div>
+    );
+  }
 
   const transition = TRANSITIONS.find(t => t.transient === effectivePhase);
   if (!transition) return null;
@@ -71,12 +100,13 @@ const TransitionProgressBanner: React.FC<TransitionProgressBannerProps> = ({ pla
   }
 
   const activeExec = plan.status?.activeExecution;
-  // Capture as a string constant at render time so the closure holds
-  // the primitive value, immune to object mutation by the SDK.
   const execDetailPath = activeExec ? `/disaster-recovery/executions/${activeExec}` : '';
 
   return (
-    <div style={{ marginBottom: 'var(--pf-t--global--spacer--md, var(--pf-v5-global--spacer--md))' }}>
+    <div
+      style={{ marginBottom: 'var(--pf-t--global--spacer--md, var(--pf-v5-global--spacer--md))' }}
+      data-testid="transition-progress-banner"
+    >
       <Progress
         value={pctComplete}
         title={`${transitionLabel} in progress`}

@@ -1,5 +1,6 @@
 # generated: 2026-04-06
 # last_updated: 2026-05-02
+# 8.5 done: Optimistic DRExecution Detection in Console — optimistic local state in DRPlanDetailPage (capture k8sCreate return, setOptimisticExec), derived effectiveOptimisticExec (realActiveExec takes precedence without setState-in-effect), TransitionProgressBanner optimisticExec prop (Spinner + "Starting <action>..."), ACTION_CONFIG label lookup (replaces MODE_LABELS), useDRExecution single-resource watch replaced with useDRExecutions list + .find() for aggregated API safety, 30s safety timeout, data-testid for stable selectors, jest-axe accessibility, 16 new tests (6 DRPlanDetailPage + 10 TransitionProgressBanner), 563 total tests, 0 regressions (~2 modified src files, ~2 modified test files)
 # project: dr-orchestrator
 # project_key: NOKEY
 # tracking_system: file-system
@@ -254,5 +255,5 @@ development_status:
   8-2-per-site-vm-discovery-reporting: done
   8-3-cross-site-vm-agreement-plan-readiness-gating: done
   8-4-console-ui-site-aware-plan-status-disagreement-display: done
-  8-5-optimistic-drexecution-detection-in-console: ready-for-dev
+  8-5-optimistic-drexecution-detection-in-console: done
   epic-8-retrospective: optional

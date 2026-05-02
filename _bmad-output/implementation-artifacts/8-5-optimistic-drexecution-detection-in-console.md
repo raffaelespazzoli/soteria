@@ -1,6 +1,6 @@
 # Story 8.5: Optimistic DRExecution Detection in Console
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -26,18 +26,18 @@ So that the UI feels responsive and I know my action was registered without wait
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Add optimistic execution state to DRPlanDetailPage (AC: #1, #3, #4)
-  - [ ] 1.1 In `DRPlanDetailPage.tsx`, add local state:
+- [x] Task 1: Add optimistic execution state to DRPlanDetailPage (AC: #1, #3, #4)
+  - [x] 1.1 In `DRPlanDetailPage.tsx`, add local state:
     ```ts
     const [optimisticExec, setOptimisticExec] = useState<{ name: string; mode: string } | null>(null);
     ```
-  - [ ] 1.2 In `handleConfirm`, capture the return value from `create()`:
+  - [x] 1.2 In `handleConfirm`, capture the return value from `create()`:
     ```ts
     const result = await create(plan.metadata!.name!, pendingAction);
     setOptimisticExec({ name: result.metadata!.name!, mode: result.spec.mode });
     setPendingAction(null);
     ```
-  - [ ] 1.3 Clear optimistic state when real watch data arrives. Compute:
+  - [x] 1.3 Clear optimistic state when real watch data arrives. Compute:
     ```ts
     const realActiveExec = plan?.status?.activeExecution;
     useEffect(() => {
@@ -46,24 +46,24 @@ So that the UI feels responsive and I know my action was registered without wait
       }
     }, [realActiveExec, optimisticExec]);
     ```
-  - [ ] 1.4 Compute combined `isInTransition` that includes optimistic:
+  - [x] 1.4 Compute combined `isInTransition` that includes optimistic:
     ```ts
     const isInTransition = effectivePhase !== restPhase || optimisticExec !== null;
     ```
-  - [ ] 1.5 When `optimisticExec` is set but `activeExecName` is empty (real data hasn't arrived), pass `optimisticExec` to `TransitionProgressBanner` as a new prop
+  - [x] 1.5 When `optimisticExec` is set but `activeExecName` is empty (real data hasn't arrived), pass `optimisticExec` to `TransitionProgressBanner` as a new prop
 
-- [ ] Task 2: Extend TransitionProgressBanner to support optimistic state (AC: #1, #2, #5)
-  - [ ] 2.1 Add an `optimisticExec?: { name: string; mode: string } | null` prop to `TransitionProgressBannerProps`
-  - [ ] 2.2 When `optimisticExec` is provided and `execution` is null (real data not yet available), render the optimistic variant:
+- [x] Task 2: Extend TransitionProgressBanner to support optimistic state (AC: #1, #2, #5)
+  - [x] 2.1 Add an `optimisticExec?: { name: string; mode: string } | null` prop to `TransitionProgressBannerProps`
+  - [x] 2.2 When `optimisticExec` is provided and `execution` is null (real data not yet available), render the optimistic variant:
     - Show mode label from `optimisticExec.mode` (use `TRANSITIONS` or `ACTION_CONFIG` to map mode → human-readable label)
     - Show "Starting \<label\>..." text
     - Show `Spinner` (size="md") instead of `Progress` bar
     - No "View execution details" link (no real execution to navigate to yet)
-  - [ ] 2.3 When real `execution` prop becomes non-null, render the normal banner (real data takes over). The optimistic UI disappears naturally since parent clears `optimisticExec` state via the `useEffect` in Task 1.3
-  - [ ] 2.4 Ensure no flash: the banner stays rendered continuously — it transitions from optimistic content to real content without unmounting/remounting (same `<div>` container, different inner content)
+  - [x] 2.3 When real `execution` prop becomes non-null, render the normal banner (real data takes over). The optimistic UI disappears naturally since parent clears `optimisticExec` state via the `useEffect` in Task 1.3
+  - [x] 2.4 Ensure no flash: the banner stays rendered continuously — it transitions from optimistic content to real content without unmounting/remounting (same `<div>` container, different inner content)
 
-- [ ] Task 3: Mode-to-label mapping for optimistic banner (AC: #1)
-  - [ ] 3.1 In `TransitionProgressBanner.tsx` or in a utility, map `ExecutionMode` values to user-facing labels:
+- [x] Task 3: Mode-to-label mapping for optimistic banner (AC: #1)
+  - [x] 3.1 In `TransitionProgressBanner.tsx` or in a utility, map `ExecutionMode` values to user-facing labels:
     ```ts
     const MODE_LABELS: Record<string, string> = {
       planned_migration: 'Planned Migration',
@@ -75,8 +75,8 @@ So that the UI feels responsive and I know my action was registered without wait
     ```
     Check if `ACTION_CONFIG` or `TRANSITIONS` already provides this — reuse if so. The existing `TRANSITIONS` map in `DRLifecycleDiagram` maps by transition name, not by mode string. `ACTION_CONFIG` has `mode` → config with a label. Use `ACTION_CONFIG[resolveActionKey(mode)]?.keyword` or define a simple `MODE_LABELS` map (prefer the simpler approach)
 
-- [ ] Task 4: Handle edge case — stale optimistic state timeout (AC: #2)
-  - [ ] 4.1 Add a safety timeout (e.g., 30 seconds) that clears `optimisticExec` if the real watch update never arrives (guards against controller failure/extreme delay):
+- [x] Task 4: Handle edge case — stale optimistic state timeout (AC: #2)
+  - [x] 4.1 Add a safety timeout (e.g., 30 seconds) that clears `optimisticExec` if the real watch update never arrives (guards against controller failure/extreme delay):
     ```ts
     useEffect(() => {
       if (!optimisticExec) return;
@@ -86,26 +86,26 @@ So that the UI feels responsive and I know my action was registered without wait
     ```
     After timeout, the optimistic banner disappears. The user can see execution status through the History tab or the real banner will appear when the controller eventually updates
 
-- [ ] Task 5: Unit tests (AC: #6)
-  - [ ] 5.1 Update `console-plugin/tests/components/DRPlanDetailPage.test.tsx`:
+- [x] Task 5: Unit tests (AC: #6)
+  - [x] 5.1 Update `console-plugin/tests/components/DRPlanDetailPage.test.tsx`:
     - Test: after successful create, optimistic banner renders immediately with "Starting Failover..." (or appropriate mode)
     - Test: when plan watch updates with `activeExecution`, optimistic banner is replaced by real banner
     - Test: on create failure (mock `k8sCreate` rejects), no optimistic banner shown
     - Test: after navigation reset (unmount/remount), optimistic state is gone
-  - [ ] 5.2 Update `console-plugin/tests/components/TransitionProgressBanner.test.tsx` (or create if not exists):
+  - [x] 5.2 Update `console-plugin/tests/components/TransitionProgressBanner.test.tsx` (or create if not exists):
     - Test: when `optimisticExec` provided and `execution` is null, renders "Starting \<mode\>..." with spinner
     - Test: when `optimisticExec` provided but `execution` is also provided, renders real execution data (real takes precedence)
     - Test: when `optimisticExec` is null and `execution` is null, nothing renders (no banner)
     - Test: banner remains mounted across transition from optimistic to real (no unmount flash)
     - jest-axe passes on optimistic banner state (spinner + text)
-  - [ ] 5.3 Add test for safety timeout:
+  - [x] 5.3 Add test for safety timeout:
     - Test: after 30s without watch update, optimistic state clears and banner disappears
     - Use `jest.useFakeTimers()` + `jest.advanceTimersByTime(30000)` for deterministic timing
 
-- [ ] Task 6: Verify build and lint (AC: #6)
-  - [ ] 6.1 Run `cd console-plugin && yarn build` — zero errors
-  - [ ] 6.2 Run `cd console-plugin && yarn test` — all tests pass
-  - [ ] 6.3 Run `cd console-plugin && yarn lint` — zero new lint errors (if lint target exists)
+- [x] Task 6: Verify build and lint (AC: #6)
+  - [x] 6.1 Run `cd console-plugin && yarn build` — zero errors
+  - [x] 6.2 Run `cd console-plugin && yarn test` — all tests pass
+  - [x] 6.3 Run `cd console-plugin && yarn lint` — zero new lint errors (if lint target exists)
 
 ## Dev Notes
 
@@ -280,9 +280,30 @@ Use `size="md"` for inline visibility without dominating the banner.
 ## Dev Agent Record
 
 ### Agent Model Used
+Opus 4.6 (Cursor)
 
 ### Debug Log References
+- Initial `react-hooks/set-state-in-effect` lint error from `useEffect` clearing optimistic state — refactored to derived state (`effectiveOptimisticExec = realActiveExec ? null : optimisticExec`) instead of synchronous setState in effect body. Timeout effect kept since it uses `setTimeout` (async, not synchronous).
 
 ### Completion Notes List
+- AC1: Optimistic banner appears immediately after `k8sCreate` succeeds via local `optimisticExec` state; renders "Starting \<mode\>..." with Spinner
+- AC2: Smooth transition — `effectiveOptimisticExec` is derived as `null` when `realActiveExec` arrives, banner switches to real data without unmount; 30s safety timeout clears stale state
+- AC3: Optimistic state is component-local `useState` — not persisted across navigations (unmount resets)
+- AC4: On `k8sCreate` failure, `setOptimisticExec` is never called (catch block skips it)
+- AC5: When real execution arrives, `useDRExecution(activeExecName)` provides live data with real `startTime`
+- AC6: 14 new tests (6 DRPlanDetailPage + 8 TransitionProgressBanner) covering optimistic render, real data takeover, create failure, timeout, navigation reset, mode labels, accessibility; jest-axe passes; 561 total tests, 0 regressions
+- Refactored Task 1.3 to use derived state pattern instead of `useEffect` + `setState` to avoid `react-hooks/set-state-in-effect` lint violation
+- MODE_LABELS map added to TransitionProgressBanner.tsx (5 mode → label mappings)
+- `data-testid="transition-progress-banner"` added to both optimistic and real banner for stable test selectors
 
 ### File List
+- console-plugin/src/components/DRPlanDetail/DRPlanDetailPage.tsx (modified)
+- console-plugin/src/components/DRPlanDetail/TransitionProgressBanner.tsx (modified)
+- console-plugin/tests/components/DRPlanDetailPage.test.tsx (modified)
+- console-plugin/tests/components/TransitionProgressBanner.test.tsx (modified)
+- _bmad-output/implementation-artifacts/sprint-status.yaml (modified)
+- _bmad-output/implementation-artifacts/8-5-optimistic-drexecution-detection-in-console.md (modified)
+
+### Change Log
+- 2026-05-02: Story 8.5 implemented — optimistic DRExecution detection in console. Added optimistic local state to DRPlanDetailPage, extended TransitionProgressBanner with optimistic/spinner render path, MODE_LABELS map, 30s safety timeout, derived state pattern for real-data takeover, 14 new tests with jest-axe accessibility. 561 tests pass (36 suites), 0 regressions, zero new lint errors, webpack production build clean.
+- 2026-05-02: Code review fixes applied — (1) High: replaced useDRExecution single-resource watch with useDRExecutions list + .find() for aggregated API safety (removes isList:false hang risk); (2) Medium: replaced MODE_LABELS map with ACTION_CONFIG lookup, storing pendingAction instead of spec.mode so Failback/Restore show correct labels instead of their collapsed mode equivalents; added 2 new test cases for failback/restore actions. 563 total tests, 0 regressions.

@@ -164,4 +164,145 @@ describe('TransitionProgressBanner', () => {
     const results = await axe(container);
     expect(results).toHaveNoViolations();
   });
+
+  describe('optimistic execution state', () => {
+    it('renders "Starting Failover..." with spinner when optimisticExec is set and execution is null', () => {
+      const plan = makePlan({ phase: 'SteadyState' });
+      render(
+        <TransitionProgressBanner
+          plan={plan}
+          execution={null}
+          optimisticExec={{ name: 'exec-opt', action: 'failover' }}
+        />,
+      );
+      expect(screen.getByText('Starting Failover...')).toBeInTheDocument();
+      expect(screen.getByLabelText('Execution starting')).toBeInTheDocument();
+    });
+
+    it('renders "Starting Planned Migration..." for planned_migration action', () => {
+      const plan = makePlan({ phase: 'SteadyState' });
+      render(
+        <TransitionProgressBanner
+          plan={plan}
+          execution={null}
+          optimisticExec={{ name: 'exec-opt', action: 'planned_migration' }}
+        />,
+      );
+      expect(screen.getByText('Starting Planned Migration...')).toBeInTheDocument();
+    });
+
+    it('renders "Starting Reprotect..." for reprotect action', () => {
+      const plan = makePlan({ phase: 'FailedOver' });
+      render(
+        <TransitionProgressBanner
+          plan={plan}
+          execution={null}
+          optimisticExec={{ name: 'exec-opt', action: 'reprotect' }}
+        />,
+      );
+      expect(screen.getByText('Starting Reprotect...')).toBeInTheDocument();
+    });
+
+    it('renders "Starting Failback..." for failback action', () => {
+      const plan = makePlan({ phase: 'DRedSteadyState' });
+      render(
+        <TransitionProgressBanner
+          plan={plan}
+          execution={null}
+          optimisticExec={{ name: 'exec-opt', action: 'failback' }}
+        />,
+      );
+      expect(screen.getByText('Starting Failback...')).toBeInTheDocument();
+    });
+
+    it('renders "Starting Restore..." for restore action', () => {
+      const plan = makePlan({ phase: 'FailedBack' });
+      render(
+        <TransitionProgressBanner
+          plan={plan}
+          execution={null}
+          optimisticExec={{ name: 'exec-opt', action: 'restore' }}
+        />,
+      );
+      expect(screen.getByText('Starting Restore...')).toBeInTheDocument();
+    });
+
+    it('renders real execution data when both optimisticExec and execution are provided', () => {
+      const plan = makePlan({
+        phase: 'SteadyState',
+        activeExecution: 'exec-001',
+        activeExecutionMode: 'disaster',
+      });
+      render(
+        <TransitionProgressBanner
+          plan={plan}
+          execution={makeExecution()}
+          optimisticExec={{ name: 'exec-opt', action: 'failover' }}
+        />,
+      );
+      expect(screen.getByText('Failing Over in progress')).toBeInTheDocument();
+      expect(screen.queryByText(/Starting Failover/)).not.toBeInTheDocument();
+    });
+
+    it('renders nothing when optimisticExec is null and plan is in rest state', () => {
+      const plan = makePlan({ phase: 'SteadyState' });
+      const { container } = render(
+        <TransitionProgressBanner plan={plan} execution={null} optimisticExec={null} />,
+      );
+      expect(container.innerHTML).toBe('');
+    });
+
+    it('does not show "View execution details" link in optimistic state', () => {
+      const plan = makePlan({ phase: 'SteadyState' });
+      render(
+        <TransitionProgressBanner
+          plan={plan}
+          execution={null}
+          optimisticExec={{ name: 'exec-opt', action: 'failover' }}
+        />,
+      );
+      expect(screen.queryByText('View execution details')).not.toBeInTheDocument();
+    });
+
+    it('banner stays mounted across transition from optimistic to real', () => {
+      const plan = makePlan({ phase: 'SteadyState' });
+      const { rerender } = render(
+        <TransitionProgressBanner
+          plan={plan}
+          execution={null}
+          optimisticExec={{ name: 'exec-opt', action: 'failover' }}
+        />,
+      );
+      expect(screen.getByText('Starting Failover...')).toBeInTheDocument();
+      expect(screen.getByTestId('transition-progress-banner')).toBeInTheDocument();
+
+      const realPlan = makePlan({
+        phase: 'SteadyState',
+        activeExecution: 'exec-001',
+        activeExecutionMode: 'disaster',
+      });
+      rerender(
+        <TransitionProgressBanner
+          plan={realPlan}
+          execution={makeExecution()}
+          optimisticExec={null}
+        />,
+      );
+      expect(screen.getByText('Failing Over in progress')).toBeInTheDocument();
+      expect(screen.getByTestId('transition-progress-banner')).toBeInTheDocument();
+    });
+
+    it('has no accessibility violations in optimistic state', async () => {
+      const plan = makePlan({ phase: 'SteadyState' });
+      const { container } = render(
+        <TransitionProgressBanner
+          plan={plan}
+          execution={null}
+          optimisticExec={{ name: 'exec-opt', action: 'failover' }}
+        />,
+      );
+      const results = await axe(container);
+      expect(results).toHaveNoViolations();
+    });
+  });
 });
