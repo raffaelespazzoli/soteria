@@ -34,6 +34,8 @@ import (
 	"strings"
 
 	admissionv1 "k8s.io/api/admission/v1"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -105,6 +107,13 @@ func (v *DRExecutionValidator) Handle(ctx context.Context, req admission.Request
 			exec.Spec.Mode,
 			strings.Join(validPhases, ", "),
 		))
+	}
+
+	// Reject when sites do not agree on VM inventory.
+	if sisCond := meta.FindStatusCondition(plan.Status.Conditions, "SitesInSync"); sisCond != nil &&
+		sisCond.Status == metav1.ConditionFalse {
+		return admission.Denied(
+			"Cannot start execution: sites do not agree on VM inventory. Resolve VM differences first.")
 	}
 
 	logger.Info("Admission allowed")

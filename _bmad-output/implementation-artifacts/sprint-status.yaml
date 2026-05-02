@@ -252,7 +252,7 @@ development_status:
   epic-8: in-progress
   8-1-remove-wavelabel-from-drplanspec: done
   8-2-per-site-vm-discovery-reporting: done
-  8-3-cross-site-vm-agreement-plan-readiness-gating: ready-for-dev
+  8-3-cross-site-vm-agreement-plan-readiness-gating: done
   8-4-console-ui-site-aware-plan-status-disagreement-display: ready-for-dev
   8-5-optimistic-drexecution-detection-in-console: ready-for-dev
   epic-8-retrospective: optional

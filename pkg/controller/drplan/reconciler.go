@@ -73,7 +73,15 @@ const (
 	reasonWaveConflict         = "WaveConflict"
 	reasonGroupExceedsThrottle = "NamespaceGroupExceedsThrottle"
 
+	conditionTypeSitesInSync  = "SitesInSync"
+	reasonVMsAgreed           = "VMsAgreed"
+	reasonVMsMismatch         = "VMsMismatch"
+	reasonWaitingForDiscovery = "WaitingForDiscovery"
+	reasonSitesOutOfSync      = "SitesOutOfSync"
+
 	requeueInterval = 10 * time.Minute
+
+	maxDeltaEntriesPerSide = 20
 )
 
 // +kubebuilder:rbac:groups=soteria.io,resources=drplans,verbs=get;list;watch;update;patch
@@ -139,6 +147,19 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	logger.Info("Starting reconciliation")
+
+	// Cross-site VM agreement check: compare both sites' discovered VM sets.
+	// Only applies in site-aware mode when at least one SiteDiscovery field
+	// has been populated. When both are nil the plan pre-dates site-aware
+	// discovery; skip the check entirely to preserve backward compatibility
+	// (Task 6.2).
+	sitesInSyncCond, blocked, err := r.evaluateSiteAgreement(ctx, req, &plan)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if blocked {
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
 
 	vms, err := r.VMDiscoverer.DiscoverVMs(ctx, plan.Name)
 	if err != nil {
@@ -280,6 +301,21 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		ObservedGeneration: plan.Generation,
 	}
 
+	// Enrich preflight with site agreement data.
+	if sitesInSyncCond != nil {
+		report.SitesInSync = sitesInSyncCond.Status == metav1.ConditionTrue
+		if sitesInSyncCond.Status == metav1.ConditionFalse {
+			report.SiteDiscoveryDelta = sitesInSyncCond.Message
+			if sitesInSyncCond.Reason == reasonVMsMismatch {
+				report.Warnings = append(report.Warnings,
+					fmt.Sprintf("Site discovery mismatch: %s", sitesInSyncCond.Message))
+			}
+		}
+	}
+
+	if sitesInSyncCond != nil {
+		return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, report, readyCond, replicationHealth, *sitesInSyncCond)
+	}
 	return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, report, readyCond, replicationHealth)
 }
 
@@ -372,6 +408,190 @@ func sortDiscoveredVMs(vms []soteriav1alpha1.DiscoveredVM) {
 		}
 		return vms[i].Name < vms[j].Name
 	})
+}
+
+// evaluateSiteAgreement runs the cross-site VM agreement check when in
+// site-aware mode with at least one SiteDiscovery populated. It returns the
+// condition pointer (nil when skipped), whether wave formation was blocked,
+// and any error. When blocked, status has already been patched.
+func (r *DRPlanReconciler) evaluateSiteAgreement(
+	ctx context.Context, req ctrl.Request, plan *soteriav1alpha1.DRPlan,
+) (*metav1.Condition, bool, error) {
+	logger := log.FromContext(ctx)
+
+	if r.LocalSite == "" ||
+		(plan.Status.PrimarySiteDiscovery == nil && plan.Status.SecondarySiteDiscovery == nil) {
+		return nil, false, nil
+	}
+
+	inSync, sisCond := compareSiteDiscovery(plan,
+		plan.Status.PrimarySiteDiscovery,
+		plan.Status.SecondarySiteDiscovery)
+
+	prevSIS := meta.FindStatusCondition(plan.Status.Conditions, conditionTypeSitesInSync)
+
+	if !inSync && sisCond.Reason == reasonVMsMismatch {
+		logger.Info("Sites disagree on VM inventory, blocking wave formation",
+			"message", sisCond.Message)
+
+		if prevSIS == nil || prevSIS.Status != metav1.ConditionFalse || prevSIS.Reason != reasonVMsMismatch {
+			r.event(plan, "Warning", "SitesOutOfSync", sisCond.Message)
+		}
+
+		if err := r.Get(ctx, req.NamespacedName, plan); err != nil {
+			return nil, false, err
+		}
+
+		patch := client.MergeFrom(plan.DeepCopy())
+		plan.Status.Waves = nil
+		plan.Status.DiscoveredVMCount = 0
+		meta.SetStatusCondition(&plan.Status.Conditions, sisCond)
+		readyCond := metav1.Condition{
+			Type:               conditionTypeReady,
+			Status:             metav1.ConditionFalse,
+			Reason:             reasonSitesOutOfSync,
+			Message:            "Plan blocked: sites do not agree on VM inventory",
+			ObservedGeneration: plan.Generation,
+		}
+		meta.SetStatusCondition(&plan.Status.Conditions, readyCond)
+
+		if plan.Status.Preflight == nil {
+			now := metav1.Now()
+			plan.Status.Preflight = &soteriav1alpha1.PreflightReport{
+				GeneratedAt: &now,
+			}
+		}
+		plan.Status.Preflight.SitesInSync = false
+		plan.Status.Preflight.SiteDiscoveryDelta = sisCond.Message
+
+		if err := r.Status().Patch(ctx, plan, patch); err != nil {
+			logger.Error(err, "Failed to patch status on site mismatch")
+			return nil, false, err
+		}
+		return &sisCond, true, nil
+	}
+
+	if !inSync && sisCond.Reason == reasonWaitingForDiscovery {
+		logger.V(1).Info("Waiting for VM discovery from peer site, proceeding",
+			"message", sisCond.Message)
+	}
+
+	if inSync {
+		logger.V(1).Info("Sites agree on VM inventory")
+		if prevSIS != nil && prevSIS.Status == metav1.ConditionFalse {
+			r.event(plan, "Normal", "SitesInSync", "Both sites agree on VM inventory")
+		}
+	}
+
+	return &sisCond, false, nil
+}
+
+// compareSiteDiscovery compares the VM sets from both sites and returns whether
+// they are in sync along with the appropriate condition. The comparison is
+// order-independent, using {namespace/name} tuples as keys.
+func compareSiteDiscovery(
+	plan *soteriav1alpha1.DRPlan,
+	primary, secondary *soteriav1alpha1.SiteDiscovery,
+) (inSync bool, condition metav1.Condition) {
+	now := metav1.Now()
+	cond := metav1.Condition{
+		Type:               conditionTypeSitesInSync,
+		ObservedGeneration: plan.Generation,
+		LastTransitionTime: now,
+	}
+
+	if primary == nil || primary.LastDiscoveryTime.IsZero() ||
+		secondary == nil || secondary.LastDiscoveryTime.IsZero() {
+		waitingSite := "both sites"
+		if primary != nil && !primary.LastDiscoveryTime.IsZero() {
+			waitingSite = plan.Spec.SecondarySite
+		} else if secondary != nil && !secondary.LastDiscoveryTime.IsZero() {
+			waitingSite = plan.Spec.PrimarySite
+		}
+		cond.Status = metav1.ConditionFalse
+		cond.Reason = reasonWaitingForDiscovery
+		cond.Message = fmt.Sprintf("Waiting for VM discovery from %s", waitingSite)
+		return false, cond
+	}
+
+	primarySet := make(map[string]struct{}, len(primary.VMs))
+	for _, vm := range primary.VMs {
+		primarySet[vm.Namespace+"/"+vm.Name] = struct{}{}
+	}
+
+	secondarySet := make(map[string]struct{}, len(secondary.VMs))
+	for _, vm := range secondary.VMs {
+		secondarySet[vm.Namespace+"/"+vm.Name] = struct{}{}
+	}
+
+	var primaryOnly, secondaryOnly []string
+	for k := range primarySet {
+		if _, ok := secondarySet[k]; !ok {
+			primaryOnly = append(primaryOnly, k)
+		}
+	}
+	for k := range secondarySet {
+		if _, ok := primarySet[k]; !ok {
+			secondaryOnly = append(secondaryOnly, k)
+		}
+	}
+
+	if len(primaryOnly) == 0 && len(secondaryOnly) == 0 {
+		cond.Status = metav1.ConditionTrue
+		cond.Reason = reasonVMsAgreed
+		cond.Message = "Both sites agree on VM inventory"
+		return true, cond
+	}
+
+	cond.Status = metav1.ConditionFalse
+	cond.Reason = reasonVMsMismatch
+
+	if len(primary.VMs) == 0 {
+		cond.Message = fmt.Sprintf("Site %s discovered 0 VMs; verify VMs have label soteria.io/drplan=%s",
+			plan.Spec.PrimarySite, plan.Name)
+		return false, cond
+	}
+	if len(secondary.VMs) == 0 {
+		cond.Message = fmt.Sprintf("Site %s discovered 0 VMs; verify VMs have label soteria.io/drplan=%s",
+			plan.Spec.SecondarySite, plan.Name)
+		return false, cond
+	}
+
+	sort.Strings(primaryOnly)
+	sort.Strings(secondaryOnly)
+
+	var msg strings.Builder
+	if len(primaryOnly) > 0 {
+		msg.WriteString("VMs on primary but not secondary: [")
+		writeCappedList(&msg, primaryOnly, maxDeltaEntriesPerSide)
+		msg.WriteString("]")
+	}
+	if len(secondaryOnly) > 0 {
+		if msg.Len() > 0 {
+			msg.WriteString("; ")
+		}
+		msg.WriteString("VMs on secondary but not primary: [")
+		writeCappedList(&msg, secondaryOnly, maxDeltaEntriesPerSide)
+		msg.WriteString("]")
+	}
+
+	cond.Message = msg.String()
+	return false, cond
+}
+
+// writeCappedList writes at most max entries from items, comma-separated.
+// If more exist, appends "... and N more".
+func writeCappedList(b *strings.Builder, items []string, max int) {
+	limit := min(len(items), max)
+	for i := range limit {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString(items[i])
+	}
+	if len(items) > max {
+		fmt.Fprintf(b, "... and %d more", len(items)-max)
+	}
 }
 
 // collectVMsFromWaves gathers all DiscoveredVMs across all waves into a flat slice.
@@ -639,6 +859,7 @@ func (r *DRPlanReconciler) updateStatus(
 	preflightReport *soteriav1alpha1.PreflightReport,
 	condition metav1.Condition,
 	replicationHealth []soteriav1alpha1.VolumeGroupHealth,
+	sitesInSyncCond ...metav1.Condition,
 ) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
@@ -659,9 +880,11 @@ func (r *DRPlanReconciler) updateStatus(
 	reportChanged := preflightReportChanged(plan.Status.Preflight, preflightReport)
 	healthChanged := replicationHealthChanged(plan.Status.ReplicationHealth, replicationHealth)
 
+	sitesInSyncChanged := detectSitesInSyncChange(plan.Status.Conditions, sitesInSyncCond)
+
 	siteDiscoveryDue := r.LocalSite != "" && r.siteDiscoveryField(plan) != ""
 	anyChanged := conditionChanged || wavesChanged || countChanged ||
-		genChanged || reportChanged || healthChanged || siteDiscoveryDue
+		genChanged || reportChanged || healthChanged || siteDiscoveryDue || sitesInSyncChanged
 	if !anyChanged {
 		logger.V(1).Info("Status unchanged, skipping patch")
 		requeue := requeueInterval
@@ -682,6 +905,10 @@ func (r *DRPlanReconciler) updateStatus(
 	plan.Status.ObservedGeneration = plan.Generation
 	plan.Status.Preflight = preflightReport
 	meta.SetStatusCondition(&plan.Status.Conditions, condition)
+
+	if len(sitesInSyncCond) > 0 {
+		meta.SetStatusCondition(&plan.Status.Conditions, sitesInSyncCond[0])
+	}
 
 	if replicationHealth != nil {
 		plan.Status.ReplicationHealth = replicationHealth
@@ -777,6 +1004,18 @@ func preflightReportChanged(old, new *soteriav1alpha1.PreflightReport) bool {
 	oldCopy.GeneratedAt = nil
 	newCopy.GeneratedAt = nil
 	return !reflect.DeepEqual(oldCopy, newCopy)
+}
+
+// detectSitesInSyncChange returns true if the SitesInSync condition has changed.
+func detectSitesInSyncChange(existing []metav1.Condition, incoming []metav1.Condition) bool {
+	if len(incoming) == 0 {
+		return false
+	}
+	old := meta.FindStatusCondition(existing, conditionTypeSitesInSync)
+	return old == nil ||
+		old.Status != incoming[0].Status ||
+		old.Reason != incoming[0].Reason ||
+		old.Message != incoming[0].Message
 }
 
 // vmRelevantChangePredicate filters VM events to only those that affect DRPlan

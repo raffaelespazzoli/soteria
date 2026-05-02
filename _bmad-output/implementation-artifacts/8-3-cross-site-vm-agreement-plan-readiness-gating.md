@@ -1,6 +1,6 @@
 # Story 8.3: Cross-Site VM Agreement & Plan Readiness Gating
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -30,83 +30,83 @@ So that executions never proceed against inconsistent infrastructure where VMs a
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Add `SitesInSync` condition constants and comparison logic (AC: #1, #2, #3, #4, #5)
-  - [ ] 1.1 In `pkg/controller/drplan/reconciler.go`, add condition type and reason constants:
+- [x] Task 1: Add `SitesInSync` condition constants and comparison logic (AC: #1, #2, #3, #4, #5)
+  - [x] 1.1 In `pkg/controller/drplan/reconciler.go`, add condition type and reason constants:
     - `conditionTypeSitesInSync = "SitesInSync"`
     - `reasonVMsAgreed = "VMsAgreed"`
     - `reasonVMsMismatch = "VMsMismatch"`
     - `reasonWaitingForDiscovery = "WaitingForDiscovery"`
-  - [ ] 1.2 Create a new function `compareSiteDiscovery(primary, secondary *soteriav1alpha1.SiteDiscovery) (inSync bool, condition metav1.Condition)` that:
+  - [x] 1.2 Create a new function `compareSiteDiscovery(primary, secondary *soteriav1alpha1.SiteDiscovery) (inSync bool, condition metav1.Condition)` that:
     - Returns `WaitingForDiscovery` if either pointer is nil or `LastDiscoveryTime.IsZero()`
     - Builds `map[string]struct{}` from `{namespace}/{name}` for each side
     - Returns `VMsAgreed` if sets are identical
     - Returns `VMsMismatch` with delta message listing "VMs on primary but not secondary: [...]; VMs on secondary but not primary: [...]"
     - Returns `VMsMismatch` with specific message if one side has zero VMs ("Site <name> has no discovered VMs; check VM labels")
-  - [ ] 1.3 Add `reasonSitesOutOfSync = "SitesOutOfSync"` for the Ready condition message when blocked
+  - [x] 1.3 Add `reasonSitesOutOfSync = "SitesOutOfSync"` for the Ready condition message when blocked
 
-- [ ] Task 2: Integrate agreement check into reconcile flow (AC: #1, #2, #3, #4, #5)
-  - [ ] 2.1 In the `Reconcile` method, after the site-aware gate (line ~143) and before VM discovery (line ~147), add the agreement check:
+- [x] Task 2: Integrate agreement check into reconcile flow (AC: #1, #2, #3, #4, #5)
+  - [x] 2.1 In the `Reconcile` method, after the site-aware gate (line ~143) and before VM discovery (line ~147), add the agreement check:
     - Only evaluate when `r.LocalSite != ""` (site-aware mode)
     - Call `compareSiteDiscovery(plan.Status.PrimarySiteDiscovery, plan.Status.SecondarySiteDiscovery)`
     - Set the `SitesInSync` condition on the plan status via `meta.SetStatusCondition`
     - If `inSync == false` AND reason is `VMsMismatch`: clear `status.waves`, set `Ready=False` with message "Plan blocked: sites do not agree on VM inventory", emit warning event, return with requeue
     - If `inSync == false` AND reason is `WaitingForDiscovery`: proceed with discovery as normal (don't block — the active site populates its own SiteDiscovery during reconcile; blocking before that would deadlock on first deploy)
     - If `inSync == true`: proceed with normal wave formation
-  - [ ] 2.2 When `SitesInSync` transitions from `True` to `False`, emit event: `"Warning", "SitesOutOfSync", <delta message>`
-  - [ ] 2.3 When `SitesInSync` transitions from `False` to `True`, emit event: `"Normal", "SitesInSync", "Both sites agree on VM inventory"`
-  - [ ] 2.4 Pass the `SitesInSync` condition through to `updateStatus` alongside the `Ready` condition. Modify `updateStatus` signature or call `meta.SetStatusCondition` before the existing patch logic
+  - [x] 2.2 When `SitesInSync` transitions from `True` to `False`, emit event: `"Warning", "SitesOutOfSync", <delta message>`
+  - [x] 2.3 When `SitesInSync` transitions from `False` to `True`, emit event: `"Normal", "SitesInSync", "Both sites agree on VM inventory"`
+  - [x] 2.4 Pass the `SitesInSync` condition through to `updateStatus` alongside the `Ready` condition. Modify `updateStatus` signature or call `meta.SetStatusCondition` before the existing patch logic
 
-- [ ] Task 3: Update `updateStatus` to handle `SitesInSync` condition (AC: #2, #3)
-  - [ ] 3.1 The `SitesInSync` condition must be set in the same status patch as the `Ready` condition. Add a parameter or variadic condition list to `updateStatus`, OR set it before calling `updateStatus` on the plan object that will be patched
-  - [ ] 3.2 Add change detection for `SitesInSync` to the `anyChanged` logic so that condition transitions trigger a patch
+- [x] Task 3: Update `updateStatus` to handle `SitesInSync` condition (AC: #2, #3)
+  - [x] 3.1 The `SitesInSync` condition must be set in the same status patch as the `Ready` condition. Add a parameter or variadic condition list to `updateStatus`, OR set it before calling `updateStatus` on the plan object that will be patched
+  - [x] 3.2 Add change detection for `SitesInSync` to the `anyChanged` logic so that condition transitions trigger a patch
 
-- [ ] Task 4: Admission webhook — reject when SitesInSync is False (AC: #6)
-  - [ ] 4.1 In `pkg/admission/drexecution_validator.go`, after the phase transition check (~line 108), add:
+- [x] Task 4: Admission webhook — reject when SitesInSync is False (AC: #6)
+  - [x] 4.1 In `pkg/admission/drexecution_validator.go`, after the phase transition check (~line 108), add:
     - Find `SitesInSync` condition in `plan.Status.Conditions` via `meta.FindStatusCondition`
     - If found AND `Status == metav1.ConditionFalse`: return `admission.Denied("Cannot start execution: sites do not agree on VM inventory. Resolve VM differences first.")`
-  - [ ] 4.2 Import `"k8s.io/apimachinery/pkg/api/meta"` (or use loop-based find since `api/meta` has the helper)
+  - [x] 4.2 Import `"k8s.io/apimachinery/pkg/api/meta"` (or use loop-based find since `api/meta` has the helper)
 
-- [ ] Task 5: Preflight report enrichment (AC: #7)
-  - [ ] 5.1 Add `SitesInSync bool` field to `PreflightReport` in `pkg/apis/soteria.io/v1alpha1/types.go`
-  - [ ] 5.2 Add `SiteDiscoveryDelta string` field to `PreflightReport` (omitempty)
-  - [ ] 5.3 In `composePreflightReport`, populate `SitesInSync` from the condition and `SiteDiscoveryDelta` from the condition message when `SitesInSync` is False
-  - [ ] 5.4 Add a preflight warning when sites are out of sync
-  - [ ] 5.5 Run `make generate` after type changes
+- [x] Task 5: Preflight report enrichment (AC: #7)
+  - [x] 5.1 Add `SitesInSync bool` field to `PreflightReport` in `pkg/apis/soteria.io/v1alpha1/types.go`
+  - [x] 5.2 Add `SiteDiscoveryDelta string` field to `PreflightReport` (omitempty)
+  - [x] 5.3 In `composePreflightReport`, populate `SitesInSync` from the condition and `SiteDiscoveryDelta` from the condition message when `SitesInSync` is False
+  - [x] 5.4 Add a preflight warning when sites are out of sync
+  - [x] 5.5 Run `make generate` after type changes
 
-- [ ] Task 6: Backward compatibility (AC: #1, #8)
-  - [ ] 6.1 When `r.LocalSite == ""` (no `--site-name`), skip the entire agreement check — SitesInSync condition is not set, wave formation proceeds as before
-  - [ ] 6.2 When `SiteDiscovery` fields are both nil (legacy plan without site-aware discovery), skip agreement check — existing plans without discovery data are not blocked
+- [x] Task 6: Backward compatibility (AC: #1, #8)
+  - [x] 6.1 When `r.LocalSite == ""` (no `--site-name`), skip the entire agreement check — SitesInSync condition is not set, wave formation proceeds as before
+  - [x] 6.2 When `SiteDiscovery` fields are both nil (legacy plan without site-aware discovery), skip agreement check — existing plans without discovery data are not blocked
 
-- [ ] Task 7: Unit tests (AC: #8)
-  - [ ] 7.1 `TestCompareSiteDiscovery_BothAgree` — identical VM sets → `VMsAgreed`, inSync=true
-  - [ ] 7.2 `TestCompareSiteDiscovery_PrimaryOnlyVMs` — extra VMs on primary → `VMsMismatch` with delta message listing primary-only
-  - [ ] 7.3 `TestCompareSiteDiscovery_SecondaryOnlyVMs` — extra VMs on secondary → `VMsMismatch` with delta message
-  - [ ] 7.4 `TestCompareSiteDiscovery_BothSideExtras` — extra VMs on both → message lists both directions
-  - [ ] 7.5 `TestCompareSiteDiscovery_OneSideEmpty` — one side zero VMs → specific empty-site message
-  - [ ] 7.6 `TestCompareSiteDiscovery_OneSideNil` — nil SiteDiscovery → `WaitingForDiscovery`
-  - [ ] 7.7 `TestCompareSiteDiscovery_BothNil` — both nil → `WaitingForDiscovery`
-  - [ ] 7.8 `TestReconcile_SitesInSync_WaveFormationProceeds` — agreement passes, waves formed normally
-  - [ ] 7.9 `TestReconcile_SitesOutOfSync_WavesCleared` — mismatch blocks wave formation, Ready=False
-  - [ ] 7.10 `TestReconcile_WaitingForDiscovery_ProceedsNormally` — nil discovery does not block
-  - [ ] 7.11 `TestReconcile_NoLocalSite_SkipsAgreementCheck` — backward compat, no SitesInSync condition set
-  - [ ] 7.12 `TestDRExecutionValidator_RejectWhenSitesOutOfSync` — admission returns denied
-  - [ ] 7.13 `TestDRExecutionValidator_AllowWhenSitesInSync` — admission allows normally
+- [x] Task 7: Unit tests (AC: #8)
+  - [x] 7.1 `TestCompareSiteDiscovery_BothAgree` — identical VM sets → `VMsAgreed`, inSync=true
+  - [x] 7.2 `TestCompareSiteDiscovery_PrimaryOnlyVMs` — extra VMs on primary → `VMsMismatch` with delta message listing primary-only
+  - [x] 7.3 `TestCompareSiteDiscovery_SecondaryOnlyVMs` — extra VMs on secondary → `VMsMismatch` with delta message
+  - [x] 7.4 `TestCompareSiteDiscovery_BothSideExtras` — extra VMs on both → message lists both directions
+  - [x] 7.5 `TestCompareSiteDiscovery_OneSideEmpty` — one side zero VMs → specific empty-site message
+  - [x] 7.6 `TestCompareSiteDiscovery_OneSideNil` — nil SiteDiscovery → `WaitingForDiscovery`
+  - [x] 7.7 `TestCompareSiteDiscovery_BothNil` — both nil → `WaitingForDiscovery`
+  - [x] 7.8 `TestReconcile_SitesInSync_WaveFormationProceeds` — agreement passes, waves formed normally
+  - [x] 7.9 `TestReconcile_SitesOutOfSync_WavesCleared` — mismatch blocks wave formation, Ready=False
+  - [x] 7.10 `TestReconcile_WaitingForDiscovery_ProceedsNormally` — nil discovery does not block
+  - [x] 7.11 `TestReconcile_NoLocalSite_SkipsAgreementCheck` — backward compat, no SitesInSync condition set
+  - [x] 7.12 `TestDRExecutionValidator_RejectWhenSitesOutOfSync` — admission returns denied
+  - [x] 7.13 `TestDRExecutionValidator_AllowWhenSitesInSync` — admission allows normally
 
-- [ ] Task 8: Integration tests (AC: #8)
-  - [ ] 8.1 `TestDRPlanReconciler_CrossSiteAgreement_BlocksOnMismatch`:
+- [x] Task 8: Integration tests (AC: #8)
+  - [x] 8.1 `TestDRPlanReconciler_CrossSiteAgreement_BlocksOnMismatch`:
     - Create plan with pre-populated `PrimarySiteDiscovery` (3 VMs) and `SecondarySiteDiscovery` (2 VMs — missing one)
     - Reconcile as active site
     - Assert `SitesInSync=False`, `Ready=False`, waves empty
-  - [ ] 8.2 `TestDRPlanReconciler_CrossSiteAgreement_ProceedsOnMatch`:
+  - [x] 8.2 `TestDRPlanReconciler_CrossSiteAgreement_ProceedsOnMatch`:
     - Create plan with matching SiteDiscovery on both sides
     - Reconcile as active site
     - Assert `SitesInSync=True`, `Ready=True`, waves populated
 
-- [ ] Task 9: Verify build and lint (AC: #8)
-  - [ ] 9.1 Run `make generate` — deepcopy + OpenAPI regenerated
-  - [ ] 9.2 Run `make lint` — zero new lint errors
-  - [ ] 9.3 Run `make test` — all unit tests pass
-  - [ ] 9.4 Run `make integration` — all integration tests pass
+- [x] Task 9: Verify build and lint (AC: #8)
+  - [x] 9.1 Run `make generate` — deepcopy + OpenAPI regenerated
+  - [x] 9.2 Run `make lint` — zero new lint errors
+  - [x] 9.3 Run `make test` — all unit tests pass
+  - [x] 9.4 Run `make integration` — all integration tests pass
 
 ## Dev Notes
 
@@ -278,9 +278,41 @@ The current `updateStatus` takes a single `condition metav1.Condition` parameter
 ## Dev Agent Record
 
 ### Agent Model Used
+Opus 4.6 (Cursor)
 
 ### Debug Log References
+- Integration test initial failure: cache lag between SiteDiscovery patch and manual reconciler read. Fixed by adding `waitForSiteDiscovery` polling + `patchSiteDiscoveryWithRetry` helper.
+- Lint: gocyclo exceeded 30 for `updateStatus` after adding SitesInSync change detection. Fixed by extracting `detectSitesInSyncChange` helper.
+- Lint: `findCondition` redeclared — already existed in `health_test.go`. Removed duplicate.
 
 ### Completion Notes List
+- `compareSiteDiscovery` pure function: order-independent {namespace/name} set comparison, WaitingForDiscovery for nil/zero-time discovery, VMsMismatch with structured delta messages, empty-site specific message, capped list at 20 entries per side
+- SitesInSync condition: VMsAgreed/VMsMismatch/WaitingForDiscovery reasons, integrated into reconcile flow after site-aware gate
+- Reconciler: VMsMismatch blocks wave formation (clears waves, Ready=False, SitesOutOfSync reason), WaitingForDiscovery proceeds to avoid first-deploy deadlock, VMsAgreed proceeds normally
+- updateStatus: variadic `sitesInSyncCond` parameter (Option C), change detection via extracted `detectSitesInSyncChange` helper
+- Admission webhook: rejects DRExecution CREATE when SitesInSync=False, placed after phase transition check
+- PreflightReport: `SitesInSync bool` and `SiteDiscoveryDelta string` fields added, enriched on both mismatch-block and happy-path
+- Backward compat: agreement check guarded by `r.LocalSite != ""`, admission only fires when SitesInSync condition exists
+- 13 new unit tests (7 compareSiteDiscovery + 4 reconciler + 2 admission), 2 new integration tests
+- drplan coverage: 83.8% → 85.3%, admission coverage: 80.6% → 81.0%
+- Zero regressions: all existing unit and integration tests pass
 
 ### File List
+- pkg/apis/soteria.io/v1alpha1/types.go — added SitesInSync + SiteDiscoveryDelta fields to PreflightReport
+- pkg/apis/soteria.io/v1alpha1/zz_generated.deepcopy.go — auto-regenerated
+- pkg/apis/soteria.io/v1alpha1/zz_generated.openapi.go — auto-regenerated
+- pkg/controller/drplan/reconciler.go — added constants, compareSiteDiscovery, writeCappedList, detectSitesInSyncChange, agreement check in Reconcile, variadic sitesInSyncCond in updateStatus, preflight enrichment
+- pkg/admission/drexecution_validator.go — added SitesInSync check after phase validation
+- pkg/controller/drplan/reconciler_test.go — 11 new test functions (7 compareSiteDiscovery + 4 reconciler)
+- pkg/admission/drexecution_validator_test.go — 2 new test functions (reject + allow)
+- test/integration/controller/drplan_test.go — 2 new integration tests (BlocksOnMismatch + ProceedsOnMatch)
+- test/integration/controller/suite_test.go — added patchSiteDiscoveryWithRetry helper
+- _bmad-output/implementation-artifacts/sprint-status.yaml — status updated
+- _bmad-output/implementation-artifacts/8-3-cross-site-vm-agreement-plan-readiness-gating.md — task checkboxes + dev record
+
+### Review Findings
+- [x] [Review][Patch] Skip the agreement check entirely when both `PrimarySiteDiscovery` and `SecondarySiteDiscovery` are nil in site-aware mode to preserve Task 6.2 backward compatibility and avoid writing `SitesInSync=False` for legacy plans [`pkg/controller/drplan/reconciler.go:154`]
+- [x] [Review][Patch] Remove `omitempty` from `PreflightReport.SitesInSync` so `sitesInSync: false` serializes explicitly for AC7/UI consumers instead of disappearing from the API payload [`pkg/apis/soteria.io/v1alpha1/types.go:166`]
+- [x] [Review][Patch] Populate `status.preflight` on the mismatch early-return path even when it is currently nil so AC7 preflight enrichment is available on the first blocked reconcile [`pkg/controller/drplan/reconciler.go:182`]
+- [x] [Review][Patch] Implement transition-based `SitesOutOfSync`/`SitesInSync` events instead of emitting the warning unconditionally on every mismatch reconcile and never emitting the recovery event required by Tasks 2.2/2.3 [`pkg/controller/drplan/reconciler.go:163`]
+- [x] [Review][Patch] Only append the preflight warning as a VM mismatch when the reason is `VMsMismatch`; `WaitingForDiscovery` should not be labeled as a mismatch in the report warnings [`pkg/controller/drplan/reconciler.go:347`]

@@ -517,6 +517,29 @@ func waitForSiteDiscovery(ctx context.Context, name, site string, timeout time.D
 	return nil, fmt.Errorf("timed out waiting for %sSiteDiscovery on %s", site, name)
 }
 
+// patchSiteDiscoveryWithRetry patches both SiteDiscovery fields on a plan
+// with retry to handle conflicts from concurrent controller reconciliation.
+func patchSiteDiscoveryWithRetry(t *testing.T, ctx context.Context, name string, primary, secondary *soteriav1alpha1.SiteDiscovery) {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		var plan soteriav1alpha1.DRPlan
+		if err := testClient.Get(ctx, client.ObjectKey{Name: name}, &plan); err != nil {
+			time.Sleep(200 * time.Millisecond)
+			continue
+		}
+		patch := client.MergeFrom(plan.DeepCopy())
+		plan.Status.PrimarySiteDiscovery = primary
+		plan.Status.SecondarySiteDiscovery = secondary
+		if err := testClient.Status().Patch(ctx, &plan, patch); err != nil {
+			time.Sleep(200 * time.Millisecond)
+			continue
+		}
+		return
+	}
+	t.Fatalf("timed out retrying patchSiteDiscoveryWithRetry(%s)", name)
+}
+
 // newNoopRegistry creates a driver registry with only the noop driver
 // registered and set as the fallback. Reusable across suite setup and
 // individual test reconcilers.

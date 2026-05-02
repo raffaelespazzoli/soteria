@@ -392,3 +392,169 @@ func TestDRPlanReconciler_50VMs_CompletesWithin10s(t *testing.T) {
 		t.Errorf("len(Waves) = %d, want 5", len(plan.Status.Waves))
 	}
 }
+
+func TestDRPlanReconciler_CrossSiteAgreement_BlocksOnMismatch(t *testing.T) {
+	ctx := context.Background()
+	ns := "test-xsite-block"
+	createNamespace(t, ctx, ns)
+
+	createVM(t, ctx, "vm-xb-1", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-xsite-block", "soteria.io/wave": "1"})
+	createVM(t, ctx, "vm-xb-2", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-xsite-block", "soteria.io/wave": "1"})
+	createVM(t, ctx, "vm-xb-3", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-xsite-block", "soteria.io/wave": "2"})
+
+	plan := createDRPlan(t, ctx, "plan-xsite-block")
+
+	// Wait for default reconciler (no LocalSite) to populate waves.
+	_, err := waitForCondition(ctx, plan.Name, "", "Ready", metav1.ConditionTrue, testTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Pre-populate SiteDiscovery fields with a mismatch:
+	// Primary has 3 VMs, secondary only has 2 (missing vm-xb-3).
+	patchSiteDiscoveryWithRetry(t, ctx, plan.Name,
+		&soteriav1alpha1.SiteDiscovery{
+			VMs: []soteriav1alpha1.DiscoveredVM{
+				{Name: "vm-xb-1", Namespace: ns},
+				{Name: "vm-xb-2", Namespace: ns},
+				{Name: "vm-xb-3", Namespace: ns},
+			},
+			DiscoveredVMCount: 3,
+			LastDiscoveryTime: metav1.Now(),
+		},
+		&soteriav1alpha1.SiteDiscovery{
+			VMs: []soteriav1alpha1.DiscoveredVM{
+				{Name: "vm-xb-1", Namespace: ns},
+				{Name: "vm-xb-2", Namespace: ns},
+			},
+			DiscoveredVMCount: 2,
+			LastDiscoveryTime: metav1.Now(),
+		},
+	)
+
+	// Wait for cache to reflect both SiteDiscovery fields before reconciling.
+	_, err = waitForSiteDiscovery(ctx, plan.Name, "primary", testTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = waitForSiteDiscovery(ctx, plan.Name, "secondary", testTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Reconcile as active site — should detect mismatch and block.
+	activeReconciler := &drplan.DRPlanReconciler{
+		Client:          testClient,
+		Scheme:          testScheme,
+		VMDiscoverer:    engine.NewTypedVMDiscoverer(testClient),
+		NamespaceLookup: &engine.DefaultNamespaceLookup{Client: testClientset.CoreV1()},
+		Recorder:        nil,
+		LocalSite:       "dc-west",
+	}
+	_, err = activeReconciler.Reconcile(ctx, ctrl.Request{
+		NamespacedName: client.ObjectKey{Name: plan.Name},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	// Wait for SitesInSync=False to propagate through the cache.
+	updated, err := waitForConditionReason(ctx, plan.Name, "", "SitesInSync", "VMsMismatch", testTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify Ready=False.
+	for _, c := range updated.Status.Conditions {
+		if c.Type == "Ready" {
+			if c.Status != metav1.ConditionFalse {
+				t.Errorf("Ready.Status = %v, want False", c.Status)
+			}
+			if c.Reason != "SitesOutOfSync" {
+				t.Errorf("Ready.Reason = %q, want SitesOutOfSync", c.Reason)
+			}
+			break
+		}
+	}
+
+	// Verify waves are cleared.
+	if len(updated.Status.Waves) != 0 {
+		t.Errorf("Waves should be cleared on mismatch, got %d", len(updated.Status.Waves))
+	}
+}
+
+func TestDRPlanReconciler_CrossSiteAgreement_ProceedsOnMatch(t *testing.T) {
+	ctx := context.Background()
+	ns := "test-xsite-match"
+	createNamespace(t, ctx, ns)
+
+	createVM(t, ctx, "vm-xm-1", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-xsite-match", "soteria.io/wave": "1"})
+	createVM(t, ctx, "vm-xm-2", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-xsite-match", "soteria.io/wave": "1"})
+
+	plan := createDRPlan(t, ctx, "plan-xsite-match")
+
+	// Wait for default reconciler to populate waves.
+	_, err := waitForCondition(ctx, plan.Name, "", "Ready", metav1.ConditionTrue, testTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Pre-populate both SiteDiscovery fields with matching VM sets.
+	matchingVMs := []soteriav1alpha1.DiscoveredVM{
+		{Name: "vm-xm-1", Namespace: ns},
+		{Name: "vm-xm-2", Namespace: ns},
+	}
+	discovery := &soteriav1alpha1.SiteDiscovery{
+		VMs:               matchingVMs,
+		DiscoveredVMCount: 2,
+		LastDiscoveryTime: metav1.Now(),
+	}
+	patchSiteDiscoveryWithRetry(t, ctx, plan.Name, discovery, discovery)
+
+	// Wait for cache to reflect both SiteDiscovery fields.
+	_, err = waitForSiteDiscovery(ctx, plan.Name, "primary", testTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = waitForSiteDiscovery(ctx, plan.Name, "secondary", testTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Reconcile as active site — should detect agreement and proceed normally.
+	activeReconciler := &drplan.DRPlanReconciler{
+		Client:          testClient,
+		Scheme:          testScheme,
+		VMDiscoverer:    engine.NewTypedVMDiscoverer(testClient),
+		NamespaceLookup: &engine.DefaultNamespaceLookup{Client: testClientset.CoreV1()},
+		Recorder:        nil,
+		LocalSite:       "dc-west",
+	}
+	_, err = activeReconciler.Reconcile(ctx, ctrl.Request{
+		NamespacedName: client.ObjectKey{Name: plan.Name},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	// Wait for SitesInSync=True.
+	updated, err := waitForConditionReason(ctx, plan.Name, "", "SitesInSync", "VMsAgreed", testTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify Ready=True.
+	for _, c := range updated.Status.Conditions {
+		if c.Type == "Ready" {
+			if c.Status != metav1.ConditionTrue {
+				t.Errorf("Ready.Status = %v, want True", c.Status)
+			}
+			break
+		}
+	}
+
+	// Verify waves are populated.
+	if len(updated.Status.Waves) == 0 {
+		t.Error("Waves should be populated when sites agree")
+	}
+}

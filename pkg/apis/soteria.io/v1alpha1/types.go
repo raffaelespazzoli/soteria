@@ -161,6 +161,12 @@ type PreflightReport struct {
 	// Warnings contains non-blocking validation issues (e.g., unknown storage backend).
 	// +listType=atomic
 	Warnings []string `json:"warnings,omitempty"`
+	// SitesInSync indicates whether primary and secondary sites agree on
+	// the discovered VM set. Only meaningful in site-aware mode.
+	SitesInSync bool `json:"sitesInSync"`
+	// SiteDiscoveryDelta describes VM differences between sites when
+	// SitesInSync is false (omitted when sites agree).
+	SiteDiscoveryDelta string `json:"siteDiscoveryDelta,omitempty"`
 	// GeneratedAt is when this report was last computed.
 	GeneratedAt *metav1.Time `json:"generatedAt,omitempty"`
 }

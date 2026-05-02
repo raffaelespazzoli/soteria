@@ -1438,5 +1438,425 @@ func TestReconcile_ActiveSite_PreservesPeerSiteDiscovery(t *testing.T) {
 	}
 }
 
+// ---------- compareSiteDiscovery unit tests ----------
+
+func newSiteDiscovery(vms ...soteriav1alpha1.DiscoveredVM) *soteriav1alpha1.SiteDiscovery {
+	return &soteriav1alpha1.SiteDiscovery{
+		VMs:               vms,
+		DiscoveredVMCount: len(vms),
+		LastDiscoveryTime: metav1.Now(),
+	}
+}
+
+func TestCompareSiteDiscovery_BothAgree(t *testing.T) {
+	plan := newTestPlan()
+	primary := newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "vm-1", Namespace: "default"},
+		soteriav1alpha1.DiscoveredVM{Name: "vm-2", Namespace: "ns-a"},
+	)
+	secondary := newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "vm-2", Namespace: "ns-a"},
+		soteriav1alpha1.DiscoveredVM{Name: "vm-1", Namespace: "default"},
+	)
+
+	inSync, cond := compareSiteDiscovery(plan, primary, secondary)
+	if !inSync {
+		t.Error("Expected inSync=true")
+	}
+	if cond.Reason != reasonVMsAgreed {
+		t.Errorf("Reason = %q, want %q", cond.Reason, reasonVMsAgreed)
+	}
+	if cond.Status != metav1.ConditionTrue {
+		t.Errorf("Status = %v, want True", cond.Status)
+	}
+}
+
+func TestCompareSiteDiscovery_PrimaryOnlyVMs(t *testing.T) {
+	plan := newTestPlan()
+	primary := newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "vm-1", Namespace: "default"},
+		soteriav1alpha1.DiscoveredVM{Name: "vm-extra", Namespace: "default"},
+	)
+	secondary := newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "vm-1", Namespace: "default"},
+	)
+
+	inSync, cond := compareSiteDiscovery(plan, primary, secondary)
+	if inSync {
+		t.Error("Expected inSync=false")
+	}
+	if cond.Reason != reasonVMsMismatch {
+		t.Errorf("Reason = %q, want %q", cond.Reason, reasonVMsMismatch)
+	}
+	if !contains(cond.Message, "VMs on primary but not secondary") {
+		t.Errorf("Message should list primary-only VMs, got: %s", cond.Message)
+	}
+	if !contains(cond.Message, "default/vm-extra") {
+		t.Errorf("Message should contain 'default/vm-extra', got: %s", cond.Message)
+	}
+}
+
+func TestCompareSiteDiscovery_SecondaryOnlyVMs(t *testing.T) {
+	plan := newTestPlan()
+	primary := newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "vm-1", Namespace: "default"},
+	)
+	secondary := newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "vm-1", Namespace: "default"},
+		soteriav1alpha1.DiscoveredVM{Name: "vm-sec-only", Namespace: "ns-b"},
+	)
+
+	inSync, cond := compareSiteDiscovery(plan, primary, secondary)
+	if inSync {
+		t.Error("Expected inSync=false")
+	}
+	if !contains(cond.Message, "VMs on secondary but not primary") {
+		t.Errorf("Message should list secondary-only VMs, got: %s", cond.Message)
+	}
+	if !contains(cond.Message, "ns-b/vm-sec-only") {
+		t.Errorf("Message should contain 'ns-b/vm-sec-only', got: %s", cond.Message)
+	}
+}
+
+func TestCompareSiteDiscovery_BothSideExtras(t *testing.T) {
+	plan := newTestPlan()
+	primary := newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "vm-shared", Namespace: "default"},
+		soteriav1alpha1.DiscoveredVM{Name: "vm-p-only", Namespace: "default"},
+	)
+	secondary := newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "vm-shared", Namespace: "default"},
+		soteriav1alpha1.DiscoveredVM{Name: "vm-s-only", Namespace: "default"},
+	)
+
+	inSync, cond := compareSiteDiscovery(plan, primary, secondary)
+	if inSync {
+		t.Error("Expected inSync=false")
+	}
+	if !contains(cond.Message, "VMs on primary but not secondary") {
+		t.Errorf("Message should list primary-only, got: %s", cond.Message)
+	}
+	if !contains(cond.Message, "VMs on secondary but not primary") {
+		t.Errorf("Message should list secondary-only, got: %s", cond.Message)
+	}
+}
+
+func TestCompareSiteDiscovery_OneSideEmpty(t *testing.T) {
+	plan := newTestPlan()
+	primary := newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "vm-1", Namespace: "default"},
+	)
+	secondary := newSiteDiscovery() // zero VMs but valid discovery
+
+	inSync, cond := compareSiteDiscovery(plan, primary, secondary)
+	if inSync {
+		t.Error("Expected inSync=false")
+	}
+	if cond.Reason != reasonVMsMismatch {
+		t.Errorf("Reason = %q, want %q", cond.Reason, reasonVMsMismatch)
+	}
+	if !contains(cond.Message, "discovered 0 VMs") {
+		t.Errorf("Message should mention 0 VMs, got: %s", cond.Message)
+	}
+	if !contains(cond.Message, testSecondarySite) {
+		t.Errorf("Message should mention site name %q, got: %s", testSecondarySite, cond.Message)
+	}
+}
+
+func TestCompareSiteDiscovery_OneSideNil(t *testing.T) {
+	plan := newTestPlan()
+	primary := newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "vm-1", Namespace: "default"},
+	)
+
+	inSync, cond := compareSiteDiscovery(plan, primary, nil)
+	if inSync {
+		t.Error("Expected inSync=false")
+	}
+	if cond.Reason != reasonWaitingForDiscovery {
+		t.Errorf("Reason = %q, want %q", cond.Reason, reasonWaitingForDiscovery)
+	}
+	if !contains(cond.Message, testSecondarySite) {
+		t.Errorf("Message should mention waiting site, got: %s", cond.Message)
+	}
+}
+
+func TestCompareSiteDiscovery_BothNil(t *testing.T) {
+	plan := newTestPlan()
+
+	inSync, cond := compareSiteDiscovery(plan, nil, nil)
+	if inSync {
+		t.Error("Expected inSync=false")
+	}
+	if cond.Reason != reasonWaitingForDiscovery {
+		t.Errorf("Reason = %q, want %q", cond.Reason, reasonWaitingForDiscovery)
+	}
+	if !contains(cond.Message, "both sites") {
+		t.Errorf("Message should mention both sites waiting, got: %s", cond.Message)
+	}
+}
+
+// ---------- Reconciler integration tests for agreement ----------
+
+func newReconcilerWithSite(
+	objs []client.Object,
+	discoverer engine.VMDiscoverer,
+	localSite string,
+) (*DRPlanReconciler, client.Client) {
+	scheme := newTestScheme()
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(objs...).
+		WithStatusSubresource(&soteriav1alpha1.DRPlan{}).
+		Build()
+
+	return &DRPlanReconciler{
+		Client:          fakeClient,
+		Scheme:          scheme,
+		VMDiscoverer:    discoverer,
+		NamespaceLookup: &mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{}},
+		Recorder:        events.NewFakeRecorder(10),
+		LocalSite:       localSite,
+	}, fakeClient
+}
+
+func TestReconcile_SitesInSync_WaveFormationProceeds(t *testing.T) {
+	plan := newTestPlan()
+	plan.Status.ActiveSite = testSecondarySite
+	plan.Status.PrimarySiteDiscovery = newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "vm-1", Namespace: "default"},
+		soteriav1alpha1.DiscoveredVM{Name: "vm-2", Namespace: "default"},
+	)
+	plan.Status.SecondarySiteDiscovery = newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "vm-1", Namespace: "default"},
+		soteriav1alpha1.DiscoveredVM{Name: "vm-2", Namespace: "default"},
+	)
+
+	vms := []engine.VMReference{
+		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+		{Name: "vm-2", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+	}
+
+	r, c := newReconcilerWithSite([]client.Object{plan}, &mockVMDiscoverer{vms: vms}, testSecondarySite)
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: planKey})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	var updated soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &updated); err != nil {
+		t.Fatalf("Failed to get plan: %v", err)
+	}
+
+	readyCond := findReadyCondition(updated.Status.Conditions)
+	if readyCond == nil || readyCond.Status != metav1.ConditionTrue {
+		t.Error("Expected Ready=True when sites agree")
+	}
+
+	sisCond := findCondition(updated.Status.Conditions, conditionTypeSitesInSync)
+	if sisCond == nil {
+		t.Fatal("SitesInSync condition not found")
+	}
+	if sisCond.Status != metav1.ConditionTrue {
+		t.Errorf("SitesInSync.Status = %v, want True", sisCond.Status)
+	}
+	if sisCond.Reason != reasonVMsAgreed {
+		t.Errorf("SitesInSync.Reason = %q, want %q", sisCond.Reason, reasonVMsAgreed)
+	}
+
+	if len(updated.Status.Waves) == 0 {
+		t.Error("Waves should be populated when sites agree")
+	}
+}
+
+func TestReconcile_SitesOutOfSync_WavesCleared(t *testing.T) {
+	plan := newTestPlan()
+	plan.Status.PrimarySiteDiscovery = newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "vm-1", Namespace: "default"},
+		soteriav1alpha1.DiscoveredVM{Name: "vm-2", Namespace: "default"},
+		soteriav1alpha1.DiscoveredVM{Name: "vm-3", Namespace: "default"},
+	)
+	plan.Status.SecondarySiteDiscovery = newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "vm-1", Namespace: "default"},
+		soteriav1alpha1.DiscoveredVM{Name: "vm-2", Namespace: "default"},
+	)
+	// Pre-populate waves to verify they get cleared.
+	plan.Status.Waves = []soteriav1alpha1.WaveInfo{
+		{WaveKey: "1", VMs: []soteriav1alpha1.DiscoveredVM{{Name: "vm-1", Namespace: "default"}}},
+	}
+	plan.Status.DiscoveredVMCount = 1
+
+	vms := []engine.VMReference{
+		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+		{Name: "vm-2", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+		{Name: "vm-3", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+	}
+
+	r, c := newReconcilerWithSite([]client.Object{plan}, &mockVMDiscoverer{vms: vms}, testPrimarySite)
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: planKey})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	var updated soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &updated); err != nil {
+		t.Fatalf("Failed to get plan: %v", err)
+	}
+
+	readyCond := findReadyCondition(updated.Status.Conditions)
+	if readyCond == nil {
+		t.Fatal("Ready condition not found")
+	}
+	if readyCond.Status != metav1.ConditionFalse {
+		t.Errorf("Ready.Status = %v, want False", readyCond.Status)
+	}
+	if readyCond.Reason != reasonSitesOutOfSync {
+		t.Errorf("Ready.Reason = %q, want %q", readyCond.Reason, reasonSitesOutOfSync)
+	}
+
+	sisCond := findCondition(updated.Status.Conditions, conditionTypeSitesInSync)
+	if sisCond == nil {
+		t.Fatal("SitesInSync condition not found")
+	}
+	if sisCond.Status != metav1.ConditionFalse {
+		t.Errorf("SitesInSync.Status = %v, want False", sisCond.Status)
+	}
+	if sisCond.Reason != reasonVMsMismatch {
+		t.Errorf("SitesInSync.Reason = %q, want %q", sisCond.Reason, reasonVMsMismatch)
+	}
+
+	if len(updated.Status.Waves) != 0 {
+		t.Errorf("Waves should be cleared on mismatch, got %d", len(updated.Status.Waves))
+	}
+	if updated.Status.DiscoveredVMCount != 0 {
+		t.Errorf("DiscoveredVMCount should be 0 on mismatch, got %d", updated.Status.DiscoveredVMCount)
+	}
+
+	if updated.Status.Preflight == nil {
+		t.Fatal("Preflight should be populated on mismatch even when previously nil")
+	}
+	if updated.Status.Preflight.SitesInSync {
+		t.Error("Preflight.SitesInSync should be false on mismatch")
+	}
+	if updated.Status.Preflight.SiteDiscoveryDelta == "" {
+		t.Error("Preflight.SiteDiscoveryDelta should be non-empty on mismatch")
+	}
+}
+
+func TestReconcile_BothSiteDiscoveryNil_SkipsAgreementCheck(t *testing.T) {
+	plan := newTestPlan()
+	// Both SiteDiscovery fields are nil — legacy plan without site-aware discovery.
+
+	vms := []engine.VMReference{
+		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+	}
+
+	r, c := newReconcilerWithSite([]client.Object{plan}, &mockVMDiscoverer{vms: vms}, testPrimarySite)
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: planKey})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	var updated soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &updated); err != nil {
+		t.Fatalf("Failed to get plan: %v", err)
+	}
+
+	sisCond := findCondition(updated.Status.Conditions, conditionTypeSitesInSync)
+	if sisCond != nil {
+		t.Error("SitesInSync condition should NOT be set when both SiteDiscovery are nil")
+	}
+
+	readyCond := findReadyCondition(updated.Status.Conditions)
+	if readyCond == nil || readyCond.Status != metav1.ConditionTrue {
+		t.Error("Expected Ready=True — agreement check should be skipped for legacy plans")
+	}
+
+	if len(updated.Status.Waves) == 0 {
+		t.Error("Waves should be populated for legacy plans")
+	}
+}
+
+func TestReconcile_WaitingForDiscovery_ProceedsNormally(t *testing.T) {
+	plan := newTestPlan()
+	plan.Status.PrimarySiteDiscovery = newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "vm-1", Namespace: "default"},
+	)
+	// SecondarySiteDiscovery is nil — waiting for discovery.
+
+	vms := []engine.VMReference{
+		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+	}
+
+	r, c := newReconcilerWithSite([]client.Object{plan}, &mockVMDiscoverer{vms: vms}, testPrimarySite)
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: planKey})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	var updated soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &updated); err != nil {
+		t.Fatalf("Failed to get plan: %v", err)
+	}
+
+	readyCond := findReadyCondition(updated.Status.Conditions)
+	if readyCond == nil || readyCond.Status != metav1.ConditionTrue {
+		t.Error("Expected Ready=True when waiting for discovery (should proceed)")
+	}
+
+	if len(updated.Status.Waves) == 0 {
+		t.Error("Waves should be populated — WaitingForDiscovery does not block")
+	}
+
+	sisCond := findCondition(updated.Status.Conditions, conditionTypeSitesInSync)
+	if sisCond == nil {
+		t.Fatal("SitesInSync condition should be set even when waiting")
+	}
+	if sisCond.Reason != reasonWaitingForDiscovery {
+		t.Errorf("SitesInSync.Reason = %q, want %q", sisCond.Reason, reasonWaitingForDiscovery)
+	}
+}
+
+func TestReconcile_NoLocalSite_SkipsAgreementCheck(t *testing.T) {
+	plan := newTestPlan()
+	plan.Status.PrimarySiteDiscovery = newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "vm-1", Namespace: "default"},
+	)
+	plan.Status.SecondarySiteDiscovery = newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "vm-different", Namespace: "default"},
+	)
+
+	vms := []engine.VMReference{
+		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+	}
+
+	r, c := newReconciler([]client.Object{plan}, &mockVMDiscoverer{vms: vms})
+	// r.LocalSite is "" — backward compat mode
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: planKey})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	var updated soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &updated); err != nil {
+		t.Fatalf("Failed to get plan: %v", err)
+	}
+
+	sisCond := findCondition(updated.Status.Conditions, conditionTypeSitesInSync)
+	if sisCond != nil {
+		t.Error("SitesInSync condition should NOT be set when LocalSite is empty")
+	}
+
+	readyCond := findReadyCondition(updated.Status.Conditions)
+	if readyCond == nil || readyCond.Status != metav1.ConditionTrue {
+		t.Error("Expected Ready=True — agreement check should be skipped")
+	}
+}
+
 // Ensure reconcile.Reconciler is implemented.
 var _ reconcile.Reconciler = (*DRPlanReconciler)(nil)

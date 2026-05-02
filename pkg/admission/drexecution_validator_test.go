@@ -335,3 +335,92 @@ func TestDRExecutionValidator_NonCreateOperation_Allowed(t *testing.T) {
 		t.Errorf("expected UPDATE to be allowed, got denied: %v", resp.Result)
 	}
 }
+
+func TestDRExecutionValidator_RejectWhenSitesOutOfSync(t *testing.T) {
+	reader := &stubReader{
+		plans: map[string]*soteriav1alpha1.DRPlan{
+			"my-plan": {
+				ObjectMeta: metav1.ObjectMeta{Name: "my-plan"},
+				Spec: soteriav1alpha1.DRPlanSpec{
+					PrimarySite:   "dc-west",
+					SecondarySite: "dc-east",
+				},
+				Status: soteriav1alpha1.DRPlanStatus{
+					Phase:      soteriav1alpha1.PhaseSteadyState,
+					ActiveSite: "dc-west",
+					Conditions: []metav1.Condition{
+						{
+							Type:               "SitesInSync",
+							Status:             metav1.ConditionFalse,
+							Reason:             "VMsMismatch",
+							Message:            "VMs on primary but not secondary: [default/vm-extra]",
+							LastTransitionTime: metav1.Now(),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	v := &DRExecutionValidator{reader: reader}
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-exec"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "my-plan",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+	}
+
+	resp := v.Handle(context.Background(), makeExecRequest(exec, admissionv1.Create))
+	if resp.Allowed {
+		t.Error("expected denied when SitesInSync is False, got allowed")
+	}
+	msg := ""
+	if resp.Result != nil {
+		msg = resp.Result.Message
+	}
+	if !strings.Contains(msg, "sites do not agree") {
+		t.Errorf("expected message about site disagreement, got %q", msg)
+	}
+}
+
+func TestDRExecutionValidator_AllowWhenSitesInSync(t *testing.T) {
+	reader := &stubReader{
+		plans: map[string]*soteriav1alpha1.DRPlan{
+			"my-plan": {
+				ObjectMeta: metav1.ObjectMeta{Name: "my-plan"},
+				Spec: soteriav1alpha1.DRPlanSpec{
+					PrimarySite:   "dc-west",
+					SecondarySite: "dc-east",
+				},
+				Status: soteriav1alpha1.DRPlanStatus{
+					Phase:      soteriav1alpha1.PhaseSteadyState,
+					ActiveSite: "dc-west",
+					Conditions: []metav1.Condition{
+						{
+							Type:               "SitesInSync",
+							Status:             metav1.ConditionTrue,
+							Reason:             "VMsAgreed",
+							Message:            "Both sites agree on VM inventory",
+							LastTransitionTime: metav1.Now(),
+						},
+					},
+				},
+			},
+		},
+	}
+
+	v := &DRExecutionValidator{reader: reader}
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-exec"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "my-plan",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+	}
+
+	resp := v.Handle(context.Background(), makeExecRequest(exec, admissionv1.Create))
+	if !resp.Allowed {
+		t.Errorf("expected allowed when SitesInSync is True, got denied: %v", resp.Result)
+	}
+}

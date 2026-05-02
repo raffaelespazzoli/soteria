@@ -1038,6 +1038,21 @@ func schema_pkg_apis_soteriaio_v1alpha1_PreflightReport(ref common.ReferenceCall
 							},
 						},
 					},
+					"sitesInSync": {
+						SchemaProps: spec.SchemaProps{
+							Description: "SitesInSync indicates whether primary and secondary sites agree on the discovered VM set. Only meaningful in site-aware mode.",
+							Default:     false,
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
+					"siteDiscoveryDelta": {
+						SchemaProps: spec.SchemaProps{
+							Description: "SiteDiscoveryDelta describes VM differences between sites when SitesInSync is false (omitted when sites agree).",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 					"generatedAt": {
 						SchemaProps: spec.SchemaProps{
 							Description: "GeneratedAt is when this report was last computed.",
@@ -1045,7 +1060,7 @@ func schema_pkg_apis_soteriaio_v1alpha1_PreflightReport(ref common.ReferenceCall
 						},
 					},
 				},
-				Required: []string{"totalVMs"},
+				Required: []string{"totalVMs", "sitesInSync"},
 			},
 		},
 		Dependencies: []string{
