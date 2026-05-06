@@ -247,12 +247,31 @@ type VolumeGroupHealth struct {
 	Message string `json:"message,omitempty"`
 }
 
+// DiscoveredDisk describes a single disk attached to a VM and its backing PVC topology.
+type DiscoveredDisk struct {
+	// Name is the disk name from the VM's domain.devices.disks spec
+	// (the identifier visible to the guest OS).
+	Name string `json:"name"`
+	// PVCName is the PersistentVolumeClaim backing this disk.
+	// Empty when the PVC has not yet been created (e.g., DataVolume provisioning).
+	PVCName string `json:"pvcName,omitempty"`
+	// StorageClass is the storage class of the backing PVC.
+	// Empty when the PVC does not exist yet or has no storageClassName.
+	StorageClass string `json:"storageClass,omitempty"`
+}
+
 // DiscoveredVM identifies a VM discovered by a DRPlan's label selector.
 type DiscoveredVM struct {
 	// Name is the VM resource name.
 	Name string `json:"name"`
 	// Namespace is the VM's namespace.
 	Namespace string `json:"namespace"`
+	// Disks contains per-disk PVC topology discovered for this VM.
+	// Only disks backed by PersistentVolumeClaim or DataVolume volumes
+	// are included; other volume types (containerDisk, cloudInit, etc.)
+	// are silently omitted.
+	// +listType=atomic
+	Disks []DiscoveredDisk `json:"disks,omitempty"`
 }
 
 // SiteDiscovery contains VM discovery results from a single site's perspective.

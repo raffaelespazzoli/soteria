@@ -44,6 +44,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DRPlanList":             schema_pkg_apis_soteriaio_v1alpha1_DRPlanList(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DRPlanSpec":             schema_pkg_apis_soteriaio_v1alpha1_DRPlanSpec(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DRPlanStatus":           schema_pkg_apis_soteriaio_v1alpha1_DRPlanStatus(ref),
+		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DiscoveredDisk":         schema_pkg_apis_soteriaio_v1alpha1_DiscoveredDisk(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DiscoveredVM":           schema_pkg_apis_soteriaio_v1alpha1_DiscoveredVM(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightChunk":         schema_pkg_apis_soteriaio_v1alpha1_PreflightChunk(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightReport":        schema_pkg_apis_soteriaio_v1alpha1_PreflightReport(ref),
@@ -856,6 +857,42 @@ func schema_pkg_apis_soteriaio_v1alpha1_DRPlanStatus(ref common.ReferenceCallbac
 	}
 }
 
+func schema_pkg_apis_soteriaio_v1alpha1_DiscoveredDisk(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "DiscoveredDisk describes a single disk attached to a VM and its backing PVC topology.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"name": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Name is the disk name from the VM's domain.devices.disks spec (the identifier visible to the guest OS).",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"pvcName": {
+						SchemaProps: spec.SchemaProps{
+							Description: "PVCName is the PersistentVolumeClaim backing this disk. Empty when the PVC has not yet been created (e.g., DataVolume provisioning).",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"storageClass": {
+						SchemaProps: spec.SchemaProps{
+							Description: "StorageClass is the storage class of the backing PVC. Empty when the PVC does not exist yet or has no storageClassName.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"name"},
+			},
+		},
+	}
+}
+
 func schema_pkg_apis_soteriaio_v1alpha1_DiscoveredVM(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
@@ -879,10 +916,31 @@ func schema_pkg_apis_soteriaio_v1alpha1_DiscoveredVM(ref common.ReferenceCallbac
 							Format:      "",
 						},
 					},
+					"disks": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "atomic",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "Disks contains per-disk PVC topology discovered for this VM. Only disks backed by PersistentVolumeClaim or DataVolume volumes are included; other volume types (containerDisk, cloudInit, etc.) are silently omitted.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: map[string]interface{}{},
+										Ref:     ref("github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DiscoveredDisk"),
+									},
+								},
+							},
+						},
+					},
 				},
 				Required: []string{"name", "namespace"},
 			},
 		},
+		Dependencies: []string{
+			"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DiscoveredDisk"},
 	}
 }
 

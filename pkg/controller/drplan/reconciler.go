@@ -109,6 +109,9 @@ type DRPlanReconciler struct {
 	Registry    *drivers.Registry
 	SCLister    drivers.StorageClassLister
 	PVCResolver engine.PVCResolver
+	// DiskEnricher resolves per-disk PVC topology for discovered VMs.
+	// When nil, disk enrichment is skipped (backward compat).
+	DiskEnricher engine.DiskEnricher
 	// LocalSite is the --site-name flag value identifying which cluster
 	// this controller instance runs on. Used to optimize VM discovery
 	// and health polling to the local site.
@@ -187,9 +190,18 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	for i, wg := range result.Waves {
 		discoveredVMs := make([]soteriav1alpha1.DiscoveredVM, len(wg.VMs))
 		for j, vm := range wg.VMs {
+			var disks []soteriav1alpha1.DiscoveredDisk
+			if r.DiskEnricher != nil {
+				var enrichErr error
+				disks, enrichErr = r.DiskEnricher.EnrichDisks(ctx, vm.Name, vm.Namespace)
+				if enrichErr != nil {
+					logger.V(1).Info("Disk enrichment failed for VM, skipping disks", "vm", vm.Name, "error", enrichErr)
+				}
+			}
 			discoveredVMs[j] = soteriav1alpha1.DiscoveredVM{
 				Name:      vm.Name,
 				Namespace: vm.Namespace,
+				Disks:     disks,
 			}
 		}
 		waves[i] = soteriav1alpha1.WaveInfo{
@@ -360,9 +372,18 @@ func (r *DRPlanReconciler) reconcilePassiveSite(
 
 	discoveredVMs := make([]soteriav1alpha1.DiscoveredVM, len(vms))
 	for i, vm := range vms {
+		var disks []soteriav1alpha1.DiscoveredDisk
+		if r.DiskEnricher != nil {
+			var enrichErr error
+			disks, enrichErr = r.DiskEnricher.EnrichDisks(ctx, vm.Name, vm.Namespace)
+			if enrichErr != nil {
+				logger.V(1).Info("Disk enrichment failed for VM, skipping disks", "vm", vm.Name, "error", enrichErr)
+			}
+		}
 		discoveredVMs[i] = soteriav1alpha1.DiscoveredVM{
 			Name:      vm.Name,
 			Namespace: vm.Namespace,
+			Disks:     disks,
 		}
 	}
 	sortDiscoveredVMs(discoveredVMs)

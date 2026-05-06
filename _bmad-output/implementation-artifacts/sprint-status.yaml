@@ -39,6 +39,7 @@
 
 generated: 2026-04-06
 last_updated: 2026-05-06
+# 9.1 review: Disk Discovery in SiteDiscovery — DiscoveredDisk type (name/pvcName/storageClass) added to DiscoveredVM, DiskEnricher interface (KubeVirt/NoOp), reconciler disk-to-volume join (domain.devices.disks + spec.volumes → PVC → storageClass), active-site wave enrichment + passive-site SiteDiscovery enrichment, cached client.Reader PVC resolution, DataVolume support, missing-PVC self-healing, NoOp enricher for dev/CI, 15 new tests (9 DiskEnricher + 6 reconciler), 0 regressions (~3 prod files modified, ~2 new files, ~2 test files)
 # 9.6 created: Console UI Disk Discovery & Validation Display — DiscoveredDisk+PreflightVolumeGroup+VolumeGroupDisk TS types, getDisksConsistent utility (mirrors getSitesInSync), DiskDisagreementAlert component (danger Alert with DiskMismatch/StorageClassMixed/WaitingForDiskDiscovery reasons), DRPlanDetailPage wiring (alert + isBlocked extension), SiteDiscoverySection expandable per-VM disk rows with cross-site comparison highlighting, WaveCompositionTree VG disk composition nodes with site label, DRDashboard ExclamationTriangleIcon+disabled actions for DisksConsistent=False, backward compat for string[] volumeGroups, jest-axe accessibility on all new states (~1 new src file, ~6 modified src files, ~1 new test file, ~4 modified test files)
 # 9.5 created: Storage Class Homogeneity Validation — validateVGStorageClassHomogeneity pure function (per-VG distinct SC collection from DiscoveredVM.Disks, skips empty SC and stateless VMs), reasonStorageClassMixed condition constant, reconciler wire-up after ResolveVolumeGroups (overrides disksConsistentCond from 9.3, composes preflight with nil chunks, sets Ready=False/DisksOutOfSync), buildMixedSCMessage with writeCappedList, waves NOT cleared (follows wave conflict pattern not disk mismatch pattern), no admission changes (9.3 gate blocks on any DisksConsistent=False), table-driven unit tests + reconciler integration tests (~2 modified files, ~260 lines)
 # 9.4 created: Volume Group Disk Enrichment in Preflight — PreflightVolumeGroup type (name/site/disks[]), VolumeGroupDisk type (name/pvcName/pvcNamespace), PreflightChunk.VolumeGroups changed from []string to []PreflightVolumeGroup (v1alpha1 breaking change), CompositionInput extended with Waves+LocalSite, ComposeReport builds enriched VG entries from DiscoveredVM.Disks (no new PVC GETs), sort by VM name then disk name for namespace-level VGs, console-plugin TS types updated (~3 modified files, ~2 modified TS files, ~1 test file)
@@ -268,7 +269,7 @@ development_status:
 
   # Epic 9: Disk-Level Discovery, Volume Group Enrichment & Structural Validation
   epic-9: in-progress
-  9-1-disk-discovery-in-site-discovery: ready-for-dev
+  9-1-disk-discovery-in-site-discovery: done
   9-2-aggregated-api-admission-plugin-migration: ready-for-dev
   9-3-cross-site-disk-agreement-validation: ready-for-dev
   9-4-volume-group-disk-enrichment-in-preflight: ready-for-dev

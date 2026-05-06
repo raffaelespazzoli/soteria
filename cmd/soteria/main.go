@@ -262,11 +262,14 @@ func main() {
 	}
 
 	var pvcResolver engine.PVCResolver
+	var diskEnricher engine.DiskEnricher
 	if noopFallback {
 		pvcResolver = engine.NoOpPVCResolver{}
-		setupLog.Info("Using NoOpPVCResolver for dev/CI (noop-fallback enabled)")
+		diskEnricher = engine.NoOpDiskEnricher{}
+		setupLog.Info("Using NoOpPVCResolver and NoOpDiskEnricher for dev/CI (noop-fallback enabled)")
 	} else {
 		pvcResolver = &engine.KubeVirtPVCResolver{Client: mgr.GetClient()}
+		diskEnricher = &engine.KubeVirtDiskEnricher{Reader: mgr.GetClient()}
 	}
 
 	eventBroadcaster := events.NewEventBroadcasterAdapterWithContext(ctx, clientset)
@@ -284,6 +287,7 @@ func main() {
 		Registry:        drivers.DefaultRegistry,
 		SCLister:        scLister,
 		PVCResolver:     pvcResolver,
+		DiskEnricher:    diskEnricher,
 		LocalSite:       siteName,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "DRPlan")

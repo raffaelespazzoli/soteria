@@ -125,6 +125,7 @@ func TestMain(m *testing.M) {
 	eventRecorder := eventBroadcaster.NewRecorder("drplan-controller")
 
 	testPVCResolver := engine.NoOpPVCResolver{}
+	testDiskEnricher := &engine.KubeVirtDiskEnricher{Reader: mgr.GetClient()}
 	if err := (&drplan.DRPlanReconciler{
 		Client:                  mgr.GetClient(),
 		Scheme:                  mgr.GetScheme(),
@@ -135,6 +136,7 @@ func TestMain(m *testing.M) {
 		Registry:                testRegistry,
 		SCLister:                scLister,
 		PVCResolver:             testPVCResolver,
+		DiskEnricher:            testDiskEnricher,
 	}).SetupWithManager(mgr); err != nil {
 		panic(fmt.Sprintf("setting up DRPlan controller: %v", err))
 	}
