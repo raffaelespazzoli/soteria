@@ -4,8 +4,8 @@ workflowCompleted: true
 completedAt: '2026-04-06'
 project_name: 'dr-orchestrator'
 user_name: 'Raffa'
-totalEpics: 9
-totalStories: 46
+totalEpics: 11
+totalStories: 57
 totalFRsCovered: 44
 totalNFRsAddressed: 19
 totalUXDRsCovered: 20
@@ -2159,3 +2159,437 @@ So that the UI feels responsive and I know my action was registered without wait
 **And** tests verify the transition from optimistic to real state
 **And** tests verify no optimistic state on `k8sCreate` failure
 **And** jest-axe accessibility audit passes on the optimistic banner state
+
+## Epic 9: Disk-Level Discovery, Volume Group Enrichment & Structural Validation
+
+VM discovery is enriched with per-disk PVC topology (disk name, PVC name, storage class) extracted from VM specs. Each site reports disk details in its `SiteDiscovery` section, enabling cross-site structural validation: VMs must have matching disk count, disk names, and storage classes on both sites (PVC names may differ). Volume groups in the preflight report are enriched with disk-to-PVC mappings per site. A new `DisksConsistent` condition (separate from `SitesInSync`) gates execution when disk topology disagrees or when a volume group contains disks from mixed storage classes. DRExecution and DRPlan admission validation is migrated from controller-runtime webhooks (which do not fire for aggregated API resources) to an in-process admission plugin within the aggregated API server, and unused `ValidatingWebhookConfiguration` entries for `soteria.io` resources are removed. The Console plugin surfaces disk details in site discovery comparison, wave composition, and validation alerts.
+
+### Story 9.1: Disk Discovery in SiteDiscovery
+
+As a platform engineer,
+I want each site's VM discovery to include per-disk PVC topology (disk name, PVC name, storage class),
+So that the system has visibility into the storage layout of each VM for cross-site validation.
+
+**Acceptance Criteria:**
+
+**Given** the `DiscoveredVM` type in `pkg/apis/soteria.io/v1alpha1/types.go`
+**When** enriched with disk information
+**Then** a new `DiscoveredDisk` type is added with fields: `name` (from `domain.devices.disks[*].name`), `pvcName` (resolved PVC claim name), and `storageClass` (from `PVC.spec.storageClassName`)
+**And** `DiscoveredVM` gains a `disks []DiscoveredDisk` field (omitempty)
+**And** `make manifests generate` regenerates deepcopy and OpenAPI
+
+**Given** the DRPlan reconciler on either site (active or passive)
+**When** it discovers VMs
+**Then** for each VM, it joins `spec.template.spec.domain.devices.disks[*]` with `spec.template.spec.volumes[*]` by name
+**And** it filters for volumes backed by `persistentVolumeClaim` or `dataVolume` (all other volume types are silently ignored)
+**And** for each matched pair, it resolves the PVC (using `vol.PersistentVolumeClaim.ClaimName` or `vol.DataVolume.Name` as the PVC name) via the cached `client.Reader` and reads `storageClassName`
+**And** the resolved disks are written to `SiteDiscovery.VMs[*].disks`
+
+**Given** a VM with only non-PVC volumes (containerDisk, cloudInitNoCloud, etc.)
+**When** disk enrichment runs
+**Then** the VM's `disks` field is empty (`[]` or nil) — this is valid and does not produce an error
+
+**Given** a VM whose DataVolume has not yet created its PVC
+**When** disk enrichment runs
+**Then** the disk entry is recorded with an empty `pvcName` and empty `storageClass` (the PVC GET returns NotFound)
+**And** on the next reconcile cycle when the PVC exists, the disk entry is populated — self-healing via the reconcile loop
+
+**Given** the PVC resolution during discovery
+**When** reading PVCs
+**Then** the reconciler uses the controller-runtime cached `client.Reader` (informer-backed) instead of direct `CoreV1Interface` API calls
+**And** this eliminates per-PVC API server round-trips during reconcile
+
+**Given** `WaveInfo.VMs` in `DRPlanStatus`
+**When** populated during active-site reconcile
+**Then** the `DiscoveredVM` entries in waves also carry the enriched `disks` field (same type, same data as SiteDiscovery)
+
+**Given** all existing tests
+**When** updated
+**Then** new tests verify disk enrichment for PVC volumes, DataVolume volumes, mixed volumes, and no-PVC VMs
+**And** all unit and integration tests pass with zero regressions
+
+### Story 9.2: Aggregated API Admission Plugin Migration
+
+As a platform engineer,
+I want DRExecution and DRPlan admission validation to run in-process within the aggregated API server,
+So that cross-object checks (concurrency gate, phase transition, SitesInSync, DisksConsistent) are enforced reliably without depending on kube-apiserver ValidatingWebhookConfiguration — which does not fire for aggregated API resources.
+
+**Acceptance Criteria:**
+
+**Given** the Soteria aggregated API server in `pkg/apiserver/`
+**When** a custom admission plugin is registered
+**Then** a new `pkg/admission/plugin.go` (or equivalent) implements `k8s.io/apiserver/pkg/admission.ValidationInterface` with the same validation logic currently in `DRExecutionValidator.Handle` and `DRPlanValidator.Handle`
+**And** the plugin is registered with the `genericapiserver.RecommendedConfig` admission chain via `admission.NewFromPlugins` or `Plugins.Register`
+**And** the plugin runs in-process during the request lifecycle — no HTTP roundtrip to a webhook server
+
+**Given** a DRExecution CREATE request through the aggregated API
+**When** the admission plugin runs
+**Then** it performs all cross-object checks currently in `DRExecutionValidator`: planName required, mode valid, DRPlan exists, `ActiveExecution != ""` concurrency gate, phase transition valid (`engine.Transition`), `SitesInSync=False` blocks
+**And** it uses an uncached reader (or direct storage lookup) to ensure fresh DRPlan state
+**And** all existing admission test scenarios pass against the new in-process path
+
+**Given** a DRPlan CREATE or UPDATE request through the aggregated API
+**When** the admission plugin runs
+**Then** it performs the same field validation as `DRPlanValidator` (calling `ValidateDRPlan`/`ValidateDRPlanUpdate`)
+**And** this is defense-in-depth alongside the existing registry strategy validation
+
+**Given** the `ValidatingWebhookConfiguration` in `config/webhook/manifests.yaml`
+**When** updated
+**Then** the webhook entries for `soteria.io` resources (`drplans` and `drexecutions`) are removed — they were never effective for aggregated API traffic
+**And** the `kubevirt.io/virtualmachines` webhook entry is retained — VMs are standard CRDs and the kube-apiserver VWC path works correctly for them
+**And** the `+kubebuilder:webhook` markers on `DRPlanValidator` and `DRExecutionValidator` are removed (or the structs are refactored) so `make manifests` no longer regenerates the dead entries
+
+**Given** the controller-runtime webhook server setup in `pkg/admission/setup.go`
+**When** updated
+**Then** `SetupDRPlanWebhook` and `SetupDRExecutionWebhook` are removed (no longer needed — validation runs in the aggregated API server)
+**And** `SetupVMWebhook` is retained (VMs still use the controller-runtime webhook path)
+**And** `main.go` is updated to no longer call the removed setup functions
+
+**Given** the webhook TLS and cert-manager configuration
+**When** the soteria.io webhook entries are removed
+**Then** the webhook Service, cert-manager Certificate, and CA injection for the `ValidatingWebhookConfiguration` are reviewed — if only the VM webhook remains, the webhook infrastructure is still needed for that single webhook
+**And** `config/default/kustomization.yaml` patches are updated if any references change
+
+**Given** all existing tests
+**When** updated
+**Then** new unit tests verify the admission plugin rejects/allows the same scenarios as the current webhook tests (table-driven, same test cases)
+**And** integration tests verify the admission plugin runs in-process within the aggregated API server (envtest or equivalent)
+**And** the `test/integration/admission/suite_test.go` DRPlan webhook install is updated or removed (DRPlan validation now runs in the aggregated API server, not via VWC)
+**And** all unit and integration tests pass with zero regressions
+
+### Story 9.3: Cross-Site Disk Agreement Validation
+
+As a platform engineer,
+I want the system to validate that each VM has the same disk topology (count, names, storage classes) across both sites,
+So that executions never proceed when storage layout is inconsistent between sites.
+
+**Acceptance Criteria:**
+
+**Given** both `primarySiteDiscovery` and `secondarySiteDiscovery` populated with disk data
+**When** the active-site reconciler evaluates cross-site agreement
+**Then** for each VM present on both sites, it compares: disk count, sorted disk names, and per-disk `storageClass`
+**And** the `pvcName` field is explicitly excluded from the cross-site comparison (PVC names may differ across sites due to CDI cloning, DataVolume imports, etc.)
+
+**Given** all VMs have matching disk topology across both sites
+**When** the reconciler evaluates disk agreement
+**Then** a new condition `DisksConsistent` is set to `True` with reason `DisksAgreed`
+
+**Given** one or more VMs have mismatched disk topology (different count, missing disks, or different storage classes)
+**When** the reconciler evaluates disk agreement
+**Then** `DisksConsistent` is set to `False` with reason `DiskMismatch`
+**And** the condition message lists the delta per VM: e.g., "VM default/web01: primary disks [rootdisk(ceph-rbd), datadisk(ceph-rbd)] vs secondary disks [rootdisk(ceph-rbd)] — count mismatch"
+**And** messages are capped (reusing `writeCappedList` pattern)
+**And** `Ready` transitions to `False`
+
+**Given** that disk data is not yet available from one or both sites (disks nil/empty on `DiscoveredVM`)
+**When** the reconciler evaluates disk agreement
+**Then** `DisksConsistent` is `False` with reason `WaitingForDiskDiscovery`
+**And** the reconciler proceeds with wave formation (same pattern as `WaitingForDiscovery` for VMs — no blocking on first deploy)
+
+**Given** a DRPlan where `DisksConsistent` is `False`
+**When** a user attempts to create a DRExecution
+**Then** the admission webhook rejects the creation: "Cannot start execution: disk topology does not match across sites. Resolve disk differences first."
+**And** this applies to all execution modes
+
+**Given** all existing tests
+**When** updated
+**Then** table-driven tests cover: disks match, disk count mismatch, disk name mismatch, storage class mismatch, mixed mismatches, one side no disks yet
+**And** admission webhook tests verify rejection when `DisksConsistent` is `False`
+**And** all unit and integration tests pass
+
+### Story 9.4: Volume Group Disk Enrichment in Preflight
+
+As a platform engineer,
+I want the preflight report's volume group entries to show which disks and PVCs belong to each group,
+So that I can verify the storage composition of each volume group before execution.
+
+**Acceptance Criteria:**
+
+**Given** the `PreflightChunk` type
+**When** the volume group representation is enriched
+**Then** `PreflightChunk.VolumeGroups` changes from `[]string` to `[]PreflightVolumeGroup` (v1alpha1 breaking change)
+**And** `PreflightVolumeGroup` has fields: `name` (string), `site` (string — which site this view is from), `disks []VolumeGroupDisk`
+**And** `VolumeGroupDisk` has fields: `name` (disk name), `pvcName` (PVC name), `pvcNamespace` (PVC namespace)
+
+**Given** a volume group with VM-level consistency
+**When** the preflight report is composed
+**Then** the `PreflightVolumeGroup.disks` contains all disks from that single VM (sourced from `DiscoveredVM.disks`)
+**And** `site` is populated from `r.LocalSite`
+
+**Given** a volume group with namespace-level consistency
+**When** the preflight report is composed
+**Then** the `PreflightVolumeGroup.disks` contains all disks from all member VMs in that namespace
+**And** disks are sorted by VM name then disk name for deterministic output
+
+**Given** the preflight composition pipeline
+**When** building `PreflightVolumeGroup` entries
+**Then** VG-to-disk mapping is derived from `DiscoveredVM.disks` + VG membership (`VMNames` on `VolumeGroupInfo`)
+**And** no additional PVC GETs are needed (all data comes from the already-enriched discovery)
+
+**Given** the Console plugin TypeScript interfaces
+**When** the `PreflightChunk` type changes
+**Then** the Console plugin TypeScript types are updated to reflect the new `PreflightVolumeGroup` shape
+
+**Given** all existing tests
+**When** updated
+**Then** tests verify VG disk enrichment for VM-level and namespace-level groups
+**And** all unit and integration tests pass
+
+### Story 9.5: Storage Class Homogeneity Validation
+
+As a platform engineer,
+I want the system to validate that all disks within a volume group use the same storage class,
+So that volume group operations are guaranteed to target a single storage driver.
+
+**Acceptance Criteria:**
+
+**Given** a volume group where all member disks have the same `storageClass`
+**When** the reconciler validates VG composition
+**Then** validation passes and the `DisksConsistent` condition is not degraded by this check
+
+**Given** a volume group where member disks have different storage classes
+**When** the reconciler validates VG composition
+**Then** `DisksConsistent` is set to `False` with reason `StorageClassMixed`
+**And** the condition message identifies the VG and the conflicting classes: e.g., "Volume group ns-erp-database: mixed storage classes [ceph-rbd, local-path] — all disks must use the same storage class"
+**And** `Ready` transitions to `False`
+**And** wave formation is blocked
+
+**Given** the validation runs after VG formation
+**When** VGs are built from `ResolveVolumeGroups`
+**Then** the storage class check iterates all VGs, collects distinct storage classes from `DiscoveredVM.disks` for member VMs, and fails if any VG has > 1 distinct class
+
+**Given** a VG where some member VMs have no disks (stateless VMs)
+**When** the storage class check runs
+**Then** VMs with no disks are skipped — they do not contribute to storage class counting
+**And** if the VG has only stateless VMs (all disks empty), validation passes trivially
+
+**Given** all existing tests
+**When** updated
+**Then** tests cover: homogeneous VG passes, heterogeneous VG fails, mixed with stateless VMs, namespace-level multi-VM VG
+**And** all unit and integration tests pass
+
+### Story 9.6: Console UI — Disk Discovery & Validation Display
+
+As an operator,
+I want the Console to show per-VM disk details, volume group disk composition, and disk validation alerts,
+So that I can understand and troubleshoot disk-level DR protection.
+
+**Acceptance Criteria:**
+
+**Given** the DRPlan detail page Configuration tab's Site Discovery section
+**When** per-VM disk data is available in `SiteDiscovery`
+**Then** each VM row in the two-column comparison expands to show its disks (disk name, PVC name, storage class)
+**And** disk mismatches between sites are highlighted (different count, missing disk, different storage class)
+**And** matching disks are shown in default style
+
+**Given** the Waves tab's WaveCompositionTree
+**When** volume group nodes are rendered
+**Then** each volume group node shows its `PreflightVolumeGroup.disks` (disk name, PVC name, PVC namespace)
+**And** the site label is shown on the volume group
+
+**Given** the `DisksConsistent` condition is `False`
+**When** the plan detail page renders
+**Then** a PatternFly Alert (variant=danger, inline) appears alongside the existing `SitesInSync` alert: "Disk topology does not match across sites — DR operations are blocked"
+**And** the alert message includes the condition's delta details
+**And** the alert includes an `AlertActionLink` to the Configuration tab's site discovery section
+
+**Given** the `DisksConsistent` condition is `False` with reason `StorageClassMixed`
+**When** the plan detail page renders
+**Then** the alert message indicates the mixed storage class issue: "Volume group <name> has mixed storage classes — all disks must use the same storage class"
+
+**Given** the DRLifecycleDiagram
+**When** `DisksConsistent` is `False`
+**Then** all transition action buttons are disabled with tooltip: "Blocked: disk topology inconsistent across sites"
+**And** `isBlocked` check is extended to include `DisksConsistent` alongside `SitesInSync`
+
+**Given** the DR Dashboard table
+**When** a plan has `DisksConsistent: False`
+**Then** the plan row shows a warning icon
+**And** kebab menu actions are disabled with tooltip indicating disk inconsistency
+
+**Given** all new UI components
+**When** tested for accessibility
+**Then** jest-axe audit passes on all states (disks match, disk mismatch, storage class mixed)
+**And** disk comparison tables are keyboard navigable
+**And** mismatch indicators have screen reader text
+
+## Epic 10: Remove ActiveExecution from DRPlan — Static Plan Status
+
+The `ActiveExecution` and `ActiveExecutionMode` fields are removed from `DRPlanStatus`, making the DRPlan a static configuration and discovery artifact that is never mutated by execution lifecycle events. Active execution state is derived at runtime by querying DRExecution resources filtered by `spec.planName`. Concurrency control moves to the DRExecution creation path (aggregated API admission plugin or registry strategy) using a storage-level guard. The table convertor, replication health polling gate, VM watch routing, preflight warnings, and Console plugin are all migrated to the derived pattern. Cross-DC SERIAL consistency triggers move from DRPlan status writes to DRExecution creation/completion writes.
+
+### Story 10.1: DRExecution Concurrency Guard Without ActiveExecution
+
+As a platform engineer,
+I want DRExecution creation to be rejected when another active execution exists for the same plan, without relying on a field stored on the DRPlan,
+So that the DRPlan status is never mutated by execution lifecycle and the concurrency invariant is maintained at the DRExecution layer.
+
+**Acceptance Criteria:**
+
+**Given** a DRExecution CREATE request for plan `my-plan`
+**When** the aggregated API admission plugin (from Story 9.2) processes the request
+**Then** it queries DRExecution storage for resources where `spec.planName == my-plan` and `status.result` is empty (no terminal result)
+**And** if any non-terminal DRExecution exists, the CREATE is rejected with: "DRPlan <name> has active execution <exec-name>; concurrent executions not permitted"
+**And** if no non-terminal DRExecution exists, the CREATE proceeds
+
+**Given** two concurrent DRExecution CREATE requests for the same plan
+**When** both arrive simultaneously
+**Then** at most one succeeds — the guard uses SERIAL consistency (LWT) on the DRExecution write or an equivalent atomic check-and-create pattern to prevent races
+**And** the rejected request receives a clear concurrency error
+
+**Given** the DRExecution reconciler
+**When** it starts processing a new execution
+**Then** it no longer sets `plan.Status.ActiveExecution` or `plan.Status.ActiveExecutionMode` on the DRPlan
+**And** execution ownership is established by the DRExecution resource's existence and non-terminal status alone
+
+**Given** the DRExecution reconciler
+**When** an execution completes (success, partial, or failure)
+**Then** it no longer clears `plan.Status.ActiveExecution` or `plan.Status.ActiveExecutionMode` on the DRPlan
+**And** the DRPlan status patch for phase advancement (`plan.Status.Phase`) and active site flip (`plan.Status.ActiveSite`) continues to work as before — only `ActiveExecution`/`ActiveExecutionMode` writes are removed
+
+**Given** the `fetchPlanWithActiveExecCheck` function in the DRExecution reconciler
+**When** it validates execution ownership
+**Then** it is replaced by a pattern that verifies the current execution is the only non-terminal execution for the plan (query DRExecutions, not the plan's ActiveExecution field)
+
+**Given** the ScyllaDB critical field detector for DRPlan
+**When** `ActiveExecution` is no longer a field
+**Then** the detector is updated to remove `ActiveExecution` from the comparison — phase and activeSite changes remain SERIAL
+**And** DRExecution creation/completion writes use SERIAL consistency to ensure cross-DC safety on the concurrency guard
+
+**Given** all existing tests
+**When** updated
+**Then** concurrency tests verify rejection of duplicate active executions via the new guard
+**And** race condition tests verify at most one execution succeeds under concurrent creation
+**And** all unit and integration tests pass with zero regressions
+
+### Story 10.2: Derived Active Execution for Table Convertor & Preflight
+
+As a platform engineer,
+I want `kubectl get drplans` and the preflight report to derive active execution state from DRExecution resources,
+So that the DRPlan status no longer needs `ActiveExecution` or `ActiveExecutionMode` fields.
+
+**Acceptance Criteria:**
+
+**Given** the DRPlan table convertor in `pkg/registry/drplan/strategy.go`
+**When** rendering the "Effective Phase" column
+**Then** it derives the effective phase by querying the DRExecution cache/informer for a non-terminal execution with `spec.planName == plan.Name`
+**And** if one exists, `EffectivePhase(plan.Status.Phase, exec.Spec.Mode)` is computed
+**And** if none exists, the rest phase is shown directly
+**And** the "Active Execution" column shows the execution name from the query (or empty)
+
+**Given** a LIST of N DRPlans via `kubectl get drplans`
+**When** the table convertor renders rows
+**Then** a single LIST of all non-terminal DRExecutions is performed and indexed by `spec.planName` — not N individual GETs
+**And** performance is O(plans + executions), not O(plans * executions)
+
+**Given** the preflight report composition in `internal/preflight/checks.go`
+**When** building the report
+**Then** `report.ActiveExecution` is populated by querying DRExecutions for the plan, not from `plan.Status.ActiveExecution`
+**And** the "execution is active" warning is generated from the query result
+
+**Given** the `PreflightReport` type
+**When** `ActiveExecution` is populated from the derived query
+**Then** the field continues to exist on `PreflightReport` (it's a report snapshot, not a plan status field) — only the data source changes
+
+**Given** all existing tests
+**When** updated
+**Then** table convertor tests verify effective phase derivation from DRExecution fixtures
+**And** preflight tests verify active execution warning from DRExecution fixtures
+**And** all unit and integration tests pass
+
+### Story 10.3: Derived Active Execution for Reconciler Gates & VM Watch Routing
+
+As a platform engineer,
+I want the DRPlan reconciler's replication health gate and the DRExecution reconciler's VM watch routing to derive active execution state from DRExecution resources,
+So that no runtime code reads `plan.Status.ActiveExecution`.
+
+**Acceptance Criteria:**
+
+**Given** the DRPlan reconciler's replication health polling gate
+**When** deciding whether to skip polling
+**Then** it queries the DRExecution cache/informer for a non-terminal execution with `spec.planName == plan.Name`
+**And** if one exists, polling is skipped (execution owns driver interactions)
+**And** if none exists, polling proceeds as before
+
+**Given** the `mapVMToDRExecution` handler in the DRExecution reconciler
+**When** a VM change event fires
+**Then** it determines the active execution for the VM's plan by querying DRExecutions (via label index `soteria.io/plan-name` or cache lookup), not from `plan.Status.ActiveExecution`
+**And** if a non-terminal execution exists, it enqueues that execution for reconcile
+
+**Given** the `reconcileSetup` function in the DRExecution reconciler
+**When** a new execution begins
+**Then** it no longer patches `plan.Status.ActiveExecution` or `plan.Status.ActiveExecutionMode`
+**And** the plan's phase advancement and active site flip on completion continue to be patched (those are plan lifecycle state, not execution pointers)
+
+**Given** all existing tests
+**When** updated
+**Then** health polling tests verify skip/proceed based on DRExecution query
+**And** VM watch routing tests verify correct execution enqueue from DRExecution query
+**And** reconciler setup tests no longer assert ActiveExecution/Mode writes
+**And** all unit and integration tests pass
+
+### Story 10.4: Remove ActiveExecution Fields from DRPlanStatus
+
+As a platform engineer,
+I want the `ActiveExecution` and `ActiveExecutionMode` fields removed from the `DRPlanStatus` type,
+So that the DRPlan API clearly communicates that plans are static configuration and discovery artifacts.
+
+**Acceptance Criteria:**
+
+**Given** the `DRPlanStatus` type in `pkg/apis/soteria.io/v1alpha1/types.go`
+**When** updated
+**Then** the `ActiveExecution string` and `ActiveExecutionMode ExecutionMode` fields are removed
+**And** `make manifests generate` regenerates deepcopy and OpenAPI
+**And** the updated OpenAPI spec no longer includes these fields
+
+**Given** the DRPlan registry strategy in `pkg/registry/drplan/strategy.go`
+**When** `PrepareForCreate` initializes status
+**Then** it no longer sets `ActiveExecution` or `ActiveExecutionMode` (the fields don't exist)
+
+**Given** existing DRPlan resources stored in ScyllaDB that have `activeExecution` / `activeExecutionMode` JSON keys
+**When** deserialized by the updated API server
+**Then** unknown JSON fields are silently ignored (standard Kubernetes behavior for removed status fields)
+**And** no migration is needed — the fields simply disappear from the schema
+
+**Given** all production code and tests
+**When** compiled
+**Then** zero references to `DRPlanStatus.ActiveExecution` or `DRPlanStatus.ActiveExecutionMode` remain (stories 10.1–10.3 have already migrated all consumers)
+**And** all unit and integration tests pass with zero regressions
+**And** `make lint` passes
+
+### Story 10.5: Console UI — Derived Active Execution State
+
+As an operator,
+I want the Console plugin to derive active execution state from DRExecution resources instead of reading DRPlan status fields,
+So that the UI accurately reflects execution state from the source of truth.
+
+**Acceptance Criteria:**
+
+**Given** the `DRPlanStatus` TypeScript interface in `console-plugin/src/models/types.ts`
+**When** updated
+**Then** the `activeExecution` and `activeExecutionMode` fields are removed from the interface
+
+**Given** the `getEffectivePhase` utility in `console-plugin/src/utils/drPlanUtils.ts`
+**When** computing effective phase for a plan
+**Then** it accepts the active DRExecution (or undefined) as a parameter instead of reading `plan.status.activeExecution` and `plan.status.activeExecutionMode`
+**And** callers pass the result of matching a plan to its non-terminal DRExecution from the `useDRExecutions` watch
+
+**Given** the DRPlan detail page
+**When** rendering the transition progress banner
+**Then** it derives `isInTransition` and the execution link from the matched DRExecution resource, not from `plan.status.activeExecution`
+
+**Given** the DR Dashboard table
+**When** rendering effective phase per plan row
+**Then** it matches each plan to its active DRExecution (if any) using the `useDRExecutions` list watch filtered by `spec.planName`
+**And** performance is maintained by using a single LIST watch for all executions, indexed client-side by planName
+
+**Given** the optimistic execution detection (Story 8.5)
+**When** the user triggers an execution
+**Then** the optimistic state continues to work as before — it is already local React state independent of `plan.status.activeExecution`
+**And** once the real DRExecution appears in the watch, the optimistic state is replaced
+
+**Given** all existing console tests
+**When** updated
+**Then** tests no longer set `activeExecution` / `activeExecutionMode` on plan status mocks
+**And** tests provide DRExecution fixtures for the derived pattern
+**And** jest-axe accessibility audit passes
+**And** all tests pass with zero regressions

@@ -1,5 +1,7 @@
 # generated: 2026-04-06
-# last_updated: 2026-05-02
+# last_updated: 2026-05-05
+# epic-10 created: Remove ActiveExecution from DRPlan — Static Plan Status — 5 stories (10.1 DRExecution Concurrency Guard Without ActiveExecution, 10.2 Derived Active Execution for Table Convertor & Preflight, 10.3 Derived Active Execution for Reconciler Gates & VM Watch, 10.4 Remove ActiveExecution Fields from DRPlanStatus, 10.5 Console UI Derived Active Execution State). Removes ActiveExecution/ActiveExecutionMode from DRPlanStatus, making DRPlan a static config/discovery artifact. Concurrency guard moves to DRExecution creation path with SERIAL consistency. Table convertor, preflight, reconciler gates, VM watch routing, and console all derive active execution from DRExecution resources.
+# epic-9 created: Disk-Level Discovery, Volume Group Enrichment & Structural Validation — 6 stories (9.1 Disk Discovery in SiteDiscovery, 9.2 Aggregated API Admission Plugin Migration, 9.3 Cross-Site Disk Agreement Validation, 9.4 Volume Group Disk Enrichment in Preflight, 9.5 Storage Class Homogeneity Validation, 9.6 Console UI Disk Discovery & Validation Display). Enriches DiscoveredVM with per-disk PVC topology, migrates DRExecution/DRPlan admission from dead VWC webhooks to in-process aggregated API admission plugin, removes unused ValidatingWebhookConfiguration entries for soteria.io resources, adds DisksConsistent condition (separate from SitesInSync), validates cross-site disk agreement + VG storage class homogeneity, blocks execution on mismatch, surfaces in console.
 # 8.5 done: Optimistic DRExecution Detection in Console — optimistic local state in DRPlanDetailPage (capture k8sCreate return, setOptimisticExec), derived effectiveOptimisticExec (realActiveExec takes precedence without setState-in-effect), TransitionProgressBanner optimisticExec prop (Spinner + "Starting <action>..."), ACTION_CONFIG label lookup (replaces MODE_LABELS), useDRExecution single-resource watch replaced with useDRExecutions list + .find() for aggregated API safety, 30s safety timeout, data-testid for stable selectors, jest-axe accessibility, 16 new tests (6 DRPlanDetailPage + 10 TransitionProgressBanner), 563 total tests, 0 regressions (~2 modified src files, ~2 modified test files)
 # project: dr-orchestrator
 # project_key: NOKEY
@@ -257,3 +259,20 @@ development_status:
   8-4-console-ui-site-aware-plan-status-disagreement-display: done
   8-5-optimistic-drexecution-detection-in-console: done
   epic-8-retrospective: optional
+
+  # Epic 9: Disk-Level Discovery, Volume Group Enrichment & Structural Validation
+  epic-9: backlog
+  9-1-disk-discovery-in-site-discovery: backlog
+  9-2-aggregated-api-admission-plugin-migration: backlog
+  9-3-cross-site-disk-agreement-validation: backlog
+  9-4-volume-group-disk-enrichment-in-preflight: backlog
+  9-5-storage-class-homogeneity-validation: backlog
+  9-6-console-ui-disk-discovery-validation-display: backlog
+
+  # Epic 10: Remove ActiveExecution from DRPlan — Static Plan Status
+  epic-10: backlog
+  10-1-drexecution-concurrency-guard-without-activeexecution: backlog
+  10-2-derived-active-execution-for-table-convertor-preflight: backlog
+  10-3-derived-active-execution-for-reconciler-gates-vm-watch: backlog
+  10-4-remove-activeexecution-fields-from-drplanstatus: backlog
+  10-5-console-ui-derived-active-execution-state: backlog
