@@ -79,6 +79,12 @@ const (
 	reasonWaitingForDiscovery = "WaitingForDiscovery"
 	reasonSitesOutOfSync      = "SitesOutOfSync"
 
+	conditionTypeDisksConsistent  = "DisksConsistent"
+	reasonDisksAgreed             = "DisksAgreed"
+	reasonDiskMismatch            = "DiskMismatch"
+	reasonWaitingForDiskDiscovery = "WaitingForDiskDiscovery"
+	reasonDisksOutOfSync          = "DisksOutOfSync"
+
 	requeueInterval = 10 * time.Minute
 
 	maxDeltaEntriesPerSide = 20
@@ -118,6 +124,7 @@ type DRPlanReconciler struct {
 	LocalSite string
 }
 
+//nolint:gocyclo // Sequential reconciliation steps; each branch is simple and self-contained.
 func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx).WithValues("drplan", req.NamespacedName)
 
@@ -161,6 +168,16 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		return ctrl.Result{}, err
 	}
 	if blocked {
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+
+	// Cross-site disk topology agreement check: for VMs present on both
+	// sites, validate disk count, names, and storage class are consistent.
+	disksConsistentCond, diskBlocked, err := r.evaluateDiskAgreement(ctx, req, &plan)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if diskBlocked {
 		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
@@ -325,10 +342,22 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 	}
 
-	if sitesInSyncCond != nil {
-		return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, report, readyCond, replicationHealth, *sitesInSyncCond)
+	// Enrich preflight with disk topology agreement data.
+	if disksConsistentCond != nil {
+		report.DisksConsistent = disksConsistentCond.Status == metav1.ConditionTrue
+		if disksConsistentCond.Status == metav1.ConditionFalse {
+			report.DiskDiscoveryDelta = disksConsistentCond.Message
+		}
 	}
-	return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, report, readyCond, replicationHealth)
+
+	var extraConds []metav1.Condition
+	if sitesInSyncCond != nil {
+		extraConds = append(extraConds, *sitesInSyncCond)
+	}
+	if disksConsistentCond != nil {
+		extraConds = append(extraConds, *disksConsistentCond)
+	}
+	return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, report, readyCond, replicationHealth, extraConds...)
 }
 
 // siteDiscoveryField returns "primary" if LocalSite matches the plan's
@@ -435,6 +464,8 @@ func sortDiscoveredVMs(vms []soteriav1alpha1.DiscoveredVM) {
 // site-aware mode with at least one SiteDiscovery populated. It returns the
 // condition pointer (nil when skipped), whether wave formation was blocked,
 // and any error. When blocked, status has already been patched.
+//
+//nolint:dupl // Shares structure with evaluateDiskAgreement intentionally; parallel validation dimensions.
 func (r *DRPlanReconciler) evaluateSiteAgreement(
 	ctx context.Context, req ctrl.Request, plan *soteriav1alpha1.DRPlan,
 ) (*metav1.Condition, bool, error) {
@@ -613,6 +644,221 @@ func writeCappedList(b *strings.Builder, items []string, max int) {
 	if len(items) > max {
 		fmt.Fprintf(b, "... and %d more", len(items)-max)
 	}
+}
+
+// evaluateDiskAgreement runs the cross-site disk topology check when in
+// site-aware mode with at least one SiteDiscovery populated. It returns the
+// condition pointer (nil when skipped), whether wave formation was blocked,
+// and any error. When blocked, status has already been patched.
+//
+//nolint:dupl // Follows evaluateSiteAgreement pattern intentionally; shared structure aids readability.
+func (r *DRPlanReconciler) evaluateDiskAgreement(
+	ctx context.Context, req ctrl.Request, plan *soteriav1alpha1.DRPlan,
+) (*metav1.Condition, bool, error) {
+	logger := log.FromContext(ctx)
+
+	if r.LocalSite == "" ||
+		(plan.Status.PrimarySiteDiscovery == nil && plan.Status.SecondarySiteDiscovery == nil) {
+		return nil, false, nil
+	}
+
+	consistent, dcCond := compareDiskTopology(plan,
+		plan.Status.PrimarySiteDiscovery,
+		plan.Status.SecondarySiteDiscovery)
+
+	prevDC := meta.FindStatusCondition(plan.Status.Conditions, conditionTypeDisksConsistent)
+
+	if !consistent && dcCond.Reason == reasonDiskMismatch {
+		logger.Info("Disk topology mismatch, blocking wave formation",
+			"message", dcCond.Message)
+
+		if prevDC == nil || prevDC.Status != metav1.ConditionFalse || prevDC.Reason != reasonDiskMismatch {
+			r.event(plan, "Warning", "DisksOutOfSync", dcCond.Message)
+		}
+
+		if err := r.Get(ctx, req.NamespacedName, plan); err != nil {
+			return nil, false, err
+		}
+
+		patch := client.MergeFrom(plan.DeepCopy())
+		plan.Status.Waves = nil
+		plan.Status.DiscoveredVMCount = 0
+		meta.SetStatusCondition(&plan.Status.Conditions, dcCond)
+		readyCond := metav1.Condition{
+			Type:               conditionTypeReady,
+			Status:             metav1.ConditionFalse,
+			Reason:             reasonDisksOutOfSync,
+			Message:            "Plan blocked: disk topology does not match across sites",
+			ObservedGeneration: plan.Generation,
+		}
+		meta.SetStatusCondition(&plan.Status.Conditions, readyCond)
+
+		if plan.Status.Preflight == nil {
+			now := metav1.Now()
+			plan.Status.Preflight = &soteriav1alpha1.PreflightReport{
+				GeneratedAt: &now,
+			}
+		}
+		plan.Status.Preflight.DisksConsistent = false
+		plan.Status.Preflight.DiskDiscoveryDelta = dcCond.Message
+
+		if err := r.Status().Patch(ctx, plan, patch); err != nil {
+			logger.Error(err, "Failed to patch status on disk mismatch")
+			return nil, false, err
+		}
+		return &dcCond, true, nil
+	}
+
+	if !consistent && dcCond.Reason == reasonWaitingForDiskDiscovery {
+		logger.V(1).Info("Waiting for disk discovery from peer site, proceeding",
+			"message", dcCond.Message)
+	}
+
+	if consistent {
+		logger.V(1).Info("Disk topology consistent across sites")
+		if prevDC != nil && prevDC.Status == metav1.ConditionFalse {
+			r.event(plan, "Normal", "DisksConsistent", "Disk topology matches across sites")
+		}
+	}
+
+	return &dcCond, false, nil
+}
+
+// compareDiskTopology compares disk topology (count, names, storageClass) for
+// VMs present on both sites. PVC names are explicitly excluded from comparison
+// because they may differ across sites due to CDI cloning or DataVolume imports.
+// Returns whether disks are consistent along with the appropriate condition.
+func compareDiskTopology(
+	plan *soteriav1alpha1.DRPlan,
+	primary, secondary *soteriav1alpha1.SiteDiscovery,
+) (consistent bool, condition metav1.Condition) {
+	now := metav1.Now()
+	cond := metav1.Condition{
+		Type:               conditionTypeDisksConsistent,
+		ObservedGeneration: plan.Generation,
+		LastTransitionTime: now,
+	}
+
+	if primary == nil || secondary == nil {
+		cond.Status = metav1.ConditionFalse
+		cond.Reason = reasonWaitingForDiskDiscovery
+		cond.Message = "Waiting for site discovery data from both sites"
+		return false, cond
+	}
+
+	primaryDiskMap := make(map[string][]soteriav1alpha1.DiscoveredDisk, len(primary.VMs))
+	for _, vm := range primary.VMs {
+		primaryDiskMap[vm.Namespace+"/"+vm.Name] = vm.Disks
+	}
+
+	secondaryDiskMap := make(map[string][]soteriav1alpha1.DiscoveredDisk, len(secondary.VMs))
+	for _, vm := range secondary.VMs {
+		secondaryDiskMap[vm.Namespace+"/"+vm.Name] = vm.Disks
+	}
+
+	var waitingVMs []string
+	var mismatchDeltas []string
+
+	for key, pDisks := range primaryDiskMap {
+		sDisks, onBothSites := secondaryDiskMap[key]
+		if !onBothSites {
+			continue
+		}
+
+		// Asymmetric disk presence: one side has disks, other doesn't.
+		// This indicates disk enrichment hasn't run yet on one site.
+		if (len(pDisks) > 0 && len(sDisks) == 0) ||
+			(len(pDisks) == 0 && len(sDisks) > 0) {
+			waitingVMs = append(waitingVMs, key)
+			continue
+		}
+
+		// Both sides empty — VM has no PVC-backed disks; consistent.
+		if len(pDisks) == 0 && len(sDisks) == 0 {
+			continue
+		}
+
+		delta := compareDiskSets(key, pDisks, sDisks)
+		if delta != "" {
+			mismatchDeltas = append(mismatchDeltas, delta)
+		}
+	}
+
+	if len(waitingVMs) > 0 && len(mismatchDeltas) == 0 {
+		sort.Strings(waitingVMs)
+		cond.Status = metav1.ConditionFalse
+		cond.Reason = reasonWaitingForDiskDiscovery
+		var msg strings.Builder
+		msg.WriteString("Waiting for disk discovery: [")
+		writeCappedList(&msg, waitingVMs, maxDeltaEntriesPerSide)
+		msg.WriteString("]")
+		cond.Message = msg.String()
+		return false, cond
+	}
+
+	if len(mismatchDeltas) > 0 {
+		sort.Strings(mismatchDeltas)
+		cond.Status = metav1.ConditionFalse
+		cond.Reason = reasonDiskMismatch
+		var msg strings.Builder
+		writeCappedList(&msg, mismatchDeltas, maxDeltaEntriesPerSide)
+		cond.Message = msg.String()
+		return false, cond
+	}
+
+	cond.Status = metav1.ConditionTrue
+	cond.Reason = reasonDisksAgreed
+	cond.Message = "All VMs have matching disk topology across sites"
+	return true, cond
+}
+
+// compareDiskSets compares sorted disk lists for a single VM across sites.
+// Returns a delta message describing the mismatch, or "" if disks match.
+func compareDiskSets(vmKey string, pDisks, sDisks []soteriav1alpha1.DiscoveredDisk) string {
+	sortDisks := func(disks []soteriav1alpha1.DiscoveredDisk) []soteriav1alpha1.DiscoveredDisk {
+		sorted := make([]soteriav1alpha1.DiscoveredDisk, len(disks))
+		copy(sorted, disks)
+		sort.Slice(sorted, func(i, j int) bool {
+			return sorted[i].Name < sorted[j].Name
+		})
+		return sorted
+	}
+
+	ps := sortDisks(pDisks)
+	ss := sortDisks(sDisks)
+
+	if len(ps) != len(ss) {
+		return fmt.Sprintf("VM %s: primary disks [%s] vs secondary disks [%s] — count mismatch",
+			vmKey, formatDiskList(ps), formatDiskList(ss))
+	}
+
+	for i := range ps {
+		if ps[i].Name != ss[i].Name {
+			return fmt.Sprintf("VM %s: primary disks [%s] vs secondary disks [%s] — name mismatch",
+				vmKey, formatDiskList(ps), formatDiskList(ss))
+		}
+		if ps[i].StorageClass != ss[i].StorageClass {
+			return fmt.Sprintf("VM %s: disk %q storage class mismatch: primary=%s, secondary=%s",
+				vmKey, ps[i].Name, ps[i].StorageClass, ss[i].StorageClass)
+		}
+	}
+
+	return ""
+}
+
+// formatDiskList formats disks as "name(storageClass), ..." for delta messages.
+func formatDiskList(disks []soteriav1alpha1.DiscoveredDisk) string {
+	var b strings.Builder
+	for i, d := range disks {
+		if i > 0 {
+			b.WriteString(", ")
+		}
+		b.WriteString(d.Name)
+		b.WriteString("(")
+		b.WriteString(d.StorageClass)
+		b.WriteString(")")
+	}
+	return b.String()
 }
 
 // collectVMsFromWaves gathers all DiscoveredVMs across all waves into a flat slice.
@@ -901,11 +1147,11 @@ func (r *DRPlanReconciler) updateStatus(
 	reportChanged := preflightReportChanged(plan.Status.Preflight, preflightReport)
 	healthChanged := replicationHealthChanged(plan.Status.ReplicationHealth, replicationHealth)
 
-	sitesInSyncChanged := detectSitesInSyncChange(plan.Status.Conditions, sitesInSyncCond)
+	extraCondChanged := detectExtraConditionChanges(plan.Status.Conditions, sitesInSyncCond)
 
 	siteDiscoveryDue := r.LocalSite != "" && r.siteDiscoveryField(plan) != ""
 	anyChanged := conditionChanged || wavesChanged || countChanged ||
-		genChanged || reportChanged || healthChanged || siteDiscoveryDue || sitesInSyncChanged
+		genChanged || reportChanged || healthChanged || siteDiscoveryDue || extraCondChanged
 	if !anyChanged {
 		logger.V(1).Info("Status unchanged, skipping patch")
 		requeue := requeueInterval
@@ -927,8 +1173,8 @@ func (r *DRPlanReconciler) updateStatus(
 	plan.Status.Preflight = preflightReport
 	meta.SetStatusCondition(&plan.Status.Conditions, condition)
 
-	if len(sitesInSyncCond) > 0 {
-		meta.SetStatusCondition(&plan.Status.Conditions, sitesInSyncCond[0])
+	for _, ec := range sitesInSyncCond {
+		meta.SetStatusCondition(&plan.Status.Conditions, ec)
 	}
 
 	if replicationHealth != nil {
@@ -1027,16 +1273,16 @@ func preflightReportChanged(old, new *soteriav1alpha1.PreflightReport) bool {
 	return !reflect.DeepEqual(oldCopy, newCopy)
 }
 
-// detectSitesInSyncChange returns true if the SitesInSync condition has changed.
-func detectSitesInSyncChange(existing []metav1.Condition, incoming []metav1.Condition) bool {
-	if len(incoming) == 0 {
-		return false
+// detectExtraConditionChanges returns true if any of the incoming conditions
+// differ from existing conditions (by Type-keyed comparison of Status/Reason/Message).
+func detectExtraConditionChanges(existing []metav1.Condition, incoming []metav1.Condition) bool {
+	for _, inc := range incoming {
+		old := meta.FindStatusCondition(existing, inc.Type)
+		if old == nil || old.Status != inc.Status || old.Reason != inc.Reason || old.Message != inc.Message {
+			return true
+		}
 	}
-	old := meta.FindStatusCondition(existing, conditionTypeSitesInSync)
-	return old == nil ||
-		old.Status != incoming[0].Status ||
-		old.Reason != incoming[0].Reason ||
-		old.Message != incoming[0].Message
+	return false
 }
 
 // vmRelevantChangePredicate filters VM events to only those that affect DRPlan

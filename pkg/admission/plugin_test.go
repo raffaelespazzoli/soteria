@@ -331,6 +331,94 @@ func TestPlugin_DRExecution_SitesInSync_Allowed(t *testing.T) {
 	}
 }
 
+func TestPlugin_DRExecution_DisksInconsistent_Denied(t *testing.T) {
+	p := NewSoteriaAdmissionPlugin()
+	p.SetDRPlanStorage(&stubGetter{
+		plans: map[string]*soteriav1alpha1.DRPlan{
+			"my-plan": {
+				ObjectMeta: metav1.ObjectMeta{Name: "my-plan"},
+				Spec: soteriav1alpha1.DRPlanSpec{
+					PrimarySite:   "dc-west",
+					SecondarySite: "dc-east",
+				},
+				Status: soteriav1alpha1.DRPlanStatus{
+					Phase: soteriav1alpha1.PhaseSteadyState,
+					Conditions: []metav1.Condition{
+						{
+							Type:               "SitesInSync",
+							Status:             metav1.ConditionTrue,
+							Reason:             "VMsAgreed",
+							LastTransitionTime: metav1.Now(),
+						},
+						{
+							Type:               "DisksConsistent",
+							Status:             metav1.ConditionFalse,
+							Reason:             "DiskMismatch",
+							Message:            "VM default/web01: count mismatch",
+							LastTransitionTime: metav1.Now(),
+						},
+					},
+				},
+			},
+		},
+	})
+
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-exec"},
+		Spec:       soteriav1alpha1.DRExecutionSpec{PlanName: "my-plan", Mode: soteriav1alpha1.ExecutionModePlannedMigration},
+	}
+
+	err := p.Validate(context.Background(), makePluginExecAttributes(exec, admission.Create), nil)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "disk topology does not match") {
+		t.Errorf("expected error about disk topology, got %q", err.Error())
+	}
+}
+
+func TestPlugin_DRExecution_DisksConsistent_Allowed(t *testing.T) {
+	p := NewSoteriaAdmissionPlugin()
+	p.SetDRPlanStorage(&stubGetter{
+		plans: map[string]*soteriav1alpha1.DRPlan{
+			"my-plan": {
+				ObjectMeta: metav1.ObjectMeta{Name: "my-plan"},
+				Spec: soteriav1alpha1.DRPlanSpec{
+					PrimarySite:   "dc-west",
+					SecondarySite: "dc-east",
+				},
+				Status: soteriav1alpha1.DRPlanStatus{
+					Phase: soteriav1alpha1.PhaseSteadyState,
+					Conditions: []metav1.Condition{
+						{
+							Type:               "SitesInSync",
+							Status:             metav1.ConditionTrue,
+							Reason:             "VMsAgreed",
+							LastTransitionTime: metav1.Now(),
+						},
+						{
+							Type:               "DisksConsistent",
+							Status:             metav1.ConditionTrue,
+							Reason:             "DisksAgreed",
+							LastTransitionTime: metav1.Now(),
+						},
+					},
+				},
+			},
+		},
+	})
+
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-exec"},
+		Spec:       soteriav1alpha1.DRExecutionSpec{PlanName: "my-plan", Mode: soteriav1alpha1.ExecutionModePlannedMigration},
+	}
+
+	err := p.Validate(context.Background(), makePluginExecAttributes(exec, admission.Create), nil)
+	if err != nil {
+		t.Errorf("expected allowed, got error: %v", err)
+	}
+}
+
 func TestPlugin_DRExecution_NonCreateOperation_Allowed(t *testing.T) {
 	p := NewSoteriaAdmissionPlugin()
 	p.SetDRPlanStorage(&stubGetter{})

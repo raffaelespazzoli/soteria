@@ -116,6 +116,13 @@ func (v *DRExecutionValidator) Handle(ctx context.Context, req admission.Request
 			"Cannot start execution: sites do not agree on VM inventory. Resolve VM differences first.")
 	}
 
+	// Reject when disk topology does not match across sites.
+	if dcCond := meta.FindStatusCondition(plan.Status.Conditions, "DisksConsistent"); dcCond != nil &&
+		dcCond.Status == metav1.ConditionFalse {
+		return admission.Denied(
+			"Cannot start execution: disk topology does not match across sites. Resolve disk differences first.")
+	}
+
 	logger.Info("Admission allowed")
 	return admission.Allowed("")
 }

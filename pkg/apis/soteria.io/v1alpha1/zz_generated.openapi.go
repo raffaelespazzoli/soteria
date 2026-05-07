@@ -1111,6 +1111,21 @@ func schema_pkg_apis_soteriaio_v1alpha1_PreflightReport(ref common.ReferenceCall
 							Format:      "",
 						},
 					},
+					"disksConsistent": {
+						SchemaProps: spec.SchemaProps{
+							Description: "DisksConsistent indicates whether all VMs have matching disk topology across primary and secondary sites. Only meaningful in site-aware mode when disk discovery has been performed on both sites.",
+							Default:     false,
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
+					"diskDiscoveryDelta": {
+						SchemaProps: spec.SchemaProps{
+							Description: "DiskDiscoveryDelta describes per-VM disk topology differences between sites when DisksConsistent is false (omitted when disks agree).",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 					"generatedAt": {
 						SchemaProps: spec.SchemaProps{
 							Description: "GeneratedAt is when this report was last computed.",
@@ -1118,7 +1133,7 @@ func schema_pkg_apis_soteriaio_v1alpha1_PreflightReport(ref common.ReferenceCall
 						},
 					},
 				},
-				Required: []string{"totalVMs", "sitesInSync"},
+				Required: []string{"totalVMs", "sitesInSync", "disksConsistent"},
 			},
 		},
 		Dependencies: []string{

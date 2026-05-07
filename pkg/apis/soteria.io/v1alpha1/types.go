@@ -167,6 +167,13 @@ type PreflightReport struct {
 	// SiteDiscoveryDelta describes VM differences between sites when
 	// SitesInSync is false (omitted when sites agree).
 	SiteDiscoveryDelta string `json:"siteDiscoveryDelta,omitempty"`
+	// DisksConsistent indicates whether all VMs have matching disk topology
+	// across primary and secondary sites. Only meaningful in site-aware mode
+	// when disk discovery has been performed on both sites.
+	DisksConsistent bool `json:"disksConsistent"`
+	// DiskDiscoveryDelta describes per-VM disk topology differences between
+	// sites when DisksConsistent is false (omitted when disks agree).
+	DiskDiscoveryDelta string `json:"diskDiscoveryDelta,omitempty"`
 	// GeneratedAt is when this report was last computed.
 	GeneratedAt *metav1.Time `json:"generatedAt,omitempty"`
 }

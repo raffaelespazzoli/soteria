@@ -1596,6 +1596,270 @@ func TestCompareSiteDiscovery_BothNil(t *testing.T) {
 	}
 }
 
+// ---------- compareDiskTopology unit tests ----------
+
+func TestCompareDiskTopology_AllDisksMatch(t *testing.T) {
+	plan := newTestPlan()
+	primary := newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "vm-1", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{
+			{Name: "rootdisk", PVCName: "pvc-root-a", StorageClass: "ceph-rbd"},
+			{Name: "datadisk", PVCName: "pvc-data-a", StorageClass: "ceph-rbd"},
+		}},
+		soteriav1alpha1.DiscoveredVM{Name: "vm-2", Namespace: "ns-a", Disks: []soteriav1alpha1.DiscoveredDisk{
+			{Name: "rootdisk", PVCName: "pvc-root-b", StorageClass: "local-path"},
+		}},
+	)
+	secondary := newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "vm-1", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{
+			{Name: "datadisk", PVCName: "different-pvc-data", StorageClass: "ceph-rbd"},
+			{Name: "rootdisk", PVCName: "different-pvc-root", StorageClass: "ceph-rbd"},
+		}},
+		soteriav1alpha1.DiscoveredVM{Name: "vm-2", Namespace: "ns-a", Disks: []soteriav1alpha1.DiscoveredDisk{
+			{Name: "rootdisk", PVCName: "other-pvc", StorageClass: "local-path"},
+		}},
+	)
+
+	consistent, cond := compareDiskTopology(plan, primary, secondary)
+	if !consistent {
+		t.Errorf("Expected consistent=true, got false: %s", cond.Message)
+	}
+	if cond.Reason != reasonDisksAgreed {
+		t.Errorf("Reason = %q, want %q", cond.Reason, reasonDisksAgreed)
+	}
+	if cond.Status != metav1.ConditionTrue {
+		t.Errorf("Status = %v, want True", cond.Status)
+	}
+}
+
+func TestCompareDiskTopology_DiskCountMismatch(t *testing.T) {
+	plan := newTestPlan()
+	primary := newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "web01", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{
+			{Name: "rootdisk", PVCName: "pvc-root", StorageClass: "ceph-rbd"},
+			{Name: "datadisk", PVCName: "pvc-data", StorageClass: "ceph-rbd"},
+		}},
+	)
+	secondary := newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "web01", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{
+			{Name: "rootdisk", PVCName: "pvc-root-sec", StorageClass: "ceph-rbd"},
+		}},
+	)
+
+	consistent, cond := compareDiskTopology(plan, primary, secondary)
+	if consistent {
+		t.Error("Expected consistent=false for count mismatch")
+	}
+	if cond.Reason != reasonDiskMismatch {
+		t.Errorf("Reason = %q, want %q", cond.Reason, reasonDiskMismatch)
+	}
+	if !contains(cond.Message, "count mismatch") {
+		t.Errorf("Message should mention count mismatch, got: %s", cond.Message)
+	}
+	if !contains(cond.Message, "default/web01") {
+		t.Errorf("Message should identify the VM, got: %s", cond.Message)
+	}
+}
+
+func TestCompareDiskTopology_DiskNameMismatch(t *testing.T) {
+	plan := newTestPlan()
+	primary := newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "db01", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{
+			{Name: "rootdisk", PVCName: "pvc-root", StorageClass: "ceph-rbd"},
+			{Name: "logdisk", PVCName: "pvc-log", StorageClass: "ceph-rbd"},
+		}},
+	)
+	secondary := newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "db01", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{
+			{Name: "rootdisk", PVCName: "pvc-root-s", StorageClass: "ceph-rbd"},
+			{Name: "datadisk", PVCName: "pvc-data-s", StorageClass: "ceph-rbd"},
+		}},
+	)
+
+	consistent, cond := compareDiskTopology(plan, primary, secondary)
+	if consistent {
+		t.Error("Expected consistent=false for name mismatch")
+	}
+	if cond.Reason != reasonDiskMismatch {
+		t.Errorf("Reason = %q, want %q", cond.Reason, reasonDiskMismatch)
+	}
+	if !contains(cond.Message, "name mismatch") {
+		t.Errorf("Message should mention name mismatch, got: %s", cond.Message)
+	}
+}
+
+func TestCompareDiskTopology_StorageClassMismatch(t *testing.T) {
+	plan := newTestPlan()
+	primary := newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "db01", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{
+			{Name: "datadisk", PVCName: "pvc-data", StorageClass: "ceph-rbd"},
+		}},
+	)
+	secondary := newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "db01", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{
+			{Name: "datadisk", PVCName: "pvc-data-s", StorageClass: "local-path"},
+		}},
+	)
+
+	consistent, cond := compareDiskTopology(plan, primary, secondary)
+	if consistent {
+		t.Error("Expected consistent=false for storage class mismatch")
+	}
+	if cond.Reason != reasonDiskMismatch {
+		t.Errorf("Reason = %q, want %q", cond.Reason, reasonDiskMismatch)
+	}
+	if !contains(cond.Message, "storage class mismatch") {
+		t.Errorf("Message should mention storage class mismatch, got: %s", cond.Message)
+	}
+	if !contains(cond.Message, "ceph-rbd") || !contains(cond.Message, "local-path") {
+		t.Errorf("Message should mention both storage classes, got: %s", cond.Message)
+	}
+}
+
+func TestCompareDiskTopology_MixedMismatches(t *testing.T) {
+	plan := newTestPlan()
+	primary := newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "vm-a", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{
+			{Name: "rootdisk", PVCName: "p-root", StorageClass: "ceph-rbd"},
+			{Name: "datadisk", PVCName: "p-data", StorageClass: "ceph-rbd"},
+		}},
+		soteriav1alpha1.DiscoveredVM{Name: "vm-b", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{
+			{Name: "rootdisk", PVCName: "p-root-b", StorageClass: "ceph-rbd"},
+		}},
+	)
+	secondary := newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "vm-a", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{
+			{Name: "rootdisk", PVCName: "s-root", StorageClass: "ceph-rbd"},
+		}},
+		soteriav1alpha1.DiscoveredVM{Name: "vm-b", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{
+			{Name: "rootdisk", PVCName: "s-root-b", StorageClass: "local-path"},
+		}},
+	)
+
+	consistent, cond := compareDiskTopology(plan, primary, secondary)
+	if consistent {
+		t.Error("Expected consistent=false for mixed mismatches")
+	}
+	if cond.Reason != reasonDiskMismatch {
+		t.Errorf("Reason = %q, want %q", cond.Reason, reasonDiskMismatch)
+	}
+	if !contains(cond.Message, "default/vm-a") || !contains(cond.Message, "default/vm-b") {
+		t.Errorf("Message should mention both VMs, got: %s", cond.Message)
+	}
+}
+
+func TestCompareDiskTopology_OneSideNoDisksYet(t *testing.T) {
+	plan := newTestPlan()
+	primary := newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "vm-1", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{
+			{Name: "rootdisk", PVCName: "pvc-root", StorageClass: "ceph-rbd"},
+		}},
+	)
+	secondary := newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "vm-1", Namespace: "default", Disks: nil},
+	)
+
+	consistent, cond := compareDiskTopology(plan, primary, secondary)
+	if consistent {
+		t.Error("Expected consistent=false when waiting for disk discovery")
+	}
+	if cond.Reason != reasonWaitingForDiskDiscovery {
+		t.Errorf("Reason = %q, want %q", cond.Reason, reasonWaitingForDiskDiscovery)
+	}
+	if !contains(cond.Message, "default/vm-1") {
+		t.Errorf("Message should mention the VM waiting, got: %s", cond.Message)
+	}
+}
+
+func TestCompareDiskTopology_BothSidesNoDisks(t *testing.T) {
+	plan := newTestPlan()
+	primary := newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "vm-1", Namespace: "default", Disks: nil},
+	)
+	secondary := newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "vm-1", Namespace: "default", Disks: nil},
+	)
+
+	consistent, cond := compareDiskTopology(plan, primary, secondary)
+	if !consistent {
+		t.Errorf("Expected consistent=true (empty == empty), got false: %s", cond.Message)
+	}
+	if cond.Reason != reasonDisksAgreed {
+		t.Errorf("Reason = %q, want %q", cond.Reason, reasonDisksAgreed)
+	}
+}
+
+func TestCompareDiskTopology_VMsWithEmptyDisksOnBothSides(t *testing.T) {
+	plan := newTestPlan()
+	primary := newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "stateless-vm", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{}},
+	)
+	secondary := newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "stateless-vm", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{}},
+	)
+
+	consistent, cond := compareDiskTopology(plan, primary, secondary)
+	if !consistent {
+		t.Errorf("Expected consistent=true (no-PVC VMs), got false: %s", cond.Message)
+	}
+	if cond.Reason != reasonDisksAgreed {
+		t.Errorf("Reason = %q, want %q", cond.Reason, reasonDisksAgreed)
+	}
+}
+
+func TestCompareDiskTopology_VMsOnlyOnOneSide(t *testing.T) {
+	plan := newTestPlan()
+	primary := newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "shared-vm", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{
+			{Name: "rootdisk", PVCName: "pvc-root", StorageClass: "ceph-rbd"},
+		}},
+		soteriav1alpha1.DiscoveredVM{Name: "primary-only", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{
+			{Name: "rootdisk", PVCName: "pvc-extra", StorageClass: "ceph-rbd"},
+		}},
+	)
+	secondary := newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "shared-vm", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{
+			{Name: "rootdisk", PVCName: "pvc-root-sec", StorageClass: "ceph-rbd"},
+		}},
+	)
+
+	consistent, cond := compareDiskTopology(plan, primary, secondary)
+	if !consistent {
+		t.Errorf("Expected consistent=true (VMs only on one site are handled by SitesInSync), got: %s", cond.Message)
+	}
+	if cond.Reason != reasonDisksAgreed {
+		t.Errorf("Reason = %q, want %q", cond.Reason, reasonDisksAgreed)
+	}
+}
+
+func TestCompareDiskTopology_PrimaryNil(t *testing.T) {
+	plan := newTestPlan()
+	secondary := newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "vm-1", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{
+			{Name: "rootdisk", PVCName: "pvc", StorageClass: "ceph-rbd"},
+		}},
+	)
+
+	consistent, cond := compareDiskTopology(plan, nil, secondary)
+	if consistent {
+		t.Error("Expected consistent=false when primary is nil")
+	}
+	if cond.Reason != reasonWaitingForDiskDiscovery {
+		t.Errorf("Reason = %q, want %q", cond.Reason, reasonWaitingForDiskDiscovery)
+	}
+}
+
+func TestCompareDiskTopology_BothNil(t *testing.T) {
+	plan := newTestPlan()
+
+	consistent, cond := compareDiskTopology(plan, nil, nil)
+	if consistent {
+		t.Error("Expected consistent=false when both nil")
+	}
+	if cond.Reason != reasonWaitingForDiskDiscovery {
+		t.Errorf("Reason = %q, want %q", cond.Reason, reasonWaitingForDiskDiscovery)
+	}
+}
+
 // ---------- Reconciler integration tests for agreement ----------
 
 func newReconcilerWithSite(
@@ -1855,6 +2119,187 @@ func TestReconcile_NoLocalSite_SkipsAgreementCheck(t *testing.T) {
 	readyCond := findReadyCondition(updated.Status.Conditions)
 	if readyCond == nil || readyCond.Status != metav1.ConditionTrue {
 		t.Error("Expected Ready=True — agreement check should be skipped")
+	}
+}
+
+// ---------- Reconciler integration tests for disk agreement ----------
+
+func TestReconcile_DisksConsistent_WaveFormationProceeds(t *testing.T) {
+	plan := newTestPlan()
+	plan.Status.ActiveSite = testSecondarySite
+	plan.Status.PrimarySiteDiscovery = newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "vm-1", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{
+			{Name: "rootdisk", PVCName: "pvc-p-root", StorageClass: "ceph-rbd"},
+		}},
+		soteriav1alpha1.DiscoveredVM{Name: "vm-2", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{
+			{Name: "rootdisk", PVCName: "pvc-p-root-2", StorageClass: "ceph-rbd"},
+		}},
+	)
+	plan.Status.SecondarySiteDiscovery = newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "vm-1", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{
+			{Name: "rootdisk", PVCName: "pvc-s-root", StorageClass: "ceph-rbd"},
+		}},
+		soteriav1alpha1.DiscoveredVM{Name: "vm-2", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{
+			{Name: "rootdisk", PVCName: "pvc-s-root-2", StorageClass: "ceph-rbd"},
+		}},
+	)
+
+	vms := []engine.VMReference{
+		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+		{Name: "vm-2", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+	}
+
+	r, c := newReconcilerWithSite([]client.Object{plan}, &mockVMDiscoverer{vms: vms}, testSecondarySite)
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: planKey})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	var updated soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &updated); err != nil {
+		t.Fatalf("Failed to get plan: %v", err)
+	}
+
+	readyCond := findReadyCondition(updated.Status.Conditions)
+	if readyCond == nil || readyCond.Status != metav1.ConditionTrue {
+		t.Error("Expected Ready=True when disks are consistent")
+	}
+
+	dcCond := findCondition(updated.Status.Conditions, conditionTypeDisksConsistent)
+	if dcCond == nil {
+		t.Fatal("DisksConsistent condition not found")
+	}
+	if dcCond.Status != metav1.ConditionTrue {
+		t.Errorf("DisksConsistent.Status = %v, want True", dcCond.Status)
+	}
+	if dcCond.Reason != reasonDisksAgreed {
+		t.Errorf("DisksConsistent.Reason = %q, want %q", dcCond.Reason, reasonDisksAgreed)
+	}
+
+	if len(updated.Status.Waves) == 0 {
+		t.Error("Waves should be populated when disks are consistent")
+	}
+}
+
+func TestReconcile_DiskMismatch_WavesCleared(t *testing.T) {
+	plan := newTestPlan()
+	plan.Status.ActiveSite = testPrimarySite
+	plan.Status.PrimarySiteDiscovery = newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "vm-1", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{
+			{Name: "rootdisk", PVCName: "pvc-root", StorageClass: "ceph-rbd"},
+			{Name: "datadisk", PVCName: "pvc-data", StorageClass: "ceph-rbd"},
+		}},
+	)
+	plan.Status.SecondarySiteDiscovery = newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "vm-1", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{
+			{Name: "rootdisk", PVCName: "pvc-root-sec", StorageClass: "ceph-rbd"},
+		}},
+	)
+	plan.Status.Waves = []soteriav1alpha1.WaveInfo{
+		{WaveKey: "1", VMs: []soteriav1alpha1.DiscoveredVM{{Name: "vm-1", Namespace: "default"}}},
+	}
+	plan.Status.DiscoveredVMCount = 1
+
+	vms := []engine.VMReference{
+		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+	}
+
+	r, c := newReconcilerWithSite([]client.Object{plan}, &mockVMDiscoverer{vms: vms}, testPrimarySite)
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: planKey})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	var updated soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &updated); err != nil {
+		t.Fatalf("Failed to get plan: %v", err)
+	}
+
+	readyCond := findReadyCondition(updated.Status.Conditions)
+	if readyCond == nil {
+		t.Fatal("Ready condition not found")
+	}
+	if readyCond.Status != metav1.ConditionFalse {
+		t.Errorf("Ready.Status = %v, want False", readyCond.Status)
+	}
+	if readyCond.Reason != reasonDisksOutOfSync {
+		t.Errorf("Ready.Reason = %q, want %q", readyCond.Reason, reasonDisksOutOfSync)
+	}
+
+	dcCond := findCondition(updated.Status.Conditions, conditionTypeDisksConsistent)
+	if dcCond == nil {
+		t.Fatal("DisksConsistent condition not found")
+	}
+	if dcCond.Status != metav1.ConditionFalse {
+		t.Errorf("DisksConsistent.Status = %v, want False", dcCond.Status)
+	}
+	if dcCond.Reason != reasonDiskMismatch {
+		t.Errorf("DisksConsistent.Reason = %q, want %q", dcCond.Reason, reasonDiskMismatch)
+	}
+
+	if len(updated.Status.Waves) != 0 {
+		t.Errorf("Waves should be cleared on disk mismatch, got %d", len(updated.Status.Waves))
+	}
+	if updated.Status.DiscoveredVMCount != 0 {
+		t.Errorf("DiscoveredVMCount should be 0 on mismatch, got %d", updated.Status.DiscoveredVMCount)
+	}
+
+	if updated.Status.Preflight == nil {
+		t.Fatal("Preflight should be populated on disk mismatch")
+	}
+	if updated.Status.Preflight.DisksConsistent {
+		t.Error("Preflight.DisksConsistent should be false on mismatch")
+	}
+	if updated.Status.Preflight.DiskDiscoveryDelta == "" {
+		t.Error("Preflight.DiskDiscoveryDelta should be non-empty on mismatch")
+	}
+}
+
+func TestReconcile_WaitingForDiskDiscovery_ProceedsNormally(t *testing.T) {
+	plan := newTestPlan()
+	plan.Status.ActiveSite = testPrimarySite
+	plan.Status.PrimarySiteDiscovery = newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "vm-1", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{
+			{Name: "rootdisk", PVCName: "pvc-root", StorageClass: "ceph-rbd"},
+		}},
+	)
+	plan.Status.SecondarySiteDiscovery = newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "vm-1", Namespace: "default", Disks: nil},
+	)
+
+	vms := []engine.VMReference{
+		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+	}
+
+	r, c := newReconcilerWithSite([]client.Object{plan}, &mockVMDiscoverer{vms: vms}, testPrimarySite)
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: planKey})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	var updated soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &updated); err != nil {
+		t.Fatalf("Failed to get plan: %v", err)
+	}
+
+	readyCond := findReadyCondition(updated.Status.Conditions)
+	if readyCond == nil || readyCond.Status != metav1.ConditionTrue {
+		t.Error("Expected Ready=True when waiting for disk discovery (should proceed)")
+	}
+
+	if len(updated.Status.Waves) == 0 {
+		t.Error("Waves should be populated — WaitingForDiskDiscovery does not block")
+	}
+
+	dcCond := findCondition(updated.Status.Conditions, conditionTypeDisksConsistent)
+	if dcCond == nil {
+		t.Fatal("DisksConsistent condition should be set even when waiting")
+	}
+	if dcCond.Reason != reasonWaitingForDiskDiscovery {
+		t.Errorf("DisksConsistent.Reason = %q, want %q", dcCond.Reason, reasonWaitingForDiskDiscovery)
 	}
 }
 

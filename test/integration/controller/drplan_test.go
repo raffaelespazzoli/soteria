@@ -558,3 +558,277 @@ func TestDRPlanReconciler_CrossSiteAgreement_ProceedsOnMatch(t *testing.T) {
 		t.Error("Waves should be populated when sites agree")
 	}
 }
+
+func TestDRPlanReconciler_DiskAgreement_BlocksOnMismatch(t *testing.T) {
+	ctx := context.Background()
+	ns := "test-disk-block"
+	createNamespace(t, ctx, ns)
+
+	createVM(t, ctx, "vm-db-1", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-disk-block", "soteria.io/wave": "1"})
+	createVM(t, ctx, "vm-db-2", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-disk-block", "soteria.io/wave": "1"})
+
+	plan := createDRPlan(t, ctx, "plan-disk-block")
+
+	_, err := waitForCondition(ctx, plan.Name, "", "Ready", metav1.ConditionTrue, testTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	patchSiteDiscoveryWithRetry(t, ctx, plan.Name,
+		&soteriav1alpha1.SiteDiscovery{
+			VMs: []soteriav1alpha1.DiscoveredVM{
+				{
+					Name:      "vm-db-1",
+					Namespace: ns,
+					Disks: []soteriav1alpha1.DiscoveredDisk{
+						{Name: "rootdisk", PVCName: "p-root-1", StorageClass: "ceph-rbd"},
+						{Name: "datadisk", PVCName: "p-data-1", StorageClass: "ceph-rbd"},
+					},
+				},
+				{
+					Name:      "vm-db-2",
+					Namespace: ns,
+					Disks: []soteriav1alpha1.DiscoveredDisk{
+						{Name: "rootdisk", PVCName: "p-root-2", StorageClass: "ceph-rbd"},
+					},
+				},
+			},
+			DiscoveredVMCount: 2,
+			LastDiscoveryTime: metav1.Now(),
+		},
+		&soteriav1alpha1.SiteDiscovery{
+			VMs: []soteriav1alpha1.DiscoveredVM{
+				{
+					Name:      "vm-db-1",
+					Namespace: ns,
+					Disks: []soteriav1alpha1.DiscoveredDisk{
+						{Name: "rootdisk", PVCName: "s-root-1", StorageClass: "ceph-rbd"},
+					},
+				},
+				{
+					Name:      "vm-db-2",
+					Namespace: ns,
+					Disks: []soteriav1alpha1.DiscoveredDisk{
+						{Name: "rootdisk", PVCName: "s-root-2", StorageClass: "ceph-rbd"},
+					},
+				},
+			},
+			DiscoveredVMCount: 2,
+			LastDiscoveryTime: metav1.Now(),
+		},
+	)
+
+	_, err = waitForSiteDiscovery(ctx, plan.Name, "primary", testTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = waitForSiteDiscovery(ctx, plan.Name, "secondary", testTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	activeReconciler := &drplan.DRPlanReconciler{
+		Client:          testClient,
+		Scheme:          testScheme,
+		VMDiscoverer:    engine.NewTypedVMDiscoverer(testClient),
+		NamespaceLookup: &engine.DefaultNamespaceLookup{Client: testClientset.CoreV1()},
+		Recorder:        nil,
+		LocalSite:       "dc-west",
+	}
+	_, err = activeReconciler.Reconcile(ctx, ctrl.Request{
+		NamespacedName: client.ObjectKey{Name: plan.Name},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	updated, err := waitForConditionReason(ctx, plan.Name, "", "DisksConsistent", "DiskMismatch", testTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, c := range updated.Status.Conditions {
+		if c.Type == "Ready" {
+			if c.Status != metav1.ConditionFalse {
+				t.Errorf("Ready.Status = %v, want False", c.Status)
+			}
+			if c.Reason != "DisksOutOfSync" {
+				t.Errorf("Ready.Reason = %q, want DisksOutOfSync", c.Reason)
+			}
+			break
+		}
+	}
+
+	if len(updated.Status.Waves) != 0 {
+		t.Errorf("Waves should be cleared on disk mismatch, got %d", len(updated.Status.Waves))
+	}
+	if updated.Status.Preflight == nil {
+		t.Fatal("Preflight should be populated on disk mismatch")
+	}
+	if updated.Status.Preflight.DisksConsistent {
+		t.Error("Preflight.DisksConsistent should be false on mismatch")
+	}
+	if updated.Status.Preflight.DiskDiscoveryDelta == "" {
+		t.Error("Preflight.DiskDiscoveryDelta should be non-empty on mismatch")
+	}
+}
+
+func TestDRPlanReconciler_DiskAgreement_ProceedsOnMatch(t *testing.T) {
+	ctx := context.Background()
+	ns := "test-disk-match"
+	createNamespace(t, ctx, ns)
+
+	createVM(t, ctx, "vm-dm-1", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-disk-match", "soteria.io/wave": "1"})
+	createVM(t, ctx, "vm-dm-2", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-disk-match", "soteria.io/wave": "1"})
+
+	plan := createDRPlan(t, ctx, "plan-disk-match")
+
+	_, err := waitForCondition(ctx, plan.Name, "", "Ready", metav1.ConditionTrue, testTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	matchingDiscovery := &soteriav1alpha1.SiteDiscovery{
+		VMs: []soteriav1alpha1.DiscoveredVM{
+			{
+				Name:      "vm-dm-1",
+				Namespace: ns,
+				Disks: []soteriav1alpha1.DiscoveredDisk{
+					{Name: "rootdisk", PVCName: "root-a", StorageClass: "ceph-rbd"},
+				},
+			},
+			{
+				Name:      "vm-dm-2",
+				Namespace: ns,
+				Disks: []soteriav1alpha1.DiscoveredDisk{
+					{Name: "rootdisk", PVCName: "root-b", StorageClass: "local-path"},
+				},
+			},
+		},
+		DiscoveredVMCount: 2,
+		LastDiscoveryTime: metav1.Now(),
+	}
+	patchSiteDiscoveryWithRetry(t, ctx, plan.Name, matchingDiscovery, matchingDiscovery)
+
+	_, err = waitForSiteDiscovery(ctx, plan.Name, "primary", testTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = waitForSiteDiscovery(ctx, plan.Name, "secondary", testTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	activeReconciler := &drplan.DRPlanReconciler{
+		Client:          testClient,
+		Scheme:          testScheme,
+		VMDiscoverer:    engine.NewTypedVMDiscoverer(testClient),
+		NamespaceLookup: &engine.DefaultNamespaceLookup{Client: testClientset.CoreV1()},
+		Recorder:        nil,
+		LocalSite:       "dc-west",
+	}
+	_, err = activeReconciler.Reconcile(ctx, ctrl.Request{
+		NamespacedName: client.ObjectKey{Name: plan.Name},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	updated, err := waitForConditionReason(ctx, plan.Name, "", "DisksConsistent", "DisksAgreed", testTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, c := range updated.Status.Conditions {
+		if c.Type == "Ready" {
+			if c.Status != metav1.ConditionTrue {
+				t.Errorf("Ready.Status = %v, want True", c.Status)
+			}
+			break
+		}
+	}
+
+	if len(updated.Status.Waves) == 0 {
+		t.Error("Waves should be populated when disks agree")
+	}
+}
+
+func TestDRPlanReconciler_DiskAgreement_WaitingStillProceeds(t *testing.T) {
+	ctx := context.Background()
+	ns := "test-disk-waiting"
+	createNamespace(t, ctx, ns)
+
+	createVM(t, ctx, "vm-dw-1", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-disk-waiting", "soteria.io/wave": "1"})
+
+	plan := createDRPlan(t, ctx, "plan-disk-waiting")
+
+	_, err := waitForCondition(ctx, plan.Name, "", "Ready", metav1.ConditionTrue, testTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	patchSiteDiscoveryWithRetry(t, ctx, plan.Name,
+		&soteriav1alpha1.SiteDiscovery{
+			VMs: []soteriav1alpha1.DiscoveredVM{
+				{
+					Name:      "vm-dw-1",
+					Namespace: ns,
+					Disks: []soteriav1alpha1.DiscoveredDisk{
+						{Name: "rootdisk", PVCName: "root-a", StorageClass: "ceph-rbd"},
+					},
+				},
+			},
+			DiscoveredVMCount: 1,
+			LastDiscoveryTime: metav1.Now(),
+		},
+		&soteriav1alpha1.SiteDiscovery{
+			VMs: []soteriav1alpha1.DiscoveredVM{
+				{Name: "vm-dw-1", Namespace: ns, Disks: nil},
+			},
+			DiscoveredVMCount: 1,
+			LastDiscoveryTime: metav1.Now(),
+		},
+	)
+
+	_, err = waitForSiteDiscovery(ctx, plan.Name, "primary", testTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = waitForSiteDiscovery(ctx, plan.Name, "secondary", testTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	activeReconciler := &drplan.DRPlanReconciler{
+		Client:          testClient,
+		Scheme:          testScheme,
+		VMDiscoverer:    engine.NewTypedVMDiscoverer(testClient),
+		NamespaceLookup: &engine.DefaultNamespaceLookup{Client: testClientset.CoreV1()},
+		Recorder:        nil,
+		LocalSite:       "dc-west",
+	}
+	_, err = activeReconciler.Reconcile(ctx, ctrl.Request{
+		NamespacedName: client.ObjectKey{Name: plan.Name},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	updated, err := waitForConditionReason(ctx, plan.Name, "", "DisksConsistent", "WaitingForDiskDiscovery", testTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, c := range updated.Status.Conditions {
+		if c.Type == "Ready" {
+			if c.Status != metav1.ConditionTrue {
+				t.Errorf("Ready.Status = %v, want True", c.Status)
+			}
+			break
+		}
+	}
+
+	if len(updated.Status.Waves) == 0 {
+		t.Error("Waves should remain populated while waiting for disk discovery")
+	}
+}

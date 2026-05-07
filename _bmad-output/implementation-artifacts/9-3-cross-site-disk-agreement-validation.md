@@ -1,6 +1,6 @@
 # Story 9.3: Cross-Site Disk Agreement Validation
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -24,42 +24,42 @@ So that executions never proceed when storage layout is inconsistent between sit
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Add condition constants for DisksConsistent (AC: #2, #3, #4)
-  - [ ] 1.1 Add `conditionTypeDisksConsistent`, `reasonDisksAgreed`, `reasonDiskMismatch`, `reasonWaitingForDiskDiscovery`, `reasonDisksOutOfSync` constants to `pkg/controller/drplan/reconciler.go` alongside the existing `conditionTypeSitesInSync` constants
+- [x] Task 1: Add condition constants for DisksConsistent (AC: #2, #3, #4)
+  - [x] 1.1 Add `conditionTypeDisksConsistent`, `reasonDisksAgreed`, `reasonDiskMismatch`, `reasonWaitingForDiskDiscovery`, `reasonDisksOutOfSync` constants to `pkg/controller/drplan/reconciler.go` alongside the existing `conditionTypeSitesInSync` constants
 
-- [ ] Task 2: Create `compareDiskTopology` pure function (AC: #1, #2, #3, #4)
-  - [ ] 2.1 Add `compareDiskTopology(plan, primary, secondary *SiteDiscovery) (consistent bool, condition metav1.Condition)` to `pkg/controller/drplan/reconciler.go`
-  - [ ] 2.2 Implement waiting-for-disk-discovery check: when either side has VMs with nil/empty disks, return `WaitingForDiskDiscovery`
-  - [ ] 2.3 Implement per-VM disk comparison: for each VM present on both sites, sort disks by name and compare count, names, and storageClass (exclude pvcName)
-  - [ ] 2.4 Build delta message per mismatched VM using `writeCappedList` pattern
-  - [ ] 2.5 Return `DisksAgreed` when all VMs match, `DiskMismatch` when any differ
+- [x] Task 2: Create `compareDiskTopology` pure function (AC: #1, #2, #3, #4)
+  - [x] 2.1 Add `compareDiskTopology(plan, primary, secondary *SiteDiscovery) (consistent bool, condition metav1.Condition)` to `pkg/controller/drplan/reconciler.go`
+  - [x] 2.2 Implement waiting-for-disk-discovery check: when either side has VMs with nil/empty disks, return `WaitingForDiskDiscovery`
+  - [x] 2.3 Implement per-VM disk comparison: for each VM present on both sites, sort disks by name and compare count, names, and storageClass (exclude pvcName)
+  - [x] 2.4 Build delta message per mismatched VM using `writeCappedList` pattern
+  - [x] 2.5 Return `DisksAgreed` when all VMs match, `DiskMismatch` when any differ
 
-- [ ] Task 3: Create `evaluateDiskAgreement` reconciler method (AC: #1, #3, #4)
-  - [ ] 3.1 Add `evaluateDiskAgreement(ctx, req, plan) (*metav1.Condition, bool, error)` following exact pattern of `evaluateSiteAgreement`
-  - [ ] 3.2 Skip when `LocalSite == ""` or both SiteDiscovery are nil
-  - [ ] 3.3 On `DiskMismatch`: clear waves, set `Ready=False` with `reasonDisksOutOfSync`, set `DisksConsistent=False`, patch preflight, emit warning event, return blocked=true
-  - [ ] 3.4 On `WaitingForDiskDiscovery`: log V(1), return blocked=false (proceed with wave formation)
-  - [ ] 3.5 On `DisksAgreed`: emit recovery event if previously `False`, return blocked=false
+- [x] Task 3: Create `evaluateDiskAgreement` reconciler method (AC: #1, #3, #4)
+  - [x] 3.1 Add `evaluateDiskAgreement(ctx, req, plan) (*metav1.Condition, bool, error)` following exact pattern of `evaluateSiteAgreement`
+  - [x] 3.2 Skip when `LocalSite == ""` or both SiteDiscovery are nil
+  - [x] 3.3 On `DiskMismatch`: clear waves, set `Ready=False` with `reasonDisksOutOfSync`, set `DisksConsistent=False`, patch preflight, emit warning event, return blocked=true
+  - [x] 3.4 On `WaitingForDiskDiscovery`: log V(1), return blocked=false (proceed with wave formation)
+  - [x] 3.5 On `DisksAgreed`: emit recovery event if previously `False`, return blocked=false
 
-- [ ] Task 4: Wire disk agreement into reconciler flow (AC: #1, #2, #3, #4)
-  - [ ] 4.1 Call `evaluateDiskAgreement` after `evaluateSiteAgreement` in `Reconcile` (only if not blocked by site agreement)
-  - [ ] 4.2 Pass `DisksConsistent` condition through to `updateStatus` alongside `SitesInSync`
-  - [ ] 4.3 Extend `updateStatus` signature to accept `disksConsistentCond ...metav1.Condition` (or restructure the variadic to accept multiple optional conditions)
-  - [ ] 4.4 Add `detectDisksConsistentChange` (follow `detectSitesInSyncChange` pattern)
-  - [ ] 4.5 Include `disksConsistentChanged` in the `anyChanged` check
+- [x] Task 4: Wire disk agreement into reconciler flow (AC: #1, #2, #3, #4)
+  - [x] 4.1 Call `evaluateDiskAgreement` after `evaluateSiteAgreement` in `Reconcile` (only if not blocked by site agreement)
+  - [x] 4.2 Pass `DisksConsistent` condition through to `updateStatus` alongside `SitesInSync`
+  - [x] 4.3 Extend `updateStatus` signature to accept `disksConsistentCond ...metav1.Condition` (or restructure the variadic to accept multiple optional conditions)
+  - [x] 4.4 Add `detectDisksConsistentChange` (follow `detectSitesInSyncChange` pattern)
+  - [x] 4.5 Include `disksConsistentChanged` in the `anyChanged` check
 
-- [ ] Task 5: Add preflight enrichment for DisksConsistent (AC: #3)
-  - [ ] 5.1 Add `DisksConsistent bool` and `DiskDiscoveryDelta string` fields to `PreflightReport` in `pkg/apis/soteria.io/v1alpha1/types.go`
-  - [ ] 5.2 Enrich preflight on the success path (parallel to `SitesInSync` enrichment at lines 304-314)
-  - [ ] 5.3 Enrich preflight on the mismatch early-patch path inside `evaluateDiskAgreement`
-  - [ ] 5.4 Run `make manifests generate`
+- [x] Task 5: Add preflight enrichment for DisksConsistent (AC: #3)
+  - [x] 5.1 Add `DisksConsistent bool` and `DiskDiscoveryDelta string` fields to `PreflightReport` in `pkg/apis/soteria.io/v1alpha1/types.go`
+  - [x] 5.2 Enrich preflight on the success path (parallel to `SitesInSync` enrichment at lines 304-314)
+  - [x] 5.3 Enrich preflight on the mismatch early-patch path inside `evaluateDiskAgreement`
+  - [x] 5.4 Run `make manifests generate`
 
-- [ ] Task 6: Add admission gate for DisksConsistent (AC: #5)
-  - [ ] 6.1 Add `DisksConsistent=False` check to `DRExecutionValidator.Handle` in `pkg/admission/drexecution_validator.go` — immediately after the existing `SitesInSync` check (line ~117)
-  - [ ] 6.2 Rejection message: "Cannot start execution: disk topology does not match across sites. Resolve disk differences first."
+- [x] Task 6: Add admission gate for DisksConsistent (AC: #5)
+  - [x] 6.1 Add `DisksConsistent=False` check to `DRExecutionValidator.Handle` in `pkg/admission/drexecution_validator.go` — immediately after the existing `SitesInSync` check (line ~117)
+  - [x] 6.2 Rejection message: "Cannot start execution: disk topology does not match across sites. Resolve disk differences first."
 
-- [ ] Task 7: Unit tests for `compareDiskTopology` (AC: #6)
-  - [ ] 7.1 Add tests to `pkg/controller/drplan/reconciler_test.go` following the `TestCompareSiteDiscovery_*` pattern:
+- [x] Task 7: Unit tests for `compareDiskTopology` (AC: #6)
+  - [x] 7.1 Add tests to `pkg/controller/drplan/reconciler_test.go` following the `TestCompareSiteDiscovery_*` pattern:
     - All VMs disks match (different PVC names OK) → `DisksAgreed`
     - Disk count mismatch on one VM → `DiskMismatch` with delta message
     - Disk name mismatch → `DiskMismatch`
@@ -70,21 +70,25 @@ So that executions never proceed when storage layout is inconsistent between sit
     - VMs with empty disks on both sides (no-PVC VMs) → `DisksAgreed` (empty == empty is valid)
     - VMs only on one site (set mismatch) → comparison only runs on intersection, `SitesInSync` handles the rest
 
-- [ ] Task 8: Reconciler integration tests for disk agreement (AC: #6)
-  - [ ] 8.1 Add `TestReconcile_DisksConsistent_*` tests following `TestReconcile_SitesInSync_*` pattern:
+- [x] Task 8: Reconciler integration tests for disk agreement (AC: #6)
+  - [x] 8.1 Add `TestReconcile_DisksConsistent_*` tests following `TestReconcile_SitesInSync_*` pattern:
     - Disks match → `DisksConsistent=True`, waves formed, `Ready=True`
     - Disk mismatch → `DisksConsistent=False`, waves cleared, `Ready=False`
     - Waiting for disk discovery → `DisksConsistent=False` (WaitingForDiskDiscovery), waves formed, `Ready=True`
 
-- [ ] Task 9: Admission tests for DisksConsistent (AC: #6)
-  - [ ] 9.1 Add `TestDRExecutionValidator_RejectWhenDisksInconsistent` to `pkg/admission/drexecution_validator_test.go` following `TestDRExecutionValidator_RejectWhenSitesOutOfSync` pattern
-  - [ ] 9.2 Add `TestDRExecutionValidator_AllowWhenDisksConsistent` following `TestDRExecutionValidator_AllowWhenSitesInSync` pattern
-  - [ ] 9.3 Add test verifying both `SitesInSync=True` AND `DisksConsistent=True` required for admission allow
+- [x] Task 9: Admission tests for DisksConsistent (AC: #6)
+  - [x] 9.1 Add `TestDRExecutionValidator_RejectWhenDisksInconsistent` to `pkg/admission/drexecution_validator_test.go` following `TestDRExecutionValidator_RejectWhenSitesOutOfSync` pattern
+  - [x] 9.2 Add `TestDRExecutionValidator_AllowWhenDisksConsistent` following `TestDRExecutionValidator_AllowWhenSitesInSync` pattern
+  - [x] 9.3 Add test verifying both `SitesInSync=True` AND `DisksConsistent=True` required for admission allow
 
-- [ ] Task 10: Run make manifests generate, lint, test (AC: #6)
-  - [ ] 10.1 `make manifests generate` — zero errors
-  - [ ] 10.2 `make lint-fix` — zero new lint errors
-  - [ ] 10.3 `make test` — all tests pass, zero regressions
+- [x] Task 10: Run make manifests generate, lint, test (AC: #6)
+  - [x] 10.1 `make manifests generate` — zero errors
+  - [x] 10.2 `make lint-fix` — zero new lint errors
+  - [x] 10.3 `make test` — all tests pass, zero regressions
+
+### Review Findings
+
+- [x] [Review][Patch] Add envtest coverage for the new disk-agreement reconcile paths [pkg/controller/drplan/reconciler_test.go:1865]
 
 ## Dev Notes
 
@@ -375,10 +379,37 @@ Disk topology comparison is a pure function — it cannot fail. The `evaluateDis
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4.6 (Cursor)
 
 ### Debug Log References
 
+None — clean implementation with no debugging needed.
+
 ### Completion Notes List
 
+- Added `DisksConsistent` and `DiskDiscoveryDelta` fields to PreflightReport (types.go)
+- Added condition constants: `conditionTypeDisksConsistent`, `reasonDisksAgreed`, `reasonDiskMismatch`, `reasonWaitingForDiskDiscovery`, `reasonDisksOutOfSync`
+- Implemented `compareDiskTopology` pure function with helper `compareDiskSets` and `formatDiskList` — per-VM disk comparison excluding pvcName, checking count/names/storageClass
+- Implemented `evaluateDiskAgreement` method following exact pattern of `evaluateSiteAgreement` — blocks on DiskMismatch, proceeds on WaitingForDiskDiscovery, emits recovery events
+- Wired disk agreement check into Reconcile flow after site agreement check
+- Refactored `detectSitesInSyncChange` → `detectExtraConditionChanges` (generalized for multiple extra conditions)
+- Refactored updateStatus variadic condition application to iterate all extra conditions
+- Enriched preflight report with disk consistency data on both success and mismatch paths
+- Added DisksConsistent admission gate to both DRExecutionValidator.Handle (webhook) and SoteriaAdmissionPlugin.validateDRExecution (aggregated API plugin)
+- 11 unit tests for compareDiskTopology covering all scenarios (match, count/name/storageClass mismatch, mixed, waiting, nil, empty, one-side-only VMs)
+- 3 reconciler integration tests (disks consistent → Ready=True; mismatch → Ready=False/waves cleared; waiting → proceeds normally)
+- 5 admission tests (reject inconsistent, allow consistent, require both SitesInSync+DisksConsistent for webhook; reject/allow for plugin)
+- Coverage: pkg/controller/drplan 85.8% → 87.8%, pkg/admission 87.1% → 87.4%
+- Zero regressions in unit tests, zero regressions in integration tests
+- Zero new lint errors (2 pre-existing: goconst in executor_test.go, unparam in writeCappedList)
+
 ### File List
+
+- `pkg/apis/soteria.io/v1alpha1/types.go` — Added DisksConsistent + DiskDiscoveryDelta fields to PreflightReport
+- `pkg/apis/soteria.io/v1alpha1/zz_generated.deepcopy.go` — Auto-generated (make generate)
+- `pkg/controller/drplan/reconciler.go` — Added constants, compareDiskTopology, evaluateDiskAgreement, refactored updateStatus/detectExtraConditionChanges, wired into Reconcile
+- `pkg/admission/drexecution_validator.go` — Added DisksConsistent=False admission check
+- `pkg/admission/plugin.go` — Added DisksConsistent=False admission check
+- `pkg/controller/drplan/reconciler_test.go` — Added 11 compareDiskTopology unit tests + 3 reconciler integration tests
+- `pkg/admission/drexecution_validator_test.go` — Added 3 DisksConsistent admission tests
+- `pkg/admission/plugin_test.go` — Added 2 DisksConsistent plugin admission tests
