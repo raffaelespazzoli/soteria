@@ -1,7 +1,7 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { axe, toHaveNoViolations } from 'jest-axe';
 import { SiteDiscoverySection } from '../../src/components/DRPlanDetail/SiteDiscoverySection';
-import { DRPlan, DiscoveredVM } from '../../src/models/types';
+import { DRPlan, DiscoveredVM, DiscoveredDisk } from '../../src/models/types';
 
 expect.extend(toHaveNoViolations);
 
@@ -156,5 +156,99 @@ describe('SiteDiscoverySection', () => {
     const { container } = render(<SiteDiscoverySection plan={plan} />);
     const results = await axe(container);
     expect(results).toHaveNoViolations();
+  });
+
+  describe('per-VM disk expansion', () => {
+    const primaryDisks: DiscoveredDisk[] = [
+      { name: 'disk-root', pvcName: 'pvc-root-a', storageClass: 'ceph-rbd' },
+      { name: 'disk-data', pvcName: 'pvc-data-a', storageClass: 'ceph-rbd' },
+    ];
+    const secondaryDisks: DiscoveredDisk[] = [
+      { name: 'disk-root', pvcName: 'pvc-root-b', storageClass: 'ceph-rbd' },
+      { name: 'disk-data', pvcName: 'pvc-data-b', storageClass: 'netapp-gold' },
+    ];
+
+    it('VM row is expandable when disks are present', () => {
+      const plan = makePlanWithSiteDiscovery({
+        primaryVMs: [{ name: 'vm-a', namespace: 'ns1', disks: primaryDisks }],
+        secondaryVMs: [{ name: 'vm-a', namespace: 'ns1', disks: secondaryDisks }],
+      });
+      render(<SiteDiscoverySection plan={plan} />);
+      const expandBtn = screen.getAllByLabelText('Show disks for vm-a')[0];
+      expect(expandBtn).toBeInTheDocument();
+      expect(expandBtn).toHaveAttribute('aria-expanded', 'false');
+    });
+
+    it('expanded row shows disk table with Disk Name, PVC Name, Storage Class', () => {
+      const plan = makePlanWithSiteDiscovery({
+        primaryVMs: [{ name: 'vm-a', namespace: 'ns1', disks: primaryDisks }],
+        secondaryVMs: [{ name: 'vm-a', namespace: 'ns1', disks: secondaryDisks }],
+      });
+      render(<SiteDiscoverySection plan={plan} />);
+      fireEvent.click(screen.getAllByLabelText('Show disks for vm-a')[0]);
+
+      expect(screen.getByText('disk-root')).toBeInTheDocument();
+      expect(screen.getByText('pvc-root-a')).toBeInTheDocument();
+      expect(screen.getAllByText('ceph-rbd').length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('highlights disk with different storage class on same disk name', () => {
+      const plan = makePlanWithSiteDiscovery({
+        primaryVMs: [{ name: 'vm-a', namespace: 'ns1', disks: primaryDisks }],
+        secondaryVMs: [{ name: 'vm-a', namespace: 'ns1', disks: secondaryDisks }],
+      });
+      render(<SiteDiscoverySection plan={plan} />);
+      fireEvent.click(screen.getAllByLabelText('Show disks for vm-a')[0]);
+
+      expect(screen.getByText('Storage class differs from partner site')).toBeInTheDocument();
+    });
+
+    it('highlights missing disk on one site', () => {
+      const plan = makePlanWithSiteDiscovery({
+        primaryVMs: [{ name: 'vm-a', namespace: 'ns1', disks: [
+          { name: 'disk-root', pvcName: 'pvc-root', storageClass: 'ceph-rbd' },
+          { name: 'disk-extra', pvcName: 'pvc-extra', storageClass: 'ceph-rbd' },
+        ] }],
+        secondaryVMs: [{ name: 'vm-a', namespace: 'ns1', disks: [
+          { name: 'disk-root', pvcName: 'pvc-root-b', storageClass: 'ceph-rbd' },
+        ] }],
+      });
+      render(<SiteDiscoverySection plan={plan} />);
+      fireEvent.click(screen.getAllByLabelText('Show disks for vm-a')[0]);
+
+      expect(screen.getByText('Disk missing on partner site')).toBeInTheDocument();
+    });
+
+    it('stateless VM (no disks) shows "No PVC disks" inline without expand button', () => {
+      const plan = makePlanWithSiteDiscovery({
+        primaryVMs: [{ name: 'vm-stateless', namespace: 'ns1' }],
+        secondaryVMs: [{ name: 'vm-stateless', namespace: 'ns1' }],
+      });
+      render(<SiteDiscoverySection plan={plan} />);
+      expect(screen.queryByLabelText('Show disks for vm-stateless')).not.toBeInTheDocument();
+      expect(screen.getAllByText('No PVC disks').length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('has no accessibility violations with expanded disk view', async () => {
+      const plan = makePlanWithSiteDiscovery({
+        primaryVMs: [{ name: 'vm-a', namespace: 'ns1', disks: primaryDisks }],
+        secondaryVMs: [{ name: 'vm-a', namespace: 'ns1', disks: secondaryDisks }],
+      });
+      const { container } = render(<SiteDiscoverySection plan={plan} />);
+      fireEvent.click(screen.getAllByLabelText('Show disks for vm-a')[0]);
+
+      const results = await axe(container);
+      expect(results).toHaveNoViolations();
+    });
+
+    it('has no accessibility violations with collapsed disk view', async () => {
+      const plan = makePlanWithSiteDiscovery({
+        primaryVMs: [{ name: 'vm-a', namespace: 'ns1', disks: primaryDisks }],
+        secondaryVMs: [{ name: 'vm-a', namespace: 'ns1', disks: secondaryDisks }],
+      });
+      const { container } = render(<SiteDiscoverySection plan={plan} />);
+      const results = await axe(container);
+      expect(results).toHaveNoViolations();
+    });
   });
 });

@@ -218,6 +218,72 @@ describe('DRPlanDetailPage', () => {
     });
   });
 
+  describe('DiskDisagreementAlert integration', () => {
+    const planWithDisksOutOfSync: DRPlan = {
+      ...mockPlan,
+      status: {
+        ...mockPlan.status,
+        conditions: [
+          { type: 'ReplicationHealthy', status: 'True', reason: 'Healthy', message: 'RPO: 12s' },
+          {
+            type: 'DisksConsistent',
+            status: 'False',
+            reason: 'DiskMismatch',
+            message: 'VM ns1/vm1: disk count differs (3 vs 2)',
+          },
+        ],
+      },
+    };
+
+    it('renders danger alert when plan has DisksConsistent=False', () => {
+      mockUseDRPlan.mockReturnValue([planWithDisksOutOfSync, true, null]);
+      render(<DRPlanDetailPage />);
+      expect(
+        screen.getByText('Disk topology does not match across sites — DR operations are blocked'),
+      ).toBeInTheDocument();
+    });
+
+    it('DRLifecycleDiagram isBlocked when DisksConsistent=False (sites in sync)', () => {
+      const planDiskOnlySitesOK: DRPlan = {
+        ...mockPlan,
+        status: {
+          ...mockPlan.status,
+          conditions: [
+            { type: 'ReplicationHealthy', status: 'True', reason: 'Healthy', message: 'RPO: 12s' },
+            { type: 'SitesInSync', status: 'True', reason: 'VMsAgreed' },
+            { type: 'DisksConsistent', status: 'False', reason: 'DiskMismatch', message: 'disk count differs' },
+          ],
+        },
+      };
+      mockUseDRPlan.mockReturnValue([planDiskOnlySitesOK, true, null]);
+      render(<DRPlanDetailPage />);
+      const failoverButton = screen.getByRole('button', { name: 'Failover' });
+      expect(failoverButton).toBeDisabled();
+    });
+
+    it('renders both alerts when both conditions are False', () => {
+      const planBothFalse: DRPlan = {
+        ...mockPlan,
+        status: {
+          ...mockPlan.status,
+          conditions: [
+            { type: 'ReplicationHealthy', status: 'True', reason: 'Healthy', message: 'RPO: 12s' },
+            { type: 'SitesInSync', status: 'False', reason: 'VMsMismatch', message: 'VMs on primary but not secondary: [ns1/vm-a]' },
+            { type: 'DisksConsistent', status: 'False', reason: 'DiskMismatch', message: 'disk count differs' },
+          ],
+        },
+      };
+      mockUseDRPlan.mockReturnValue([planBothFalse, true, null]);
+      render(<DRPlanDetailPage />);
+      expect(
+        screen.getByText('Sites do not agree on VM inventory — DR operations are blocked'),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText('Disk topology does not match across sites — DR operations are blocked'),
+      ).toBeInTheDocument();
+    });
+  });
+
   describe('optimistic execution state', () => {
     beforeEach(() => {
       mockCreate.mockReset();

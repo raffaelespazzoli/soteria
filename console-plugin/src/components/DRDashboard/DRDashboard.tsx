@@ -9,11 +9,13 @@ import {
   getEffectivePhase,
   getReplicationHealth,
   getSitesInSync,
+  getDisksConsistent,
   buildLatestExecutionMap,
   HEALTH_SORT_ORDER,
   EffectivePhase,
   ReplicationHealth,
   SitesInSyncStatus,
+  DisksConsistentStatus,
 } from '../../utils/drPlanUtils';
 import { formatRelativeTime } from '../../utils/formatters';
 import { ExclamationTriangleIcon } from '@patternfly/react-icons';
@@ -45,6 +47,7 @@ interface EnrichedPlan {
   health: ReplicationHealth;
   lastExec: DRExecution | null;
   sitesInSync: SitesInSyncStatus;
+  disksConsistent: DisksConsistentStatus;
 }
 
 function enrichPlans(plans: DRPlan[], executions: DRExecution[]): EnrichedPlan[] {
@@ -55,6 +58,7 @@ function enrichPlans(plans: DRPlan[], executions: DRExecution[]): EnrichedPlan[]
     health: getReplicationHealth(plan),
     lastExec: latestByPlan.get(plan.metadata?.name ?? '') ?? null,
     sitesInSync: getSitesInSync(plan),
+    disksConsistent: getDisksConsistent(plan),
   }));
 }
 
@@ -277,6 +281,14 @@ export default function DRDashboard() {
                         />
                       </Tooltip>
                     )}
+                    {!ep.disksConsistent.consistent && (
+                      <Tooltip content="Disk topology inconsistent">
+                        <ExclamationTriangleIcon
+                          color="var(--pf-t--global--icon--color--status--warning--default, var(--pf-v5-global--warning-color--100))"
+                          aria-label="Disk topology inconsistent"
+                        />
+                      </Tooltip>
+                    )}
                     <ReplicationHealthIndicator health={ep.health} />
                   </span>
                 </Td>
@@ -289,8 +301,14 @@ export default function DRDashboard() {
                     onAction={(_action, p) =>
                       history.push(`/disaster-recovery/plans/${p.metadata?.name ?? ''}`)
                     }
-                    isDisabled={!ep.sitesInSync.inSync}
-                    disabledTooltip="Plan blocked: sites do not agree on VM inventory"
+                    isDisabled={!ep.sitesInSync.inSync || !ep.disksConsistent.consistent}
+                    disabledTooltip={
+                      !ep.sitesInSync.inSync
+                        ? 'Plan blocked: sites do not agree on VM inventory'
+                        : !ep.disksConsistent.consistent
+                          ? 'Plan blocked: disk topology inconsistent across sites'
+                          : undefined
+                    }
                   />
                 </Td>
               </Tr>

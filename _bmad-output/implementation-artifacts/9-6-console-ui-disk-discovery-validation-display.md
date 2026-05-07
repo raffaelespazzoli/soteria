@@ -1,6 +1,6 @@
 # Story 9.6: Console UI — Disk Discovery & Validation Display
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -28,92 +28,98 @@ So that I can understand and troubleshoot disk-level DR protection.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Extend TypeScript types for disk data (AC: #1, #2)
-  - [ ] 1.1 Add `DiscoveredDisk` interface to `src/models/types.ts`: `{ name: string; pvcName: string; storageClass: string }`
-  - [ ] 1.2 Add `disks?: DiscoveredDisk[]` to existing `DiscoveredVM` interface
-  - [ ] 1.3 Add `PreflightVolumeGroup` interface: `{ name: string; site: string; disks: VolumeGroupDisk[] }`
-  - [ ] 1.4 Add `VolumeGroupDisk` interface: `{ name: string; pvcName: string; pvcNamespace: string }`
-  - [ ] 1.5 Change `PreflightChunk.volumeGroups` from `string[]` to `PreflightVolumeGroup[]`
-  - [ ] 1.6 Add `disksConsistent?: boolean` and `diskDiscoveryDelta?: string` to `PreflightReport`
+- [x] Task 1: Extend TypeScript types for disk data (AC: #1, #2)
+  - [x] 1.1 Add `DiscoveredDisk` interface to `src/models/types.ts`: `{ name: string; pvcName: string; storageClass: string }`
+  - [x] 1.2 Add `disks?: DiscoveredDisk[]` to existing `DiscoveredVM` interface
+  - [x] 1.3 Add `PreflightVolumeGroup` interface: `{ name: string; site: string; disks: VolumeGroupDisk[] }` — already present from 9.4
+  - [x] 1.4 Add `VolumeGroupDisk` interface: `{ name: string; pvcName: string; pvcNamespace: string }` — already present from 9.4
+  - [x] 1.5 Change `PreflightChunk.volumeGroups` from `string[]` to `PreflightVolumeGroup[]` — already done in 9.4
+  - [x] 1.6 Add `disksConsistent?: boolean` and `diskDiscoveryDelta?: string` to `PreflightReport`
 
-- [ ] Task 2: Add `getDisksConsistent` utility (AC: #3, #4, #5, #6)
-  - [ ] 2.1 Add `DisksConsistentStatus` interface to `src/utils/drPlanUtils.ts`: `{ consistent: boolean; reason?: string; message?: string }`
-  - [ ] 2.2 Add `getDisksConsistent(plan: DRPlan): DisksConsistentStatus` — reads `DisksConsistent` condition; returns `{ consistent: true }` if condition absent (backward compat)
-  - [ ] 2.3 Export for use in DRPlanDetailPage, DRDashboard, DRLifecycleDiagram
+- [x] Task 2: Add `getDisksConsistent` utility (AC: #3, #4, #5, #6)
+  - [x] 2.1 Add `DisksConsistentStatus` interface to `src/utils/drPlanUtils.ts`: `{ consistent: boolean; reason?: string; message?: string }`
+  - [x] 2.2 Add `getDisksConsistent(plan: DRPlan): DisksConsistentStatus` — reads `DisksConsistent` condition; returns `{ consistent: true }` if condition absent (backward compat)
+  - [x] 2.3 Export for use in DRPlanDetailPage, DRDashboard, DRLifecycleDiagram
 
-- [ ] Task 3: Create `DiskDisagreementAlert` component (AC: #3, #4)
-  - [ ] 3.1 Create `src/components/DRPlanDetail/DiskDisagreementAlert.tsx` following `SiteDisagreementAlert` pattern
-  - [ ] 3.2 Props: `plan: DRPlan`, `onSwitchToConfig: () => void`
-  - [ ] 3.3 Return null if `getDisksConsistent(plan).consistent`
-  - [ ] 3.4 Render PatternFly `Alert` variant=danger, inline, title contextual to reason:
+- [x] Task 3: Create `DiskDisagreementAlert` component (AC: #3, #4)
+  - [x] 3.1 Create `src/components/DRPlanDetail/DiskDisagreementAlert.tsx` following `SiteDisagreementAlert` pattern
+  - [x] 3.2 Props: `plan: DRPlan`, `onSwitchToConfig: () => void`
+  - [x] 3.3 Return null if `getDisksConsistent(plan).consistent`
+  - [x] 3.4 Render PatternFly `Alert` variant=danger, inline, title contextual to reason:
     - `DiskMismatch`: "Disk topology does not match across sites — DR operations are blocked"
     - `StorageClassMixed`: "Volume group storage classes are mixed — DR operations are blocked"
     - `WaitingForDiskDiscovery`: "Waiting for disk discovery from both sites"
-  - [ ] 3.5 Include condition message as alert body (delta details)
-  - [ ] 3.6 `AlertActionLink` "View disk details" → calls `onSwitchToConfig`
+  - [x] 3.5 Include condition message as alert body (delta details)
+  - [x] 3.6 `AlertActionLink` "View disk details" → calls `onSwitchToConfig`
 
-- [ ] Task 4: Wire `DiskDisagreementAlert` into DRPlanDetailPage (AC: #3, #4, #5)
-  - [ ] 4.1 Import `DiskDisagreementAlert` and `getDisksConsistent` in `DRPlanDetailPage.tsx`
-  - [ ] 4.2 Compute `disksConsistent` from `getDisksConsistent(plan)` alongside `sitesInSync`
-  - [ ] 4.3 Render `DiskDisagreementAlert` below `SiteDisagreementAlert` in the Overview tab's `aria-live` region
-  - [ ] 4.4 Extend `isBlocked` prop to DRLifecycleDiagram: `isBlocked={!sitesInSync.inSync || !disksConsistent.consistent}`
-  - [ ] 4.5 Compute `blockedTooltip` dynamically: if `!sitesInSync.inSync` use site tooltip, else if `!disksConsistent.consistent` use "Blocked: disk topology inconsistent across sites"
+- [x] Task 4: Wire `DiskDisagreementAlert` into DRPlanDetailPage (AC: #3, #4, #5)
+  - [x] 4.1 Import `DiskDisagreementAlert` and `getDisksConsistent` in `DRPlanDetailPage.tsx`
+  - [x] 4.2 Compute `disksConsistent` from `getDisksConsistent(plan)` alongside `sitesInSync`
+  - [x] 4.3 Render `DiskDisagreementAlert` below `SiteDisagreementAlert` in the Overview tab's `aria-live` region
+  - [x] 4.4 Extend `isBlocked` prop to DRLifecycleDiagram: `isBlocked={!sitesInSync.inSync || !disksConsistent.consistent}`
+  - [x] 4.5 Compute `blockedTooltip` dynamically: if `!sitesInSync.inSync` use site tooltip, else if `!disksConsistent.consistent` use "Blocked: disk topology inconsistent across sites"
 
-- [ ] Task 5: Extend `SiteDiscoverySection` with per-VM disk expandable rows (AC: #1)
-  - [ ] 5.1 Add expandable row state in `SiteColumn` (per-VM expansion via PatternFly `ExpandableRowContent` or inline toggle)
-  - [ ] 5.2 When expanded, show nested table: Disk Name | PVC Name | Storage Class
-  - [ ] 5.3 Add disk comparison logic: for VMs present on both sites, compare disks by name — highlight missing disks and different storage classes with warning background + icon
-  - [ ] 5.4 Pass cross-site comparison data into each `SiteColumn` (partner site's VM disks indexed by `vmKey`)
-  - [ ] 5.5 VMs with no disks (stateless) show "No PVC disks" in muted text
+- [x] Task 5: Extend `SiteDiscoverySection` with per-VM disk expandable rows (AC: #1)
+  - [x] 5.1 Add expandable row state in `SiteColumn` (per-VM expansion via PatternFly `ExpandableRowContent` or inline toggle)
+  - [x] 5.2 When expanded, show nested table: Disk Name | PVC Name | Storage Class
+  - [x] 5.3 Add disk comparison logic: for VMs present on both sites, compare disks by name — highlight missing disks and different storage classes with warning background + icon
+  - [x] 5.4 Pass cross-site comparison data into each `SiteColumn` (partner site's VM disks indexed by `vmKey`)
+  - [x] 5.5 VMs with no disks (stateless) show "No PVC disks" in muted text
 
-- [ ] Task 6: Extend `WaveCompositionTree` with VG disk composition (AC: #2)
-  - [ ] 6.1 In `buildDRGroupChunks` or `buildDiscoveredVMNodes`, read `PreflightVolumeGroup` from `plan.status?.preflight?.waves[*].chunks[*].volumeGroups`
-  - [ ] 6.2 Render disk list under each volume group node: "disk-name → pvc-name (pvc-namespace)" with site label
-  - [ ] 6.3 If `volumeGroups` is still `string[]` (backward compat for plans not yet enriched), render group name only
+- [x] Task 6: Extend `WaveCompositionTree` with VG disk composition (AC: #2)
+  - [x] 6.1 In `buildDRGroupChunks` or `buildDiscoveredVMNodes`, read `PreflightVolumeGroup` from `plan.status?.preflight?.waves[*].chunks[*].volumeGroups`
+  - [x] 6.2 Render disk list under each volume group node: "disk-name → pvc-name (pvc-namespace)" with site label
+  - [x] 6.3 If `volumeGroups` is still `string[]` (backward compat for plans not yet enriched), render group name only
 
-- [ ] Task 7: Extend Dashboard with DisksConsistent warning (AC: #6)
-  - [ ] 7.1 In `DRDashboard.tsx` `enrichPlans`, compute `disksConsistent` per plan alongside `sitesInSync`
-  - [ ] 7.2 Add `ExclamationTriangleIcon` + `Tooltip` "Disk topology inconsistent" when `!disksConsistent.consistent` (alongside existing site sync icon)
-  - [ ] 7.3 Extend `DRPlanActions` `isDisabled` check: disabled when `!sitesInSync.inSync || !disksConsistent.consistent`
-  - [ ] 7.4 Extend `disabledTooltip` to include disk inconsistency message
+- [x] Task 7: Extend Dashboard with DisksConsistent warning (AC: #6)
+  - [x] 7.1 In `DRDashboard.tsx` `enrichPlans`, compute `disksConsistent` per plan alongside `sitesInSync`
+  - [x] 7.2 Add `ExclamationTriangleIcon` + `Tooltip` "Disk topology inconsistent" when `!disksConsistent.consistent` (alongside existing site sync icon)
+  - [x] 7.3 Extend `DRPlanActions` `isDisabled` check: disabled when `!sitesInSync.inSync || !disksConsistent.consistent`
+  - [x] 7.4 Extend `disabledTooltip` to include disk inconsistency message
 
-- [ ] Task 8: Tests — DiskDisagreementAlert (AC: #7)
-  - [ ] 8.1 Create `tests/components/DiskDisagreementAlert.test.tsx`
-  - [ ] 8.2 Test: renders null when DisksConsistent absent (backward compat)
-  - [ ] 8.3 Test: renders null when DisksConsistent=True
-  - [ ] 8.4 Test: renders danger alert with DiskMismatch title
-  - [ ] 8.5 Test: renders danger alert with StorageClassMixed title
-  - [ ] 8.6 Test: renders WaitingForDiskDiscovery alert (info, not danger)
-  - [ ] 8.7 Test: action link calls onSwitchToConfig
-  - [ ] 8.8 jest-axe passes on all states
+- [x] Task 8: Tests — DiskDisagreementAlert (AC: #7)
+  - [x] 8.1 Create `tests/components/DiskDisagreementAlert.test.tsx`
+  - [x] 8.2 Test: renders null when DisksConsistent absent (backward compat)
+  - [x] 8.3 Test: renders null when DisksConsistent=True
+  - [x] 8.4 Test: renders danger alert with DiskMismatch title
+  - [x] 8.5 Test: renders danger alert with StorageClassMixed title
+  - [x] 8.6 Test: renders WaitingForDiskDiscovery alert (info, not danger)
+  - [x] 8.7 Test: action link calls onSwitchToConfig
+  - [x] 8.8 jest-axe passes on all states
 
-- [ ] Task 9: Tests — SiteDiscoverySection disk expansion (AC: #7)
-  - [ ] 9.1 Update `tests/components/SiteDiscoverySection.test.tsx`
-  - [ ] 9.2 Test: VM row is expandable when disks present
-  - [ ] 9.3 Test: expanded row shows disk table (name, PVC, SC)
-  - [ ] 9.4 Test: disk mismatch highlighted (different SC on same disk)
-  - [ ] 9.5 Test: missing disk on one site highlighted
-  - [ ] 9.6 Test: stateless VM shows "No PVC disks"
-  - [ ] 9.7 jest-axe passes on expanded/collapsed states
+- [x] Task 9: Tests — SiteDiscoverySection disk expansion (AC: #7)
+  - [x] 9.1 Update `tests/components/SiteDiscoverySection.test.tsx`
+  - [x] 9.2 Test: VM row is expandable when disks present
+  - [x] 9.3 Test: expanded row shows disk table (name, PVC, SC)
+  - [x] 9.4 Test: disk mismatch highlighted (different SC on same disk)
+  - [x] 9.5 Test: missing disk on one site highlighted
+  - [x] 9.6 Test: stateless VM shows "No PVC disks"
+  - [x] 9.7 jest-axe passes on expanded/collapsed states
 
-- [ ] Task 10: Tests — WaveCompositionTree disk composition (AC: #7)
-  - [ ] 10.1 Update `tests/components/WaveCompositionTree.test.tsx`
-  - [ ] 10.2 Test: VG node shows disk list with PVC details
-  - [ ] 10.3 Test: VG node shows site label
-  - [ ] 10.4 Test: backward compat — string[] volumeGroups render as names only
-  - [ ] 10.5 jest-axe passes
+- [x] Task 10: Tests — WaveCompositionTree disk composition (AC: #7)
+  - [x] 10.1 Update `tests/components/WaveCompositionTree.test.tsx`
+  - [x] 10.2 Test: VG node shows disk list with PVC details
+  - [x] 10.3 Test: VG node shows site label
+  - [x] 10.4 Test: backward compat — string[] volumeGroups render as names only
+  - [x] 10.5 jest-axe passes
 
-- [ ] Task 11: Tests — DRPlanDetailPage integration (AC: #7)
-  - [ ] 11.1 Update `tests/components/DRPlanDetailPage.test.tsx`
-  - [ ] 11.2 Test: DiskDisagreementAlert renders when DisksConsistent=False
-  - [ ] 11.3 Test: DRLifecycleDiagram isBlocked when DisksConsistent=False (sites in sync)
-  - [ ] 11.4 Test: both alerts render when both conditions False
+- [x] Task 11: Tests — DRPlanDetailPage integration (AC: #7)
+  - [x] 11.1 Update `tests/components/DRPlanDetailPage.test.tsx`
+  - [x] 11.2 Test: DiskDisagreementAlert renders when DisksConsistent=False
+  - [x] 11.3 Test: DRLifecycleDiagram isBlocked when DisksConsistent=False (sites in sync)
+  - [x] 11.4 Test: both alerts render when both conditions False
 
-- [ ] Task 12: Tests — DRDashboard DisksConsistent (AC: #7)
-  - [ ] 12.1 Update `tests/components/DRDashboard.test.tsx`
-  - [ ] 12.2 Test: warning icon appears for plan with DisksConsistent=False
-  - [ ] 12.3 Test: kebab actions disabled when DisksConsistent=False
-  - [ ] 12.4 jest-axe passes
+- [x] Task 12: Tests — DRDashboard DisksConsistent (AC: #7)
+  - [x] 12.1 Update `tests/components/DRDashboard.test.tsx`
+  - [x] 12.2 Test: warning icon appears for plan with DisksConsistent=False
+  - [x] 12.3 Test: kebab actions disabled when DisksConsistent=False
+  - [x] 12.4 jest-axe passes
+
+### Review Findings
+
+- [x] [Review][Patch] Stateless VMs never surface the required "No PVC disks" state — **Fixed**: show "No PVC disks" inline in Status column; removed dead JSX fragment
+- [x] [Review][Patch] Legacy `string[]` `volumeGroups` are dropped instead of rendering names only — **Fixed**: added `buildLegacyVGNodes()` to render name-only tree items for backward compat
+- [x] [Review][Patch] Volume groups from preflight are repeated under every DR chunk in a wave — **Fixed**: moved VG resolution inside per-chunk loop, each chunk gets only its own VGs
 
 ## Dev Notes
 
@@ -320,10 +326,41 @@ All disk data arrives via existing `useDRPlan()` hook (which watches the DRPlan 
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Opus 4.6
 
 ### Debug Log References
 
+None required.
+
 ### Completion Notes List
 
+- Added `DiscoveredDisk` interface and `disks?: DiscoveredDisk[]` to `DiscoveredVM` (types 1.3-1.5 already existed from story 9.4)
+- Added `disksConsistent` and `diskDiscoveryDelta` fields to `PreflightReport`
+- Added `DisksConsistentStatus` interface and `getDisksConsistent()` utility following the exact `getSitesInSync()` pattern
+- Created `DiskDisagreementAlert` component mirroring `SiteDisagreementAlert` with reason-contextual titles (DiskMismatch/StorageClassMixed/WaitingForDiskDiscovery) and info variant for waiting state
+- Wired `DiskDisagreementAlert` into `DRPlanDetailPage` with extended `isBlocked` and dynamic `blockedTooltip`
+- Extended `SiteDiscoverySection` with per-VM expandable disk rows: toggle button with `aria-expanded`, nested `DiskDetailTable` with cross-site comparison (matches, localOnly, partnerOnly), SC mismatch highlighting (danger), missing disk highlighting (warning), screen reader text
+- Extended `WaveCompositionTree` with VG disk composition nodes: `getPreflightVolumeGroups` reads enriched VGs from preflight chunks, `buildVGDiskNodes` renders "disk-name → pvc-name (pvc-namespace)" under each VG with site label, backward compat for `string[]` via `typeof` guard
+- Extended `DRDashboard` with `disksConsistent` on `EnrichedPlan`, warning icon with tooltip, and extended `isDisabled`/`disabledTooltip` on `DRPlanActions`
+- 26 new tests: 9 DiskDisagreementAlert, 7 SiteDiscoverySection disk expansion, 4 WaveCompositionTree VG disks, 3 DRPlanDetailPage integration, 3 DRDashboard DisksConsistent
+- All 589 console-plugin tests pass (37 suites), 0 regressions, all Go backend tests pass
+- jest-axe accessibility passing on all new component states
+
+### Change Log
+
+- 2026-05-07: Story 9.6 implemented — Console UI disk discovery & validation display (26 new tests, 1 new src file, 6 modified src files, 1 new test file, 4 modified test files)
+
 ### File List
+
+- console-plugin/src/models/types.ts (modified — added DiscoveredDisk, extended DiscoveredVM, extended PreflightReport)
+- console-plugin/src/utils/drPlanUtils.ts (modified — added DisksConsistentStatus + getDisksConsistent)
+- console-plugin/src/components/DRPlanDetail/DiskDisagreementAlert.tsx (new — danger/info alert for DisksConsistent=False)
+- console-plugin/src/components/DRPlanDetail/DRPlanDetailPage.tsx (modified — wired DiskDisagreementAlert, extended isBlocked/blockedTooltip)
+- console-plugin/src/components/DRPlanDetail/SiteDiscoverySection.tsx (modified — expandable disk rows with cross-site comparison)
+- console-plugin/src/components/DRPlanDetail/WaveCompositionTree.tsx (modified — VG disk composition nodes with site label)
+- console-plugin/src/components/DRDashboard/DRDashboard.tsx (modified — DisksConsistent warning icon + extended disabled actions)
+- console-plugin/tests/components/DiskDisagreementAlert.test.tsx (new — 9 tests)
+- console-plugin/tests/components/SiteDiscoverySection.test.tsx (modified — 7 new tests)
+- console-plugin/tests/components/WaveCompositionTree.test.tsx (modified — 4 new tests)
+- console-plugin/tests/components/DRPlanDetailPage.test.tsx (modified — 3 new tests)
+- console-plugin/tests/components/DRDashboard.test.tsx (modified — 3 new tests)

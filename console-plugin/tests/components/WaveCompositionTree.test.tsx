@@ -244,4 +244,91 @@ describe('WaveCompositionTree', () => {
     const results = await axe(container);
     expect(results).toHaveNoViolations();
   });
+
+  describe('VG disk composition', () => {
+    const planWithVGDisks: DRPlan = {
+      ...mockPlanWithWaves,
+      status: {
+        ...mockPlanWithWaves.status!,
+        preflight: {
+          totalVMs: 12,
+          waves: [
+            {
+              waveKey: '1',
+              vmCount: 3,
+              chunks: [
+                {
+                  name: 'chunk-1',
+                  vmCount: 3,
+                  vmNames: ['erp-db-1', 'erp-db-2', 'erp-db-3'],
+                  volumeGroups: [
+                    {
+                      name: 'vg-db',
+                      site: 'dc1-prod',
+                      disks: [
+                        { name: 'disk-root', pvcName: 'pvc-root', pvcNamespace: 'erp-db' },
+                        { name: 'disk-data', pvcName: 'pvc-data', pvcNamespace: 'erp-db' },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    };
+
+    it('VG node shows disk list with PVC details when expanded', () => {
+      render(<WaveCompositionTree plan={planWithVGDisks} />);
+      const wave1Button = screen.getAllByRole('treeitem')[0].querySelector('button');
+      fireEvent.click(wave1Button!);
+      expect(screen.getByText('vg-db')).toBeInTheDocument();
+      expect(screen.getByText('2 disks')).toBeInTheDocument();
+    });
+
+    it('VG node shows site label', () => {
+      render(<WaveCompositionTree plan={planWithVGDisks} />);
+      const wave1Button = screen.getAllByRole('treeitem')[0].querySelector('button');
+      fireEvent.click(wave1Button!);
+      expect(screen.getByText('dc1-prod')).toBeInTheDocument();
+    });
+
+    it('backward compat — string[] volumeGroups render as names only (no disk nodes)', () => {
+      const planStringVGs: DRPlan = {
+        ...mockPlanWithWaves,
+        status: {
+          ...mockPlanWithWaves.status!,
+          preflight: {
+            totalVMs: 12,
+            waves: [
+              {
+                waveKey: '1',
+                vmCount: 3,
+                chunks: [
+                  {
+                    name: 'chunk-1',
+                    vmCount: 3,
+                    vmNames: ['erp-db-1', 'erp-db-2', 'erp-db-3'],
+                    volumeGroups: ['vg-string-1' as unknown as import('../../src/models/types').PreflightVolumeGroup],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      };
+      render(<WaveCompositionTree plan={planStringVGs} />);
+      const wave1Button = screen.getAllByRole('treeitem')[0].querySelector('button');
+      fireEvent.click(wave1Button!);
+      expect(screen.getByText('vg-string-1')).toBeInTheDocument();
+      expect(screen.queryByText(/disk/i)).not.toBeInTheDocument();
+    });
+
+    it('has no accessibility violations with VG disk nodes', async () => {
+      const { container } = render(<WaveCompositionTree plan={planWithVGDisks} />);
+      const results = await axe(container);
+      expect(results).toHaveNoViolations();
+    });
+  });
 });

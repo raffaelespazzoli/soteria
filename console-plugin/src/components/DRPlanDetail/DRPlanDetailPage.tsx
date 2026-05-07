@@ -14,6 +14,7 @@ import PlanHeader from './PlanHeader';
 import DRLifecycleDiagram from './DRLifecycleDiagram';
 import TransitionProgressBanner from './TransitionProgressBanner';
 import { SiteDisagreementAlert } from './SiteDisagreementAlert';
+import { DiskDisagreementAlert } from './DiskDisagreementAlert';
 import { WaveCompositionTree } from './WaveCompositionTree';
 import { ExecutionHistoryTable } from './ExecutionHistoryTable';
 import { PlanConfiguration } from './PlanConfiguration';
@@ -23,7 +24,7 @@ import { useCreateDRExecution } from '../../hooks/useCreateDRExecution';
 import { useExecutionNotifications } from '../../hooks/useExecutionNotifications';
 import { getPreflightData } from '../../hooks/usePreflightData';
 import { DRPlan } from '../../models/types';
-import { getEffectivePhase, getSitesInSync } from '../../utils/drPlanUtils';
+import { getEffectivePhase, getSitesInSync, getDisksConsistent } from '../../utils/drPlanUtils';
 import { useRouteParamName } from '../../hooks/useRouteParamName';
 import { WaveProgress } from './DRLifecycleDiagram';
 
@@ -47,6 +48,7 @@ const DRPlanDetailPage: React.FC<DRPlanDetailPageProps> = (props) => {
 
   const effectivePhase = plan ? getEffectivePhase(plan) : null;
   const sitesInSync = plan ? getSitesInSync(plan) : { inSync: true };
+  const disksConsistent = plan ? getDisksConsistent(plan) : { consistent: true };
   const restPhase = plan?.status?.phase;
   const realActiveExec = plan?.status?.activeExecution;
   const effectiveOptimisticExec = realActiveExec ? null : optimisticExec;
@@ -122,6 +124,9 @@ const DRPlanDetailPage: React.FC<DRPlanDetailPageProps> = (props) => {
                 {!sitesInSync.inSync && (
                   <SiteDisagreementAlert plan={plan} onSwitchToConfig={handleSwitchToConfig} />
                 )}
+                {!disksConsistent.consistent && (
+                  <DiskDisagreementAlert plan={plan} onSwitchToConfig={handleSwitchToConfig} />
+                )}
               </div>
               <PlanHeader plan={plan} />
               {isInTransition && (
@@ -131,8 +136,14 @@ const DRPlanDetailPage: React.FC<DRPlanDetailPageProps> = (props) => {
                 plan={plan}
                 onAction={handleAction}
                 waveProgress={isInTransition ? waveProgress : null}
-                isBlocked={!sitesInSync.inSync}
-                blockedTooltip="Blocked: sites do not agree on VM inventory"
+                isBlocked={!sitesInSync.inSync || !disksConsistent.consistent}
+                blockedTooltip={
+                  !sitesInSync.inSync
+                    ? 'Blocked: sites do not agree on VM inventory'
+                    : !disksConsistent.consistent
+                      ? 'Blocked: disk topology inconsistent across sites'
+                      : undefined
+                }
               />
             </Tab>
             <Tab eventKey={1} title={<TabTitleText>Waves</TabTitleText>}>

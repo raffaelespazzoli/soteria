@@ -105,9 +105,16 @@ export interface WaveInfo {
   groups?: VolumeGroupInfo[];
 }
 
+export interface DiscoveredDisk {
+  name: string;
+  pvcName: string;
+  storageClass: string;
+}
+
 export interface DiscoveredVM {
   name: string;
   namespace: string;
+  disks?: DiscoveredDisk[];
 }
 
 export interface VolumeGroupInfo {
@@ -137,6 +144,8 @@ export interface PreflightReport {
   generatedAt?: string;
   sitesInSync?: boolean;
   siteDiscoveryDelta?: string;
+  disksConsistent?: boolean;
+  diskDiscoveryDelta?: string;
 }
 
 export interface PreflightWave {

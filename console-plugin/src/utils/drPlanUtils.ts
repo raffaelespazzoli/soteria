@@ -121,6 +121,26 @@ export function getSitesInSync(plan: DRPlan): SitesInSyncStatus {
   return { inSync: false, reason: condition.reason, message: condition.message };
 }
 
+// --- DisksConsistent helpers ---
+
+export interface DisksConsistentStatus {
+  consistent: boolean;
+  reason?: string;
+  message?: string;
+}
+
+/**
+ * Extracts the DisksConsistent status from the DRPlan's conditions.
+ * Returns { consistent: true } when the condition is absent (backward compat —
+ * plans without the condition are not blocked).
+ */
+export function getDisksConsistent(plan: DRPlan): DisksConsistentStatus {
+  const condition = plan.status?.conditions?.find((c) => c.type === 'DisksConsistent');
+  if (!condition) return { consistent: true };
+  if (condition.status === 'True') return { consistent: true };
+  return { consistent: false, reason: condition.reason, message: condition.message };
+}
+
 export interface SiteDiscoveryDelta {
   primaryOnly: string[];
   secondaryOnly: string[];

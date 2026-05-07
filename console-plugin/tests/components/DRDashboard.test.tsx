@@ -208,4 +208,62 @@ describe('DRDashboard', () => {
       expect(results).toHaveNoViolations();
     });
   });
+
+  describe('DisksConsistent warning indicator', () => {
+    const plansWithDisksMismatch: DRPlan[] = [
+      {
+        apiVersion: 'soteria.io/v1alpha1',
+        kind: 'DRPlan',
+        metadata: { name: 'plan-disk-bad', uid: '4', creationTimestamp: '' },
+        spec: { maxConcurrentFailovers: 1, primarySite: 'site-a', secondarySite: 'site-b' },
+        status: {
+          phase: 'SteadyState',
+          activeSite: 'site-a',
+          conditions: [
+            { type: 'ReplicationHealthy', status: 'True', message: 'RPO: 12s' },
+            { type: 'SitesInSync', status: 'True', reason: 'VMsAgreed' },
+            { type: 'DisksConsistent', status: 'False', reason: 'DiskMismatch', message: 'disk count differs' },
+          ],
+        },
+      },
+    ];
+
+    beforeEach(() => {
+      const { useK8sWatchResource } = jest.requireMock('@openshift-console/dynamic-plugin-sdk');
+      useK8sWatchResource.mockImplementation(
+        (resource: { groupVersionKind?: { kind?: string } }) => {
+          if (resource.groupVersionKind?.kind === 'DRExecution') return [[], true, null];
+          return [plansWithDisksMismatch, true, null];
+        },
+      );
+    });
+
+    afterEach(() => {
+      const { useK8sWatchResource } = jest.requireMock('@openshift-console/dynamic-plugin-sdk');
+      useK8sWatchResource.mockImplementation(
+        (resource: { groupVersionKind?: { kind?: string } }) => {
+          if (resource.groupVersionKind?.kind === 'DRExecution')
+            return [mockExecutions, true, null];
+          return [mockPlans, true, null];
+        },
+      );
+    });
+
+    it('shows warning icon for plan with DisksConsistent=False', () => {
+      render(<DRDashboard />);
+      expect(screen.getByLabelText('Disk topology inconsistent')).toBeInTheDocument();
+    });
+
+    it('has disabled kebab menu for plan with DisksConsistent=False', () => {
+      render(<DRDashboard />);
+      const kebab = screen.getByRole('button', { name: /actions for plan-disk-bad/i });
+      expect(kebab).toBeDisabled();
+    });
+
+    it('has no accessibility violations when disk topology is inconsistent', async () => {
+      const { container } = render(<DRDashboard />);
+      const results = await axe(container);
+      expect(results).toHaveNoViolations();
+    });
+  });
 });

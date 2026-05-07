@@ -9,7 +9,7 @@ import {
   SyncAltIcon,
 } from '@patternfly/react-icons';
 import ReplicationHealthIndicator from '../shared/ReplicationHealthIndicator';
-import { DRPlan, DiscoveredVM, VolumeGroupInfo, VolumeGroupHealth } from '../../models/types';
+import { DRPlan, DiscoveredVM, VolumeGroupInfo, VolumeGroupHealth, PreflightVolumeGroup } from '../../models/types';
 import { ReplicationHealthStatus } from '../../utils/drPlanUtils';
 
 function getVGHealth(
@@ -181,25 +181,98 @@ function buildDiscoveredVMNodes(
   });
 }
 
+interface ChunkVolumeGroups {
+  enriched: PreflightVolumeGroup[];
+  legacyNames: string[];
+}
+
+function getChunkVolumeGroups(chunk: { volumeGroups?: PreflightVolumeGroup[] }): ChunkVolumeGroups {
+  const vgs = chunk.volumeGroups ?? [];
+  if (vgs.length === 0) return { enriched: [], legacyNames: [] };
+  if (typeof (vgs[0] as unknown) === 'string') {
+    return { enriched: [], legacyNames: vgs as unknown as string[] };
+  }
+  return { enriched: vgs as PreflightVolumeGroup[], legacyNames: [] };
+}
+
+function buildVGDiskNodes(vg: PreflightVolumeGroup): TreeViewDataItem[] {
+  if (!vg.disks?.length) return [];
+  return vg.disks.map((disk) => ({
+    name: (
+      <span style={{ fontSize: 'var(--pf-t--global--font--size--body--sm, var(--pf-v5-global--FontSize--sm))' }}>
+        {disk.name} → {disk.pvcName ?? 'N/A'} ({disk.pvcNamespace ?? 'N/A'})
+      </span>
+    ),
+    id: `vg-disk-${vg.name}-${disk.name}`,
+  }));
+}
+
+function buildLegacyVGNodes(names: string[], waveKey: string): TreeViewDataItem[] {
+  return names.map((name) => ({
+    name: (
+      <span style={{ fontWeight: 600 }}>{name}</span>
+    ),
+    id: `vg-legacy-${waveKey}-${name}`,
+  }));
+}
+
+function buildVGNodes(
+  preflightVGs: PreflightVolumeGroup[],
+  waveKey: string,
+): TreeViewDataItem[] {
+  if (preflightVGs.length === 0) return [];
+  return preflightVGs.map((vg) => ({
+    name: (
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--pf-t--global--spacer--sm)' }}>
+        <span style={{ fontWeight: 600 }}>{vg.name}</span>
+        {vg.site && (
+          <Label isCompact color="blue">{vg.site}</Label>
+        )}
+        <span style={{ fontSize: 'var(--pf-t--global--font--size--body--sm, var(--pf-v5-global--FontSize--sm))', color: 'var(--pf-t--global--text--color--subtle)' }}>
+          {vg.disks?.length ?? 0} disk{(vg.disks?.length ?? 0) !== 1 ? 's' : ''}
+        </span>
+      </span>
+    ),
+    id: `vg-${waveKey}-${vg.name}-${vg.site ?? ''}`,
+    children: buildVGDiskNodes(vg),
+    defaultExpanded: false,
+  }));
+}
+
 function buildDRGroupChunks(
   groups: VolumeGroupInfo[],
   maxConcurrent: number,
   plan: DRPlan,
   healthData: VolumeGroupHealth[],
+  waveKey?: string,
 ): TreeViewDataItem[] {
   if (!groups.length) return [];
   const chunkSize = maxConcurrent || groups.length;
   const chunks: TreeViewDataItem[] = [];
 
+  const preflightWave = waveKey
+    ? plan.status?.preflight?.waves?.find((w) => w.waveKey === waveKey)
+    : undefined;
+  const preflightChunks = preflightWave?.chunks ?? [];
+
   for (let i = 0; i < groups.length; i += chunkSize) {
     const chunk = groups.slice(i, i + chunkSize);
     const chunkNum = Math.floor(i / chunkSize) + 1;
+    const vmNodes = chunk.flatMap((g) => buildVMNodes(g, plan, healthData));
+
+    const pfChunk = preflightChunks[Math.floor(i / chunkSize)];
+    const chunkVGs = pfChunk ? getChunkVolumeGroups(pfChunk) : { enriched: [], legacyNames: [] };
+    const chunkVGNodes = [
+      ...buildVGNodes(chunkVGs.enriched, waveKey ?? ''),
+      ...buildLegacyVGNodes(chunkVGs.legacyNames, waveKey ?? ''),
+    ];
+
     chunks.push({
       name: (
         <span>DRGroup chunk {chunkNum} (maxConcurrent: {chunkSize})</span>
       ),
       id: `chunk-${i}`,
-      children: chunk.flatMap((g) => buildVMNodes(g, plan, healthData)),
+      children: [...vmNodes, ...chunkVGNodes],
       defaultExpanded: true,
     });
   }
@@ -220,7 +293,7 @@ export const WaveCompositionTree: React.FC<WaveCompositionTreeProps> = ({ plan }
       const groups = wave.groups ?? [];
       const vmCount = groups.reduce((sum, g) => sum + (g.vmNames?.length ?? 0), 0) || wave.vms?.length || 0;
       const children = groups.length > 0
-        ? buildDRGroupChunks(groups, maxConcurrent, plan, healthData)
+        ? buildDRGroupChunks(groups, maxConcurrent, plan, healthData, wave.waveKey)
         : buildDiscoveredVMNodes(wave.vms ?? [], plan, healthData);
       const aggHealth = groups.length > 0 ? getAggregateHealth(groups, healthData) : null;
       const waveLabel = `Wave ${idx + 1}, ${vmCount} VMs${aggHealth ? `, replication ${aggHealth.toLowerCase()}` : ''}`;
