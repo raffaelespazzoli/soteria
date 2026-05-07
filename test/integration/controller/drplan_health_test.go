@@ -82,19 +82,18 @@ func TestDRPlanReconciler_ReplicationHealthy_NotReplicatingIsNeutral(t *testing.
 
 	createDRPlan(t, ctx, "plan-repl-cond")
 
-	// The noop driver returns HealthNotReplicating for NonReplicated VGs
-	// (no SetSource/SetTarget has been called). NotReplicating is treated as
-	// a neutral status — the aggregate condition is True/AllHealthy because
-	// the absence of replication is not a degradation. Source/Target happy
-	// path is covered by unit tests with the programmable fake driver.
+	// The noop driver creates VGs with RoleSource (the default initial
+	// state after CreateVolumeGroup), so GetReplicationStatus returns
+	// HealthHealthy. The aggregate condition is True/AllHealthy.
+	// NotReplicating scenarios are covered by noop driver unit tests.
 	plan, err := waitForReplicationHealth(ctx, "plan-repl-cond", 1, testTimeout)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	h := plan.Status.ReplicationHealth[0]
-	if h.Health != soteriav1alpha1.HealthStatusNotReplicating {
-		t.Errorf("Health = %q, want NotReplicating (noop NonReplicated VG)", h.Health)
+	if h.Health != soteriav1alpha1.HealthStatusHealthy {
+		t.Errorf("Health = %q, want Healthy (noop Source VG)", h.Health)
 	}
 
 	replCond := findTestCondition(plan.Status.Conditions, "ReplicationHealthy")
