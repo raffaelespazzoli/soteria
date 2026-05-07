@@ -185,8 +185,8 @@ func TestComposeReport(t *testing.T) {
 					}
 				}
 				chunk := r.Waves[0].Chunks[0]
-				if len(chunk.VolumeGroups) != 1 || chunk.VolumeGroups[0] != "ns-ns1" {
-					t.Errorf("Chunk VolumeGroups = %v, want [ns-ns1]", chunk.VolumeGroups)
+				if len(chunk.VolumeGroups) != 1 || chunk.VolumeGroups[0].Name != "ns-ns1" {
+					t.Errorf("Chunk VolumeGroups[0].Name = %v, want ns-ns1", chunk.VolumeGroups)
 				}
 			},
 		},
@@ -439,6 +439,336 @@ func TestCollectWarnings(t *testing.T) {
 					len(warnings), tt.wantWarnings, warnings)
 			}
 		})
+	}
+}
+
+func TestComposeReport_VGDiskEnrichment_VMLevel(t *testing.T) {
+	now := metav1.Now()
+	input := CompositionInput{
+		Plan: &soteriav1alpha1.DRPlan{},
+		DiscoveryResult: &engine.DiscoveryResult{
+			TotalVMs: 1,
+			Waves: []engine.WaveGroup{{
+				WaveKey: "1",
+				VMs:     []engine.VMReference{{Name: "web01", Namespace: "default"}},
+			}},
+		},
+		ConsistencyResult: &engine.ConsistencyResult{
+			VolumeGroups: []soteriav1alpha1.VolumeGroupInfo{
+				{Name: "vm-default-web01", Namespace: "default", ConsistencyLevel: soteriav1alpha1.ConsistencyLevelVM, VMNames: []string{"web01"}},
+			},
+		},
+		ChunkResult: &engine.ChunkResult{
+			Waves: []engine.WaveChunks{{
+				WaveKey: "1",
+				Chunks: []engine.DRGroupChunk{{
+					Name: "wave-1-group-0",
+					VMs:  []engine.VMReference{{Name: "web01", Namespace: "default"}},
+					VolumeGroups: []soteriav1alpha1.VolumeGroupInfo{
+						{Name: "vm-default-web01", Namespace: "default", ConsistencyLevel: soteriav1alpha1.ConsistencyLevelVM, VMNames: []string{"web01"}},
+					},
+				}},
+			}},
+		},
+		StorageBackends: map[string]string{"default/web01": "odf"},
+		Waves: []soteriav1alpha1.WaveInfo{{
+			WaveKey: "1",
+			VMs: []soteriav1alpha1.DiscoveredVM{{
+				Name: "web01", Namespace: "default",
+				Disks: []soteriav1alpha1.DiscoveredDisk{
+					{Name: "rootdisk", PVCName: "web01-root", StorageClass: "ocs-storagecluster-ceph-rbd"},
+					{Name: "datadisk", PVCName: "web01-data", StorageClass: "ocs-storagecluster-ceph-rbd"},
+				},
+			}},
+		}},
+		LocalSite: "dc1",
+	}
+
+	report := ComposeReport(input, now)
+	vg := report.Waves[0].Chunks[0].VolumeGroups[0]
+	assertVG(t, vg, "vm-default-web01", "dc1", 2)
+	assertDisk(t, vg.Disks[0], "datadisk", "web01-data", "default")
+	assertDisk(t, vg.Disks[1], "rootdisk", "web01-root", "default")
+}
+
+func TestComposeReport_VGDiskEnrichment_NamespaceLevel(t *testing.T) {
+	now := metav1.Now()
+	input := CompositionInput{
+		Plan: &soteriav1alpha1.DRPlan{},
+		DiscoveryResult: &engine.DiscoveryResult{
+			TotalVMs: 3,
+			Waves: []engine.WaveGroup{{
+				WaveKey: "1",
+				VMs: []engine.VMReference{
+					{Name: "db01", Namespace: "erp"},
+					{Name: "app01", Namespace: "erp"},
+					{Name: "cache01", Namespace: "erp"},
+				},
+			}},
+		},
+		ConsistencyResult: &engine.ConsistencyResult{
+			VolumeGroups: []soteriav1alpha1.VolumeGroupInfo{
+				{Name: "ns-erp", Namespace: "erp", ConsistencyLevel: soteriav1alpha1.ConsistencyLevelNamespace, VMNames: []string{"db01", "app01", "cache01"}},
+			},
+		},
+		ChunkResult: &engine.ChunkResult{
+			Waves: []engine.WaveChunks{{
+				WaveKey: "1",
+				Chunks: []engine.DRGroupChunk{{
+					Name: "wave-1-group-0",
+					VMs: []engine.VMReference{
+						{Name: "db01", Namespace: "erp"},
+						{Name: "app01", Namespace: "erp"},
+						{Name: "cache01", Namespace: "erp"},
+					},
+					VolumeGroups: []soteriav1alpha1.VolumeGroupInfo{
+						{Name: "ns-erp", Namespace: "erp", ConsistencyLevel: soteriav1alpha1.ConsistencyLevelNamespace, VMNames: []string{"db01", "app01", "cache01"}},
+					},
+				}},
+			}},
+		},
+		StorageBackends: map[string]string{"erp/db01": "odf", "erp/app01": "odf", "erp/cache01": "odf"},
+		Waves: []soteriav1alpha1.WaveInfo{{
+			WaveKey: "1",
+			VMs: []soteriav1alpha1.DiscoveredVM{
+				{Name: "db01", Namespace: "erp", Disks: []soteriav1alpha1.DiscoveredDisk{
+					{Name: "data", PVCName: "db01-data"},
+					{Name: "wal", PVCName: "db01-wal"},
+				}},
+				{Name: "app01", Namespace: "erp", Disks: []soteriav1alpha1.DiscoveredDisk{
+					{Name: "root", PVCName: "app01-root"},
+				}},
+				{Name: "cache01", Namespace: "erp", Disks: []soteriav1alpha1.DiscoveredDisk{
+					{Name: "root", PVCName: "cache01-root"},
+				}},
+			},
+		}},
+		LocalSite: "dc2",
+	}
+
+	report := ComposeReport(input, now)
+	vg := report.Waves[0].Chunks[0].VolumeGroups[0]
+	// VMs sorted: app01, cache01, db01
+	assertVG(t, vg, "ns-erp", "dc2", 4)
+	assertDisk(t, vg.Disks[0], "root", "app01-root", "erp")
+	assertDisk(t, vg.Disks[1], "root", "cache01-root", "erp")
+	assertDisk(t, vg.Disks[2], "data", "db01-data", "erp")
+	assertDisk(t, vg.Disks[3], "wal", "db01-wal", "erp")
+}
+
+func TestComposeReport_VGDiskEnrichment_StatelessVM(t *testing.T) {
+	now := metav1.Now()
+	input := CompositionInput{
+		Plan: &soteriav1alpha1.DRPlan{},
+		DiscoveryResult: &engine.DiscoveryResult{
+			TotalVMs: 1,
+			Waves: []engine.WaveGroup{{
+				WaveKey: "1",
+				VMs:     []engine.VMReference{{Name: "stateless", Namespace: "default"}},
+			}},
+		},
+		ConsistencyResult: &engine.ConsistencyResult{
+			VolumeGroups: []soteriav1alpha1.VolumeGroupInfo{
+				{Name: "vm-default-stateless", Namespace: "default", ConsistencyLevel: soteriav1alpha1.ConsistencyLevelVM, VMNames: []string{"stateless"}},
+			},
+		},
+		ChunkResult: &engine.ChunkResult{
+			Waves: []engine.WaveChunks{{
+				WaveKey: "1",
+				Chunks: []engine.DRGroupChunk{{
+					Name: "wave-1-group-0",
+					VMs:  []engine.VMReference{{Name: "stateless", Namespace: "default"}},
+					VolumeGroups: []soteriav1alpha1.VolumeGroupInfo{
+						{Name: "vm-default-stateless", Namespace: "default", ConsistencyLevel: soteriav1alpha1.ConsistencyLevelVM, VMNames: []string{"stateless"}},
+					},
+				}},
+			}},
+		},
+		StorageBackends: map[string]string{"default/stateless": "none"},
+		Waves: []soteriav1alpha1.WaveInfo{{
+			WaveKey: "1",
+			VMs:     []soteriav1alpha1.DiscoveredVM{{Name: "stateless", Namespace: "default", Disks: nil}},
+		}},
+		LocalSite: "dc1",
+	}
+
+	report := ComposeReport(input, now)
+	vg := report.Waves[0].Chunks[0].VolumeGroups[0]
+	assertVG(t, vg, "vm-default-stateless", "dc1", 0)
+}
+
+func TestComposeReport_VGDiskEnrichment_MultipleVGs(t *testing.T) {
+	now := metav1.Now()
+	input := CompositionInput{
+		Plan: &soteriav1alpha1.DRPlan{},
+		DiscoveryResult: &engine.DiscoveryResult{
+			TotalVMs: 2,
+			Waves: []engine.WaveGroup{{
+				WaveKey: "1",
+				VMs: []engine.VMReference{
+					{Name: "web01", Namespace: "default"},
+					{Name: "web02", Namespace: "default"},
+				},
+			}},
+		},
+		ConsistencyResult: &engine.ConsistencyResult{
+			VolumeGroups: []soteriav1alpha1.VolumeGroupInfo{
+				{Name: "vm-default-web01", Namespace: "default", ConsistencyLevel: soteriav1alpha1.ConsistencyLevelVM, VMNames: []string{"web01"}},
+				{Name: "vm-default-web02", Namespace: "default", ConsistencyLevel: soteriav1alpha1.ConsistencyLevelVM, VMNames: []string{"web02"}},
+			},
+		},
+		ChunkResult: &engine.ChunkResult{
+			Waves: []engine.WaveChunks{{
+				WaveKey: "1",
+				Chunks: []engine.DRGroupChunk{{
+					Name: "wave-1-group-0",
+					VMs: []engine.VMReference{
+						{Name: "web01", Namespace: "default"},
+						{Name: "web02", Namespace: "default"},
+					},
+					VolumeGroups: []soteriav1alpha1.VolumeGroupInfo{
+						{Name: "vm-default-web01", Namespace: "default", ConsistencyLevel: soteriav1alpha1.ConsistencyLevelVM, VMNames: []string{"web01"}},
+						{Name: "vm-default-web02", Namespace: "default", ConsistencyLevel: soteriav1alpha1.ConsistencyLevelVM, VMNames: []string{"web02"}},
+					},
+				}},
+			}},
+		},
+		StorageBackends: map[string]string{"default/web01": "odf", "default/web02": "odf"},
+		Waves: []soteriav1alpha1.WaveInfo{{
+			WaveKey: "1",
+			VMs: []soteriav1alpha1.DiscoveredVM{
+				{Name: "web01", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{
+					{Name: "root", PVCName: "web01-root"},
+				}},
+				{Name: "web02", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{
+					{Name: "root", PVCName: "web02-root"},
+					{Name: "data", PVCName: "web02-data"},
+				}},
+			},
+		}},
+		LocalSite: "dc1",
+	}
+
+	report := ComposeReport(input, now)
+	vgs := report.Waves[0].Chunks[0].VolumeGroups
+	if len(vgs) != 2 {
+		t.Fatalf("VolumeGroups count = %d, want 2", len(vgs))
+	}
+	assertVG(t, vgs[0], "vm-default-web01", "dc1", 1)
+	assertDisk(t, vgs[0].Disks[0], "root", "web01-root", "default")
+	assertVG(t, vgs[1], "vm-default-web02", "dc1", 2)
+	assertDisk(t, vgs[1].Disks[0], "data", "web02-data", "default")
+	assertDisk(t, vgs[1].Disks[1], "root", "web02-root", "default")
+}
+
+func TestComposeReport_VGDiskEnrichment_MissingPVC(t *testing.T) {
+	now := metav1.Now()
+	input := CompositionInput{
+		Plan: &soteriav1alpha1.DRPlan{},
+		DiscoveryResult: &engine.DiscoveryResult{
+			TotalVMs: 1,
+			Waves: []engine.WaveGroup{{
+				WaveKey: "1",
+				VMs:     []engine.VMReference{{Name: "pending", Namespace: "default"}},
+			}},
+		},
+		ConsistencyResult: &engine.ConsistencyResult{
+			VolumeGroups: []soteriav1alpha1.VolumeGroupInfo{
+				{Name: "vm-default-pending", Namespace: "default", ConsistencyLevel: soteriav1alpha1.ConsistencyLevelVM, VMNames: []string{"pending"}},
+			},
+		},
+		ChunkResult: &engine.ChunkResult{
+			Waves: []engine.WaveChunks{{
+				WaveKey: "1",
+				Chunks: []engine.DRGroupChunk{{
+					Name: "wave-1-group-0",
+					VMs:  []engine.VMReference{{Name: "pending", Namespace: "default"}},
+					VolumeGroups: []soteriav1alpha1.VolumeGroupInfo{
+						{Name: "vm-default-pending", Namespace: "default", ConsistencyLevel: soteriav1alpha1.ConsistencyLevelVM, VMNames: []string{"pending"}},
+					},
+				}},
+			}},
+		},
+		StorageBackends: map[string]string{"default/pending": "odf"},
+		Waves: []soteriav1alpha1.WaveInfo{{
+			WaveKey: "1",
+			VMs: []soteriav1alpha1.DiscoveredVM{{
+				Name: "pending", Namespace: "default",
+				Disks: []soteriav1alpha1.DiscoveredDisk{
+					{Name: "datavol", PVCName: "", StorageClass: ""},
+				},
+			}},
+		}},
+		LocalSite: "dc1",
+	}
+
+	report := ComposeReport(input, now)
+	vg := report.Waves[0].Chunks[0].VolumeGroups[0]
+	assertVG(t, vg, "vm-default-pending", "dc1", 1)
+	assertDisk(t, vg.Disks[0], "datavol", "", "default")
+}
+
+func TestComposeReport_VGDiskEnrichment_NoWaves(t *testing.T) {
+	now := metav1.Now()
+	input := CompositionInput{
+		Plan: &soteriav1alpha1.DRPlan{},
+		DiscoveryResult: &engine.DiscoveryResult{
+			TotalVMs: 1,
+			Waves: []engine.WaveGroup{{
+				WaveKey: "1",
+				VMs:     []engine.VMReference{{Name: "vm1", Namespace: "ns1"}},
+			}},
+		},
+		ConsistencyResult: &engine.ConsistencyResult{
+			VolumeGroups: []soteriav1alpha1.VolumeGroupInfo{
+				{Name: "vm-ns1-vm1", Namespace: "ns1", ConsistencyLevel: soteriav1alpha1.ConsistencyLevelVM, VMNames: []string{"vm1"}},
+			},
+		},
+		ChunkResult: &engine.ChunkResult{
+			Waves: []engine.WaveChunks{{
+				WaveKey: "1",
+				Chunks: []engine.DRGroupChunk{{
+					Name: "wave-1-group-0",
+					VMs:  []engine.VMReference{{Name: "vm1", Namespace: "ns1"}},
+					VolumeGroups: []soteriav1alpha1.VolumeGroupInfo{
+						{Name: "vm-ns1-vm1", Namespace: "ns1", ConsistencyLevel: soteriav1alpha1.ConsistencyLevelVM, VMNames: []string{"vm1"}},
+					},
+				}},
+			}},
+		},
+		StorageBackends: map[string]string{"ns1/vm1": "odf"},
+		Waves:           nil,
+		LocalSite:       "",
+	}
+
+	report := ComposeReport(input, now)
+	vg := report.Waves[0].Chunks[0].VolumeGroups[0]
+	assertVG(t, vg, "vm-ns1-vm1", "", 0)
+}
+
+func assertVG(t *testing.T, vg soteriav1alpha1.PreflightVolumeGroup, wantName, wantSite string, wantDisks int) {
+	t.Helper()
+	if vg.Name != wantName {
+		t.Errorf("VG.Name = %q, want %q", vg.Name, wantName)
+	}
+	if vg.Site != wantSite {
+		t.Errorf("VG.Site = %q, want %q", vg.Site, wantSite)
+	}
+	if len(vg.Disks) != wantDisks {
+		t.Fatalf("VG.Disks count = %d, want %d", len(vg.Disks), wantDisks)
+	}
+}
+
+func assertDisk(t *testing.T, d soteriav1alpha1.VolumeGroupDisk, wantName, wantPVC, wantNS string) {
+	t.Helper()
+	if d.Name != wantName {
+		t.Errorf("Disk.Name = %q, want %q", d.Name, wantName)
+	}
+	if d.PVCName != wantPVC {
+		t.Errorf("Disk.PVCName = %q, want %q", d.PVCName, wantPVC)
+	}
+	if d.PVCNamespace != wantNS {
+		t.Errorf("Disk.PVCNamespace = %q, want %q", d.PVCNamespace, wantNS)
 	}
 }
 

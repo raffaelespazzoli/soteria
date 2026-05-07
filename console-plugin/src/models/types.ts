@@ -154,11 +154,23 @@ export interface PreflightVM {
   volumeGroupName: string;
 }
 
+export interface VolumeGroupDisk {
+  name: string;
+  pvcName?: string;
+  pvcNamespace?: string;
+}
+
+export interface PreflightVolumeGroup {
+  name: string;
+  site?: string;
+  disks?: VolumeGroupDisk[];
+}
+
 export interface PreflightChunk {
   name: string;
   vmCount: number;
   vmNames?: string[];
-  volumeGroups?: string[];
+  volumeGroups?: PreflightVolumeGroup[];
 }
 
 // --- DRExecution ---

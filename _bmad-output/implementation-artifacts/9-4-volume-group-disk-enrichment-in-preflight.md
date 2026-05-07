@@ -1,6 +1,6 @@
 # Story 9.4: Volume Group Disk Enrichment in Preflight
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -24,42 +24,42 @@ So that I can verify the storage composition of each volume group before executi
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Add VolumeGroupDisk and PreflightVolumeGroup API types (AC: #1)
-  - [ ] 1.1 Add `VolumeGroupDisk` struct to `pkg/apis/soteria.io/v1alpha1/types.go` with fields: `Name string`, `PVCName string` (omitempty), `PVCNamespace string` (omitempty)
-  - [ ] 1.2 Add `PreflightVolumeGroup` struct with fields: `Name string`, `Site string` (omitempty), `Disks []VolumeGroupDisk` (omitempty, +listType=atomic)
-  - [ ] 1.3 Change `PreflightChunk.VolumeGroups` from `[]string` to `[]PreflightVolumeGroup`
-  - [ ] 1.4 Run `make manifests generate` to regenerate deepcopy and OpenAPI
+- [x] Task 1: Add VolumeGroupDisk and PreflightVolumeGroup API types (AC: #1)
+  - [x] 1.1 Add `VolumeGroupDisk` struct to `pkg/apis/soteria.io/v1alpha1/types.go` with fields: `Name string`, `PVCName string` (omitempty), `PVCNamespace string` (omitempty)
+  - [x] 1.2 Add `PreflightVolumeGroup` struct with fields: `Name string`, `Site string` (omitempty), `Disks []VolumeGroupDisk` (omitempty, +listType=atomic)
+  - [x] 1.3 Change `PreflightChunk.VolumeGroups` from `[]string` to `[]PreflightVolumeGroup`
+  - [x] 1.4 Run `make manifests generate` to regenerate deepcopy and OpenAPI
 
-- [ ] Task 2: Extend CompositionInput with wave/site data (AC: #4)
-  - [ ] 2.1 Add `Waves []soteriav1alpha1.WaveInfo` field to `CompositionInput` in `internal/preflight/checks.go`
-  - [ ] 2.2 Add `LocalSite string` field to `CompositionInput`
-  - [ ] 2.3 In `composePreflightReport` (reconciler.go), populate `input.Waves` with the freshly-built waves and `input.LocalSite` with `r.LocalSite`
+- [x] Task 2: Extend CompositionInput with wave/site data (AC: #4)
+  - [x] 2.1 Add `Waves []soteriav1alpha1.WaveInfo` field to `CompositionInput` in `internal/preflight/checks.go`
+  - [x] 2.2 Add `LocalSite string` field to `CompositionInput`
+  - [x] 2.3 In `composePreflightReport` (reconciler.go), populate `input.Waves` with the freshly-built waves and `input.LocalSite` with `r.LocalSite`
 
-- [ ] Task 3: Enrich PreflightVolumeGroup entries in ComposeReport (AC: #2, #3, #4)
-  - [ ] 3.1 In `ComposeReport` (`internal/preflight/checks.go`), build a VM lookup map from `input.Waves`: key = `namespace/name` → `DiscoveredVM`
-  - [ ] 3.2 Replace the current `pc.VolumeGroups = append(pc.VolumeGroups, vg.Name)` loop with enriched PreflightVolumeGroup construction
-  - [ ] 3.3 For each VG in a chunk, iterate VMNames sorted alphabetically, look up each VM's DiscoveredDisk data, build VolumeGroupDisk entries (name from DiscoveredDisk.Name, pvcName from DiscoveredDisk.PVCName, pvcNamespace from VG.Namespace)
-  - [ ] 3.4 Sort disks within each PreflightVolumeGroup by VM name then disk name for deterministic output
-  - [ ] 3.5 Set `PreflightVolumeGroup.Site` from `input.LocalSite`
+- [x] Task 3: Enrich PreflightVolumeGroup entries in ComposeReport (AC: #2, #3, #4)
+  - [x] 3.1 In `ComposeReport` (`internal/preflight/checks.go`), build a VM lookup map from `input.Waves`: key = `namespace/name` → `DiscoveredVM`
+  - [x] 3.2 Replace the current `pc.VolumeGroups = append(pc.VolumeGroups, vg.Name)` loop with enriched PreflightVolumeGroup construction
+  - [x] 3.3 For each VG in a chunk, iterate VMNames sorted alphabetically, look up each VM's DiscoveredDisk data, build VolumeGroupDisk entries (name from DiscoveredDisk.Name, pvcName from DiscoveredDisk.PVCName, pvcNamespace from VG.Namespace)
+  - [x] 3.4 Sort disks within each PreflightVolumeGroup by VM name then disk name for deterministic output
+  - [x] 3.5 Set `PreflightVolumeGroup.Site` from `input.LocalSite`
 
-- [ ] Task 4: Update Console plugin TypeScript types (AC: #5)
-  - [ ] 4.1 Add `VolumeGroupDisk` interface to `console-plugin/src/models/types.ts` with fields: `name`, `pvcName?`, `pvcNamespace?`
-  - [ ] 4.2 Add `PreflightVolumeGroup` interface with fields: `name`, `site?`, `disks?`
-  - [ ] 4.3 Change `PreflightChunk.volumeGroups` from `string[]` to `PreflightVolumeGroup[]`
-  - [ ] 4.4 Update any Console plugin test fixtures that reference `volumeGroups` as string arrays
+- [x] Task 4: Update Console plugin TypeScript types (AC: #5)
+  - [x] 4.1 Add `VolumeGroupDisk` interface to `console-plugin/src/models/types.ts` with fields: `name`, `pvcName?`, `pvcNamespace?`
+  - [x] 4.2 Add `PreflightVolumeGroup` interface with fields: `name`, `site?`, `disks?`
+  - [x] 4.3 Change `PreflightChunk.volumeGroups` from `string[]` to `PreflightVolumeGroup[]`
+  - [x] 4.4 Update any Console plugin test fixtures that reference `volumeGroups` as string arrays
 
-- [ ] Task 5: Unit tests for VG disk enrichment (AC: #6)
-  - [ ] 5.1 Update existing preflight tests in `internal/preflight/checks_test.go` to use `[]PreflightVolumeGroup` instead of `[]string`
-  - [ ] 5.2 Add test: VM-level VG (single VM with 2 PVC disks) → PreflightVolumeGroup with 2 VolumeGroupDisk entries
-  - [ ] 5.3 Add test: namespace-level VG (3 VMs, each with disks) → PreflightVolumeGroup with all disks sorted by VM name then disk name
-  - [ ] 5.4 Add test: VG with stateless VM (no disks) → PreflightVolumeGroup with empty disks
-  - [ ] 5.5 Add test: chunk with multiple VGs → each VG has independent PreflightVolumeGroup with correct disk mapping
-  - [ ] 5.6 Add test: VM with missing PVC (empty pvcName from 9.1 self-healing) → VolumeGroupDisk with name set but pvcName empty
+- [x] Task 5: Unit tests for VG disk enrichment (AC: #6)
+  - [x] 5.1 Update existing preflight tests in `internal/preflight/checks_test.go` to use `[]PreflightVolumeGroup` instead of `[]string`
+  - [x] 5.2 Add test: VM-level VG (single VM with 2 PVC disks) → PreflightVolumeGroup with 2 VolumeGroupDisk entries
+  - [x] 5.3 Add test: namespace-level VG (3 VMs, each with disks) → PreflightVolumeGroup with all disks sorted by VM name then disk name
+  - [x] 5.4 Add test: VG with stateless VM (no disks) → PreflightVolumeGroup with empty disks
+  - [x] 5.5 Add test: chunk with multiple VGs → each VG has independent PreflightVolumeGroup with correct disk mapping
+  - [x] 5.6 Add test: VM with missing PVC (empty pvcName from 9.1 self-healing) → VolumeGroupDisk with name set but pvcName empty
 
-- [ ] Task 6: Run make manifests generate, lint, test (AC: #6)
-  - [ ] 6.1 `make manifests generate` — zero errors
-  - [ ] 6.2 `make lint-fix` — zero new lint errors
-  - [ ] 6.3 `make test` — all tests pass, zero regressions
+- [x] Task 6: Run make manifests generate, lint, test (AC: #6)
+  - [x] 6.1 `make manifests generate` — zero errors
+  - [x] 6.2 `make lint-fix` — zero new lint errors
+  - [x] 6.3 `make test` — all tests pass, zero regressions
 
 ## Dev Notes
 
@@ -373,10 +373,38 @@ for _, vmName := range sortedVMNames {
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4 (2026-05-07)
 
 ### Debug Log References
 
+None — clean implementation with no debug issues.
+
 ### Completion Notes List
 
+- Added `VolumeGroupDisk` and `PreflightVolumeGroup` API types to `types.go` with proper kubebuilder markers (+listType=atomic, omitempty)
+- Changed `PreflightChunk.VolumeGroups` from `[]string` to `[]PreflightVolumeGroup` (v1alpha1 breaking change)
+- Extended `CompositionInput` with `Waves []WaveInfo` and `LocalSite string` fields
+- Extended `composePreflightReport` reconciler method signature to accept `waves` parameter; all 6 call sites updated
+- Implemented `buildVMDiskIndex` (namespace/name → DiscoveredDisk lookup) and `enrichVolumeGroup` (deterministic VG disk enrichment with VM-name-then-disk-name sorting)
+- No additional PVC GETs — all disk data sourced from `DiscoveredVM.Disks` via `WaveInfo`
+- Added `VolumeGroupDisk` and `PreflightVolumeGroup` TypeScript interfaces to console plugin types
+- Updated existing test that referenced `chunk.VolumeGroups[0]` as string to use `.Name`
+- Added 6 new unit tests covering: VM-level VG, namespace-level VG, stateless VM, multiple VGs, missing PVC, no waves fallback
+- Added `assertVG` and `assertDisk` test helpers to reduce cyclomatic complexity
+- No console plugin test fixtures referenced `volumeGroups` as string arrays (Task 4.4 — no changes needed)
+- `make manifests generate` — zero errors; deepcopy and OpenAPI regenerated
+- `make lint-fix` — zero new lint errors (2 pre-existing: goconst in executor_test.go, unparam in reconciler.go)
+- `make test` — all unit tests pass, zero regressions, preflight coverage 90.6% → 91.9%
+- `make integration` — all 6 integration test suites pass, zero regressions
+
 ### File List
+
+- `pkg/apis/soteria.io/v1alpha1/types.go` — added VolumeGroupDisk, PreflightVolumeGroup types; changed PreflightChunk.VolumeGroups type
+- `pkg/apis/soteria.io/v1alpha1/zz_generated.deepcopy.go` — auto-generated (make generate)
+- `pkg/apis/soteria.io/v1alpha1/zz_generated.openapi.go` — auto-generated (make generate)
+- `internal/preflight/checks.go` — extended CompositionInput, added buildVMDiskIndex/enrichVolumeGroup, updated ComposeReport VG building
+- `pkg/controller/drplan/reconciler.go` — extended composePreflightReport signature, passed waves+LocalSite, updated all 6 call sites
+- `internal/preflight/checks_test.go` — updated existing test, added 6 new VG disk enrichment tests with assertVG/assertDisk helpers
+- `console-plugin/src/models/types.ts` — added VolumeGroupDisk, PreflightVolumeGroup interfaces; updated PreflightChunk.volumeGroups type
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — status updated
+- `_bmad-output/implementation-artifacts/9-4-volume-group-disk-enrichment-in-preflight.md` — story file updated

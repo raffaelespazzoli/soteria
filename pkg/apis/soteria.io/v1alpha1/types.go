@@ -206,6 +206,30 @@ type PreflightVM struct {
 	VolumeGroupName string `json:"volumeGroupName"`
 }
 
+// VolumeGroupDisk describes a single disk's PVC backing within a volume group.
+type VolumeGroupDisk struct {
+	// Name is the disk name from the VM's domain.devices.disks spec.
+	Name string `json:"name"`
+	// PVCName is the PersistentVolumeClaim backing this disk.
+	// Empty when the PVC has not yet been created (DataVolume provisioning).
+	PVCName string `json:"pvcName,omitempty"`
+	// PVCNamespace is the namespace of the backing PVC.
+	PVCNamespace string `json:"pvcNamespace,omitempty"`
+}
+
+// PreflightVolumeGroup describes a volume group enriched with per-disk PVC
+// topology in the pre-flight report.
+type PreflightVolumeGroup struct {
+	// Name is the volume group identifier (e.g. "ns-erp-database" or "vm-default-web01").
+	Name string `json:"name"`
+	// Site is the cluster site this volume group view is from (e.g. "dc1").
+	Site string `json:"site,omitempty"`
+	// Disks lists the disks and their PVC backing within this volume group.
+	// Sorted by VM name then disk name for deterministic output.
+	// +listType=atomic
+	Disks []VolumeGroupDisk `json:"disks,omitempty"`
+}
+
 // PreflightChunk describes a DRGroup chunk in the pre-flight chunking preview.
 type PreflightChunk struct {
 	// Name is the DRGroup chunk name (e.g., "wave-1-group-0").
@@ -215,9 +239,10 @@ type PreflightChunk struct {
 	// VMNames lists the VM names in this chunk.
 	// +listType=atomic
 	VMNames []string `json:"vmNames,omitempty"`
-	// VolumeGroups lists the volume group names in this chunk.
+	// VolumeGroups contains the volume groups in this chunk, enriched with
+	// per-disk PVC topology.
 	// +listType=atomic
-	VolumeGroups []string `json:"volumeGroups,omitempty"`
+	VolumeGroups []PreflightVolumeGroup `json:"volumeGroups,omitempty"`
 }
 
 // VolumeGroupHealthStatus classifies replication health for a volume group.

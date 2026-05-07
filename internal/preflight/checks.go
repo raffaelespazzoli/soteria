@@ -25,6 +25,7 @@ package preflight
 
 import (
 	"fmt"
+	"sort"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/ptr"
@@ -46,6 +47,8 @@ type CompositionInput struct {
 	ConsistencyResult *engine.ConsistencyResult
 	ChunkResult       *engine.ChunkResult
 	StorageBackends   map[string]string
+	Waves             []soteriav1alpha1.WaveInfo
+	LocalSite         string
 }
 
 // ComposeReport builds a PreflightReport from the combined pipeline outputs.
@@ -68,6 +71,7 @@ func ComposeReport(input CompositionInput, now metav1.Time) *soteriav1alpha1.Pre
 
 		vmGroupIndex := buildVMGroupIndex(input.ConsistencyResult)
 		chunkIndex := buildChunkIndex(input.ChunkResult)
+		vmDiskIndex := buildVMDiskIndex(input.Waves)
 
 		for _, wg := range input.DiscoveryResult.Waves {
 			pw := soteriav1alpha1.PreflightWave{
@@ -102,7 +106,8 @@ func ComposeReport(input CompositionInput, now metav1.Time) *soteriav1alpha1.Pre
 						pc.VMNames = append(pc.VMNames, vm.Name)
 					}
 					for _, vg := range chunk.VolumeGroups {
-						pc.VolumeGroups = append(pc.VolumeGroups, vg.Name)
+						pvg := enrichVolumeGroup(vg, input.LocalSite, vmDiskIndex)
+						pc.VolumeGroups = append(pc.VolumeGroups, pvg)
 					}
 					pw.Chunks = append(pw.Chunks, pc)
 				}
@@ -137,6 +142,58 @@ func buildVMGroupIndex(cr *engine.ConsistencyResult) map[string]vmGroupInfo {
 		}
 	}
 	return index
+}
+
+type vmKey struct{ namespace, name string }
+
+// buildVMDiskIndex creates a lookup from (namespace, name) to the VM's
+// discovered disks. Data comes from WaveInfo populated during the reconcile
+// cycle — no additional PVC GETs are required.
+func buildVMDiskIndex(waves []soteriav1alpha1.WaveInfo) map[vmKey][]soteriav1alpha1.DiscoveredDisk {
+	index := make(map[vmKey][]soteriav1alpha1.DiscoveredDisk)
+	for _, wave := range waves {
+		for _, vm := range wave.VMs {
+			index[vmKey{vm.Namespace, vm.Name}] = vm.Disks
+		}
+	}
+	return index
+}
+
+// enrichVolumeGroup builds a PreflightVolumeGroup with per-disk PVC topology
+// derived from DiscoveredVM data. VMs are iterated in sorted name order, and
+// disks within each VM are sorted by name, producing deterministic output for
+// both VM-level (single VM) and namespace-level (multiple VM) groups.
+func enrichVolumeGroup(
+	vg soteriav1alpha1.VolumeGroupInfo,
+	localSite string,
+	vmDiskIndex map[vmKey][]soteriav1alpha1.DiscoveredDisk,
+) soteriav1alpha1.PreflightVolumeGroup {
+	pvg := soteriav1alpha1.PreflightVolumeGroup{
+		Name: vg.Name,
+		Site: localSite,
+	}
+
+	sortedVMNames := make([]string, len(vg.VMNames))
+	copy(sortedVMNames, vg.VMNames)
+	sort.Strings(sortedVMNames)
+
+	for _, vmName := range sortedVMNames {
+		disks := vmDiskIndex[vmKey{vg.Namespace, vmName}]
+		sortedDisks := make([]soteriav1alpha1.DiscoveredDisk, len(disks))
+		copy(sortedDisks, disks)
+		sort.Slice(sortedDisks, func(i, j int) bool {
+			return sortedDisks[i].Name < sortedDisks[j].Name
+		})
+		for _, d := range sortedDisks {
+			pvg.Disks = append(pvg.Disks, soteriav1alpha1.VolumeGroupDisk{
+				Name:         d.Name,
+				PVCName:      d.PVCName,
+				PVCNamespace: vg.Namespace,
+			})
+		}
+	}
+
+	return pvg
 }
 
 func buildChunkIndex(cr *engine.ChunkResult) map[string][]engine.DRGroupChunk {

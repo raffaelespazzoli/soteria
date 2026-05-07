@@ -185,7 +185,7 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	if err != nil {
 		logger.Error(err, "Failed to discover VMs")
 		r.event(&plan, "Warning", "DiscoveryFailed", err.Error())
-		report := r.composePreflightReport(ctx, &plan, nil, nil, nil, nil)
+		report := r.composePreflightReport(ctx, &plan, nil, nil, nil, nil, nil)
 		report.Warnings = append(report.Warnings,
 			fmt.Sprintf("VM discovery failed: %v", err))
 		_, statusErr := r.updateStatus(ctx, req, &plan, nil, 0, report, metav1.Condition{
@@ -228,7 +228,7 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	if result.TotalVMs == 0 {
-		report := r.composePreflightReport(ctx, &plan, &result, nil, nil, vms)
+		report := r.composePreflightReport(ctx, &plan, &result, nil, nil, vms, waves)
 		return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, report, metav1.Condition{
 			Type:               conditionTypeReady,
 			Status:             metav1.ConditionFalse,
@@ -242,7 +242,7 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	consistency, err := engine.ResolveVolumeGroups(ctx, vms, r.NamespaceLookup)
 	if err != nil {
 		logger.Error(err, "Failed to resolve volume groups")
-		report := r.composePreflightReport(ctx, &plan, &result, nil, nil, vms)
+		report := r.composePreflightReport(ctx, &plan, &result, nil, nil, vms, waves)
 		report.Warnings = append(report.Warnings,
 			fmt.Sprintf("Volume group resolution failed: %v", err))
 		return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, report, metav1.Condition{
@@ -258,7 +258,7 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		msg := formatWaveConflicts(consistency.WaveConflicts)
 		logger.Info("Detected wave conflict", "conflicts", len(consistency.WaveConflicts))
 		r.event(&plan, "Warning", "WaveConflictDetected", msg)
-		report := r.composePreflightReport(ctx, &plan, &result, consistency, nil, vms)
+		report := r.composePreflightReport(ctx, &plan, &result, consistency, nil, vms, waves)
 		return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, report, metav1.Condition{
 			Type:               conditionTypeReady,
 			Status:             metav1.ConditionFalse,
@@ -294,7 +294,7 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		logger.Info("Chunking failed", "errors", len(chunkResult.Errors))
 		r.event(&plan, "Warning", "ChunkingFailed", msg)
 		report := r.composePreflightReport(
-			ctx, &plan, &result, consistency, &chunkResult, vms)
+			ctx, &plan, &result, consistency, &chunkResult, vms, waves)
 		return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, report, metav1.Condition{
 			Type:               conditionTypeReady,
 			Status:             metav1.ConditionFalse,
@@ -309,7 +309,7 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			len(consistency.VolumeGroups), nsLevelCount, vmLevelCount))
 
 	// Resolve storage backends and compose the preflight report.
-	report := r.composePreflightReport(ctx, &plan, &result, consistency, &chunkResult, vms)
+	report := r.composePreflightReport(ctx, &plan, &result, consistency, &chunkResult, vms, waves)
 	logger.Info("Preflight report generated",
 		"totalVMs", report.TotalVMs, "warnings", len(report.Warnings))
 
@@ -1086,6 +1086,7 @@ func (r *DRPlanReconciler) composePreflightReport(
 	consistency *engine.ConsistencyResult,
 	chunks *engine.ChunkResult,
 	vms []engine.VMReference,
+	waves []soteriav1alpha1.WaveInfo,
 ) *soteriav1alpha1.PreflightReport {
 	logger := log.FromContext(ctx)
 
@@ -1108,6 +1109,8 @@ func (r *DRPlanReconciler) composePreflightReport(
 		ConsistencyResult: consistency,
 		ChunkResult:       chunks,
 		StorageBackends:   storageBackends,
+		Waves:             waves,
+		LocalSite:         r.LocalSite,
 	}
 
 	now := metav1.Now()

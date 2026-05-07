@@ -49,9 +49,11 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightChunk":         schema_pkg_apis_soteriaio_v1alpha1_PreflightChunk(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightReport":        schema_pkg_apis_soteriaio_v1alpha1_PreflightReport(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightVM":            schema_pkg_apis_soteriaio_v1alpha1_PreflightVM(ref),
+		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightVolumeGroup":   schema_pkg_apis_soteriaio_v1alpha1_PreflightVolumeGroup(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightWave":          schema_pkg_apis_soteriaio_v1alpha1_PreflightWave(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.SiteDiscovery":          schema_pkg_apis_soteriaio_v1alpha1_SiteDiscovery(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.StepStatus":             schema_pkg_apis_soteriaio_v1alpha1_StepStatus(ref),
+		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.VolumeGroupDisk":        schema_pkg_apis_soteriaio_v1alpha1_VolumeGroupDisk(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.VolumeGroupHealth":      schema_pkg_apis_soteriaio_v1alpha1_VolumeGroupHealth(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.VolumeGroupInfo":        schema_pkg_apis_soteriaio_v1alpha1_VolumeGroupInfo(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.WaveInfo":               schema_pkg_apis_soteriaio_v1alpha1_WaveInfo(ref),
@@ -994,14 +996,13 @@ func schema_pkg_apis_soteriaio_v1alpha1_PreflightChunk(ref common.ReferenceCallb
 							},
 						},
 						SchemaProps: spec.SchemaProps{
-							Description: "VolumeGroups lists the volume group names in this chunk.",
+							Description: "VolumeGroups contains the volume groups in this chunk, enriched with per-disk PVC topology.",
 							Type:        []string{"array"},
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
 									SchemaProps: spec.SchemaProps{
-										Default: "",
-										Type:    []string{"string"},
-										Format:  "",
+										Default: map[string]interface{}{},
+										Ref:     ref("github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightVolumeGroup"),
 									},
 								},
 							},
@@ -1011,6 +1012,8 @@ func schema_pkg_apis_soteriaio_v1alpha1_PreflightChunk(ref common.ReferenceCallb
 				Required: []string{"name", "vmCount"},
 			},
 		},
+		Dependencies: []string{
+			"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightVolumeGroup"},
 	}
 }
 
@@ -1195,6 +1198,56 @@ func schema_pkg_apis_soteriaio_v1alpha1_PreflightVM(ref common.ReferenceCallback
 	}
 }
 
+func schema_pkg_apis_soteriaio_v1alpha1_PreflightVolumeGroup(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "PreflightVolumeGroup describes a volume group enriched with per-disk PVC topology in the pre-flight report.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"name": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Name is the volume group identifier (e.g. \"ns-erp-database\" or \"vm-default-web01\").",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"site": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Site is the cluster site this volume group view is from (e.g. \"dc1\").",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"disks": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "atomic",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "Disks lists the disks and their PVC backing within this volume group. Sorted by VM name then disk name for deterministic output.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: map[string]interface{}{},
+										Ref:     ref("github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.VolumeGroupDisk"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"name"},
+			},
+		},
+		Dependencies: []string{
+			"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.VolumeGroupDisk"},
+	}
+}
+
 func schema_pkg_apis_soteriaio_v1alpha1_PreflightWave(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
@@ -1354,6 +1407,42 @@ func schema_pkg_apis_soteriaio_v1alpha1_StepStatus(ref common.ReferenceCallback)
 		},
 		Dependencies: []string{
 			v1.Time{}.OpenAPIModelName()},
+	}
+}
+
+func schema_pkg_apis_soteriaio_v1alpha1_VolumeGroupDisk(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "VolumeGroupDisk describes a single disk's PVC backing within a volume group.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"name": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Name is the disk name from the VM's domain.devices.disks spec.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"pvcName": {
+						SchemaProps: spec.SchemaProps{
+							Description: "PVCName is the PersistentVolumeClaim backing this disk. Empty when the PVC has not yet been created (DataVolume provisioning).",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"pvcNamespace": {
+						SchemaProps: spec.SchemaProps{
+							Description: "PVCNamespace is the namespace of the backing PVC.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"name"},
+			},
+		},
 	}
 }
 
