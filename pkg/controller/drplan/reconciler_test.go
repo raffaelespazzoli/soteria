@@ -2303,5 +2303,468 @@ func TestReconcile_WaitingForDiskDiscovery_ProceedsNormally(t *testing.T) {
 	}
 }
 
+func newReconcilerWithSiteEnricherAndNSLookup(
+	objs []client.Object,
+	discoverer engine.VMDiscoverer,
+	nsLookup engine.NamespaceLookup,
+	localSite string,
+	enricher engine.DiskEnricher,
+) (*DRPlanReconciler, client.Client) {
+	scheme := newTestScheme()
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(objs...).
+		WithStatusSubresource(&soteriav1alpha1.DRPlan{}).
+		Build()
+
+	return &DRPlanReconciler{
+		Client:          fakeClient,
+		Scheme:          scheme,
+		VMDiscoverer:    discoverer,
+		NamespaceLookup: nsLookup,
+		Recorder:        events.NewFakeRecorder(10),
+		LocalSite:       localSite,
+		DiskEnricher:    enricher,
+	}, fakeClient
+}
+
+// ---------- validateVGStorageClassHomogeneity unit tests ----------
+
+func TestValidateVGStorageClassHomogeneity_SingleVMSingleSC(t *testing.T) {
+	vgs := []soteriav1alpha1.VolumeGroupInfo{
+		{Name: "default-vm-1", Namespace: "default", VMNames: []string{"vm-1"}},
+	}
+	waves := []soteriav1alpha1.WaveInfo{
+		{WaveKey: "1", VMs: []soteriav1alpha1.DiscoveredVM{
+			{Name: "vm-1", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{
+				{Name: "rootdisk", PVCName: "pvc-root", StorageClass: "ceph-rbd"},
+				{Name: "datadisk", PVCName: "pvc-data", StorageClass: "ceph-rbd"},
+			}},
+		}},
+	}
+
+	results := validateVGStorageClassHomogeneity(vgs, waves)
+	if len(results) != 0 {
+		t.Errorf("Expected no mixed VGs, got %d: %+v", len(results), results)
+	}
+}
+
+func TestValidateVGStorageClassHomogeneity_SingleVMTwoSCs(t *testing.T) {
+	vgs := []soteriav1alpha1.VolumeGroupInfo{
+		{Name: "default-vm-1", Namespace: "default", VMNames: []string{"vm-1"}},
+	}
+	waves := []soteriav1alpha1.WaveInfo{
+		{WaveKey: "1", VMs: []soteriav1alpha1.DiscoveredVM{
+			{Name: "vm-1", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{
+				{Name: "rootdisk", PVCName: "pvc-root", StorageClass: "ceph-rbd"},
+				{Name: "datadisk", PVCName: "pvc-data", StorageClass: "local-path"},
+			}},
+		}},
+	}
+
+	results := validateVGStorageClassHomogeneity(vgs, waves)
+	if len(results) != 1 {
+		t.Fatalf("Expected 1 mixed VG, got %d", len(results))
+	}
+	if results[0].VGName != "default-vm-1" {
+		t.Errorf("VGName = %q, want default-vm-1", results[0].VGName)
+	}
+	if len(results[0].Classes) != 2 || results[0].Classes[0] != "ceph-rbd" || results[0].Classes[1] != "local-path" {
+		t.Errorf("Classes = %v, want [ceph-rbd, local-path]", results[0].Classes)
+	}
+}
+
+func TestValidateVGStorageClassHomogeneity_NamespaceLevelAllSameSC(t *testing.T) {
+	vgs := []soteriav1alpha1.VolumeGroupInfo{
+		{Name: "ns-erp-database", Namespace: "ns-erp", VMNames: []string{"db-1", "db-2", "db-3"},
+			ConsistencyLevel: soteriav1alpha1.ConsistencyLevelNamespace},
+	}
+	waves := []soteriav1alpha1.WaveInfo{
+		{WaveKey: "1", VMs: []soteriav1alpha1.DiscoveredVM{
+			{Name: "db-1", Namespace: "ns-erp", Disks: []soteriav1alpha1.DiscoveredDisk{
+				{Name: "rootdisk", PVCName: "pvc-1", StorageClass: "ceph-rbd"},
+			}},
+			{Name: "db-2", Namespace: "ns-erp", Disks: []soteriav1alpha1.DiscoveredDisk{
+				{Name: "rootdisk", PVCName: "pvc-2", StorageClass: "ceph-rbd"},
+			}},
+			{Name: "db-3", Namespace: "ns-erp", Disks: []soteriav1alpha1.DiscoveredDisk{
+				{Name: "rootdisk", PVCName: "pvc-3", StorageClass: "ceph-rbd"},
+			}},
+		}},
+	}
+
+	results := validateVGStorageClassHomogeneity(vgs, waves)
+	if len(results) != 0 {
+		t.Errorf("Expected no mixed VGs for same SC, got %d: %+v", len(results), results)
+	}
+}
+
+func TestValidateVGStorageClassHomogeneity_NamespaceLevelMixedSC(t *testing.T) {
+	vgs := []soteriav1alpha1.VolumeGroupInfo{
+		{Name: "ns-erp-database", Namespace: "ns-erp", VMNames: []string{"db-1", "db-2", "db-3"},
+			ConsistencyLevel: soteriav1alpha1.ConsistencyLevelNamespace},
+	}
+	waves := []soteriav1alpha1.WaveInfo{
+		{WaveKey: "1", VMs: []soteriav1alpha1.DiscoveredVM{
+			{Name: "db-1", Namespace: "ns-erp", Disks: []soteriav1alpha1.DiscoveredDisk{
+				{Name: "rootdisk", PVCName: "pvc-1", StorageClass: "ceph-rbd"},
+			}},
+			{Name: "db-2", Namespace: "ns-erp", Disks: []soteriav1alpha1.DiscoveredDisk{
+				{Name: "rootdisk", PVCName: "pvc-2", StorageClass: "ceph-rbd"},
+			}},
+			{Name: "db-3", Namespace: "ns-erp", Disks: []soteriav1alpha1.DiscoveredDisk{
+				{Name: "rootdisk", PVCName: "pvc-3", StorageClass: "local-path"},
+			}},
+		}},
+	}
+
+	results := validateVGStorageClassHomogeneity(vgs, waves)
+	if len(results) != 1 {
+		t.Fatalf("Expected 1 mixed VG, got %d", len(results))
+	}
+	if results[0].VGName != "ns-erp-database" {
+		t.Errorf("VGName = %q, want ns-erp-database", results[0].VGName)
+	}
+	if len(results[0].Classes) != 2 {
+		t.Errorf("Classes = %v, want 2 classes", results[0].Classes)
+	}
+}
+
+func TestValidateVGStorageClassHomogeneity_MixedPlusStatelessVM(t *testing.T) {
+	vgs := []soteriav1alpha1.VolumeGroupInfo{
+		{Name: "ns-app", Namespace: "ns-app", VMNames: []string{"app-1", "stateless-1"},
+			ConsistencyLevel: soteriav1alpha1.ConsistencyLevelNamespace},
+	}
+	waves := []soteriav1alpha1.WaveInfo{
+		{WaveKey: "1", VMs: []soteriav1alpha1.DiscoveredVM{
+			{Name: "app-1", Namespace: "ns-app", Disks: []soteriav1alpha1.DiscoveredDisk{
+				{Name: "rootdisk", PVCName: "pvc-1", StorageClass: "ceph-rbd"},
+			}},
+			{Name: "stateless-1", Namespace: "ns-app", Disks: nil},
+		}},
+	}
+
+	results := validateVGStorageClassHomogeneity(vgs, waves)
+	if len(results) != 0 {
+		t.Errorf("Expected no mixed VGs (stateless VM contributes nothing), got %d: %+v", len(results), results)
+	}
+}
+
+func TestValidateVGStorageClassHomogeneity_AllStatelessVMs(t *testing.T) {
+	vgs := []soteriav1alpha1.VolumeGroupInfo{
+		{Name: "ns-ephemeral", Namespace: "ns-ephemeral", VMNames: []string{"s1", "s2"},
+			ConsistencyLevel: soteriav1alpha1.ConsistencyLevelNamespace},
+	}
+	waves := []soteriav1alpha1.WaveInfo{
+		{WaveKey: "1", VMs: []soteriav1alpha1.DiscoveredVM{
+			{Name: "s1", Namespace: "ns-ephemeral", Disks: nil},
+			{Name: "s2", Namespace: "ns-ephemeral", Disks: []soteriav1alpha1.DiscoveredDisk{}},
+		}},
+	}
+
+	results := validateVGStorageClassHomogeneity(vgs, waves)
+	if len(results) != 0 {
+		t.Errorf("Expected no mixed VGs (all stateless), got %d: %+v", len(results), results)
+	}
+}
+
+func TestValidateVGStorageClassHomogeneity_EmptyStorageClassExcluded(t *testing.T) {
+	vgs := []soteriav1alpha1.VolumeGroupInfo{
+		{Name: "default-vm-1", Namespace: "default", VMNames: []string{"vm-1"}},
+	}
+	waves := []soteriav1alpha1.WaveInfo{
+		{WaveKey: "1", VMs: []soteriav1alpha1.DiscoveredVM{
+			{Name: "vm-1", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{
+				{Name: "rootdisk", PVCName: "pvc-root", StorageClass: "ceph-rbd"},
+				{Name: "datadisk", PVCName: "pvc-data", StorageClass: ""},
+			}},
+		}},
+	}
+
+	results := validateVGStorageClassHomogeneity(vgs, waves)
+	if len(results) != 0 {
+		t.Errorf("Expected no mixed VGs (empty SC excluded), got %d: %+v", len(results), results)
+	}
+}
+
+func TestValidateVGStorageClassHomogeneity_MultipleVGsOneHeterogeneous(t *testing.T) {
+	vgs := []soteriav1alpha1.VolumeGroupInfo{
+		{Name: "default-vm-1", Namespace: "default", VMNames: []string{"vm-1"}},
+		{Name: "default-vm-2", Namespace: "default", VMNames: []string{"vm-2"}},
+	}
+	waves := []soteriav1alpha1.WaveInfo{
+		{WaveKey: "1", VMs: []soteriav1alpha1.DiscoveredVM{
+			{Name: "vm-1", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{
+				{Name: "rootdisk", PVCName: "pvc-1", StorageClass: "ceph-rbd"},
+			}},
+			{Name: "vm-2", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{
+				{Name: "rootdisk", PVCName: "pvc-2", StorageClass: "ceph-rbd"},
+				{Name: "datadisk", PVCName: "pvc-3", StorageClass: "local-path"},
+			}},
+		}},
+	}
+
+	results := validateVGStorageClassHomogeneity(vgs, waves)
+	if len(results) != 1 {
+		t.Fatalf("Expected 1 mixed VG, got %d", len(results))
+	}
+	if results[0].VGName != "default-vm-2" {
+		t.Errorf("VGName = %q, want default-vm-2", results[0].VGName)
+	}
+}
+
+func TestValidateVGStorageClassHomogeneity_SingleVMSingleDiskSingleSC(t *testing.T) {
+	vgs := []soteriav1alpha1.VolumeGroupInfo{
+		{Name: "default-vm-1", Namespace: "default", VMNames: []string{"vm-1"}},
+	}
+	waves := []soteriav1alpha1.WaveInfo{
+		{WaveKey: "1", VMs: []soteriav1alpha1.DiscoveredVM{
+			{Name: "vm-1", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{
+				{Name: "rootdisk", PVCName: "pvc-root", StorageClass: "ceph-rbd"},
+			}},
+		}},
+	}
+
+	results := validateVGStorageClassHomogeneity(vgs, waves)
+	if len(results) != 0 {
+		t.Errorf("Expected no mixed VGs, got %d: %+v", len(results), results)
+	}
+}
+
+func TestBuildMixedSCMessage_SingleVG(t *testing.T) {
+	mixed := []MixedVGResult{
+		{VGName: "ns-erp-database", Classes: []string{"ceph-rbd", "local-path"}},
+	}
+	msg := buildMixedSCMessage(mixed)
+	if !contains(msg, "ns-erp-database") {
+		t.Errorf("Message should contain VG name, got: %s", msg)
+	}
+	if !contains(msg, "ceph-rbd") || !contains(msg, "local-path") {
+		t.Errorf("Message should contain both storage classes, got: %s", msg)
+	}
+}
+
+func TestBuildMixedSCMessage_MultipleVGs(t *testing.T) {
+	mixed := []MixedVGResult{
+		{VGName: "vg-1", Classes: []string{"a", "b"}},
+		{VGName: "vg-2", Classes: []string{"c", "d"}},
+	}
+	msg := buildMixedSCMessage(mixed)
+	if !contains(msg, "vg-1") || !contains(msg, "vg-2") {
+		t.Errorf("Message should contain both VG names, got: %s", msg)
+	}
+}
+
+// ---------- Reconciler integration tests for StorageClassMixed ----------
+
+func TestReconcile_StorageClassMixed_BlocksReady(t *testing.T) {
+	plan := newTestPlan()
+	vms := []engine.VMReference{
+		{Name: "vm-1", Namespace: "ns-erp", Labels: map[string]string{"soteria.io/wave": "1"}},
+		{Name: "vm-2", Namespace: "ns-erp", Labels: map[string]string{"soteria.io/wave": "1"}},
+	}
+	nsLookup := &mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{
+		"ns-erp": soteriav1alpha1.ConsistencyLevelNamespace,
+	}}
+	enricher := &mockDiskEnricher{disksByVM: map[string][]soteriav1alpha1.DiscoveredDisk{
+		"vm-1": {
+			{Name: "rootdisk", PVCName: "pvc-1", StorageClass: "ceph-rbd"},
+		},
+		"vm-2": {
+			{Name: "rootdisk", PVCName: "pvc-2", StorageClass: "local-path"},
+		},
+	}}
+
+	mock := &mockVMDiscoverer{vms: vms}
+	r, c := newReconcilerWithSiteEnricherAndNSLookup(
+		[]client.Object{plan}, mock, nsLookup, "", enricher)
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: planKey})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	var updated soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &updated); err != nil {
+		t.Fatalf("Failed to get plan: %v", err)
+	}
+
+	readyCond := findReadyCondition(updated.Status.Conditions)
+	if readyCond == nil {
+		t.Fatal("Ready condition not found")
+	}
+	if readyCond.Status != metav1.ConditionFalse {
+		t.Errorf("Ready.Status = %v, want False", readyCond.Status)
+	}
+	if readyCond.Reason != reasonDisksOutOfSync {
+		t.Errorf("Ready.Reason = %q, want %q", readyCond.Reason, reasonDisksOutOfSync)
+	}
+
+	dcCond := findCondition(updated.Status.Conditions, conditionTypeDisksConsistent)
+	if dcCond == nil {
+		t.Fatal("DisksConsistent condition not found")
+	}
+	if dcCond.Status != metav1.ConditionFalse {
+		t.Errorf("DisksConsistent.Status = %v, want False", dcCond.Status)
+	}
+	if dcCond.Reason != reasonStorageClassMixed {
+		t.Errorf("DisksConsistent.Reason = %q, want %q", dcCond.Reason, reasonStorageClassMixed)
+	}
+	if !contains(dcCond.Message, "ceph-rbd") || !contains(dcCond.Message, "local-path") {
+		t.Errorf("DisksConsistent.Message should mention both SCs, got: %s", dcCond.Message)
+	}
+
+	if updated.Status.Preflight == nil {
+		t.Fatal("Preflight should be populated on SC homogeneity failure")
+	}
+	if updated.Status.Preflight.DisksConsistent {
+		t.Error("Preflight.DisksConsistent should be false")
+	}
+	if updated.Status.Preflight.DiskDiscoveryDelta == "" {
+		t.Error("Preflight.DiskDiscoveryDelta should be non-empty")
+	}
+
+	// Waves should NOT be cleared (unlike disk mismatch from 9.3).
+	if len(updated.Status.Waves) == 0 {
+		t.Error("Waves should be preserved on SC homogeneity failure")
+	}
+}
+
+func TestReconcile_StorageClassHomogeneous_Passes(t *testing.T) {
+	plan := newTestPlan()
+	plan.Status.ActiveSite = testPrimarySite
+	plan.Status.PrimarySiteDiscovery = newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "vm-1", Namespace: "ns-erp", Disks: []soteriav1alpha1.DiscoveredDisk{
+			{Name: "rootdisk", PVCName: "pvc-1", StorageClass: "ceph-rbd"},
+		}},
+		soteriav1alpha1.DiscoveredVM{Name: "vm-2", Namespace: "ns-erp", Disks: []soteriav1alpha1.DiscoveredDisk{
+			{Name: "rootdisk", PVCName: "pvc-2", StorageClass: "ceph-rbd"},
+		}},
+	)
+	plan.Status.SecondarySiteDiscovery = newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "vm-1", Namespace: "ns-erp", Disks: []soteriav1alpha1.DiscoveredDisk{
+			{Name: "rootdisk", PVCName: "pvc-1-sec", StorageClass: "ceph-rbd"},
+		}},
+		soteriav1alpha1.DiscoveredVM{Name: "vm-2", Namespace: "ns-erp", Disks: []soteriav1alpha1.DiscoveredDisk{
+			{Name: "rootdisk", PVCName: "pvc-2-sec", StorageClass: "ceph-rbd"},
+		}},
+	)
+	vms := []engine.VMReference{
+		{Name: "vm-1", Namespace: "ns-erp", Labels: map[string]string{"soteria.io/wave": "1"}},
+		{Name: "vm-2", Namespace: "ns-erp", Labels: map[string]string{"soteria.io/wave": "1"}},
+	}
+	nsLookup := &mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{
+		"ns-erp": soteriav1alpha1.ConsistencyLevelNamespace,
+	}}
+	enricher := &mockDiskEnricher{disksByVM: map[string][]soteriav1alpha1.DiscoveredDisk{
+		"vm-1": {
+			{Name: "rootdisk", PVCName: "pvc-1", StorageClass: "ceph-rbd"},
+		},
+		"vm-2": {
+			{Name: "rootdisk", PVCName: "pvc-2", StorageClass: "ceph-rbd"},
+		},
+	}}
+
+	mock2 := &mockVMDiscoverer{vms: vms}
+	r, c := newReconcilerWithSiteEnricherAndNSLookup(
+		[]client.Object{plan}, mock2, nsLookup, testPrimarySite, enricher)
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: planKey})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	var updated soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &updated); err != nil {
+		t.Fatalf("Failed to get plan: %v", err)
+	}
+
+	readyCond := findReadyCondition(updated.Status.Conditions)
+	if readyCond == nil || readyCond.Status != metav1.ConditionTrue {
+		t.Error("Expected Ready=True when all VGs are homogeneous")
+	}
+
+	dcCond := findCondition(updated.Status.Conditions, conditionTypeDisksConsistent)
+	if dcCond == nil {
+		t.Fatal("DisksConsistent condition not found")
+	}
+	if dcCond.Status != metav1.ConditionTrue {
+		t.Errorf("DisksConsistent.Status = %v, want True", dcCond.Status)
+	}
+	if dcCond.Reason != reasonDisksAgreed {
+		t.Errorf("DisksConsistent.Reason = %q, want %q", dcCond.Reason, reasonDisksAgreed)
+	}
+}
+
+func TestReconcile_StorageClassMixed_PrefersOverDiskAgreed(t *testing.T) {
+	plan := newTestPlan()
+	// Sites agree on disk topology (9.3 would return DisksAgreed), but VG
+	// storage class is mixed (9.5 overrides to StorageClassMixed).
+	plan.Status.ActiveSite = testPrimarySite
+	plan.Status.PrimarySiteDiscovery = newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "vm-1", Namespace: "ns-erp", Disks: []soteriav1alpha1.DiscoveredDisk{
+			{Name: "rootdisk", PVCName: "pvc-1", StorageClass: "ceph-rbd"},
+		}},
+		soteriav1alpha1.DiscoveredVM{Name: "vm-2", Namespace: "ns-erp", Disks: []soteriav1alpha1.DiscoveredDisk{
+			{Name: "rootdisk", PVCName: "pvc-2", StorageClass: "local-path"},
+		}},
+	)
+	plan.Status.SecondarySiteDiscovery = newSiteDiscovery(
+		soteriav1alpha1.DiscoveredVM{Name: "vm-1", Namespace: "ns-erp", Disks: []soteriav1alpha1.DiscoveredDisk{
+			{Name: "rootdisk", PVCName: "pvc-1-sec", StorageClass: "ceph-rbd"},
+		}},
+		soteriav1alpha1.DiscoveredVM{Name: "vm-2", Namespace: "ns-erp", Disks: []soteriav1alpha1.DiscoveredDisk{
+			{Name: "rootdisk", PVCName: "pvc-2-sec", StorageClass: "local-path"},
+		}},
+	)
+
+	vms := []engine.VMReference{
+		{Name: "vm-1", Namespace: "ns-erp", Labels: map[string]string{"soteria.io/wave": "1"}},
+		{Name: "vm-2", Namespace: "ns-erp", Labels: map[string]string{"soteria.io/wave": "1"}},
+	}
+	nsLookup := &mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{
+		"ns-erp": soteriav1alpha1.ConsistencyLevelNamespace,
+	}}
+	enricher := &mockDiskEnricher{disksByVM: map[string][]soteriav1alpha1.DiscoveredDisk{
+		"vm-1": {
+			{Name: "rootdisk", PVCName: "pvc-1", StorageClass: "ceph-rbd"},
+		},
+		"vm-2": {
+			{Name: "rootdisk", PVCName: "pvc-2", StorageClass: "local-path"},
+		},
+	}}
+
+	mock3 := &mockVMDiscoverer{vms: vms}
+	r, c := newReconcilerWithSiteEnricherAndNSLookup(
+		[]client.Object{plan}, mock3, nsLookup, testPrimarySite, enricher)
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: planKey})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	var updated soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &updated); err != nil {
+		t.Fatalf("Failed to get plan: %v", err)
+	}
+
+	// DisksConsistent should be False/StorageClassMixed, overriding DisksAgreed.
+	dcCond := findCondition(updated.Status.Conditions, conditionTypeDisksConsistent)
+	if dcCond == nil {
+		t.Fatal("DisksConsistent condition not found")
+	}
+	if dcCond.Status != metav1.ConditionFalse {
+		t.Errorf("DisksConsistent.Status = %v, want False", dcCond.Status)
+	}
+	if dcCond.Reason != reasonStorageClassMixed {
+		t.Errorf("DisksConsistent.Reason = %q, want %q (should override DisksAgreed)", dcCond.Reason, reasonStorageClassMixed)
+	}
+
+	readyCond := findReadyCondition(updated.Status.Conditions)
+	if readyCond == nil || readyCond.Status != metav1.ConditionFalse {
+		t.Error("Expected Ready=False when VG SC is mixed")
+	}
+}
+
 // Ensure reconcile.Reconciler is implemented.
 var _ reconcile.Reconciler = (*DRPlanReconciler)(nil)

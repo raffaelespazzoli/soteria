@@ -148,11 +148,16 @@ func (p *SoteriaAdmissionPlugin) validateDRExecution(ctx context.Context, a admi
 			fmt.Errorf("cannot start execution: sites do not agree on VM inventory. Resolve VM differences first"))
 	}
 
-	// Reject when disk topology does not match across sites.
+	// Reject any disk validation failure using the condition message so users
+	// see the specific blocker (e.g. topology mismatch vs mixed storage class).
 	if dcCond := meta.FindStatusCondition(plan.Status.Conditions, "DisksConsistent"); dcCond != nil &&
 		dcCond.Status == metav1.ConditionFalse {
+		msg := "disk validation failed"
+		if dcCond.Message != "" {
+			msg = dcCond.Message
+		}
 		return admission.NewForbidden(a,
-			fmt.Errorf("cannot start execution: disk topology does not match across sites. Resolve disk differences first"))
+			fmt.Errorf("cannot start execution: %s", msg))
 	}
 
 	return nil

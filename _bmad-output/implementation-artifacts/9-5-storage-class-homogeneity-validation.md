@@ -1,6 +1,6 @@
 # Story 9.5: Storage Class Homogeneity Validation
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -24,27 +24,27 @@ So that volume group operations are guaranteed to target a single storage driver
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Add `reasonStorageClassMixed` condition constant (AC: #2)
-  - [ ] 1.1 Add `reasonStorageClassMixed = "StorageClassMixed"` to the condition constants block in `pkg/controller/drplan/reconciler.go` alongside the `conditionTypeDisksConsistent` constants added by Story 9.3
+- [x] Task 1: Add `reasonStorageClassMixed` condition constant (AC: #2)
+  - [x] 1.1 Add `reasonStorageClassMixed = "StorageClassMixed"` to the condition constants block in `pkg/controller/drplan/reconciler.go` alongside the `conditionTypeDisksConsistent` constants added by Story 9.3
 
-- [ ] Task 2: Create `validateVGStorageClassHomogeneity` pure function (AC: #1, #2, #3, #4)
-  - [ ] 2.1 Add `validateVGStorageClassHomogeneity(vgs []soteriav1alpha1.VolumeGroupInfo, waves []soteriav1alpha1.WaveInfo) []MixedVGResult` pure function to `pkg/controller/drplan/reconciler.go`
-  - [ ] 2.2 Add `MixedVGResult` struct: `VGName string`, `Classes []string` (sorted)
-  - [ ] 2.3 Build a VM lookup map from waves: key = `namespace/name` → `[]DiscoveredDisk`
-  - [ ] 2.4 For each VG: iterate sorted `VMNames`, collect storage classes from each VM's disks, skip VMs with empty/nil disks
-  - [ ] 2.5 If a VG has >1 distinct storage class → add to results
-  - [ ] 2.6 Return empty slice when all VGs are homogeneous
+- [x] Task 2: Create `validateVGStorageClassHomogeneity` pure function (AC: #1, #2, #3, #4)
+  - [x] 2.1 Add `validateVGStorageClassHomogeneity(vgs []soteriav1alpha1.VolumeGroupInfo, waves []soteriav1alpha1.WaveInfo) []MixedVGResult` pure function to `pkg/controller/drplan/reconciler.go`
+  - [x] 2.2 Add `MixedVGResult` struct: `VGName string`, `Classes []string` (sorted)
+  - [x] 2.3 Build a VM lookup map from waves: key = `namespace/name` → `[]DiscoveredDisk`
+  - [x] 2.4 For each VG: iterate sorted `VMNames`, collect storage classes from each VM's disks, skip VMs with empty/nil disks
+  - [x] 2.5 If a VG has >1 distinct storage class → add to results
+  - [x] 2.6 Return empty slice when all VGs are homogeneous
 
-- [ ] Task 3: Wire validation into reconciler (AC: #2, #3)
-  - [ ] 3.1 After `ResolveVolumeGroups` and before the wave conflict check, call `validateVGStorageClassHomogeneity`
-  - [ ] 3.2 If mixed VGs found: build `metav1.Condition` with `Type=conditionTypeDisksConsistent`, `Status=False`, `Reason=reasonStorageClassMixed`, message from `buildMixedSCMessage` using `writeCappedList`
-  - [ ] 3.3 Override the `disksConsistentCond` from `evaluateDiskAgreement` (9.3) — cross-site disks may agree but VG SC homogeneity fails
-  - [ ] 3.4 Compose preflight report (nil chunks — chunking has not run), set `DisksConsistent=false` and `DiskDiscoveryDelta` with the SC violation message on the preflight
-  - [ ] 3.5 Set `Ready=False` with reason `reasonDisksOutOfSync` (reuse from 9.3)
-  - [ ] 3.6 Call `updateStatus` with the overridden conditions and return early (same pattern as wave conflict early return)
+- [x] Task 3: Wire validation into reconciler (AC: #2, #3)
+  - [x] 3.1 After `ResolveVolumeGroups` and before the wave conflict check, call `validateVGStorageClassHomogeneity`
+  - [x] 3.2 If mixed VGs found: build `metav1.Condition` with `Type=conditionTypeDisksConsistent`, `Status=False`, `Reason=reasonStorageClassMixed`, message from `buildMixedSCMessage` using `writeCappedList`
+  - [x] 3.3 Override the `disksConsistentCond` from `evaluateDiskAgreement` (9.3) — cross-site disks may agree but VG SC homogeneity fails
+  - [x] 3.4 Compose preflight report (nil chunks — chunking has not run), set `DisksConsistent=false` and `DiskDiscoveryDelta` with the SC violation message on the preflight
+  - [x] 3.5 Set `Ready=False` with reason `reasonDisksOutOfSync` (reuse from 9.3)
+  - [x] 3.6 Call `updateStatus` with the overridden conditions and return early (same pattern as wave conflict early return)
 
-- [ ] Task 4: Unit tests for `validateVGStorageClassHomogeneity` (AC: #5)
-  - [ ] 4.1 Add tests to `pkg/controller/drplan/reconciler_test.go`:
+- [x] Task 4: Unit tests for `validateVGStorageClassHomogeneity` (AC: #5)
+  - [x] 4.1 Add tests to `pkg/controller/drplan/reconciler_test.go`:
     - Single VM VG, one SC (`ceph-rbd` on all disks) → empty result (passes)
     - Single VM VG, two SCs (`ceph-rbd` + `local-path`) → MixedVGResult with both classes
     - Namespace-level VG (3 VMs), all same SC → empty result (passes)
@@ -55,15 +55,20 @@ So that volume group operations are guaranteed to target a single storage driver
     - Multiple VGs: one homogeneous, one heterogeneous → only the heterogeneous VG in results
     - VG with single VM, single disk, single SC → passes
 
-- [ ] Task 5: Reconciler integration tests (AC: #5)
-  - [ ] 5.1 Add `TestReconcile_StorageClassMixed_BlocksReady` — VG with mixed SCs → `DisksConsistent=False/StorageClassMixed`, `Ready=False`
-  - [ ] 5.2 Add `TestReconcile_StorageClassHomogeneous_Passes` — all VGs homogeneous → `DisksConsistent` not degraded, `Ready=True`
-  - [ ] 5.3 Add `TestReconcile_StorageClassMixed_PrefersOverDiskAgreed` — cross-site disks agree (9.3) but VG SCs mixed (9.5) → `DisksConsistent=False/StorageClassMixed` takes precedence
+- [x] Task 5: Reconciler integration tests (AC: #5)
+  - [x] 5.1 Add `TestReconcile_StorageClassMixed_BlocksReady` — VG with mixed SCs → `DisksConsistent=False/StorageClassMixed`, `Ready=False`
+  - [x] 5.2 Add `TestReconcile_StorageClassHomogeneous_Passes` — all VGs homogeneous → `DisksConsistent` not degraded, `Ready=True`
+  - [x] 5.3 Add `TestReconcile_StorageClassMixed_PrefersOverDiskAgreed` — cross-site disks agree (9.3) but VG SCs mixed (9.5) → `DisksConsistent=False/StorageClassMixed` takes precedence
 
-- [ ] Task 6: Run make manifests generate, lint, test (AC: #5)
-  - [ ] 6.1 `make manifests generate` — zero errors
-  - [ ] 6.2 `make lint-fix` — zero new lint errors
-  - [ ] 6.3 `make test` — all tests pass, zero regressions
+- [x] Task 6: Run make manifests generate, lint, test (AC: #5)
+  - [x] 6.1 `make manifests generate` — zero errors
+  - [x] 6.2 `make lint-fix` — zero new lint errors
+  - [x] 6.3 `make test` — all tests pass, zero regressions
+
+### Review Findings
+
+- [x] [Review][Patch] StorageClassMixed uses a misleading admission error message [`pkg/admission/plugin.go:151`]
+- [x] [Review][Patch] Homogeneous-path integration test does not exercise site-aware `DisksConsistent` behavior [`pkg/controller/drplan/reconciler_test.go:2633`]
 
 ## Dev Notes
 
@@ -313,10 +318,25 @@ No API type changes, no admission changes, no console-plugin changes, no generat
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4.6 (cursor)
 
 ### Debug Log References
 
+None required — clean implementation with no debugging needed.
+
 ### Completion Notes List
 
+- Added `reasonStorageClassMixed = "StorageClassMixed"` constant alongside existing DisksConsistent constants
+- Created `MixedVGResult` struct and `validateVGStorageClassHomogeneity` pure function that collects distinct storage classes per VG from DiscoveredVM.Disks data, excluding empty StorageClass strings and stateless VMs (nil/empty Disks)
+- Created `buildMixedSCMessage` helper using `writeCappedList` for capped message formatting
+- Wired validation into reconciler between `ResolveVolumeGroups` and wave conflict check — overrides `disksConsistentCond` from 9.3 when VG SCs are mixed, sets `Ready=False/DisksOutOfSync`, composes preflight with `DisksConsistent=false` and violation message, returns early with waves preserved (follows wave conflict pattern, not disk mismatch pattern)
+- 9 unit tests covering: single VM single SC (passes), single VM two SCs (fails), namespace-level all same SC (passes), namespace-level mixed SC (fails), mixed+stateless VM (passes), all stateless VMs (passes), empty StorageClass excluded (passes), multiple VGs one heterogeneous (only heterogeneous in results), single VM single disk single SC (passes)
+- 2 message builder tests covering single and multiple VG messages
+- 3 reconciler integration tests: StorageClassMixed blocks Ready, homogeneous passes, mixed overrides DisksAgreed from 9.3
+- Coverage increased from 87.8% to 88.6% for pkg/controller/drplan
+- Zero new lint issues, zero regressions, all tests pass
+
 ### File List
+
+- `pkg/controller/drplan/reconciler.go` — Added `reasonStorageClassMixed` constant, `MixedVGResult` struct, `validateVGStorageClassHomogeneity` pure function, `buildMixedSCMessage` helper, reconciler wiring between VG resolution and wave conflict check
+- `pkg/controller/drplan/reconciler_test.go` — Added `newReconcilerWithSiteEnricherAndNSLookup` helper, 9 `TestValidateVGStorageClassHomogeneity_*` unit tests, 2 `TestBuildMixedSCMessage_*` tests, 3 `TestReconcile_StorageClass*` integration tests

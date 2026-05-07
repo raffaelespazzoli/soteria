@@ -84,6 +84,7 @@ const (
 	reasonDiskMismatch            = "DiskMismatch"
 	reasonWaitingForDiskDiscovery = "WaitingForDiskDiscovery"
 	reasonDisksOutOfSync          = "DisksOutOfSync"
+	reasonStorageClassMixed       = "StorageClassMixed"
 
 	requeueInterval = 10 * time.Minute
 
@@ -252,6 +253,44 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			Message:            fmt.Sprintf("Volume group resolution failed: %v", err),
 			ObservedGeneration: plan.Generation,
 		}, nil)
+	}
+
+	// VG storage class homogeneity check: all disks within a volume group
+	// must use the same storage class. Runs after VG formation using
+	// DiscoveredVM.Disks data from wave enrichment.
+	mixedVGs := validateVGStorageClassHomogeneity(consistency.VolumeGroups, waves)
+	if len(mixedVGs) > 0 {
+		msg := buildMixedSCMessage(mixedVGs)
+		logger.Info("Storage class homogeneity violation detected", "mixedVGs", len(mixedVGs))
+		r.event(&plan, "Warning", "StorageClassMixed", msg)
+
+		scCond := metav1.Condition{
+			Type:               conditionTypeDisksConsistent,
+			Status:             metav1.ConditionFalse,
+			Reason:             reasonStorageClassMixed,
+			Message:            msg,
+			ObservedGeneration: plan.Generation,
+		}
+		disksConsistentCond = &scCond
+
+		readyCond := metav1.Condition{
+			Type:               conditionTypeReady,
+			Status:             metav1.ConditionFalse,
+			Reason:             reasonDisksOutOfSync,
+			Message:            msg,
+			ObservedGeneration: plan.Generation,
+		}
+
+		report := r.composePreflightReport(ctx, &plan, &result, consistency, nil, vms, waves)
+		report.DisksConsistent = false
+		report.DiskDiscoveryDelta = msg
+
+		var extraConds []metav1.Condition
+		if sitesInSyncCond != nil {
+			extraConds = append(extraConds, *sitesInSyncCond)
+		}
+		extraConds = append(extraConds, scCond)
+		return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, report, readyCond, nil, extraConds...)
 	}
 
 	if len(consistency.WaveConflicts) > 0 {
@@ -858,6 +897,65 @@ func formatDiskList(disks []soteriav1alpha1.DiscoveredDisk) string {
 		b.WriteString(d.StorageClass)
 		b.WriteString(")")
 	}
+	return b.String()
+}
+
+// MixedVGResult captures a volume group with heterogeneous storage classes.
+type MixedVGResult struct {
+	VGName  string
+	Classes []string
+}
+
+// validateVGStorageClassHomogeneity checks that each volume group's member VMs
+// use a single storage class across all PVC-backed disks. VMs with empty/nil
+// Disks (stateless) and disks with empty StorageClass (PVC not yet resolved)
+// are excluded from the count.
+func validateVGStorageClassHomogeneity(
+	vgs []soteriav1alpha1.VolumeGroupInfo,
+	waves []soteriav1alpha1.WaveInfo,
+) []MixedVGResult {
+	type vmKey struct{ namespace, name string }
+	vmDisks := make(map[vmKey][]soteriav1alpha1.DiscoveredDisk)
+	for _, wave := range waves {
+		for _, vm := range wave.VMs {
+			vmDisks[vmKey{vm.Namespace, vm.Name}] = vm.Disks
+		}
+	}
+
+	var results []MixedVGResult
+	for _, vg := range vgs {
+		classes := make(map[string]struct{})
+		for _, vmName := range vg.VMNames {
+			disks := vmDisks[vmKey{vg.Namespace, vmName}]
+			for _, d := range disks {
+				if d.StorageClass != "" {
+					classes[d.StorageClass] = struct{}{}
+				}
+			}
+		}
+		if len(classes) > 1 {
+			sorted := make([]string, 0, len(classes))
+			for c := range classes {
+				sorted = append(sorted, c)
+			}
+			sort.Strings(sorted)
+			results = append(results, MixedVGResult{VGName: vg.Name, Classes: sorted})
+		}
+	}
+	return results
+}
+
+// buildMixedSCMessage formats storage class homogeneity violations using
+// the writeCappedList pattern to cap message length.
+func buildMixedSCMessage(mixed []MixedVGResult) string {
+	items := make([]string, 0, len(mixed))
+	for _, m := range mixed {
+		items = append(items, fmt.Sprintf(
+			"Volume group %s: mixed storage classes %v — all disks must use the same storage class",
+			m.VGName, m.Classes))
+	}
+	var b strings.Builder
+	writeCappedList(&b, items, maxDeltaEntriesPerSide)
 	return b.String()
 }
 
