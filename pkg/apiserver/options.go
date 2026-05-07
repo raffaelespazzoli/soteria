@@ -27,6 +27,7 @@ import (
 	"k8s.io/kube-openapi/pkg/util"
 	"k8s.io/kube-openapi/pkg/validation/spec"
 
+	soteriaadmission "github.com/soteria-project/soteria/pkg/admission"
 	soteriainstall "github.com/soteria-project/soteria/pkg/apis/soteria.io/install"
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
 )
@@ -157,6 +158,7 @@ func (o *SoteriaServerOptions) Config() (*Config, error) {
 
 	config := &Config{
 		GenericConfig: serverConfig,
+		SoteriaPlugin: soteriaadmission.NewSoteriaAdmissionPlugin(),
 	}
 	return config, nil
 }

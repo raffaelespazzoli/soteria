@@ -359,16 +359,10 @@ func main() {
 	// +kubebuilder:scaffold:builder
 
 	// ---- Webhooks ----
-
-	if err := admission.SetupDRPlanWebhook(mgr); err != nil {
-		setupLog.Error(err, "Failed to create webhook", "webhook", "DRPlan")
-		os.Exit(1)
-	}
-
-	if err := admission.SetupDRExecutionWebhook(mgr); err != nil {
-		setupLog.Error(err, "Failed to create webhook", "webhook", "DRExecution")
-		os.Exit(1)
-	}
+	// DRPlan and DRExecution validation runs in-process via the aggregated
+	// API server admission plugin (SoteriaValidation). Only the VM webhook
+	// needs the controller-runtime webhook server path because VMs are
+	// standard KubeVirt CRDs served by kube-apiserver.
 
 	if err := admission.SetupVMWebhook(mgr, nsLookup, vmDiscoverer); err != nil {
 		setupLog.Error(err, "Failed to create webhook", "webhook", "VirtualMachine")

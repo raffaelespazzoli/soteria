@@ -44,9 +44,9 @@ import (
 	"github.com/soteria-project/soteria/pkg/engine"
 )
 
-// +kubebuilder:webhook:path=/validate-soteria-io-v1alpha1-drexecution,mutating=false,failurePolicy=fail,sideEffects=None,groups=soteria.io,resources=drexecutions,verbs=create,versions=v1alpha1,name=vdrexecution.kb.io,admissionReviewVersions=v1,matchPolicy=Exact
-
 // DRExecutionValidator validates DRExecution CREATE operations.
+// LEGACY: retained as a struct for reference; active validation has moved
+// to the SoteriaAdmissionPlugin in-process admission plugin (plugin.go).
 type DRExecutionValidator struct {
 	reader client.Reader
 }

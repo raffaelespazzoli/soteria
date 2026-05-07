@@ -22,6 +22,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	apiserveradmission "k8s.io/apiserver/pkg/admission"
 	"k8s.io/apiserver/pkg/registry/generic"
 	"k8s.io/apiserver/pkg/registry/rest"
 	genericapiserver "k8s.io/apiserver/pkg/server"
@@ -30,6 +31,7 @@ import (
 	"k8s.io/apiserver/pkg/storage/storagebackend/factory"
 	"k8s.io/client-go/tools/cache"
 
+	soteriaadmission "github.com/soteria-project/soteria/pkg/admission"
 	soteriainstall "github.com/soteria-project/soteria/pkg/apis/soteria.io/install"
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
 	scylladb "github.com/soteria-project/soteria/pkg/storage/scylladb"
@@ -46,12 +48,17 @@ type Config struct {
 	GenericConfig *genericapiserver.RecommendedConfig
 	// ScyllaStoreFactory creates per-resource ScyllaDB storage.Interface instances.
 	ScyllaStoreFactory *ScyllaStoreFactory
+	// SoteriaPlugin is the in-process admission plugin for DRExecution/DRPlan
+	// validation. Created during Config() and receives DRPlan REST storage
+	// during New().
+	SoteriaPlugin *soteriaadmission.SoteriaAdmissionPlugin
 }
 
 // completedConfig is the internal completed configuration.
 type completedConfig struct {
 	GenericConfig      genericapiserver.CompletedConfig
 	ScyllaStoreFactory *ScyllaStoreFactory
+	SoteriaPlugin      *soteriaadmission.SoteriaAdmissionPlugin
 }
 
 // CompletedConfig is the result of calling Config.Complete().
@@ -64,6 +71,7 @@ func (cfg *Config) Complete() CompletedConfig {
 	c := completedConfig{
 		GenericConfig:      cfg.GenericConfig.Complete(),
 		ScyllaStoreFactory: cfg.ScyllaStoreFactory,
+		SoteriaPlugin:      cfg.SoteriaPlugin,
 	}
 	return CompletedConfig{&c}
 }
@@ -75,6 +83,24 @@ type SoteriaServer struct {
 
 // New creates a new SoteriaServer and installs the soteria.io API group.
 func (c CompletedConfig) New() (*SoteriaServer, error) {
+	// Compose the Soteria admission plugin into the admission chain before
+	// the generic server is created (GenericConfig.New reads AdmissionControl).
+	// We append after the existing chain (built by RecommendedOptions.ApplyTo
+	// in production) so default plugins (namespace lifecycle, etc.) run first.
+	// This direct-composition approach replaces admission.Plugins.Register +
+	// PluginInitializer because the DRPlan rest.Getter is only available
+	// after NewREST, which runs later in this function — the standard
+	// initializer pipeline would require the dependency at registration time.
+	// DRPlan REST storage is injected into the plugin after NewREST below.
+	if c.SoteriaPlugin != nil {
+		existing := c.GenericConfig.AdmissionControl
+		if existing != nil {
+			c.GenericConfig.AdmissionControl = apiserveradmission.NewChainHandler(existing, c.SoteriaPlugin)
+		} else {
+			c.GenericConfig.AdmissionControl = c.SoteriaPlugin
+		}
+	}
+
 	genericServer, err := c.GenericConfig.New("soteria-apiserver", genericapiserver.NewEmptyDelegate())
 	if err != nil {
 		return nil, fmt.Errorf("creating generic API server: %w", err)
@@ -101,6 +127,15 @@ func (c CompletedConfig) New() (*SoteriaServer, error) {
 	}
 	v1alpha1storage["drplans"] = drplanStore
 	v1alpha1storage["drplans/status"] = drplanStatusStore
+
+	// Inject DRPlan REST storage into the admission plugin for cross-object
+	// lookups (plan existence, concurrency gate, phase transition, SitesInSync).
+	// The plugin calls Get with empty ResourceVersion, which CacheDelegator
+	// serves directly from ScyllaDB (bypassing the watch cache), preserving
+	// the same fresh-read semantics as the old webhook's GetAPIReader path.
+	if c.SoteriaPlugin != nil {
+		c.SoteriaPlugin.SetDRPlanStorage(drplanStore)
+	}
 
 	drexecStore, drexecStatusStore, err := drexecutionregistry.NewREST(soteriainstall.Scheme, optsGetter)
 	if err != nil {

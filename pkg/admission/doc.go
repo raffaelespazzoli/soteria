@@ -14,13 +14,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package admission implements validating admission webhooks for Soteria
-// resources. The DRPlan webhook validates field-level constraints
-// (maxConcurrentFailovers, site names) as defense-in-depth alongside the aggregated API
-// server's strategy layer. The VirtualMachine webhook validates plan existence
-// (issuing a warning when the referenced DRPlan is missing, to support GitOps
-// ordering) and namespace-level wave consistency (rejecting VMs whose wave
-// label conflicts with siblings in the same namespace-level namespace).
+// Package admission implements admission validation for Soteria resources.
+//
+// DRPlan and DRExecution validation runs in-process within the aggregated API
+// server via SoteriaAdmissionPlugin (plugin.go), which implements
+// k8s.io/apiserver/pkg/admission.ValidationInterface. The plugin performs
+// DRExecution CREATE cross-object checks (plan existence, concurrency gate,
+// phase transition, SitesInSync) using direct REST storage lookups, and
+// DRPlan CREATE/UPDATE field validation as defense-in-depth alongside the
+// registry strategy layer.
+//
+// The VirtualMachine webhook remains on the controller-runtime webhook server
+// path (ValidatingWebhookConfiguration vvm.kb.io) because VMs are standard
+// KubeVirt CRDs served by kube-apiserver, not the aggregated API. It validates
+// plan existence (issuing a warning when the referenced DRPlan is missing, to
+// support GitOps ordering) and namespace-level wave consistency (rejecting VMs
+// whose wave label conflicts with siblings in the same namespace).
+//
 // VM exclusivity is structurally guaranteed by the soteria.io/drplan label
 // convention — a label key can have only one value, so a VM belongs to at most
 // one plan. Throttle capacity (maxConcurrentFailovers vs group size) is

@@ -17,8 +17,11 @@ limitations under the License.
 */
 
 // suite_test.go boots an envtest environment with DRPlan and VirtualMachine
-// CRDs, starts a controller-runtime manager with the DRPlan validating webhook
+// CRDs, starts a controller-runtime manager with the VM validating webhook
 // registered, and exposes a test client for admission integration tests.
+// DRPlan and DRExecution validation has moved to the in-process admission
+// plugin (SoteriaValidation) in the aggregated API server; those tests live
+// in test/integration/apiserver/.
 
 package admission_test
 
@@ -67,7 +70,6 @@ func TestMain(m *testing.M) {
 	_ = apiextensionsv1.AddToScheme(testScheme)
 	_ = admissionregistrationv1.AddToScheme(testScheme)
 
-	drplanWebhookPath := soteriaadmission.ValidateDRPlanPath
 	vmWebhookPath := soteriaadmission.ValidateVMPath
 	fail := admissionregistrationv1.Fail
 	sideEffects := admissionregistrationv1.SideEffectClassNone
@@ -87,31 +89,6 @@ func TestMain(m *testing.M) {
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "soteria-validating-webhook-configuration"},
 					Webhooks: []admissionregistrationv1.ValidatingWebhook{
-						{
-							Name:                    "vdrplan.kb.io",
-							AdmissionReviewVersions: []string{"v1"},
-							FailurePolicy:           &fail,
-							MatchPolicy:             &exact,
-							SideEffects:             &sideEffects,
-							ClientConfig: admissionregistrationv1.WebhookClientConfig{
-								Service: &admissionregistrationv1.ServiceReference{
-									Path: &drplanWebhookPath,
-								},
-							},
-							Rules: []admissionregistrationv1.RuleWithOperations{
-								{
-									Operations: []admissionregistrationv1.OperationType{
-										admissionregistrationv1.Create,
-										admissionregistrationv1.Update,
-									},
-									Rule: admissionregistrationv1.Rule{
-										APIGroups:   []string{"soteria.io"},
-										APIVersions: []string{"v1alpha1"},
-										Resources:   []string{"drplans"},
-									},
-								},
-							},
-						},
 						{
 							Name:                    "vvm.kb.io",
 							AdmissionReviewVersions: []string{"v1"},
@@ -174,10 +151,6 @@ func TestMain(m *testing.M) {
 		panic(fmt.Sprintf("creating kubernetes clientset: %v", err))
 	}
 	nsLookup := &engine.DefaultNamespaceLookup{Client: clientset.CoreV1()}
-
-	if err := soteriaadmission.SetupDRPlanWebhook(mgr); err != nil {
-		panic(fmt.Sprintf("setting up DRPlan webhook: %v", err))
-	}
 
 	if err := soteriaadmission.SetupVMWebhook(mgr, nsLookup, vmDiscoverer); err != nil {
 		panic(fmt.Sprintf("setting up VM webhook: %v", err))

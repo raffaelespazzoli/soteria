@@ -44,6 +44,7 @@ import (
 
 	soteriaopenapi "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
 
+	soteriaadmission "github.com/soteria-project/soteria/pkg/admission"
 	soteriainstall "github.com/soteria-project/soteria/pkg/apis/soteria.io/install"
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
 	"github.com/soteria-project/soteria/pkg/apiserver"
@@ -154,6 +155,12 @@ func TestMain(m *testing.M) {
 		panic(fmt.Sprintf("applying secure serving options: %v", err))
 	}
 
+	// Register the Soteria in-process admission plugin. In production this
+	// is done by SoteriaServerOptions.Config(), but the test builds the
+	// config manually. We create the plugin and set it on the Config; New()
+	// injects DRPlan REST storage and wires it into the admission chain.
+	admissionPlugin := soteriaadmission.NewSoteriaAdmissionPlugin()
+
 	soteriaConfig := &apiserver.Config{
 		GenericConfig: serverConfig,
 		ScyllaStoreFactory: &apiserver.ScyllaStoreFactory{
@@ -165,6 +172,7 @@ func TestMain(m *testing.M) {
 			Codec:     testCodec,
 			UseCacher: false,
 		},
+		SoteriaPlugin: admissionPlugin,
 	}
 
 	completed := soteriaConfig.Complete()

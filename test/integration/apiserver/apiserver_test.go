@@ -233,6 +233,10 @@ func TestAPIServer_DRExecution_CRUD(t *testing.T) {
 	client := newDynamicClient(t)
 	ctx := context.Background()
 
+	createDRPlan(t, ctx, client, "my-plan",
+		soteriav1alpha1.PhaseSteadyState, "", nil)
+	defer deleteDRPlan(t, ctx, client, "my-plan")
+
 	exec := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": "soteria.io/v1alpha1",
@@ -279,6 +283,10 @@ func TestAPIServer_DRExecution_AppendOnly(t *testing.T) {
 	client := newDynamicClient(t)
 	ctx := context.Background()
 
+	createDRPlan(t, ctx, client, "appendonly-plan",
+		soteriav1alpha1.PhaseSteadyState, "", nil)
+	defer deleteDRPlan(t, ctx, client, "appendonly-plan")
+
 	exec := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": "soteria.io/v1alpha1",
@@ -287,7 +295,7 @@ func TestAPIServer_DRExecution_AppendOnly(t *testing.T) {
 				"name": "completed-exec",
 			},
 			"spec": map[string]any{
-				"planName": "my-plan",
+				"planName": "appendonly-plan",
 				"mode":     string(soteriav1alpha1.ExecutionModePlannedMigration),
 			},
 		},
