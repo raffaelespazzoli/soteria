@@ -159,29 +159,11 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 	logger.Info("Starting reconciliation")
 
-	// Cross-site VM agreement check: compare both sites' discovered VM sets.
-	// Only applies in site-aware mode when at least one SiteDiscovery field
-	// has been populated. When both are nil the plan pre-dates site-aware
-	// discovery; skip the check entirely to preserve backward compatibility
-	// (Task 6.2).
-	sitesInSyncCond, blocked, err := r.evaluateSiteAgreement(ctx, req, &plan)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-	if blocked {
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
-	}
-
-	// Cross-site disk topology agreement check: for VMs present on both
-	// sites, validate disk count, names, and storage class are consistent.
-	disksConsistentCond, diskBlocked, err := r.evaluateDiskAgreement(ctx, req, &plan)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-	if diskBlocked {
-		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
-	}
-
+	// Discover VMs and form waves early so the active site's SiteDiscovery
+	// is available for cross-site agreement checks within this reconcile
+	// cycle. Previously, evaluateSiteAgreement ran before discovery, reading
+	// a nil SiteDiscovery from plan status on the first reconcile — causing
+	// SitesInSync to stick as WaitingForDiscovery (UAT-8.001).
 	vms, err := r.VMDiscoverer.DiscoverVMs(ctx, plan.Name)
 	if err != nil {
 		logger.Error(err, "Failed to discover VMs")
@@ -226,6 +208,56 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			WaveKey: wg.WaveKey,
 			VMs:     discoveredVMs,
 		}
+	}
+
+	// On the first reconcile the active site's SiteDiscovery is nil in the
+	// stored plan status because it is only persisted at the end of
+	// updateStatus. Populate it in-memory now so the agreement checks see
+	// current-cycle data instead of nil (fixes UAT-8.001). On subsequent
+	// reconciles the stored value already reflects the previous cycle's
+	// discovery and is left untouched.
+	if r.LocalSite != "" {
+		siteField := r.siteDiscoveryField(&plan)
+		if siteField != "" {
+			var currentDiscovery *soteriav1alpha1.SiteDiscovery
+			if siteField == "primary" {
+				currentDiscovery = plan.Status.PrimarySiteDiscovery
+			} else {
+				currentDiscovery = plan.Status.SecondarySiteDiscovery
+			}
+			if currentDiscovery == nil || currentDiscovery.LastDiscoveryTime.IsZero() {
+				pendingVMs := collectVMsFromWaves(waves)
+				sortDiscoveredVMs(pendingVMs)
+				setSiteDiscovery(&plan, siteField, &soteriav1alpha1.SiteDiscovery{
+					VMs:               pendingVMs,
+					DiscoveredVMCount: len(pendingVMs),
+					LastDiscoveryTime: metav1.Now(),
+				})
+			}
+		}
+	}
+
+	// Cross-site VM agreement check: compare both sites' discovered VM sets.
+	// Only applies in site-aware mode when at least one SiteDiscovery field
+	// has been populated. When both are nil the plan pre-dates site-aware
+	// discovery; skip the check entirely to preserve backward compatibility
+	// (Task 6.2).
+	sitesInSyncCond, blocked, err := r.evaluateSiteAgreement(ctx, req, &plan)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if blocked {
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	}
+
+	// Cross-site disk topology agreement check: for VMs present on both
+	// sites, validate disk count, names, and storage class are consistent.
+	disksConsistentCond, diskBlocked, err := r.evaluateDiskAgreement(ctx, req, &plan)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	if diskBlocked {
+		return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 	}
 
 	if result.TotalVMs == 0 {

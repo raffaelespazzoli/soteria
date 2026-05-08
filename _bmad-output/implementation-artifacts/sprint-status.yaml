@@ -1,5 +1,6 @@
 # generated: 2026-04-06
-# last_updated: 2026-05-07
+# last_updated: 2026-05-08
+# epic-8-retrospective done: 5/5 stories (100%), ~79 new tests (563 total), ~19 review patches, 0 spawned stories, 0 splits; 5 UAT issues (2 major: UAT-8.001 SitesInSync race fix planned option b, UAT-8.002 requeue investigation in progress; 2 minor; 1 cosmetic fixed); console UAT deferred; process improvements: reconcile-behavior spike before status-condition epics, derived-state pattern for Console, review patch taxonomy checklist proposed
 # 9.2 done: Aggregated API Admission Plugin Migration — SoteriaAdmissionPlugin implementing admission.ValidationInterface, composed into aggregated API server AdmissionControl via NewChainHandler, DRPlan REST storage injected after NewREST, DRExecution CREATE cross-object checks (plan exists, concurrency gate, phase transition, SitesInSync) + DRPlan CREATE/UPDATE field validation, +kubebuilder:webhook markers removed from DRExecutionValidator+DRPlanValidator, SetupDRPlanWebhook+SetupDRExecutionWebhook removed from setup.go+main.go, VWC entries for soteria.io resources removed (VM webhook retained), doc.go updated, unit tests (87.1% coverage) + aggregated API server integration tests (6 new tests), all unit and integration tests pass with zero regressions (~4 new files, ~11 modified files, ~1 deleted file)
 # epic-10 created: Remove ActiveExecution from DRPlan — Static Plan Status — 5 stories (10.1 DRExecution Concurrency Guard Without ActiveExecution, 10.2 Derived Active Execution for Table Convertor & Preflight, 10.3 Derived Active Execution for Reconciler Gates & VM Watch, 10.4 Remove ActiveExecution Fields from DRPlanStatus, 10.5 Console UI Derived Active Execution State). Removes ActiveExecution/ActiveExecutionMode from DRPlanStatus, making DRPlan a static config/discovery artifact. Concurrency guard moves to DRExecution creation path with SERIAL consistency. Table convertor, preflight, reconciler gates, VM watch routing, and console all derive active execution from DRExecution resources.
 # epic-9 created: Disk-Level Discovery, Volume Group Enrichment & Structural Validation — 6 stories (9.1 Disk Discovery in SiteDiscovery, 9.2 Aggregated API Admission Plugin Migration, 9.3 Cross-Site Disk Agreement Validation, 9.4 Volume Group Disk Enrichment in Preflight, 9.5 Storage Class Homogeneity Validation, 9.6 Console UI Disk Discovery & Validation Display). Enriches DiscoveredVM with per-disk PVC topology, migrates DRExecution/DRPlan admission from dead VWC webhooks to in-process aggregated API admission plugin, removes unused ValidatingWebhookConfiguration entries for soteria.io resources, adds DisksConsistent condition (separate from SitesInSync), validates cross-site disk agreement + VG storage class homogeneity, blocks execution on mismatch, surfaces in console.
@@ -269,7 +270,7 @@ development_status:
   8-3-cross-site-vm-agreement-plan-readiness-gating: done
   8-4-console-ui-site-aware-plan-status-disagreement-display: done
   8-5-optimistic-drexecution-detection-in-console: done
-  epic-8-retrospective: optional
+  epic-8-retrospective: done
 
   # Epic 9: Disk-Level Discovery, Volume Group Enrichment & Structural Validation
   epic-9: in-progress
@@ -279,6 +280,7 @@ development_status:
   9-4-volume-group-disk-enrichment-in-preflight: done
   9-5-storage-class-homogeneity-validation: done
   9-6-console-ui-disk-discovery-validation-display: done
+  epic-9-retrospective: optional
 
   # Epic 10: Remove ActiveExecution from DRPlan — Static Plan Status
   epic-10: backlog
@@ -287,3 +289,4 @@ development_status:
   10-3-derived-active-execution-for-reconciler-gates-vm-watch: backlog
   10-4-remove-activeexecution-fields-from-drplanstatus: backlog
   10-5-console-ui-derived-active-execution-state: backlog
+  epic-10-retrospective: optional

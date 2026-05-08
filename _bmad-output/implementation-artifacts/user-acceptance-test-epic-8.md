@@ -108,7 +108,7 @@
 - **Actual:** SitesInSync remains `False/WaitingForDiscovery "Waiting for VM discovery from etl6"` even though `primarySiteDiscovery` is populated with 6 VMs. The condition and discovery are written in the SAME status patch (updateStatus), so `evaluateSiteAgreement` reads the plan BEFORE the active site's own discovery is populated. On the first reconcile, it sees primary=nil → writes WaitingForDiscovery. Then both condition and discovery are patched together. The next reconcile should correct this, but the controller doesn't requeue (see UAT-8.002).
 - **Root Cause:** Race between `evaluateSiteAgreement` (reads plan early in reconcile) and `updateStatus` (writes SiteDiscovery later). The first reconcile always produces a stale WaitingForDiscovery condition.
 - **Workaround:** Delete the controller pod → on restart, both discoveries are populated → SitesInSync correctly evaluates to VMsAgreed.
-- **Resolution:** pending
+- **Resolution:** Fixed — reordered Reconcile to run VM discovery and wave formation before agreement checks. When the active site's stored SiteDiscovery is nil (first reconcile), the in-memory override populates it from current-cycle discovery data. Verify in next UAT.
 
 ### Issue UAT-8.002 — Controller does not requeue after successful reconcile
 
@@ -121,8 +121,8 @@
 - **Expected:** Controller should re-reconcile every 30 seconds.
 - **Actual:** After the initial reconcile, no further reconciles occur. The `RequeueAfter` return value appears to be lost. Annotating the DRPlan also does not trigger a reconcile via watch events.
 - **Impact:** SitesInSync condition never self-corrects (UAT-8.001). Any status drift (e.g., VM count changes, health changes) won't be detected until manual pod restart.
-- **Note:** This is a pre-existing issue with the ScyllaDB-backed aggregated API server's controller-runtime integration, not introduced by Epic 8.
-- **Resolution:** pending — needs investigation of controller-runtime work queue / ScyllaDB CDC watch integration
+- **Note:** This is a pre-existing issue with the ScyllaDB-backed aggregated API server's controller-runtime integration, not introduced by Epic 8. Investigation notes: the successful reconcile path returns `requeueInterval = 10 * time.Minute` (not 30s as originally assumed); annotation changes not triggering reconciles is expected (`GenerationChangedPredicate` filters non-generation updates); line 184 returns both `RequeueAfter` and non-nil `err` which controller-runtime ignores (minor bug, error path only).
+- **Resolution:** Deferred — will retest in next UAT with attention to the 10-minute default interval vs the assumed 30s
 
 ### Issue UAT-8.003 — Replicating condition shows stale 5/5 VG count after adding VM
 

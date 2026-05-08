@@ -1387,12 +1387,19 @@ func TestReconcile_ActiveSite_DiscoveryError_PreservesSiteDiscovery(t *testing.T
 }
 
 func TestReconcile_ActiveSite_PreservesPeerSiteDiscovery(t *testing.T) {
+	peerTime := metav1.NewTime(time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC))
 	plan := newTestPlan()
-	// Pre-populate SecondarySiteDiscovery (simulating passive site already wrote).
+	// Pre-populate SecondarySiteDiscovery (simulating passive site already
+	// wrote). VMs must match the active site's discovery to avoid triggering
+	// VMsMismatch; the peer's distinct LastDiscoveryTime proves the field
+	// was preserved rather than overwritten.
 	plan.Status.SecondarySiteDiscovery = &soteriav1alpha1.SiteDiscovery{
-		VMs:               []soteriav1alpha1.DiscoveredVM{{Name: "peer-vm-1", Namespace: "default"}},
-		DiscoveredVMCount: 1,
-		LastDiscoveryTime: metav1.Now(),
+		VMs: []soteriav1alpha1.DiscoveredVM{
+			{Name: "vm-1", Namespace: "default"},
+			{Name: "vm-2", Namespace: "default"},
+		},
+		DiscoveredVMCount: 2,
+		LastDiscoveryTime: peerTime,
 	}
 
 	vms := []engine.VMReference{
@@ -1424,17 +1431,17 @@ func TestReconcile_ActiveSite_PreservesPeerSiteDiscovery(t *testing.T) {
 			updated.Status.PrimarySiteDiscovery.DiscoveredVMCount)
 	}
 
-	// Peer site's SiteDiscovery is preserved.
+	// Peer site's SiteDiscovery is preserved with its original timestamp.
 	if updated.Status.SecondarySiteDiscovery == nil {
 		t.Fatal("SecondarySiteDiscovery should be preserved")
 	}
-	if updated.Status.SecondarySiteDiscovery.DiscoveredVMCount != 1 {
-		t.Errorf("SecondarySiteDiscovery.DiscoveredVMCount = %d, want 1",
+	if updated.Status.SecondarySiteDiscovery.DiscoveredVMCount != 2 {
+		t.Errorf("SecondarySiteDiscovery.DiscoveredVMCount = %d, want 2",
 			updated.Status.SecondarySiteDiscovery.DiscoveredVMCount)
 	}
-	if updated.Status.SecondarySiteDiscovery.VMs[0].Name != "peer-vm-1" {
-		t.Errorf("SecondarySiteDiscovery VM name = %q, want peer-vm-1",
-			updated.Status.SecondarySiteDiscovery.VMs[0].Name)
+	if !updated.Status.SecondarySiteDiscovery.LastDiscoveryTime.Equal(&peerTime) {
+		t.Errorf("SecondarySiteDiscovery.LastDiscoveryTime = %v, want %v (peer's original time)",
+			updated.Status.SecondarySiteDiscovery.LastDiscoveryTime, peerTime)
 	}
 }
 
@@ -2009,9 +2016,12 @@ func TestReconcile_SitesOutOfSync_WavesCleared(t *testing.T) {
 	}
 }
 
-func TestReconcile_BothSiteDiscoveryNil_SkipsAgreementCheck(t *testing.T) {
+func TestReconcile_BothSiteDiscoveryNil_FirstReconcilePopulatesActive(t *testing.T) {
 	plan := newTestPlan()
-	// Both SiteDiscovery fields are nil — legacy plan without site-aware discovery.
+	// Both SiteDiscovery fields are nil — first reconcile for a site-aware
+	// plan. The active site populates its own SiteDiscovery in-memory before
+	// the agreement check, so compareSiteDiscovery sees current-cycle data
+	// and reports WaitingForDiscovery for the peer (UAT-8.001 fix).
 
 	vms := []engine.VMReference{
 		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
@@ -2030,17 +2040,55 @@ func TestReconcile_BothSiteDiscoveryNil_SkipsAgreementCheck(t *testing.T) {
 	}
 
 	sisCond := findCondition(updated.Status.Conditions, conditionTypeSitesInSync)
-	if sisCond != nil {
-		t.Error("SitesInSync condition should NOT be set when both SiteDiscovery are nil")
+	if sisCond == nil {
+		t.Fatal("SitesInSync condition should be set on first reconcile")
+	}
+	if sisCond.Reason != reasonWaitingForDiscovery {
+		t.Errorf("SitesInSync.Reason = %q, want %q", sisCond.Reason, reasonWaitingForDiscovery)
 	}
 
 	readyCond := findReadyCondition(updated.Status.Conditions)
 	if readyCond == nil || readyCond.Status != metav1.ConditionTrue {
-		t.Error("Expected Ready=True — agreement check should be skipped for legacy plans")
+		t.Error("Expected Ready=True — WaitingForDiscovery should not block")
 	}
 
 	if len(updated.Status.Waves) == 0 {
-		t.Error("Waves should be populated for legacy plans")
+		t.Error("Waves should be populated — WaitingForDiscovery proceeds")
+	}
+}
+
+func TestReconcile_NoSiteAware_BothSiteDiscoveryNil_SkipsAgreementCheck(t *testing.T) {
+	plan := newTestPlan()
+	// LocalSite is "" — non-site-aware deployment. Agreement check skipped.
+
+	vms := []engine.VMReference{
+		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+	}
+
+	r, c := newReconciler([]client.Object{plan}, &mockVMDiscoverer{vms: vms})
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: planKey})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	var updated soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &updated); err != nil {
+		t.Fatalf("Failed to get plan: %v", err)
+	}
+
+	sisCond := findCondition(updated.Status.Conditions, conditionTypeSitesInSync)
+	if sisCond != nil {
+		t.Error("SitesInSync condition should NOT be set without site-aware mode")
+	}
+
+	readyCond := findReadyCondition(updated.Status.Conditions)
+	if readyCond == nil || readyCond.Status != metav1.ConditionTrue {
+		t.Error("Expected Ready=True — agreement check should be skipped")
+	}
+
+	if len(updated.Status.Waves) == 0 {
+		t.Error("Waves should be populated for non-site-aware plans")
 	}
 }
 
