@@ -1,5 +1,6 @@
 # generated: 2026-04-06
 # last_updated: 2026-05-09
+# 9.7 created: Cross-Site Volume Group Disk Mapping — DiskSiteMapping API type (site/pvcName/pvcNamespace), VolumeGroupDisk.Sites replaces flat PVCName/PVCNamespace, PreflightVolumeGroup.Site removed, CompositionInput extended with PrimarySiteDiscovery/SecondarySiteDiscovery, enrichVolumeGroup builds cross-site disk index from both SiteDiscovery objects, buildSiteDiscoveryDiskIndex helper, Console buildVGDiskNodes renders per-site PVC mapping, backward compat for flat pvcName/pvcNamespace and VG-level site (~3 modified Go files, ~3 modified TS files, ~2 test files)
 # 9.7 spawned: Cross-Site Volume Group Disk Mapping — spawned from UAT-9.001. Restructure PreflightVolumeGroup to show per-disk cross-site PVC mapping (DiskSiteMapping type with site/pvcName/pvcNamespace, VolumeGroupDisk.Sites replaces flat PVCName/PVCNamespace, PreflightVolumeGroup.Site removed), preflight composition enriches from both SiteDiscovery objects, console WaveCompositionTree renders cross-site disk comparison (~3 modified Go files, ~3 modified TS files, ~2 test files)
 # epic-8-retrospective done: 5/5 stories (100%), ~79 new tests (563 total), ~19 review patches, 0 spawned stories, 0 splits; 5 UAT issues (2 major: UAT-8.001 SitesInSync race fix planned option b, UAT-8.002 requeue investigation in progress; 2 minor; 1 cosmetic fixed); console UAT deferred; process improvements: reconcile-behavior spike before status-condition epics, derived-state pattern for Console, review patch taxonomy checklist proposed
 # 9.2 done: Aggregated API Admission Plugin Migration — SoteriaAdmissionPlugin implementing admission.ValidationInterface, composed into aggregated API server AdmissionControl via NewChainHandler, DRPlan REST storage injected after NewREST, DRExecution CREATE cross-object checks (plan exists, concurrency gate, phase transition, SitesInSync) + DRPlan CREATE/UPDATE field validation, +kubebuilder:webhook markers removed from DRExecutionValidator+DRPlanValidator, SetupDRPlanWebhook+SetupDRExecutionWebhook removed from setup.go+main.go, VWC entries for soteria.io resources removed (VM webhook retained), doc.go updated, unit tests (87.1% coverage) + aggregated API server integration tests (6 new tests), all unit and integration tests pass with zero regressions (~4 new files, ~11 modified files, ~1 deleted file)
@@ -281,7 +282,7 @@ development_status:
   9-4-volume-group-disk-enrichment-in-preflight: done
   9-5-storage-class-homogeneity-validation: done
   9-6-console-ui-disk-discovery-validation-display: done
-  9-7-cross-site-volume-group-disk-mapping: backlog
+  9-7-cross-site-volume-group-disk-mapping: ready-for-dev
   epic-9-retrospective: optional
 
   # Epic 10: Remove ActiveExecution from DRPlan — Static Plan Status
