@@ -1234,13 +1234,15 @@ func (r *DRPlanReconciler) composePreflightReport(
 	}
 
 	input := preflight.CompositionInput{
-		Plan:              plan,
-		DiscoveryResult:   discovery,
-		ConsistencyResult: consistency,
-		ChunkResult:       chunks,
-		StorageBackends:   storageBackends,
-		Waves:             waves,
-		LocalSite:         r.LocalSite,
+		Plan:                   plan,
+		DiscoveryResult:        discovery,
+		ConsistencyResult:      consistency,
+		ChunkResult:            chunks,
+		StorageBackends:        storageBackends,
+		Waves:                  waves,
+		LocalSite:              r.LocalSite,
+		PrimarySiteDiscovery:   plan.Status.PrimarySiteDiscovery,
+		SecondarySiteDiscovery: plan.Status.SecondarySiteDiscovery,
 	}
 
 	now := metav1.Now()

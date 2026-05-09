@@ -42,13 +42,15 @@ const (
 // CompositionInput aggregates outputs from earlier pipeline stages into a single
 // struct for preflight report assembly.
 type CompositionInput struct {
-	Plan              *soteriav1alpha1.DRPlan
-	DiscoveryResult   *engine.DiscoveryResult
-	ConsistencyResult *engine.ConsistencyResult
-	ChunkResult       *engine.ChunkResult
-	StorageBackends   map[string]string
-	Waves             []soteriav1alpha1.WaveInfo
-	LocalSite         string
+	Plan                   *soteriav1alpha1.DRPlan
+	DiscoveryResult        *engine.DiscoveryResult
+	ConsistencyResult      *engine.ConsistencyResult
+	ChunkResult            *engine.ChunkResult
+	StorageBackends        map[string]string
+	Waves                  []soteriav1alpha1.WaveInfo
+	LocalSite              string
+	PrimarySiteDiscovery   *soteriav1alpha1.SiteDiscovery
+	SecondarySiteDiscovery *soteriav1alpha1.SiteDiscovery
 }
 
 // ComposeReport builds a PreflightReport from the combined pipeline outputs.
@@ -71,7 +73,14 @@ func ComposeReport(input CompositionInput, now metav1.Time) *soteriav1alpha1.Pre
 
 		vmGroupIndex := buildVMGroupIndex(input.ConsistencyResult)
 		chunkIndex := buildChunkIndex(input.ChunkResult)
-		vmDiskIndex := buildVMDiskIndex(input.Waves)
+		primaryDiskIndex := buildSiteDiscoveryDiskIndex(input.PrimarySiteDiscovery)
+		secondaryDiskIndex := buildSiteDiscoveryDiskIndex(input.SecondarySiteDiscovery)
+
+		var primarySite, secondarySite string
+		if input.Plan != nil {
+			primarySite = input.Plan.Spec.PrimarySite
+			secondarySite = input.Plan.Spec.SecondarySite
+		}
 
 		for _, wg := range input.DiscoveryResult.Waves {
 			pw := soteriav1alpha1.PreflightWave{
@@ -106,7 +115,7 @@ func ComposeReport(input CompositionInput, now metav1.Time) *soteriav1alpha1.Pre
 						pc.VMNames = append(pc.VMNames, vm.Name)
 					}
 					for _, vg := range chunk.VolumeGroups {
-						pvg := enrichVolumeGroup(vg, input.LocalSite, vmDiskIndex)
+						pvg := enrichVolumeGroup(vg, primarySite, secondarySite, primaryDiskIndex, secondaryDiskIndex)
 						pc.VolumeGroups = append(pc.VolumeGroups, pvg)
 					}
 					pw.Chunks = append(pw.Chunks, pc)
@@ -146,50 +155,97 @@ func buildVMGroupIndex(cr *engine.ConsistencyResult) map[string]vmGroupInfo {
 
 type vmKey struct{ namespace, name string }
 
-// buildVMDiskIndex creates a lookup from (namespace, name) to the VM's
-// discovered disks. Data comes from WaveInfo populated during the reconcile
-// cycle — no additional PVC GETs are required.
-func buildVMDiskIndex(waves []soteriav1alpha1.WaveInfo) map[vmKey][]soteriav1alpha1.DiscoveredDisk {
-	index := make(map[vmKey][]soteriav1alpha1.DiscoveredDisk)
-	for _, wave := range waves {
-		for _, vm := range wave.VMs {
-			index[vmKey{vm.Namespace, vm.Name}] = vm.Disks
-		}
+// buildSiteDiscoveryDiskIndex creates a lookup from (namespace, name) to the
+// VM's discovered disks using a SiteDiscovery object. Returns nil when sd is
+// nil (site not yet discovered).
+func buildSiteDiscoveryDiskIndex(sd *soteriav1alpha1.SiteDiscovery) map[vmKey][]soteriav1alpha1.DiscoveredDisk {
+	if sd == nil {
+		return nil
+	}
+	index := make(map[vmKey][]soteriav1alpha1.DiscoveredDisk, len(sd.VMs))
+	for _, vm := range sd.VMs {
+		index[vmKey{vm.Namespace, vm.Name}] = vm.Disks
 	}
 	return index
 }
 
-// enrichVolumeGroup builds a PreflightVolumeGroup with per-disk PVC topology
-// derived from DiscoveredVM data. VMs are iterated in sorted name order, and
-// disks within each VM are sorted by name, producing deterministic output for
-// both VM-level (single VM) and namespace-level (multiple VM) groups.
+// enrichVolumeGroup builds a PreflightVolumeGroup with per-disk cross-site PVC
+// mappings derived from both sites' SiteDiscovery data. For each disk found in
+// either site's index, a DiskSiteMapping entry is added. A nil disk index
+// (nil SiteDiscovery) causes that site's entry to be omitted.
 func enrichVolumeGroup(
 	vg soteriav1alpha1.VolumeGroupInfo,
-	localSite string,
-	vmDiskIndex map[vmKey][]soteriav1alpha1.DiscoveredDisk,
+	primarySite string,
+	secondarySite string,
+	primaryDiskIndex map[vmKey][]soteriav1alpha1.DiscoveredDisk,
+	secondaryDiskIndex map[vmKey][]soteriav1alpha1.DiscoveredDisk,
 ) soteriav1alpha1.PreflightVolumeGroup {
 	pvg := soteriav1alpha1.PreflightVolumeGroup{
 		Name: vg.Name,
-		Site: localSite,
 	}
 
 	sortedVMNames := make([]string, len(vg.VMNames))
 	copy(sortedVMNames, vg.VMNames)
 	sort.Strings(sortedVMNames)
 
+	type diskEntry struct {
+		name      string
+		primary   *soteriav1alpha1.DiscoveredDisk
+		secondary *soteriav1alpha1.DiscoveredDisk
+	}
+
 	for _, vmName := range sortedVMNames {
-		disks := vmDiskIndex[vmKey{vg.Namespace, vmName}]
-		sortedDisks := make([]soteriav1alpha1.DiscoveredDisk, len(disks))
-		copy(sortedDisks, disks)
-		sort.Slice(sortedDisks, func(i, j int) bool {
-			return sortedDisks[i].Name < sortedDisks[j].Name
-		})
-		for _, d := range sortedDisks {
-			pvg.Disks = append(pvg.Disks, soteriav1alpha1.VolumeGroupDisk{
-				Name:         d.Name,
-				PVCName:      d.PVCName,
-				PVCNamespace: vg.Namespace,
-			})
+		k := vmKey{vg.Namespace, vmName}
+
+		seen := make(map[string]*diskEntry)
+		var diskNames []string
+
+		collectDisks := func(disks []soteriav1alpha1.DiscoveredDisk, setPrimary bool) {
+			for i := range disks {
+				d := &disks[i]
+				e, ok := seen[d.Name]
+				if !ok {
+					e = &diskEntry{name: d.Name}
+					seen[d.Name] = e
+					diskNames = append(diskNames, d.Name)
+				}
+				if setPrimary {
+					e.primary = d
+				} else {
+					e.secondary = d
+				}
+			}
+		}
+
+		if primaryDiskIndex != nil {
+			collectDisks(primaryDiskIndex[k], true)
+		}
+		if secondaryDiskIndex != nil {
+			collectDisks(secondaryDiskIndex[k], false)
+		}
+
+		sort.Strings(diskNames)
+
+		for _, dName := range diskNames {
+			e := seen[dName]
+			vgd := soteriav1alpha1.VolumeGroupDisk{Name: dName}
+
+			if e.primary != nil && primaryDiskIndex != nil {
+				vgd.Sites = append(vgd.Sites, soteriav1alpha1.DiskSiteMapping{
+					Site:         primarySite,
+					PVCName:      e.primary.PVCName,
+					PVCNamespace: vg.Namespace,
+				})
+			}
+			if e.secondary != nil && secondaryDiskIndex != nil {
+				vgd.Sites = append(vgd.Sites, soteriav1alpha1.DiskSiteMapping{
+					Site:         secondarySite,
+					PVCName:      e.secondary.PVCName,
+					PVCNamespace: vg.Namespace,
+				})
+			}
+
+			pvg.Disks = append(pvg.Disks, vgd)
 		}
 	}
 

@@ -163,14 +163,24 @@ export interface PreflightVM {
   volumeGroupName: string;
 }
 
+export interface DiskSiteMapping {
+  site: string;
+  pvcName?: string;
+  pvcNamespace?: string;
+}
+
 export interface VolumeGroupDisk {
   name: string;
+  sites?: DiskSiteMapping[];
+  /** @deprecated Backward compat with pre-9.7 plans */
   pvcName?: string;
+  /** @deprecated Backward compat with pre-9.7 plans */
   pvcNamespace?: string;
 }
 
 export interface PreflightVolumeGroup {
   name: string;
+  /** @deprecated Backward compat with pre-9.7 plans */
   site?: string;
   disks?: VolumeGroupDisk[];
 }

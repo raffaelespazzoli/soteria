@@ -46,6 +46,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DRPlanStatus":           schema_pkg_apis_soteriaio_v1alpha1_DRPlanStatus(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DiscoveredDisk":         schema_pkg_apis_soteriaio_v1alpha1_DiscoveredDisk(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DiscoveredVM":           schema_pkg_apis_soteriaio_v1alpha1_DiscoveredVM(ref),
+		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DiskSiteMapping":        schema_pkg_apis_soteriaio_v1alpha1_DiskSiteMapping(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightChunk":         schema_pkg_apis_soteriaio_v1alpha1_PreflightChunk(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightReport":        schema_pkg_apis_soteriaio_v1alpha1_PreflightReport(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightVM":            schema_pkg_apis_soteriaio_v1alpha1_PreflightVM(ref),
@@ -946,6 +947,42 @@ func schema_pkg_apis_soteriaio_v1alpha1_DiscoveredVM(ref common.ReferenceCallbac
 	}
 }
 
+func schema_pkg_apis_soteriaio_v1alpha1_DiskSiteMapping(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "DiskSiteMapping maps a disk to its PVC on a specific site.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"site": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Site is the cluster site name (e.g. \"dc1\").",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"pvcName": {
+						SchemaProps: spec.SchemaProps{
+							Description: "PVCName is the PersistentVolumeClaim backing this disk on the site.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"pvcNamespace": {
+						SchemaProps: spec.SchemaProps{
+							Description: "PVCNamespace is the namespace of the backing PVC on the site.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+				Required: []string{"site"},
+			},
+		},
+	}
+}
+
 func schema_pkg_apis_soteriaio_v1alpha1_PreflightChunk(ref common.ReferenceCallback) common.OpenAPIDefinition {
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
@@ -1213,13 +1250,6 @@ func schema_pkg_apis_soteriaio_v1alpha1_PreflightVolumeGroup(ref common.Referenc
 							Format:      "",
 						},
 					},
-					"site": {
-						SchemaProps: spec.SchemaProps{
-							Description: "Site is the cluster site this volume group view is from (e.g. \"dc1\").",
-							Type:        []string{"string"},
-							Format:      "",
-						},
-					},
 					"disks": {
 						VendorExtensible: spec.VendorExtensible{
 							Extensions: spec.Extensions{
@@ -1227,7 +1257,7 @@ func schema_pkg_apis_soteriaio_v1alpha1_PreflightVolumeGroup(ref common.Referenc
 							},
 						},
 						SchemaProps: spec.SchemaProps{
-							Description: "Disks lists the disks and their PVC backing within this volume group. Sorted by VM name then disk name for deterministic output.",
+							Description: "Disks lists the disks and their per-site PVC mappings within this volume group. Sorted by VM name then disk name for deterministic output.",
 							Type:        []string{"array"},
 							Items: &spec.SchemaOrArray{
 								Schema: &spec.Schema{
@@ -1414,7 +1444,7 @@ func schema_pkg_apis_soteriaio_v1alpha1_VolumeGroupDisk(ref common.ReferenceCall
 	return common.OpenAPIDefinition{
 		Schema: spec.Schema{
 			SchemaProps: spec.SchemaProps{
-				Description: "VolumeGroupDisk describes a single disk's PVC backing within a volume group.",
+				Description: "VolumeGroupDisk describes a single disk within a volume group with per-site PVC mappings.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
 					"name": {
@@ -1425,24 +1455,31 @@ func schema_pkg_apis_soteriaio_v1alpha1_VolumeGroupDisk(ref common.ReferenceCall
 							Format:      "",
 						},
 					},
-					"pvcName": {
-						SchemaProps: spec.SchemaProps{
-							Description: "PVCName is the PersistentVolumeClaim backing this disk. Empty when the PVC has not yet been created (DataVolume provisioning).",
-							Type:        []string{"string"},
-							Format:      "",
+					"sites": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "atomic",
+							},
 						},
-					},
-					"pvcNamespace": {
 						SchemaProps: spec.SchemaProps{
-							Description: "PVCNamespace is the namespace of the backing PVC.",
-							Type:        []string{"string"},
-							Format:      "",
+							Description: "Sites contains per-site PVC mappings for this disk. Typically two entries (one per site) when both sites have been discovered.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: map[string]interface{}{},
+										Ref:     ref("github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DiskSiteMapping"),
+									},
+								},
+							},
 						},
 					},
 				},
 				Required: []string{"name"},
 			},
 		},
+		Dependencies: []string{
+			"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DiskSiteMapping"},
 	}
 }
 

@@ -199,14 +199,35 @@ function getChunkVolumeGroups(chunk: { volumeGroups?: PreflightVolumeGroup[] }):
 
 function buildVGDiskNodes(vg: PreflightVolumeGroup): TreeViewDataItem[] {
   if (!vg.disks?.length) return [];
-  return vg.disks.map((disk) => ({
-    name: (
-      <span style={{ fontSize: 'var(--pf-t--global--font--size--body--sm, var(--pf-v5-global--FontSize--sm))' }}>
-        {disk.name} → {disk.pvcName ?? 'N/A'} ({disk.pvcNamespace ?? 'N/A'})
-      </span>
-    ),
-    id: `vg-disk-${vg.name}-${disk.name}`,
-  }));
+  return vg.disks.map((disk) => {
+    if (disk.sites?.length) {
+      return {
+        name: (
+          <span style={{ fontWeight: 600, fontSize: 'var(--pf-t--global--font--size--body--sm, var(--pf-v5-global--FontSize--sm))' }}>
+            {disk.name}
+          </span>
+        ),
+        id: `vg-disk-${vg.name}-${disk.name}`,
+        children: disk.sites.map((sm) => ({
+          name: (
+            <span style={{ fontSize: 'var(--pf-t--global--font--size--body--sm, var(--pf-v5-global--FontSize--sm))' }}>
+              <Label isCompact color="teal">{sm.site}</Label>{' '}
+              {sm.pvcName || 'N/A'} ({sm.pvcNamespace || 'N/A'})
+            </span>
+          ),
+          id: `vg-disk-${vg.name}-${disk.name}-${sm.site}`,
+        })),
+      };
+    }
+    return {
+      name: (
+        <span style={{ fontSize: 'var(--pf-t--global--font--size--body--sm, var(--pf-v5-global--FontSize--sm))' }}>
+          {disk.name} → {disk.pvcName ?? 'N/A'} ({disk.pvcNamespace ?? 'N/A'})
+        </span>
+      ),
+      id: `vg-disk-${vg.name}-${disk.name}`,
+    };
+  });
 }
 
 function buildLegacyVGNodes(names: string[], waveKey: string): TreeViewDataItem[] {
@@ -227,7 +248,7 @@ function buildVGNodes(
     name: (
       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--pf-t--global--spacer--sm)' }}>
         <span style={{ fontWeight: 600 }}>{vg.name}</span>
-        {vg.site && (
+        {vg.site && !vg.disks?.some((d) => d.sites?.length) && (
           <Label isCompact color="blue">{vg.site}</Label>
         )}
         <span style={{ fontSize: 'var(--pf-t--global--font--size--body--sm, var(--pf-v5-global--FontSize--sm))', color: 'var(--pf-t--global--text--color--subtle)' }}>
@@ -235,7 +256,7 @@ function buildVGNodes(
         </span>
       </span>
     ),
-    id: `vg-${waveKey}-${vg.name}-${vg.site ?? ''}`,
+    id: `vg-${waveKey}-${vg.name}`,
     children: buildVGDiskNodes(vg),
     defaultExpanded: false,
   }));

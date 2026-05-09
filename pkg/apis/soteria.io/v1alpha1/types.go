@@ -206,15 +206,25 @@ type PreflightVM struct {
 	VolumeGroupName string `json:"volumeGroupName"`
 }
 
-// VolumeGroupDisk describes a single disk's PVC backing within a volume group.
+// DiskSiteMapping maps a disk to its PVC on a specific site.
+type DiskSiteMapping struct {
+	// Site is the cluster site name (e.g. "dc1").
+	Site string `json:"site"`
+	// PVCName is the PersistentVolumeClaim backing this disk on the site.
+	PVCName string `json:"pvcName,omitempty"`
+	// PVCNamespace is the namespace of the backing PVC on the site.
+	PVCNamespace string `json:"pvcNamespace,omitempty"`
+}
+
+// VolumeGroupDisk describes a single disk within a volume group with
+// per-site PVC mappings.
 type VolumeGroupDisk struct {
 	// Name is the disk name from the VM's domain.devices.disks spec.
 	Name string `json:"name"`
-	// PVCName is the PersistentVolumeClaim backing this disk.
-	// Empty when the PVC has not yet been created (DataVolume provisioning).
-	PVCName string `json:"pvcName,omitempty"`
-	// PVCNamespace is the namespace of the backing PVC.
-	PVCNamespace string `json:"pvcNamespace,omitempty"`
+	// Sites contains per-site PVC mappings for this disk.
+	// Typically two entries (one per site) when both sites have been discovered.
+	// +listType=atomic
+	Sites []DiskSiteMapping `json:"sites,omitempty"`
 }
 
 // PreflightVolumeGroup describes a volume group enriched with per-disk PVC
@@ -222,9 +232,7 @@ type VolumeGroupDisk struct {
 type PreflightVolumeGroup struct {
 	// Name is the volume group identifier (e.g. "ns-erp-database" or "vm-default-web01").
 	Name string `json:"name"`
-	// Site is the cluster site this volume group view is from (e.g. "dc1").
-	Site string `json:"site,omitempty"`
-	// Disks lists the disks and their PVC backing within this volume group.
+	// Disks lists the disks and their per-site PVC mappings within this volume group.
 	// Sorted by VM name then disk name for deterministic output.
 	// +listType=atomic
 	Disks []VolumeGroupDisk `json:"disks,omitempty"`

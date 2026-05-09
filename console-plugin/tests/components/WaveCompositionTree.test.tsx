@@ -248,7 +248,7 @@ describe('WaveCompositionTree', () => {
   });
 
   describe('VG disk composition', () => {
-    const planWithVGDisks: DRPlan = {
+    const planWithCrossSiteDisks: DRPlan = {
       ...mockPlanWithWaves,
       status: {
         ...mockPlanWithWaves.status!,
@@ -266,10 +266,21 @@ describe('WaveCompositionTree', () => {
                   volumeGroups: [
                     {
                       name: 'vg-db',
-                      site: 'dc1-prod',
                       disks: [
-                        { name: 'disk-root', pvcName: 'pvc-root', pvcNamespace: 'erp-db' },
-                        { name: 'disk-data', pvcName: 'pvc-data', pvcNamespace: 'erp-db' },
+                        {
+                          name: 'disk-root',
+                          sites: [
+                            { site: 'dc1-prod', pvcName: 'pvc-root', pvcNamespace: 'erp-db' },
+                            { site: 'dc2-prod', pvcName: 'pvc-root-dr', pvcNamespace: 'erp-db' },
+                          ],
+                        },
+                        {
+                          name: 'disk-data',
+                          sites: [
+                            { site: 'dc1-prod', pvcName: 'pvc-data', pvcNamespace: 'erp-db' },
+                            { site: 'dc2-prod', pvcName: 'pvc-data-dr', pvcNamespace: 'erp-db' },
+                          ],
+                        },
                       ],
                     },
                   ],
@@ -281,8 +292,8 @@ describe('WaveCompositionTree', () => {
       },
     };
 
-    it('VG sub-node shows disk list with PVC details when expanded', () => {
-      render(<WaveCompositionTree plan={planWithVGDisks} />);
+    it('VG sub-node shows disk list when expanded', () => {
+      render(<WaveCompositionTree plan={planWithCrossSiteDisks} />);
       const wave1Button = screen.getAllByRole('treeitem')[0].querySelector('button');
       fireEvent.click(wave1Button!);
       expect(screen.getByText('Volume Groups (1)')).toBeInTheDocument();
@@ -292,8 +303,108 @@ describe('WaveCompositionTree', () => {
       expect(screen.getByText('2 disks')).toBeInTheDocument();
     });
 
-    it('VG node shows site label', () => {
-      render(<WaveCompositionTree plan={planWithVGDisks} />);
+    it('disk node shows per-site PVC mapping with site labels', () => {
+      render(<WaveCompositionTree plan={planWithCrossSiteDisks} />);
+      const wave1Button = screen.getAllByRole('treeitem')[0].querySelector('button');
+      fireEvent.click(wave1Button!);
+      const vgGroupButton = screen.getByText('Volume Groups (1)').closest('[role="treeitem"]')?.querySelector('button');
+      fireEvent.click(vgGroupButton!);
+      const vgButton = screen.getByText('vg-db').closest('[role="treeitem"]')?.querySelector('button');
+      fireEvent.click(vgButton!);
+      expect(screen.getByText('disk-root')).toBeInTheDocument();
+      expect(screen.getByText('disk-data')).toBeInTheDocument();
+      const diskRootButton = screen.getByText('disk-root').closest('[role="treeitem"]')?.querySelector('button');
+      fireEvent.click(diskRootButton!);
+      expect(screen.getByText('dc1-prod')).toBeInTheDocument();
+      expect(screen.getByText('dc2-prod')).toBeInTheDocument();
+    });
+
+    it('VG node does not show site label when disks have per-site sites', () => {
+      render(<WaveCompositionTree plan={planWithCrossSiteDisks} />);
+      const wave1Button = screen.getAllByRole('treeitem')[0].querySelector('button');
+      fireEvent.click(wave1Button!);
+      const vgGroupButton = screen.getByText('Volume Groups (1)').closest('[role="treeitem"]')?.querySelector('button');
+      fireEvent.click(vgGroupButton!);
+      const vgNode = screen.getByText('vg-db').closest('[role="treeitem"]');
+      const labels = vgNode?.querySelectorAll('.pf-v5-c-label, .pf-v6-c-label');
+      const siteLabels = Array.from(labels ?? []).filter((l) => l.textContent?.includes('dc1-prod') || l.textContent?.includes('dc2-prod'));
+      expect(siteLabels.length).toBe(0);
+    });
+
+    it('backward compat — old format with flat pvcName/pvcNamespace renders correctly', () => {
+      const planFlatDisks: DRPlan = {
+        ...mockPlanWithWaves,
+        status: {
+          ...mockPlanWithWaves.status!,
+          preflight: {
+            totalVMs: 12,
+            waves: [
+              {
+                waveKey: '1',
+                vmCount: 3,
+                chunks: [
+                  {
+                    name: 'chunk-1',
+                    vmCount: 3,
+                    vmNames: ['erp-db-1', 'erp-db-2', 'erp-db-3'],
+                    volumeGroups: [
+                      {
+                        name: 'vg-db',
+                        disks: [
+                          { name: 'disk-root', pvcName: 'pvc-root', pvcNamespace: 'erp-db' },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      };
+      render(<WaveCompositionTree plan={planFlatDisks} />);
+      const wave1Button = screen.getAllByRole('treeitem')[0].querySelector('button');
+      fireEvent.click(wave1Button!);
+      const vgGroupButton = screen.getByText('Volume Groups (1)').closest('[role="treeitem"]')?.querySelector('button');
+      fireEvent.click(vgGroupButton!);
+      const vgButton = screen.getByText('vg-db').closest('[role="treeitem"]')?.querySelector('button');
+      fireEvent.click(vgButton!);
+      expect(screen.getByText(/disk-root → pvc-root \(erp-db\)/)).toBeInTheDocument();
+    });
+
+    it('backward compat — VG with site field renders VG-level site label', () => {
+      const planWithVGSite: DRPlan = {
+        ...mockPlanWithWaves,
+        status: {
+          ...mockPlanWithWaves.status!,
+          preflight: {
+            totalVMs: 12,
+            waves: [
+              {
+                waveKey: '1',
+                vmCount: 3,
+                chunks: [
+                  {
+                    name: 'chunk-1',
+                    vmCount: 3,
+                    vmNames: ['erp-db-1', 'erp-db-2', 'erp-db-3'],
+                    volumeGroups: [
+                      {
+                        name: 'vg-db',
+                        site: 'dc1-prod',
+                        disks: [
+                          { name: 'disk-root', pvcName: 'pvc-root', pvcNamespace: 'erp-db' },
+                        ],
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+      };
+      render(<WaveCompositionTree plan={planWithVGSite} />);
       const wave1Button = screen.getAllByRole('treeitem')[0].querySelector('button');
       fireEvent.click(wave1Button!);
       const vgGroupButton = screen.getByText('Volume Groups (1)').closest('[role="treeitem"]')?.querySelector('button');
@@ -334,8 +445,8 @@ describe('WaveCompositionTree', () => {
       expect(screen.getByText('vg-string-1')).toBeInTheDocument();
     });
 
-    it('has no accessibility violations with VG disk nodes', async () => {
-      const { container } = render(<WaveCompositionTree plan={planWithVGDisks} />);
+    it('has no accessibility violations with cross-site disk nodes', async () => {
+      const { container } = render(<WaveCompositionTree plan={planWithCrossSiteDisks} />);
       const results = await axe(container);
       expect(results).toHaveNoViolations();
     });

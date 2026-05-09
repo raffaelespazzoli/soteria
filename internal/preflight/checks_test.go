@@ -445,7 +445,9 @@ func TestCollectWarnings(t *testing.T) {
 func TestComposeReport_VGDiskEnrichment_VMLevel(t *testing.T) {
 	now := metav1.Now()
 	input := CompositionInput{
-		Plan: &soteriav1alpha1.DRPlan{},
+		Plan: &soteriav1alpha1.DRPlan{
+			Spec: soteriav1alpha1.DRPlanSpec{PrimarySite: "dc1", SecondarySite: "dc2"},
+		},
 		DiscoveryResult: &engine.DiscoveryResult{
 			TotalVMs: 1,
 			Waves: []engine.WaveGroup{{
@@ -471,8 +473,7 @@ func TestComposeReport_VGDiskEnrichment_VMLevel(t *testing.T) {
 			}},
 		},
 		StorageBackends: map[string]string{"default/web01": "odf"},
-		Waves: []soteriav1alpha1.WaveInfo{{
-			WaveKey: "1",
+		PrimarySiteDiscovery: &soteriav1alpha1.SiteDiscovery{
 			VMs: []soteriav1alpha1.DiscoveredVM{{
 				Name: "web01", Namespace: "default",
 				Disks: []soteriav1alpha1.DiscoveredDisk{
@@ -480,21 +481,24 @@ func TestComposeReport_VGDiskEnrichment_VMLevel(t *testing.T) {
 					{Name: "datadisk", PVCName: "web01-data", StorageClass: "ocs-storagecluster-ceph-rbd"},
 				},
 			}},
-		}},
-		LocalSite: "dc1",
+		},
 	}
 
 	report := ComposeReport(input, now)
 	vg := report.Waves[0].Chunks[0].VolumeGroups[0]
-	assertVG(t, vg, "vm-default-web01", "dc1", 2)
-	assertDisk(t, vg.Disks[0], "datadisk", "web01-data", "default")
-	assertDisk(t, vg.Disks[1], "rootdisk", "web01-root", "default")
+	assertVG(t, vg, "vm-default-web01", 2)
+	assertDisk(t, vg.Disks[0], "datadisk", 1)
+	assertSiteMapping(t, vg.Disks[0].Sites[0], "dc1", "web01-data", "default")
+	assertDisk(t, vg.Disks[1], "rootdisk", 1)
+	assertSiteMapping(t, vg.Disks[1].Sites[0], "dc1", "web01-root", "default")
 }
 
 func TestComposeReport_VGDiskEnrichment_NamespaceLevel(t *testing.T) {
 	now := metav1.Now()
 	input := CompositionInput{
-		Plan: &soteriav1alpha1.DRPlan{},
+		Plan: &soteriav1alpha1.DRPlan{
+			Spec: soteriav1alpha1.DRPlanSpec{PrimarySite: "dc2", SecondarySite: "dc1"},
+		},
 		DiscoveryResult: &engine.DiscoveryResult{
 			TotalVMs: 3,
 			Waves: []engine.WaveGroup{{
@@ -528,8 +532,7 @@ func TestComposeReport_VGDiskEnrichment_NamespaceLevel(t *testing.T) {
 			}},
 		},
 		StorageBackends: map[string]string{"erp/db01": "odf", "erp/app01": "odf", "erp/cache01": "odf"},
-		Waves: []soteriav1alpha1.WaveInfo{{
-			WaveKey: "1",
+		PrimarySiteDiscovery: &soteriav1alpha1.SiteDiscovery{
 			VMs: []soteriav1alpha1.DiscoveredVM{
 				{Name: "db01", Namespace: "erp", Disks: []soteriav1alpha1.DiscoveredDisk{
 					{Name: "data", PVCName: "db01-data"},
@@ -542,24 +545,28 @@ func TestComposeReport_VGDiskEnrichment_NamespaceLevel(t *testing.T) {
 					{Name: "root", PVCName: "cache01-root"},
 				}},
 			},
-		}},
-		LocalSite: "dc2",
+		},
 	}
 
 	report := ComposeReport(input, now)
 	vg := report.Waves[0].Chunks[0].VolumeGroups[0]
-	// VMs sorted: app01, cache01, db01
-	assertVG(t, vg, "ns-erp", "dc2", 4)
-	assertDisk(t, vg.Disks[0], "root", "app01-root", "erp")
-	assertDisk(t, vg.Disks[1], "root", "cache01-root", "erp")
-	assertDisk(t, vg.Disks[2], "data", "db01-data", "erp")
-	assertDisk(t, vg.Disks[3], "wal", "db01-wal", "erp")
+	assertVG(t, vg, "ns-erp", 4)
+	assertDisk(t, vg.Disks[0], "root", 1)
+	assertSiteMapping(t, vg.Disks[0].Sites[0], "dc2", "app01-root", "erp")
+	assertDisk(t, vg.Disks[1], "root", 1)
+	assertSiteMapping(t, vg.Disks[1].Sites[0], "dc2", "cache01-root", "erp")
+	assertDisk(t, vg.Disks[2], "data", 1)
+	assertSiteMapping(t, vg.Disks[2].Sites[0], "dc2", "db01-data", "erp")
+	assertDisk(t, vg.Disks[3], "wal", 1)
+	assertSiteMapping(t, vg.Disks[3].Sites[0], "dc2", "db01-wal", "erp")
 }
 
 func TestComposeReport_VGDiskEnrichment_StatelessVM(t *testing.T) {
 	now := metav1.Now()
 	input := CompositionInput{
-		Plan: &soteriav1alpha1.DRPlan{},
+		Plan: &soteriav1alpha1.DRPlan{
+			Spec: soteriav1alpha1.DRPlanSpec{PrimarySite: "dc1", SecondarySite: "dc2"},
+		},
 		DiscoveryResult: &engine.DiscoveryResult{
 			TotalVMs: 1,
 			Waves: []engine.WaveGroup{{
@@ -585,22 +592,22 @@ func TestComposeReport_VGDiskEnrichment_StatelessVM(t *testing.T) {
 			}},
 		},
 		StorageBackends: map[string]string{"default/stateless": "none"},
-		Waves: []soteriav1alpha1.WaveInfo{{
-			WaveKey: "1",
-			VMs:     []soteriav1alpha1.DiscoveredVM{{Name: "stateless", Namespace: "default", Disks: nil}},
-		}},
-		LocalSite: "dc1",
+		PrimarySiteDiscovery: &soteriav1alpha1.SiteDiscovery{
+			VMs: []soteriav1alpha1.DiscoveredVM{{Name: "stateless", Namespace: "default", Disks: nil}},
+		},
 	}
 
 	report := ComposeReport(input, now)
 	vg := report.Waves[0].Chunks[0].VolumeGroups[0]
-	assertVG(t, vg, "vm-default-stateless", "dc1", 0)
+	assertVG(t, vg, "vm-default-stateless", 0)
 }
 
 func TestComposeReport_VGDiskEnrichment_MultipleVGs(t *testing.T) {
 	now := metav1.Now()
 	input := CompositionInput{
-		Plan: &soteriav1alpha1.DRPlan{},
+		Plan: &soteriav1alpha1.DRPlan{
+			Spec: soteriav1alpha1.DRPlanSpec{PrimarySite: "dc1", SecondarySite: "dc2"},
+		},
 		DiscoveryResult: &engine.DiscoveryResult{
 			TotalVMs: 2,
 			Waves: []engine.WaveGroup{{
@@ -634,8 +641,7 @@ func TestComposeReport_VGDiskEnrichment_MultipleVGs(t *testing.T) {
 			}},
 		},
 		StorageBackends: map[string]string{"default/web01": "odf", "default/web02": "odf"},
-		Waves: []soteriav1alpha1.WaveInfo{{
-			WaveKey: "1",
+		PrimarySiteDiscovery: &soteriav1alpha1.SiteDiscovery{
 			VMs: []soteriav1alpha1.DiscoveredVM{
 				{Name: "web01", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{
 					{Name: "root", PVCName: "web01-root"},
@@ -645,8 +651,7 @@ func TestComposeReport_VGDiskEnrichment_MultipleVGs(t *testing.T) {
 					{Name: "data", PVCName: "web02-data"},
 				}},
 			},
-		}},
-		LocalSite: "dc1",
+		},
 	}
 
 	report := ComposeReport(input, now)
@@ -654,17 +659,22 @@ func TestComposeReport_VGDiskEnrichment_MultipleVGs(t *testing.T) {
 	if len(vgs) != 2 {
 		t.Fatalf("VolumeGroups count = %d, want 2", len(vgs))
 	}
-	assertVG(t, vgs[0], "vm-default-web01", "dc1", 1)
-	assertDisk(t, vgs[0].Disks[0], "root", "web01-root", "default")
-	assertVG(t, vgs[1], "vm-default-web02", "dc1", 2)
-	assertDisk(t, vgs[1].Disks[0], "data", "web02-data", "default")
-	assertDisk(t, vgs[1].Disks[1], "root", "web02-root", "default")
+	assertVG(t, vgs[0], "vm-default-web01", 1)
+	assertDisk(t, vgs[0].Disks[0], "root", 1)
+	assertSiteMapping(t, vgs[0].Disks[0].Sites[0], "dc1", "web01-root", "default")
+	assertVG(t, vgs[1], "vm-default-web02", 2)
+	assertDisk(t, vgs[1].Disks[0], "data", 1)
+	assertSiteMapping(t, vgs[1].Disks[0].Sites[0], "dc1", "web02-data", "default")
+	assertDisk(t, vgs[1].Disks[1], "root", 1)
+	assertSiteMapping(t, vgs[1].Disks[1].Sites[0], "dc1", "web02-root", "default")
 }
 
 func TestComposeReport_VGDiskEnrichment_MissingPVC(t *testing.T) {
 	now := metav1.Now()
 	input := CompositionInput{
-		Plan: &soteriav1alpha1.DRPlan{},
+		Plan: &soteriav1alpha1.DRPlan{
+			Spec: soteriav1alpha1.DRPlanSpec{PrimarySite: "dc1", SecondarySite: "dc2"},
+		},
 		DiscoveryResult: &engine.DiscoveryResult{
 			TotalVMs: 1,
 			Waves: []engine.WaveGroup{{
@@ -690,25 +700,24 @@ func TestComposeReport_VGDiskEnrichment_MissingPVC(t *testing.T) {
 			}},
 		},
 		StorageBackends: map[string]string{"default/pending": "odf"},
-		Waves: []soteriav1alpha1.WaveInfo{{
-			WaveKey: "1",
+		PrimarySiteDiscovery: &soteriav1alpha1.SiteDiscovery{
 			VMs: []soteriav1alpha1.DiscoveredVM{{
 				Name: "pending", Namespace: "default",
 				Disks: []soteriav1alpha1.DiscoveredDisk{
 					{Name: "datavol", PVCName: "", StorageClass: ""},
 				},
 			}},
-		}},
-		LocalSite: "dc1",
+		},
 	}
 
 	report := ComposeReport(input, now)
 	vg := report.Waves[0].Chunks[0].VolumeGroups[0]
-	assertVG(t, vg, "vm-default-pending", "dc1", 1)
-	assertDisk(t, vg.Disks[0], "datavol", "", "default")
+	assertVG(t, vg, "vm-default-pending", 1)
+	assertDisk(t, vg.Disks[0], "datavol", 1)
+	assertSiteMapping(t, vg.Disks[0].Sites[0], "dc1", "", "default")
 }
 
-func TestComposeReport_VGDiskEnrichment_NoWaves(t *testing.T) {
+func TestComposeReport_VGDiskEnrichment_NilSiteDiscovery(t *testing.T) {
 	now := metav1.Now()
 	input := CompositionInput{
 		Plan: &soteriav1alpha1.DRPlan{},
@@ -736,40 +745,214 @@ func TestComposeReport_VGDiskEnrichment_NoWaves(t *testing.T) {
 				}},
 			}},
 		},
-		StorageBackends: map[string]string{"ns1/vm1": "odf"},
-		Waves:           nil,
-		LocalSite:       "",
+		StorageBackends:      map[string]string{"ns1/vm1": "odf"},
+		PrimarySiteDiscovery: nil,
 	}
 
 	report := ComposeReport(input, now)
 	vg := report.Waves[0].Chunks[0].VolumeGroups[0]
-	assertVG(t, vg, "vm-ns1-vm1", "", 0)
+	assertVG(t, vg, "vm-ns1-vm1", 0)
 }
 
-func assertVG(t *testing.T, vg soteriav1alpha1.PreflightVolumeGroup, wantName, wantSite string, wantDisks int) {
+func assertVG(t *testing.T, vg soteriav1alpha1.PreflightVolumeGroup, wantName string, wantDisks int) {
 	t.Helper()
 	if vg.Name != wantName {
 		t.Errorf("VG.Name = %q, want %q", vg.Name, wantName)
-	}
-	if vg.Site != wantSite {
-		t.Errorf("VG.Site = %q, want %q", vg.Site, wantSite)
 	}
 	if len(vg.Disks) != wantDisks {
 		t.Fatalf("VG.Disks count = %d, want %d", len(vg.Disks), wantDisks)
 	}
 }
 
-func assertDisk(t *testing.T, d soteriav1alpha1.VolumeGroupDisk, wantName, wantPVC, wantNS string) {
+func assertDisk(t *testing.T, d soteriav1alpha1.VolumeGroupDisk, wantName string, wantSiteCount int) {
 	t.Helper()
 	if d.Name != wantName {
 		t.Errorf("Disk.Name = %q, want %q", d.Name, wantName)
 	}
-	if d.PVCName != wantPVC {
-		t.Errorf("Disk.PVCName = %q, want %q", d.PVCName, wantPVC)
+	if len(d.Sites) != wantSiteCount {
+		t.Fatalf("Disk %q Sites count = %d, want %d", d.Name, len(d.Sites), wantSiteCount)
 	}
-	if d.PVCNamespace != wantNS {
-		t.Errorf("Disk.PVCNamespace = %q, want %q", d.PVCNamespace, wantNS)
+}
+
+func assertSiteMapping(t *testing.T, sm soteriav1alpha1.DiskSiteMapping, wantSite, wantPVC, wantNS string) {
+	t.Helper()
+	if sm.Site != wantSite {
+		t.Errorf("SiteMapping.Site = %q, want %q", sm.Site, wantSite)
 	}
+	if sm.PVCName != wantPVC {
+		t.Errorf("SiteMapping.PVCName = %q, want %q", sm.PVCName, wantPVC)
+	}
+	if sm.PVCNamespace != wantNS {
+		t.Errorf("SiteMapping.PVCNamespace = %q, want %q", sm.PVCNamespace, wantNS)
+	}
+}
+
+func TestComposeReport_VGDiskEnrichment_CrossSite(t *testing.T) {
+	now := metav1.Now()
+	input := CompositionInput{
+		Plan: &soteriav1alpha1.DRPlan{
+			Spec: soteriav1alpha1.DRPlanSpec{PrimarySite: "dc1", SecondarySite: "dc2"},
+		},
+		DiscoveryResult: &engine.DiscoveryResult{
+			TotalVMs: 1,
+			Waves: []engine.WaveGroup{{
+				WaveKey: "1",
+				VMs:     []engine.VMReference{{Name: "web01", Namespace: "default"}},
+			}},
+		},
+		ConsistencyResult: &engine.ConsistencyResult{
+			VolumeGroups: []soteriav1alpha1.VolumeGroupInfo{
+				{Name: "vm-default-web01", Namespace: "default", ConsistencyLevel: soteriav1alpha1.ConsistencyLevelVM, VMNames: []string{"web01"}},
+			},
+		},
+		ChunkResult: &engine.ChunkResult{
+			Waves: []engine.WaveChunks{{
+				WaveKey: "1",
+				Chunks: []engine.DRGroupChunk{{
+					Name: "wave-1-group-0",
+					VMs:  []engine.VMReference{{Name: "web01", Namespace: "default"}},
+					VolumeGroups: []soteriav1alpha1.VolumeGroupInfo{
+						{Name: "vm-default-web01", Namespace: "default", ConsistencyLevel: soteriav1alpha1.ConsistencyLevelVM, VMNames: []string{"web01"}},
+					},
+				}},
+			}},
+		},
+		StorageBackends: map[string]string{"default/web01": "odf"},
+		PrimarySiteDiscovery: &soteriav1alpha1.SiteDiscovery{
+			VMs: []soteriav1alpha1.DiscoveredVM{{
+				Name: "web01", Namespace: "default",
+				Disks: []soteriav1alpha1.DiscoveredDisk{
+					{Name: "root", PVCName: "pvc-root"},
+				},
+			}},
+		},
+		SecondarySiteDiscovery: &soteriav1alpha1.SiteDiscovery{
+			VMs: []soteriav1alpha1.DiscoveredVM{{
+				Name: "web01", Namespace: "default",
+				Disks: []soteriav1alpha1.DiscoveredDisk{
+					{Name: "root", PVCName: "pvc-root-dr"},
+				},
+			}},
+		},
+	}
+
+	report := ComposeReport(input, now)
+	vg := report.Waves[0].Chunks[0].VolumeGroups[0]
+	assertVG(t, vg, "vm-default-web01", 1)
+	assertDisk(t, vg.Disks[0], "root", 2)
+	assertSiteMapping(t, vg.Disks[0].Sites[0], "dc1", "pvc-root", "default")
+	assertSiteMapping(t, vg.Disks[0].Sites[1], "dc2", "pvc-root-dr", "default")
+}
+
+func TestComposeReport_VGDiskEnrichment_SingleSiteOnly(t *testing.T) {
+	now := metav1.Now()
+	input := CompositionInput{
+		Plan: &soteriav1alpha1.DRPlan{
+			Spec: soteriav1alpha1.DRPlanSpec{PrimarySite: "dc1", SecondarySite: "dc2"},
+		},
+		DiscoveryResult: &engine.DiscoveryResult{
+			TotalVMs: 1,
+			Waves: []engine.WaveGroup{{
+				WaveKey: "1",
+				VMs:     []engine.VMReference{{Name: "web01", Namespace: "default"}},
+			}},
+		},
+		ConsistencyResult: &engine.ConsistencyResult{
+			VolumeGroups: []soteriav1alpha1.VolumeGroupInfo{
+				{Name: "vm-default-web01", Namespace: "default", ConsistencyLevel: soteriav1alpha1.ConsistencyLevelVM, VMNames: []string{"web01"}},
+			},
+		},
+		ChunkResult: &engine.ChunkResult{
+			Waves: []engine.WaveChunks{{
+				WaveKey: "1",
+				Chunks: []engine.DRGroupChunk{{
+					Name: "wave-1-group-0",
+					VMs:  []engine.VMReference{{Name: "web01", Namespace: "default"}},
+					VolumeGroups: []soteriav1alpha1.VolumeGroupInfo{
+						{Name: "vm-default-web01", Namespace: "default", ConsistencyLevel: soteriav1alpha1.ConsistencyLevelVM, VMNames: []string{"web01"}},
+					},
+				}},
+			}},
+		},
+		StorageBackends: map[string]string{"default/web01": "odf"},
+		PrimarySiteDiscovery: &soteriav1alpha1.SiteDiscovery{
+			VMs: []soteriav1alpha1.DiscoveredVM{{
+				Name: "web01", Namespace: "default",
+				Disks: []soteriav1alpha1.DiscoveredDisk{
+					{Name: "root", PVCName: "pvc-root"},
+				},
+			}},
+		},
+		SecondarySiteDiscovery: nil,
+	}
+
+	report := ComposeReport(input, now)
+	vg := report.Waves[0].Chunks[0].VolumeGroups[0]
+	assertVG(t, vg, "vm-default-web01", 1)
+	assertDisk(t, vg.Disks[0], "root", 1)
+	assertSiteMapping(t, vg.Disks[0].Sites[0], "dc1", "pvc-root", "default")
+}
+
+func TestComposeReport_VGDiskEnrichment_DiskOnOneSiteOnly(t *testing.T) {
+	now := metav1.Now()
+	input := CompositionInput{
+		Plan: &soteriav1alpha1.DRPlan{
+			Spec: soteriav1alpha1.DRPlanSpec{PrimarySite: "dc1", SecondarySite: "dc2"},
+		},
+		DiscoveryResult: &engine.DiscoveryResult{
+			TotalVMs: 1,
+			Waves: []engine.WaveGroup{{
+				WaveKey: "1",
+				VMs:     []engine.VMReference{{Name: "web01", Namespace: "default"}},
+			}},
+		},
+		ConsistencyResult: &engine.ConsistencyResult{
+			VolumeGroups: []soteriav1alpha1.VolumeGroupInfo{
+				{Name: "vm-default-web01", Namespace: "default", ConsistencyLevel: soteriav1alpha1.ConsistencyLevelVM, VMNames: []string{"web01"}},
+			},
+		},
+		ChunkResult: &engine.ChunkResult{
+			Waves: []engine.WaveChunks{{
+				WaveKey: "1",
+				Chunks: []engine.DRGroupChunk{{
+					Name: "wave-1-group-0",
+					VMs:  []engine.VMReference{{Name: "web01", Namespace: "default"}},
+					VolumeGroups: []soteriav1alpha1.VolumeGroupInfo{
+						{Name: "vm-default-web01", Namespace: "default", ConsistencyLevel: soteriav1alpha1.ConsistencyLevelVM, VMNames: []string{"web01"}},
+					},
+				}},
+			}},
+		},
+		StorageBackends: map[string]string{"default/web01": "odf"},
+		PrimarySiteDiscovery: &soteriav1alpha1.SiteDiscovery{
+			VMs: []soteriav1alpha1.DiscoveredVM{{
+				Name: "web01", Namespace: "default",
+				Disks: []soteriav1alpha1.DiscoveredDisk{
+					{Name: "root", PVCName: "pvc-root"},
+					{Name: "extra", PVCName: "pvc-extra"},
+				},
+			}},
+		},
+		SecondarySiteDiscovery: &soteriav1alpha1.SiteDiscovery{
+			VMs: []soteriav1alpha1.DiscoveredVM{{
+				Name: "web01", Namespace: "default",
+				Disks: []soteriav1alpha1.DiscoveredDisk{
+					{Name: "root", PVCName: "pvc-root-dr"},
+				},
+			}},
+		},
+	}
+
+	report := ComposeReport(input, now)
+	vg := report.Waves[0].Chunks[0].VolumeGroups[0]
+	assertVG(t, vg, "vm-default-web01", 2)
+	// "extra" only on primary
+	assertDisk(t, vg.Disks[0], "extra", 1)
+	assertSiteMapping(t, vg.Disks[0].Sites[0], "dc1", "pvc-extra", "default")
+	// "root" on both sites
+	assertDisk(t, vg.Disks[1], "root", 2)
+	assertSiteMapping(t, vg.Disks[1].Sites[0], "dc1", "pvc-root", "default")
+	assertSiteMapping(t, vg.Disks[1].Sites[1], "dc2", "pvc-root-dr", "default")
 }
 
 func TestComposeReport_SiteTopologyFields(t *testing.T) {
