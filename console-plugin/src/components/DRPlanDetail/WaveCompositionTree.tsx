@@ -7,6 +7,8 @@ import {
   MinusCircleIcon,
   QuestionCircleIcon,
   SyncAltIcon,
+  VirtualMachineIcon,
+  StorageDomainIcon,
 } from '@patternfly/react-icons';
 import ReplicationHealthIndicator from '../shared/ReplicationHealthIndicator';
 import { DRPlan, DiscoveredVM, VolumeGroupInfo, VolumeGroupHealth, PreflightVolumeGroup } from '../../models/types';
@@ -267,12 +269,40 @@ function buildDRGroupChunks(
       ...buildLegacyVGNodes(chunkVGs.legacyNames, waveKey ?? ''),
     ];
 
+    const children: TreeViewDataItem[] = [];
+    if (vmNodes.length > 0) {
+      children.push({
+        name: (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--pf-t--global--spacer--sm)' }}>
+            <VirtualMachineIcon />
+            <span style={{ fontWeight: 600 }}>Virtual Machines ({vmNodes.length})</span>
+          </span>
+        ),
+        id: `chunk-${i}-vms`,
+        children: vmNodes,
+        defaultExpanded: true,
+      });
+    }
+    if (chunkVGNodes.length > 0) {
+      children.push({
+        name: (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--pf-t--global--spacer--sm)' }}>
+            <StorageDomainIcon />
+            <span style={{ fontWeight: 600 }}>Volume Groups ({chunkVGNodes.length})</span>
+          </span>
+        ),
+        id: `chunk-${i}-vgs`,
+        children: chunkVGNodes,
+        defaultExpanded: false,
+      });
+    }
+
     chunks.push({
       name: (
         <span>DRGroup chunk {chunkNum} (maxConcurrent: {chunkSize})</span>
       ),
       id: `chunk-${i}`,
-      children: [...vmNodes, ...chunkVGNodes],
+      children,
       defaultExpanded: true,
     });
   }

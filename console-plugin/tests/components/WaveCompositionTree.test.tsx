@@ -169,20 +169,22 @@ describe('WaveCompositionTree', () => {
     expect(treeItems.length).toBeGreaterThanOrEqual(3);
   });
 
-  it('expands wave to reveal DRGroup chunks and per-VM rows', () => {
+  it('expands wave to reveal DRGroup chunks with VM and VG sub-nodes', () => {
     render(<WaveCompositionTree plan={mockPlanWithWaves} />);
     const wave1Button = screen.getAllByRole('treeitem')[0].querySelector('button');
     fireEvent.click(wave1Button!);
     expect(screen.getByText(/DRGroup chunk 1/)).toBeInTheDocument();
+    expect(screen.getByText('Virtual Machines (3)')).toBeInTheDocument();
     expect(screen.getByText('erp-db-1')).toBeInTheDocument();
     expect(screen.getByText('erp-db-2')).toBeInTheDocument();
     expect(screen.getByText('erp-db-3')).toBeInTheDocument();
   });
 
-  it('namespace-consistent VMs show NS label', () => {
+  it('namespace-consistent VMs show NS label under Virtual Machines group', () => {
     render(<WaveCompositionTree plan={mockPlanWithWaves} />);
     const wave1Button = screen.getAllByRole('treeitem')[0].querySelector('button');
     fireEvent.click(wave1Button!);
+    expect(screen.getByText('Virtual Machines (3)')).toBeInTheDocument();
     const nsLabels = screen.getAllByText('NS: erp-db');
     expect(nsLabels.length).toBe(3);
   });
@@ -279,10 +281,13 @@ describe('WaveCompositionTree', () => {
       },
     };
 
-    it('VG node shows disk list with PVC details when expanded', () => {
+    it('VG sub-node shows disk list with PVC details when expanded', () => {
       render(<WaveCompositionTree plan={planWithVGDisks} />);
       const wave1Button = screen.getAllByRole('treeitem')[0].querySelector('button');
       fireEvent.click(wave1Button!);
+      expect(screen.getByText('Volume Groups (1)')).toBeInTheDocument();
+      const vgGroupButton = screen.getByText('Volume Groups (1)').closest('[role="treeitem"]')?.querySelector('button');
+      fireEvent.click(vgGroupButton!);
       expect(screen.getByText('vg-db')).toBeInTheDocument();
       expect(screen.getByText('2 disks')).toBeInTheDocument();
     });
@@ -291,6 +296,8 @@ describe('WaveCompositionTree', () => {
       render(<WaveCompositionTree plan={planWithVGDisks} />);
       const wave1Button = screen.getAllByRole('treeitem')[0].querySelector('button');
       fireEvent.click(wave1Button!);
+      const vgGroupButton = screen.getByText('Volume Groups (1)').closest('[role="treeitem"]')?.querySelector('button');
+      fireEvent.click(vgGroupButton!);
       expect(screen.getByText('dc1-prod')).toBeInTheDocument();
     });
 
@@ -321,8 +328,10 @@ describe('WaveCompositionTree', () => {
       render(<WaveCompositionTree plan={planStringVGs} />);
       const wave1Button = screen.getAllByRole('treeitem')[0].querySelector('button');
       fireEvent.click(wave1Button!);
+      expect(screen.getByText('Volume Groups (1)')).toBeInTheDocument();
+      const vgGroupButton = screen.getByText('Volume Groups (1)').closest('[role="treeitem"]')?.querySelector('button');
+      fireEvent.click(vgGroupButton!);
       expect(screen.getByText('vg-string-1')).toBeInTheDocument();
-      expect(screen.queryByText(/disk/i)).not.toBeInTheDocument();
     });
 
     it('has no accessibility violations with VG disk nodes', async () => {

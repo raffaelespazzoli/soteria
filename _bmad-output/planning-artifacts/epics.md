@@ -2413,6 +2413,52 @@ So that I can understand and troubleshoot disk-level DR protection.
 **And** disk comparison tables are keyboard navigable
 **And** mismatch indicators have screen reader text
 
+### Story 9.7: Cross-Site Volume Group Disk Mapping (spawned from UAT-9.001)
+
+As a platform engineer,
+I want each disk in a PreflightVolumeGroup to show its PVC mapping on both sites,
+So that I can verify cross-site disk correspondence before triggering a DR operation.
+
+**Background:** Story 9.4 introduced per-disk PVC enrichment in the preflight report, but only from the active site's perspective. UAT-9.001 identified that users need to see which PVC on the partner site corresponds to each local disk.
+
+#### Acceptance Criteria
+
+**AC1: DiskSiteMapping API type**
+**Given** the v1alpha1 API types
+**When** a `PreflightVolumeGroup` is serialized
+**Then** each `VolumeGroupDisk` contains a `sites` array of `DiskSiteMapping` entries (site, pvcName, pvcNamespace)
+**And** the top-level `Site` field is removed from `PreflightVolumeGroup`
+
+**AC2: Cross-site enrichment in preflight composition**
+**Given** a DRPlan with both primarySiteDiscovery and secondarySiteDiscovery populated
+**When** the preflight report is composed
+**Then** each disk in a VolumeGroup has entries for both sites (matched by disk name)
+**And** a site entry is omitted only when that site's SiteDiscovery is nil (e.g., first reconcile)
+
+**AC3: Console WaveCompositionTree cross-site rendering**
+**Given** the WaveCompositionTree component receives enriched VolumeGroups
+**When** expanding a VG disk node
+**Then** each disk shows per-site PVC mapping (site label + PVC name + namespace)
+
+**AC4: Backward compatibility**
+**Given** a DRPlan created before this change (single-site `Site` + flat `PVCName/PVCNamespace`)
+**When** the console plugin reads the preflight data
+**Then** the old format is rendered gracefully (fallback to single-site view)
+
+**AC5: Tests**
+**Given** the preflight enrichment logic and console components
+**When** unit tests run
+**Then** enrichVolumeGroup tests validate cross-site output
+**And** WaveCompositionTree tests validate per-site disk rendering
+**And** all existing tests pass with zero regressions
+
+#### Technical Notes
+
+- `CompositionInput` gains access to both SiteDiscovery objects (already on `plan.Status`)
+- `enrichVolumeGroup` builds disk index from both sites, matches disks by name, populates `Sites` slice
+- Console `buildVGDiskNodes` renders per-site rows instead of flat `disk.pvcName`
+- Scope: ~3 modified Go files, ~3 modified TS files, ~2 test files
+
 ## Epic 10: Remove ActiveExecution from DRPlan — Static Plan Status
 
 The `ActiveExecution` and `ActiveExecutionMode` fields are removed from `DRPlanStatus`, making the DRPlan a static configuration and discovery artifact that is never mutated by execution lifecycle events. Active execution state is derived at runtime by querying DRExecution resources filtered by `spec.planName`. Concurrency control moves to the DRExecution creation path (aggregated API admission plugin or registry strategy) using a storage-level guard. The table convertor, replication health polling gate, VM watch routing, preflight warnings, and Console plugin are all migrated to the derived pattern. Cross-DC SERIAL consistency triggers move from DRPlan status writes to DRExecution creation/completion writes.
