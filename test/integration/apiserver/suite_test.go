@@ -169,8 +169,10 @@ func TestMain(m *testing.M) {
 				Codec:    testCodec,
 				Keyspace: keyspace,
 			},
-			Codec:     testCodec,
-			UseCacher: false,
+			Codec:                  testCodec,
+			UseCacher:              false,
+			CriticalFieldDetectors: apiserver.DefaultCriticalFieldDetectors(),
+			SerialCreateResources:  apiserver.DefaultSerialCreateResources(),
 		},
 		SoteriaPlugin: admissionPlugin,
 	}

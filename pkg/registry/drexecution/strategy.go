@@ -47,6 +47,11 @@ func (drexecutionStrategy) PrepareForCreate(ctx context.Context, obj runtime.Obj
 	exec.Status = soteriav1alpha1.DRExecutionStatus{}
 	exec.Generation = 1
 
+	if exec.Labels == nil {
+		exec.Labels = make(map[string]string)
+	}
+	exec.Labels[soteriav1alpha1.PlanNameLabel] = exec.Spec.PlanName
+
 	if user, ok := request.UserFrom(ctx); ok {
 		if exec.Annotations == nil {
 			exec.Annotations = make(map[string]string)

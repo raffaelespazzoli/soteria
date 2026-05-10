@@ -1029,8 +1029,7 @@ func (e *WaveExecutor) finishExecution(
 	failed, total := e.countGroups(exec)
 	e.emitResultEvent(exec, plan, result, failed, total, message)
 
-	// Advance DRPlan phase and clear ActiveExecution on success/partial success.
-	// On failure, clear ActiveExecution only — phase stays at current rest state.
+	// Advance DRPlan phase on success/partial success.
 	if result == soteriav1alpha1.ExecutionResultSucceeded ||
 		result == soteriav1alpha1.ExecutionResultPartiallySucceeded {
 		previousPhase := plan.Status.Phase
@@ -1040,8 +1039,6 @@ func (e *WaveExecutor) finishExecution(
 		} else {
 			planPatch := client.MergeFrom(plan.DeepCopy())
 			plan.Status.Phase = newPhase
-			plan.Status.ActiveExecution = ""
-			plan.Status.ActiveExecutionMode = ""
 			plan.Status.ActiveSite = ActiveSiteForPhase(newPhase, plan.Spec.PrimarySite, plan.Spec.SecondarySite)
 			if err := e.Client.Status().Patch(ctx, plan, planPatch); err != nil {
 				logger.Error(err, "Failed to advance DRPlan phase", "plan", plan.Name, "targetPhase", newPhase)
@@ -1050,18 +1047,6 @@ func (e *WaveExecutor) finishExecution(
 			logger.Info("Advanced DRPlan phase", "plan", plan.Name, "from", previousPhase, "to", newPhase,
 				"activeSite", plan.Status.ActiveSite)
 		}
-	}
-
-	// Always clear ActiveExecution when it wasn't already cleared above.
-	if plan.Status.ActiveExecution != "" {
-		planPatch := client.MergeFrom(plan.DeepCopy())
-		plan.Status.ActiveExecution = ""
-		plan.Status.ActiveExecutionMode = ""
-		if err := e.Client.Status().Patch(ctx, plan, planPatch); err != nil {
-			logger.Error(err, "Failed to clear ActiveExecution on DRPlan", "plan", plan.Name)
-			return fmt.Errorf("clearing ActiveExecution: %w", err)
-		}
-		logger.Info("Cleared ActiveExecution on DRPlan", "plan", plan.Name)
 	}
 
 	return nil

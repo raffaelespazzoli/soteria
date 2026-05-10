@@ -90,12 +90,12 @@ func (v *DRExecutionValidator) Handle(ctx context.Context, req admission.Request
 			fmt.Errorf("looking up DRPlan %q: %w", exec.Spec.PlanName, err))
 	}
 
-	// Concurrency gate: reject if another execution is already active.
-	if plan.Status.ActiveExecution != "" {
-		return admission.Denied(fmt.Sprintf(
-			"DRPlan %q has active execution %q; concurrent executions not permitted",
-			exec.Spec.PlanName, plan.Status.ActiveExecution))
-	}
+	// Concurrency gate: the DRExecution-based concurrency guard is enforced
+	// by the in-process SoteriaAdmissionPlugin (plugin.go), which has access
+	// to the DRExecution storage. This legacy webhook does not have storage
+	// injection and cannot query DRExecutions directly.
+	// The ActiveExecution field is no longer written (Story 10.1) and will
+	// be removed from the DRPlanStatus struct in Story 10.4.
 
 	if _, err := engine.Transition(plan.Status.Phase, exec.Spec.Mode); err != nil {
 		validPhases := engine.ValidStartingPhases(exec.Spec.Mode)

@@ -209,6 +209,7 @@ func main() {
 		Codec:                  codec,
 		UseCacher:              true,
 		CriticalFieldDetectors: apiserver.DefaultCriticalFieldDetectors(),
+		SerialCreateResources:  apiserver.DefaultSerialCreateResources(),
 	}
 
 	completed := apiserverConfig.Complete()

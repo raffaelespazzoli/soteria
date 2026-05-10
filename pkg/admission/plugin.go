@@ -23,9 +23,12 @@ import (
 	"strings"
 
 	"k8s.io/apimachinery/pkg/api/meta"
+	metainternalversion "k8s.io/apimachinery/pkg/apis/meta/internalversion"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apiserver/pkg/admission"
 	"k8s.io/apiserver/pkg/registry/rest"
+	"k8s.io/klog/v2"
 
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
 	"github.com/soteria-project/soteria/pkg/engine"
@@ -39,11 +42,12 @@ const PluginName = "SoteriaValidation"
 // which does not fire for aggregated API resources.
 type SoteriaAdmissionPlugin struct {
 	*admission.Handler
-	drplanStorage rest.Getter
+	drplanStorage      rest.Getter
+	drexecutionStorage rest.Lister
 }
 
 // NewSoteriaAdmissionPlugin creates a new uninitialized admission plugin.
-// Call SetDRPlanStorage before the plugin is used for DRExecution validation.
+// Call SetDRPlanStorage and SetDRExecutionStorage before the plugin is used.
 func NewSoteriaAdmissionPlugin() *SoteriaAdmissionPlugin {
 	return &SoteriaAdmissionPlugin{
 		Handler: admission.NewHandler(admission.Create, admission.Update),
@@ -53,6 +57,12 @@ func NewSoteriaAdmissionPlugin() *SoteriaAdmissionPlugin {
 // SetDRPlanStorage injects the DRPlan REST storage for cross-object lookups.
 func (p *SoteriaAdmissionPlugin) SetDRPlanStorage(s rest.Getter) {
 	p.drplanStorage = s
+}
+
+// SetDRExecutionStorage injects the DRExecution REST storage for concurrency
+// checks (listing non-terminal executions for a plan).
+func (p *SoteriaAdmissionPlugin) SetDRExecutionStorage(s rest.Lister) {
+	p.drexecutionStorage = s
 }
 
 var (
@@ -124,10 +134,16 @@ func (p *SoteriaAdmissionPlugin) validateDRExecution(ctx context.Context, a admi
 		return fmt.Errorf("unexpected object type from storage: %T", obj)
 	}
 
-	if plan.Status.ActiveExecution != "" {
-		return admission.NewForbidden(a, fmt.Errorf(
-			"DRPlan %q has active execution %q; concurrent executions not permitted",
-			exec.Spec.PlanName, plan.Status.ActiveExecution))
+	// Concurrency gate: list DRExecutions for this plan and reject if any
+	// non-terminal execution exists. This replaces the old
+	// plan.Status.ActiveExecution check with a derived query so that the
+	// DRPlan status no longer needs a concurrency pointer.
+	if p.drexecutionStorage != nil {
+		if err := p.checkNoConcurrentExecution(ctx, a, exec.Spec.PlanName); err != nil {
+			return err
+		}
+	} else {
+		klog.Warningf("DRExecution admission concurrency gate disabled: storage not injected")
 	}
 
 	if _, err := engine.Transition(plan.Status.Phase, exec.Spec.Mode); err != nil {
@@ -148,8 +164,6 @@ func (p *SoteriaAdmissionPlugin) validateDRExecution(ctx context.Context, a admi
 			fmt.Errorf("cannot start execution: sites do not agree on VM inventory. Resolve VM differences first"))
 	}
 
-	// Reject any disk validation failure using the condition message so users
-	// see the specific blocker (e.g. topology mismatch vs mixed storage class).
 	if dcCond := meta.FindStatusCondition(plan.Status.Conditions, "DisksConsistent"); dcCond != nil &&
 		dcCond.Status == metav1.ConditionFalse {
 		msg := "disk validation failed"
@@ -160,6 +174,39 @@ func (p *SoteriaAdmissionPlugin) validateDRExecution(ctx context.Context, a admi
 			fmt.Errorf("cannot start execution: %s", msg))
 	}
 
+	return nil
+}
+
+// checkNoConcurrentExecution lists DRExecutions with the plan-name label and
+// rejects the request if any non-terminal execution exists. This is a
+// best-effort admission gate (layer 1 of the three-layer concurrency model);
+// the SERIAL INSERT (layer 2) and reconciler exclusivity check (layer 3)
+// provide stronger guarantees.
+func (p *SoteriaAdmissionPlugin) checkNoConcurrentExecution(
+	ctx context.Context, a admission.Attributes, planName string,
+) error {
+	listObj, err := p.drexecutionStorage.List(ctx, &metainternalversion.ListOptions{
+		LabelSelector: labels.SelectorFromSet(labels.Set{
+			soteriav1alpha1.PlanNameLabel: planName,
+		}),
+	})
+	if err != nil {
+		return fmt.Errorf("listing DRExecutions for plan %q: %w", planName, err)
+	}
+
+	execList, ok := listObj.(*soteriav1alpha1.DRExecutionList)
+	if !ok {
+		return fmt.Errorf("unexpected list type from storage: %T", listObj)
+	}
+
+	for i := range execList.Items {
+		e := &execList.Items[i]
+		if e.Status.Result == "" {
+			return admission.NewForbidden(a, fmt.Errorf(
+				"DRPlan %q has active execution %q; concurrent executions not permitted",
+				planName, e.Name))
+		}
+	}
 	return nil
 }
 

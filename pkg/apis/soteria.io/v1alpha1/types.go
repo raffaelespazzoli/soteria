@@ -61,6 +61,12 @@ const DRPlanLabel = "soteria.io/drplan"
 // this label. The value is not configurable.
 const WaveLabel = "soteria.io/wave"
 
+// PlanNameLabel is the label key set on DRExecution objects to enable
+// efficient LIST-by-plan queries. Used by the admission concurrency gate
+// and the reconciler exclusivity check to find non-terminal executions
+// for a given plan without scanning all executions.
+const PlanNameLabel = "soteria.io/plan-name"
+
 // TriggeredByAnnotation records the authenticated user who created a DRExecution.
 // Stamped server-side in the aggregated API's PrepareForCreate so it captures
 // every creation path (console, kubectl, automation).

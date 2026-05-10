@@ -1,6 +1,6 @@
 # Story 10.1: DRExecution Concurrency Guard Without ActiveExecution
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -477,14 +477,54 @@ This ensures the system degrades gracefully during DC outages rather than blocki
 - [Source: _bmad-output/planning-artifacts/epics.md#Story-10.1] — Epic requirements
 - [Source: _bmad-output/project-context.md] — Critical rules, ScyllaRetry, SERIAL patterns
 
+### Review Findings
+
+- [x] [Review][Decision] Label-only concurrency lookup can miss active executions — Both the admission gate and `verifyExclusiveExecution` rely on `soteria.io/plan-name` label queries, but this story only guarantees server-side label stamping for newly created executions. Pre-existing non-terminal executions created before this change remain invisible unless they re-enter `reconcileSetup`, because `ensurePlanNameLabel()` is only called there. In addition, Scylla label-index sync on create is still best-effort (`pkg/storage/scylladb/store.go`), so an execution can exist in `kv_store` without becoming selector-visible in `kv_store_labels`. That leaves both layer 1 and layer 3 blind to some active executions. Evidence: `pkg/admission/plugin.go`, `pkg/controller/drexecution/reconciler.go`, `pkg/storage/scylladb/store.go`. **Resolved (Option 1)**: Moved `ensurePlanNameLabel()` from `reconcileSetup` to the top of the main `Reconcile()` loop so it backfills the label on every reconcile cycle for pre-existing executions. New executions get the label via `PrepareForCreate`. The informer/cacher paths used by admission and reconciler queries filter by object metadata labels (not the ScyllaDB label index), so best-effort `syncLabels` is not a concern for these paths.
+- [x] [Review][Patch] `verifyExclusiveExecution` treats a stale empty LIST as exclusive instead of retrying — **Fixed**: Added self-visibility check; returns `Conflict` error (triggering `ScyllaRetry` backoff) when the calling execution is not visible in the label-filtered list.
+- [x] [Review][Patch] Nil `drexecutionStorage` silently disables the admission concurrency gate — **Fixed**: Added `klog.Warningf` when `drexecutionStorage` is nil.
+
 ## Dev Agent Record
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4 (claude-opus-4-20250514)
 
 ### Debug Log References
 
+- [Story 10.1 dev session](70e7605b-4efa-4a59-963a-2f684f517a74) — full implementation session
+
 ### Completion Notes List
 
+- AC1: Admission concurrency guard now lists DRExecutions via `rest.Lister` with `soteria.io/plan-name` label selector; rejects CREATE when any non-terminal execution exists. Error message preserves backward-compatible format.
+- AC2: `casInsert` in `store.go` uses `gocql.Serial` when `serialCreate` is true (configured per-resource via `SerialCreateResources`). Includes fallback to `LocalSerial` on infrastructure errors via `shouldFallbackToLocal`.
+- AC3: `reconcileSetup` no longer patches `plan.Status.ActiveExecution` or `ActiveExecutionMode`. The plan status patch block was removed entirely.
+- AC4: `finishExecution` (executor.go), `failExecution`, and reprotect completion path no longer clear `ActiveExecution`/`ActiveExecutionMode`. Phase/ActiveSite writes continue unchanged.
+- AC5: `verifyExclusiveExecution` lists DRExecutions with `ScyllaRetry` backoff, self-fails if competing non-terminal execution found. Replaces all `fetchPlanWithActiveExecCheck` call sites.
+- AC6: `detectDRPlanCriticalFields` only compares `Phase` and `ActiveSite`. `DefaultSerialCreateResources` configures DRExecution for SERIAL creates.
+- AC7: All unit and integration tests pass with zero regressions. 4 new admission plugin tests (concurrency guard denied, allowed no active, allowed terminal only, nil storage proceeds). Legacy webhook test updated. Reconciler/executor tests updated to no longer assert `ActiveExecution` writes. Integration test rewritten to create real DRExecution instead of setting plan status.
+- `mapVMToDRExecution` updated to list DRExecutions by plan-name label instead of reading `plan.Status.ActiveExecution`.
+- `ensurePlanNameLabel` updated to use `PlanNameLabel` constant.
+- `PlanNameLabel` stamped server-side in `PrepareForCreate` (was controller-side only).
+- Legacy `DRExecutionValidator` webhook concurrency check removed with comment noting guard moved to in-process plugin.
+- Known intermediate state: consumers in Stories 10.2/10.3 (table convertor, preflight, health polling gate, DRPlan reconciler) still read `ActiveExecution` and will see empty values until those stories migrate them.
+
 ### File List
+
+- `cmd/soteria/main.go` — Wired `DefaultSerialCreateResources()` into `ScyllaStoreFactory`
+- `pkg/admission/doc.go` — Documented three-layer concurrency model
+- `pkg/admission/drexecution_validator.go` — Removed `ActiveExecution` check from legacy webhook
+- `pkg/admission/drexecution_validator_test.go` — Updated legacy test to expect allowed
+- `pkg/admission/plugin.go` — Added `drexecutionStorage rest.Lister`, `SetDRExecutionStorage`, `checkNoConcurrentExecution`
+- `pkg/admission/plugin_test.go` — Added `stubLister`, rewrote concurrency test, added 3 new tests, injected lister into all DRExecution CREATE tests
+- `pkg/apis/soteria.io/v1alpha1/types.go` — Added `PlanNameLabel` constant
+- `pkg/apiserver/apiserver.go` — Added `SerialCreateResources` to factory, injected DRExecution storage into admission plugin
+- `pkg/apiserver/critical_fields.go` — Added `DefaultSerialCreateResources()`, removed `ActiveExecution` from `detectDRPlanCriticalFields`
+- `pkg/apiserver/critical_fields_test.go` — Updated `ActiveExecution` test expectation to `false`
+- `pkg/controller/drexecution/reconciler.go` — Removed `ActiveExecution` writes from `reconcileSetup`/`failExecution`/reprotect, replaced `fetchPlanWithActiveExecCheck` with `verifyExclusiveExecution` + `fetchPlan`, updated `mapVMToDRExecution` and `ensurePlanNameLabel`
+- `pkg/controller/drexecution/reconciler_test.go` — Updated `ActiveExecution` assertions, rewrote `mapVMToDRExecution` test
+- `pkg/engine/executor.go` — Removed `ActiveExecution` clearing from `finishExecution`
+- `pkg/engine/executor_test.go` — Removed `ActiveExecution` assertions
+- `pkg/registry/drexecution/strategy.go` — Server-side `soteria.io/plan-name` label stamping in `PrepareForCreate`
+- `pkg/storage/scylladb/store.go` — Added `serialCreate` flag, conditional `gocql.Serial` in `casInsert` with fallback
+- `test/integration/apiserver/admission_test.go` — Rewrote concurrency gate test, added `AllowedAfterCompletion` test
+- `test/integration/apiserver/suite_test.go` — Wired `SerialCreateResources` into test harness

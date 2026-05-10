@@ -740,7 +740,8 @@ func TestWaveExecutor_AllGroupsFail_ResultFailed(t *testing.T) {
 		t.Errorf("expected result %q, got %q", soteriav1alpha1.ExecutionResultFailed, exec.Status.Result)
 	}
 
-	// Verify plan stays at rest state and ActiveExecution is cleared on failure.
+	// Verify plan stays at rest state on failure; ActiveExecution is no
+	// longer written or cleared (concurrency guard moved to DRExecution layer).
 	var updatedPlan soteriav1alpha1.DRPlan
 	if err := cl.Get(context.Background(), client.ObjectKey{Name: "plan-allfail"}, &updatedPlan); err != nil {
 		t.Fatalf("getting plan: %v", err)
@@ -748,10 +749,6 @@ func TestWaveExecutor_AllGroupsFail_ResultFailed(t *testing.T) {
 	if updatedPlan.Status.Phase != soteriav1alpha1.PhaseSteadyState {
 		t.Errorf("expected plan phase unchanged at rest %q, got %q",
 			soteriav1alpha1.PhaseSteadyState, updatedPlan.Status.Phase)
-	}
-	if updatedPlan.Status.ActiveExecution != "" {
-		t.Errorf("expected ActiveExecution cleared, got %q",
-			updatedPlan.Status.ActiveExecution)
 	}
 }
 
@@ -1105,9 +1102,6 @@ func TestWaveExecutor_CompleteTransition_NotCalledOnFailed(t *testing.T) {
 	}
 	if updatedPlan.Status.Phase != soteriav1alpha1.PhaseSteadyState {
 		t.Errorf("plan phase should NOT advance on Failed: got %q, want SteadyState", updatedPlan.Status.Phase)
-	}
-	if updatedPlan.Status.ActiveExecution != "" {
-		t.Errorf("ActiveExecution should be cleared on failure, got %q", updatedPlan.Status.ActiveExecution)
 	}
 }
 

@@ -147,10 +147,31 @@ func TestAdmission_DRExecution_ConcurrencyGate_Rejected(t *testing.T) {
 	ctx := context.Background()
 
 	planName := "admission-concurrency-plan"
-	createDRPlan(t, ctx, client, planName, soteriav1alpha1.PhaseSteadyState, "existing-exec", nil)
+	createDRPlan(t, ctx, client, planName, soteriav1alpha1.PhaseSteadyState, "", nil)
 	defer deleteDRPlan(t, ctx, client, planName)
 
-	exec := &unstructured.Unstructured{
+	// Create a first non-terminal DRExecution for this plan.
+	firstExec := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "soteria.io/v1alpha1",
+			"kind":       "DRExecution",
+			"metadata":   map[string]any{"name": "existing-exec"},
+			"spec": map[string]any{
+				"planName": planName,
+				"mode":     string(soteriav1alpha1.ExecutionModePlannedMigration),
+			},
+		},
+	}
+	_, err := client.Resource(drexecutionGVR()).Create(ctx, firstExec, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Creating first DRExecution: %v", err)
+	}
+	defer func() {
+		_ = client.Resource(drexecutionGVR()).Delete(ctx, "existing-exec", metav1.DeleteOptions{})
+	}()
+
+	// Second CREATE for the same plan should be rejected.
+	secondExec := &unstructured.Unstructured{
 		Object: map[string]any{
 			"apiVersion": "soteria.io/v1alpha1",
 			"kind":       "DRExecution",
@@ -162,7 +183,7 @@ func TestAdmission_DRExecution_ConcurrencyGate_Rejected(t *testing.T) {
 		},
 	}
 
-	_, err := client.Resource(drexecutionGVR()).Create(ctx, exec, metav1.CreateOptions{})
+	_, err = client.Resource(drexecutionGVR()).Create(ctx, secondExec, metav1.CreateOptions{})
 	if err == nil {
 		defer func() {
 			_ = client.Resource(drexecutionGVR()).Delete(ctx, "exec-concurrent", metav1.DeleteOptions{})
@@ -172,6 +193,64 @@ func TestAdmission_DRExecution_ConcurrencyGate_Rejected(t *testing.T) {
 	if !strings.Contains(err.Error(), "concurrent") {
 		t.Errorf("Expected 'concurrent' in error, got: %v", err)
 	}
+}
+
+func TestAdmission_DRExecution_ConcurrencyGate_AllowedAfterCompletion(t *testing.T) {
+	client := newDynamicClientForAdmission(t)
+	ctx := context.Background()
+
+	planName := "admission-concurrency-done-plan"
+	createDRPlan(t, ctx, client, planName, soteriav1alpha1.PhaseSteadyState, "", nil)
+	defer deleteDRPlan(t, ctx, client, planName)
+
+	// Create and complete a DRExecution.
+	firstExec := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "soteria.io/v1alpha1",
+			"kind":       "DRExecution",
+			"metadata":   map[string]any{"name": "exec-completed"},
+			"spec": map[string]any{
+				"planName": planName,
+				"mode":     string(soteriav1alpha1.ExecutionModePlannedMigration),
+			},
+		},
+	}
+	created, err := client.Resource(drexecutionGVR()).Create(ctx, firstExec, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Creating first DRExecution: %v", err)
+	}
+	defer func() {
+		_ = client.Resource(drexecutionGVR()).Delete(ctx, "exec-completed", metav1.DeleteOptions{})
+	}()
+
+	// Mark it as completed via status update.
+	created.Object["status"] = map[string]any{
+		"result": "Succeeded",
+	}
+	_, err = client.Resource(drexecutionGVR()).UpdateStatus(ctx, created, metav1.UpdateOptions{})
+	if err != nil {
+		t.Fatalf("Updating DRExecution status: %v", err)
+	}
+
+	// A new CREATE should be allowed since the existing execution is terminal.
+	secondExec := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "soteria.io/v1alpha1",
+			"kind":       "DRExecution",
+			"metadata":   map[string]any{"name": "exec-after-completion"},
+			"spec": map[string]any{
+				"planName": planName,
+				"mode":     string(soteriav1alpha1.ExecutionModePlannedMigration),
+			},
+		},
+	}
+	_, err = client.Resource(drexecutionGVR()).Create(ctx, secondExec, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Expected DRExecution CREATE allowed after prior completed, got: %v", err)
+	}
+	defer func() {
+		_ = client.Resource(drexecutionGVR()).Delete(ctx, "exec-after-completion", metav1.DeleteOptions{})
+	}()
 }
 
 func TestAdmission_DRExecution_InvalidPhase_Rejected(t *testing.T) {

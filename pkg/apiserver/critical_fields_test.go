@@ -46,7 +46,7 @@ func TestDetectDRPlanCriticalFields_ActiveSiteChange(t *testing.T) {
 	}
 }
 
-func TestDetectDRPlanCriticalFields_ActiveExecutionChange(t *testing.T) {
+func TestDetectDRPlanCriticalFields_ActiveExecutionChange_NotCritical(t *testing.T) {
 	old := &soteriav1alpha1.DRPlan{
 		Status: soteriav1alpha1.DRPlanStatus{
 			Phase:      soteriav1alpha1.PhaseSteadyState,
@@ -60,8 +60,8 @@ func TestDetectDRPlanCriticalFields_ActiveExecutionChange(t *testing.T) {
 			ActiveExecution: "exec-failover-1",
 		},
 	}
-	if !detectDRPlanCriticalFields(old, updated) {
-		t.Error("expected critical=true when ActiveExecution changes")
+	if detectDRPlanCriticalFields(old, updated) {
+		t.Error("expected critical=false when only ActiveExecution changes (concurrency guarded by DRExecution SERIAL INSERT)")
 	}
 }
 

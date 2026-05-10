@@ -24,6 +24,19 @@ limitations under the License.
 // DRPlan CREATE/UPDATE field validation as defense-in-depth alongside the
 // registry strategy layer.
 //
+// The DRExecution concurrency guard uses a three-layer model:
+//  1. Admission gate (this package): best-effort LIST of DRExecutions
+//     with the soteria.io/plan-name label; rejects if any non-terminal
+//     execution exists.
+//  2. SERIAL INSERT: DRExecution storage creates use gocql.Serial
+//     consistency for cross-DC Paxos ordering on INSERT IF NOT EXISTS.
+//  3. Reconciler exclusivity check: verifyExclusiveExecution lists
+//     DRExecutions with ScyllaRetry backoff; self-fails if a competing
+//     non-terminal execution is found.
+//
+// This replaces the former plan.Status.ActiveExecution pointer that coupled
+// DRPlan status to execution lifecycle.
+//
 // The VirtualMachine webhook remains on the controller-runtime webhook server
 // path (ValidatingWebhookConfiguration vvm.kb.io) because VMs are standard
 // KubeVirt CRDs served by kube-apiserver, not the aggregated API. It validates

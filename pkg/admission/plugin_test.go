@@ -22,6 +22,7 @@ import (
 	"strings"
 	"testing"
 
+	metainternalversion "k8s.io/apimachinery/pkg/apis/meta/internalversion"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -50,6 +51,23 @@ func (e *notFoundError) Error() string {
 }
 func (e *notFoundError) Status() metav1.Status {
 	return metav1.Status{Reason: metav1.StatusReasonNotFound}
+}
+
+// stubLister implements rest.Lister for testing the concurrency guard.
+type stubLister struct {
+	executions []soteriav1alpha1.DRExecution
+}
+
+func (s *stubLister) NewList() runtime.Object {
+	return &soteriav1alpha1.DRExecutionList{}
+}
+
+func (s *stubLister) List(_ context.Context, _ *metainternalversion.ListOptions) (runtime.Object, error) {
+	return &soteriav1alpha1.DRExecutionList{Items: s.executions}, nil
+}
+
+func (s *stubLister) ConvertToTable(_ context.Context, _ runtime.Object, _ runtime.Object) (*metav1.Table, error) {
+	return &metav1.Table{}, nil
 }
 
 func makePluginExecAttributes(exec *soteriav1alpha1.DRExecution, op admission.Operation) admission.Attributes {
@@ -125,6 +143,7 @@ func TestPlugin_DRExecution_ValidCREATE_Allowed(t *testing.T) {
 					},
 				},
 			})
+			p.SetDRExecutionStorage(&stubLister{})
 
 			exec := &soteriav1alpha1.DRExecution{
 				ObjectMeta: metav1.ObjectMeta{Name: "test-exec"},
@@ -196,7 +215,7 @@ func TestPlugin_DRExecution_PlanNotFound_Denied(t *testing.T) {
 	}
 }
 
-func TestPlugin_DRExecution_ActiveExecution_Denied(t *testing.T) {
+func TestPlugin_DRExecution_ConcurrencyGuard_Denied(t *testing.T) {
 	p := NewSoteriaAdmissionPlugin()
 	p.SetDRPlanStorage(&stubGetter{
 		plans: map[string]*soteriav1alpha1.DRPlan{
@@ -206,12 +225,16 @@ func TestPlugin_DRExecution_ActiveExecution_Denied(t *testing.T) {
 					PrimarySite:   "dc-west",
 					SecondarySite: "dc-east",
 				},
-				Status: soteriav1alpha1.DRPlanStatus{
-					Phase:           soteriav1alpha1.PhaseSteadyState,
-					ActiveExecution: "existing-exec",
-				},
+				Status: soteriav1alpha1.DRPlanStatus{Phase: soteriav1alpha1.PhaseSteadyState},
 			},
 		},
+	})
+	p.SetDRExecutionStorage(&stubLister{
+		executions: []soteriav1alpha1.DRExecution{{
+			ObjectMeta: metav1.ObjectMeta{Name: "existing-exec"},
+			Spec:       soteriav1alpha1.DRExecutionSpec{PlanName: "my-plan"},
+			Status:     soteriav1alpha1.DRExecutionStatus{},
+		}},
 	})
 
 	exec := &soteriav1alpha1.DRExecution{
@@ -231,6 +254,93 @@ func TestPlugin_DRExecution_ActiveExecution_Denied(t *testing.T) {
 	}
 }
 
+func TestPlugin_DRExecution_ConcurrencyGuard_Allowed_NoActive(t *testing.T) {
+	p := NewSoteriaAdmissionPlugin()
+	p.SetDRPlanStorage(&stubGetter{
+		plans: map[string]*soteriav1alpha1.DRPlan{
+			"my-plan": {
+				ObjectMeta: metav1.ObjectMeta{Name: "my-plan"},
+				Spec: soteriav1alpha1.DRPlanSpec{
+					PrimarySite:   "dc-west",
+					SecondarySite: "dc-east",
+				},
+				Status: soteriav1alpha1.DRPlanStatus{Phase: soteriav1alpha1.PhaseSteadyState},
+			},
+		},
+	})
+	p.SetDRExecutionStorage(&stubLister{})
+
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-exec"},
+		Spec:       soteriav1alpha1.DRExecutionSpec{PlanName: "my-plan", Mode: soteriav1alpha1.ExecutionModePlannedMigration},
+	}
+
+	err := p.Validate(context.Background(), makePluginExecAttributes(exec, admission.Create), nil)
+	if err != nil {
+		t.Errorf("expected allowed, got error: %v", err)
+	}
+}
+
+func TestPlugin_DRExecution_ConcurrencyGuard_Allowed_TerminalOnly(t *testing.T) {
+	p := NewSoteriaAdmissionPlugin()
+	p.SetDRPlanStorage(&stubGetter{
+		plans: map[string]*soteriav1alpha1.DRPlan{
+			"my-plan": {
+				ObjectMeta: metav1.ObjectMeta{Name: "my-plan"},
+				Spec: soteriav1alpha1.DRPlanSpec{
+					PrimarySite:   "dc-west",
+					SecondarySite: "dc-east",
+				},
+				Status: soteriav1alpha1.DRPlanStatus{Phase: soteriav1alpha1.PhaseSteadyState},
+			},
+		},
+	})
+	p.SetDRExecutionStorage(&stubLister{
+		executions: []soteriav1alpha1.DRExecution{{
+			ObjectMeta: metav1.ObjectMeta{Name: "old-exec"},
+			Spec:       soteriav1alpha1.DRExecutionSpec{PlanName: "my-plan"},
+			Status:     soteriav1alpha1.DRExecutionStatus{Result: "Succeeded"},
+		}},
+	})
+
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "new-exec"},
+		Spec:       soteriav1alpha1.DRExecutionSpec{PlanName: "my-plan", Mode: soteriav1alpha1.ExecutionModePlannedMigration},
+	}
+
+	err := p.Validate(context.Background(), makePluginExecAttributes(exec, admission.Create), nil)
+	if err != nil {
+		t.Errorf("expected allowed (terminal execution should not block), got error: %v", err)
+	}
+}
+
+func TestPlugin_DRExecution_NilExecutionStorage_Proceeds(t *testing.T) {
+	p := NewSoteriaAdmissionPlugin()
+	p.SetDRPlanStorage(&stubGetter{
+		plans: map[string]*soteriav1alpha1.DRPlan{
+			"my-plan": {
+				ObjectMeta: metav1.ObjectMeta{Name: "my-plan"},
+				Spec: soteriav1alpha1.DRPlanSpec{
+					PrimarySite:   "dc-west",
+					SecondarySite: "dc-east",
+				},
+				Status: soteriav1alpha1.DRPlanStatus{Phase: soteriav1alpha1.PhaseSteadyState},
+			},
+		},
+	})
+	// Deliberately not calling SetDRExecutionStorage — concurrency check skipped.
+
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-exec"},
+		Spec:       soteriav1alpha1.DRExecutionSpec{PlanName: "my-plan", Mode: soteriav1alpha1.ExecutionModePlannedMigration},
+	}
+
+	err := p.Validate(context.Background(), makePluginExecAttributes(exec, admission.Create), nil)
+	if err != nil {
+		t.Errorf("expected allowed when execution storage is nil, got error: %v", err)
+	}
+}
+
 func TestPlugin_DRExecution_InvalidPhaseTransition_Denied(t *testing.T) {
 	p := NewSoteriaAdmissionPlugin()
 	p.SetDRPlanStorage(&stubGetter{
@@ -245,6 +355,7 @@ func TestPlugin_DRExecution_InvalidPhaseTransition_Denied(t *testing.T) {
 			},
 		},
 	})
+	p.SetDRExecutionStorage(&stubLister{})
 
 	exec := &soteriav1alpha1.DRExecution{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-exec"},
@@ -282,6 +393,7 @@ func TestPlugin_DRExecution_SitesOutOfSync_Denied(t *testing.T) {
 			},
 		},
 	})
+	p.SetDRExecutionStorage(&stubLister{})
 
 	exec := &soteriav1alpha1.DRExecution{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-exec"},
@@ -319,6 +431,7 @@ func TestPlugin_DRExecution_SitesInSync_Allowed(t *testing.T) {
 			},
 		},
 	})
+	p.SetDRExecutionStorage(&stubLister{})
 
 	exec := &soteriav1alpha1.DRExecution{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-exec"},
@@ -362,6 +475,7 @@ func TestPlugin_DRExecution_DisksInconsistent_Denied(t *testing.T) {
 			},
 		},
 	})
+	p.SetDRExecutionStorage(&stubLister{})
 
 	exec := &soteriav1alpha1.DRExecution{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-exec"},
@@ -408,6 +522,7 @@ func TestPlugin_DRExecution_StorageClassMixed_Denied(t *testing.T) {
 			},
 		},
 	})
+	p.SetDRExecutionStorage(&stubLister{})
 
 	exec := &soteriav1alpha1.DRExecution{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-exec"},
@@ -453,6 +568,7 @@ func TestPlugin_DRExecution_DisksConsistent_Allowed(t *testing.T) {
 			},
 		},
 	})
+	p.SetDRExecutionStorage(&stubLister{})
 
 	exec := &soteriav1alpha1.DRExecution{
 		ObjectMeta: metav1.ObjectMeta{Name: "test-exec"},

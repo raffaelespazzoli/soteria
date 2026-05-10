@@ -207,7 +207,8 @@ func TestDRExecutionReconciler_NewExecution_NormalPath(t *testing.T) {
 		t.Error("expected StartTime to be set for new execution")
 	}
 
-	// Verify plan phase stays at rest state and ActiveExecution is set.
+	// Verify plan phase stays at rest state; ActiveExecution is no longer set
+	// (concurrency guard moved to DRExecution-derived query in Story 10.1).
 	var updatedPlan soteriav1alpha1.DRPlan
 	if err := cl.Get(context.Background(), client.ObjectKey{Name: "plan-1"}, &updatedPlan); err != nil {
 		t.Fatalf("fetching plan: %v", err)
@@ -215,12 +216,11 @@ func TestDRExecutionReconciler_NewExecution_NormalPath(t *testing.T) {
 	if updatedPlan.Status.Phase != soteriav1alpha1.PhaseSteadyState {
 		t.Errorf("expected plan phase SteadyState (rest), got %q", updatedPlan.Status.Phase)
 	}
-	if updatedPlan.Status.ActiveExecution != "exec-new" {
-		t.Errorf("expected ActiveExecution %q, got %q", "exec-new", updatedPlan.Status.ActiveExecution)
+	if updatedPlan.Status.ActiveExecution != "" {
+		t.Errorf("expected ActiveExecution to remain empty, got %q", updatedPlan.Status.ActiveExecution)
 	}
-	if updatedPlan.Status.ActiveExecutionMode != soteriav1alpha1.ExecutionModePlannedMigration {
-		t.Errorf("expected ActiveExecutionMode %q, got %q",
-			soteriav1alpha1.ExecutionModePlannedMigration, updatedPlan.Status.ActiveExecutionMode)
+	if updatedPlan.Status.ActiveExecutionMode != "" {
+		t.Errorf("expected ActiveExecutionMode to remain empty, got %q", updatedPlan.Status.ActiveExecutionMode)
 	}
 }
 
@@ -1295,23 +1295,18 @@ func TestVMPrintableStatusChanged_Predicate(t *testing.T) {
 }
 
 func TestMapVMToDRExecution(t *testing.T) {
-	plan := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-map"},
-		Spec: soteriav1alpha1.DRPlanSpec{
-			MaxConcurrentFailovers: 4,
-			PrimarySite:            "dc-west",
-			SecondarySite:          "dc-east",
+	activeExec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "exec-active",
+			Labels: map[string]string{soteriav1alpha1.PlanNameLabel: "plan-map"},
 		},
-		Status: soteriav1alpha1.DRPlanStatus{
-			Phase:           soteriav1alpha1.PhaseSteadyState,
-			ActiveSite:      "dc-west",
-			ActiveExecution: "exec-active",
-		},
+		Spec:   soteriav1alpha1.DRExecutionSpec{PlanName: "plan-map"},
+		Status: soteriav1alpha1.DRExecutionStatus{},
 	}
-	cl := newTestClient(plan)
+	cl := newTestClient(activeExec)
 	r := &DRExecutionReconciler{Client: cl, Scheme: newTestScheme()}
 
-	// VM with matching label → should return the active execution.
+	// VM with matching label → should return the non-terminal execution.
 	vm := &kubevirtv1.VirtualMachine{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "vm-1",
@@ -1336,19 +1331,16 @@ func TestMapVMToDRExecution(t *testing.T) {
 		t.Errorf("expected 0 requests for unlabeled VM, got %d", len(reqs))
 	}
 
-	// VM with label pointing to plan with no active execution.
-	plan2 := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-idle"},
-		Spec: soteriav1alpha1.DRPlanSpec{
-			MaxConcurrentFailovers: 4,
-			PrimarySite:            "dc-west",
-			SecondarySite:          "dc-east",
+	// VM with label pointing to plan with only terminal executions.
+	terminalExec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "exec-done",
+			Labels: map[string]string{soteriav1alpha1.PlanNameLabel: "plan-idle"},
 		},
-		Status: soteriav1alpha1.DRPlanStatus{
-			Phase: soteriav1alpha1.PhaseSteadyState,
-		},
+		Spec:   soteriav1alpha1.DRExecutionSpec{PlanName: "plan-idle"},
+		Status: soteriav1alpha1.DRExecutionStatus{Result: "Succeeded"},
 	}
-	cl2 := newTestClient(plan2)
+	cl2 := newTestClient(terminalExec)
 	r2 := &DRExecutionReconciler{Client: cl2, Scheme: newTestScheme()}
 	vmIdle := &kubevirtv1.VirtualMachine{
 		ObjectMeta: metav1.ObjectMeta{

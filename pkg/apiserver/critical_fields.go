@@ -40,9 +40,23 @@ func DefaultCriticalFieldDetectors() map[schema.GroupResource]scylladb.CriticalF
 	}
 }
 
-// detectDRPlanCriticalFields returns true when the DRPlan phase has changed.
-// Phase transitions (SteadyState ↔ Failover ↔ Relocating) must be globally
-// unique: two DCs must never simultaneously believe they are the active site.
+// DefaultSerialCreateResources returns per-resource flags for resources whose
+// INSERT IF NOT EXISTS must use cross-DC SERIAL consistency (Paxos quorum
+// across all DCs) instead of LocalSerial. DRExecution creates are serialized
+// cross-DC so that concurrent creates from different DCs during a partition
+// cannot both succeed — the reconciler exclusivity check catches any that slip
+// through, but SERIAL minimizes the window.
+func DefaultSerialCreateResources() map[schema.GroupResource]bool {
+	return map[schema.GroupResource]bool{
+		{Group: soteriav1alpha1.GroupName, Resource: "drexecutions"}: true,
+	}
+}
+
+// detectDRPlanCriticalFields returns true when the DRPlan phase or active site
+// has changed. Phase transitions (SteadyState ↔ Failover ↔ Relocating) must
+// be globally unique: two DCs must never simultaneously believe they are the
+// active site. ActiveExecution is no longer a critical field because concurrency
+// is now guarded by DRExecution-level SERIAL INSERT + reconciler exclusivity.
 func detectDRPlanCriticalFields(old, updated runtime.Object) bool {
 	oldPlan, ok := old.(*soteriav1alpha1.DRPlan)
 	if !ok {
@@ -53,8 +67,7 @@ func detectDRPlanCriticalFields(old, updated runtime.Object) bool {
 		return false
 	}
 	return oldPlan.Status.Phase != newPlan.Status.Phase ||
-		oldPlan.Status.ActiveSite != newPlan.Status.ActiveSite ||
-		oldPlan.Status.ActiveExecution != newPlan.Status.ActiveExecution
+		oldPlan.Status.ActiveSite != newPlan.Status.ActiveSite
 }
 
 // detectDRExecutionCriticalFields returns true when the DRExecution result

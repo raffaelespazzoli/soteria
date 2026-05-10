@@ -80,6 +80,11 @@ type Store struct {
 	newFunc               func() runtime.Object
 	newListFunc           func() runtime.Object
 	criticalFieldDetector CriticalFieldDetector
+	// serialCreate upgrades INSERT IF NOT EXISTS from LocalSerial to Serial
+	// (cross-DC Paxos) so that concurrent creates from different DCs are
+	// linearized. Used for DRExecution to prevent split-brain concurrent
+	// executions that both pass the admission gate during a DC partition.
+	serialCreate bool
 }
 
 // StoreConfig holds the parameters for constructing a new Store.
@@ -95,6 +100,9 @@ type StoreConfig struct {
 	// consistency) for updates that touch critical state-machine fields.
 	// When nil, all CAS operations use LocalSerial (single-DC).
 	CriticalFieldDetector CriticalFieldDetector
+	// SerialCreate upgrades INSERT IF NOT EXISTS from LocalSerial to Serial
+	// (cross-DC Paxos). Set per-resource via ScyllaStoreFactory.SerialCreateResources.
+	SerialCreate bool
 }
 
 var _ storage.Interface = (*Store)(nil)
@@ -111,6 +119,7 @@ func NewStore(cfg StoreConfig) *Store {
 		newFunc:               cfg.NewFunc,
 		newListFunc:           cfg.NewListFunc,
 		criticalFieldDetector: cfg.CriticalFieldDetector,
+		serialCreate:          cfg.SerialCreate,
 	}
 }
 
@@ -880,11 +889,29 @@ func (s *Store) casInsert(
 			` VALUES (?, ?, ?, ?, ?, ?) IF NOT EXISTS`,
 		s.keyspace,
 	)
+
+	serialCL := gocql.LocalSerial
+	if s.serialCreate {
+		serialCL = gocql.Serial
+	}
+
 	result := make(map[string]any)
 	applied, err := s.session.Query(cql, kc.APIGroup, kc.ResourceType, kc.Namespace, kc.Name, data, rv).
 		WithContext(ctx).
-		SerialConsistency(gocql.LocalSerial).
+		SerialConsistency(serialCL).
 		MapScanCAS(result)
+
+	if err != nil && s.serialCreate && shouldFallbackToLocal(err) {
+		klog.InfoS("Cross-DC Serial INSERT unavailable, falling back to LocalSerial",
+			"apiGroup", kc.APIGroup, "resourceType", kc.ResourceType,
+			"namespace", kc.Namespace, "name", kc.Name, "error", err)
+		result = make(map[string]any)
+		applied, err = s.session.Query(cql, kc.APIGroup, kc.ResourceType, kc.Namespace, kc.Name, data, rv).
+			WithContext(ctx).
+			SerialConsistency(gocql.LocalSerial).
+			MapScanCAS(result)
+	}
+
 	if err != nil {
 		return false, err
 	}

@@ -144,6 +144,10 @@ func (c CompletedConfig) New() (*SoteriaServer, error) {
 	v1alpha1storage["drexecutions"] = drexecStore
 	v1alpha1storage["drexecutions/status"] = drexecStatusStore
 
+	if c.SoteriaPlugin != nil {
+		c.SoteriaPlugin.SetDRExecutionStorage(drexecStore)
+	}
+
 	drgroupStore, drgroupStatusStore, err := drgroupstatusregistry.NewREST(soteriainstall.Scheme, optsGetter)
 	if err != nil {
 		return nil, fmt.Errorf("creating DRGroupStatus storage: %w", err)
@@ -171,6 +175,9 @@ type ScyllaStoreFactory struct {
 	// CriticalFieldDetectors maps resource types to detectors that identify
 	// state-machine field changes requiring cross-DC LWT (Serial consistency).
 	CriticalFieldDetectors map[schema.GroupResource]scylladb.CriticalFieldDetector
+	// SerialCreateResources maps resource types that require cross-DC SERIAL
+	// consistency on INSERT IF NOT EXISTS (instead of LocalSerial).
+	SerialCreateResources map[schema.GroupResource]bool
 }
 
 // RESTOptionsGetter returns a generic.RESTOptionsGetter backed by ScyllaDB.
@@ -197,6 +204,9 @@ func (g *soteriaRESTOptionsGetter) GetRESTOptions(resource schema.GroupResource,
 	cfg.ResourcePrefix = "/" + soteriav1alpha1.GroupName + "/" + resource.Resource
 	if detector, ok := g.factory.CriticalFieldDetectors[resource]; ok {
 		cfg.CriticalFieldDetector = detector
+	}
+	if g.factory.SerialCreateResources[resource] {
+		cfg.SerialCreate = true
 	}
 
 	decoratorFn := g.decoratorFor(cfg)

@@ -245,7 +245,10 @@ func TestDRExecutionValidator_PlanInWrongPhase_Denied(t *testing.T) {
 	}
 }
 
-func TestDRExecutionValidator_ActiveExecution_Denied(t *testing.T) {
+// TestDRExecutionValidator_ActiveExecution_NoLongerChecked verifies the legacy
+// webhook no longer rejects based on plan.Status.ActiveExecution. The
+// concurrency guard has moved to the in-process SoteriaAdmissionPlugin.
+func TestDRExecutionValidator_ActiveExecution_NoLongerChecked(t *testing.T) {
 	reader := &stubReader{
 		plans: map[string]*soteriav1alpha1.DRPlan{
 			"my-plan": {
@@ -273,18 +276,8 @@ func TestDRExecutionValidator_ActiveExecution_Denied(t *testing.T) {
 	}
 
 	resp := v.Handle(context.Background(), makeExecRequest(exec, admissionv1.Create))
-	if resp.Allowed {
-		t.Error("expected denied when ActiveExecution is set, got allowed")
-	}
-	msg := ""
-	if resp.Result != nil {
-		msg = resp.Result.Message
-	}
-	if !strings.Contains(msg, "existing-exec") {
-		t.Errorf("expected message containing active execution name, got %q", msg)
-	}
-	if !strings.Contains(msg, "concurrent") {
-		t.Errorf("expected message mentioning concurrent, got %q", msg)
+	if !resp.Allowed {
+		t.Errorf("expected allowed (concurrency guard moved to plugin), got denied: %v", resp.Result)
 	}
 }
 
