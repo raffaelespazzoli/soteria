@@ -15,6 +15,7 @@
 | 9.4 | Volume Group Disk Enrichment in Preflight | done |
 | 9.5 | Storage Class Homogeneity Validation | done |
 | 9.6 | Console UI Disk Discovery & Validation Display | done |
+| 9.7 | Cross-Site Volume Group Disk Mapping | done |
 
 ## Test Environment Setup
 
@@ -34,6 +35,8 @@
 | 2026-05-09 08:30 MT | Connectivity restored, full teardown | OK — exit 0 |
 | 2026-05-09 08:40 MT | Deploy via stretched-local-test.sh (attempt 3) | OK — exit 0, ~1478s |
 | 2026-05-09 08:55 MT | `rollout restart` controller + console plugin on both clusters | OK — new pods running |
+| 2026-05-09 19:53 ET | Rebuild + push soteria image (UAT-8.001 fix + Story 9.7) | OK — sha256:9c6bfc71 pushed |
+| 2026-05-09 19:54 ET | `rollout restart` controller on both clusters | OK — new pods running, ~18s |
 
 ---
 
@@ -84,8 +87,8 @@
 
 | # | Test | Expected | Actual | Status |
 |---|------|----------|--------|--------|
-| 9.4.1 | Preflight VolumeGroups contain disk details | PreflightVolumeGroup with name/site/disks | Each VG has `{name, site: etl6, disks: [{name, pvcName, pvcNamespace}]}` | PASS |
-| 9.4.2 | VolumeGroupDisk has pvcName and pvcNamespace | Per-disk PVC topology | `{name: rootdisk, pvcName: fedora-db-rootdisk, pvcNamespace: soteria-dr-test}` — all VGs populated | PASS |
+| 9.4.1 | Preflight VolumeGroups contain disk details | PreflightVolumeGroup with name/disks | Each VG has `{name, disks: [{name, sites: [{site, pvcName, pvcNamespace}]}]}` — cross-site format after Story 9.7 | PASS |
+| 9.4.2 | VolumeGroupDisk has per-site PVC mapping | Per-disk cross-site PVC topology | `{name: rootdisk, sites: [{site: etl6, pvcName: fedora-db-rootdisk, pvcNamespace: soteria-dr-test}, {site: etl7, ...}]}` — all 6 VGs show both sites | PASS |
 | 9.4.3 | Disks sorted by VM name then disk name | Deterministic ordering | Only 1 disk per VM (rootdisk), VMs in waves sorted alphabetically within chunks | PASS |
 
 ### Story 9.5 — Storage Class Homogeneity Validation
@@ -93,14 +96,6 @@
 | # | Test | Expected | Actual | Status |
 |---|------|----------|--------|--------|
 | 9.5.1 | Homogeneous SCs pass validation | No StorageClassMixed condition | All VMs use `ontap-san`, DisksConsistent=True/DisksAgreed, Ready=True | PASS |
-| 9.5.2 | Mixed SCs within a VG trigger DisksConsistent=False | StorageClassMixed reason + message | | PENDING |
-| 9.5.3 | Ready=False when SC mismatch detected | DisksOutOfSync reason | | PENDING |
-
-### Story 9.5 — Storage Class Homogeneity Validation
-
-| # | Test | Expected | Actual | Status |
-|---|------|----------|--------|--------|
-| 9.5.1 | Homogeneous SCs pass validation | No StorageClassMixed condition | | PENDING |
 | 9.5.2 | Mixed SCs within a VG trigger DisksConsistent=False | StorageClassMixed reason + message | | PENDING |
 | 9.5.3 | Ready=False when SC mismatch detected | DisksOutOfSync reason | | PENDING |
 
@@ -113,6 +108,21 @@
 | 9.6.3 | Transition buttons disabled on disk mismatch | Buttons disabled + tooltip | | PENDING |
 | 9.6.4 | VG disk composition in WaveCompositionTree | Per-VG disk nodes with site label | | PENDING |
 | 9.6.5 | Dashboard warning icon on DisksConsistent=False | Warning icon + disabled actions | | PENDING |
+
+### Story 9.7 — Cross-Site Volume Group Disk Mapping
+
+| # | Test | Expected | Actual | Status |
+|---|------|----------|--------|--------|
+| 9.7.1 | VolumeGroupDisk.Sites has both sites | Each disk shows `sites: [{site: etl6, pvcName, pvcNamespace}, {site: etl7, ...}]` | All 6 VGs show per-disk cross-site mapping: `rootdisk → [etl6: <vm>-rootdisk] [etl7: <vm>-rootdisk]` | PASS |
+| 9.7.2 | Top-level VG Site field removed | No `site` field on PreflightVolumeGroup | Confirmed: no top-level `site` field on any VG. Site info now per-disk in `sites[]` | PASS |
+| 9.7.3 | Both sites populated when both SiteDiscovery present | Sites array has 2 entries per disk | All 6 VGs × 1 disk × 2 sites = 12 DiskSiteMapping entries total. Both primarySiteDiscovery and secondarySiteDiscovery populated with 6 VMs each | PASS |
+
+### Epic 8 Cross-Verification (UAT-8.001 Fix)
+
+| # | Test | Expected | Actual | Status |
+|---|------|----------|--------|--------|
+| X.1 | SitesInSync=True on fresh deploy | VMsAgreed after first reconcile (no WaitingForDiscovery) | `SitesInSync=True (VMsAgreed): Both sites agree on VM inventory` — immediately correct after rollout restart | PASS |
+| X.2 | All four conditions healthy | Ready, SitesInSync, DisksConsistent, ReplicationHealthy all True | Ready=True/VMsDiscovered, SitesInSync=True/VMsAgreed, DisksConsistent=True/DisksAgreed, ReplicationHealthy=True/AllHealthy | PASS |
 
 ---
 
@@ -151,7 +161,7 @@
       pvcNamespace: soteria-dr-test
   ```
 - **Impact:** Users cannot see which PVC on the partner site corresponds to a local disk, making cross-site verification difficult.
-- **Resolution:** Spawned as Story 9.7 (Cross-Site Volume Group Disk Mapping) — API type change (`DiskSiteMapping` type, `VolumeGroupDisk.Sites` replaces flat `PVCName/PVCNamespace`, `PreflightVolumeGroup.Site` removed), preflight composition needs both site discoveries, console UI `WaveCompositionTree` needs cross-site rendering. Scope comparable to Story 9.4.
+- **Resolution:** Fixed in Story 9.7 — verified on cluster: all 6 VGs now show per-disk `sites[]` with both etl6 and etl7 PVC mappings. Top-level `site` field removed from PreflightVolumeGroup.
 
 ### Issue UAT-9.002 — WaveCompositionTree lacks visual separation between VMs and Volume Groups
 

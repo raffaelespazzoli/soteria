@@ -62,7 +62,7 @@
 |---|------|----------|--------|--------|
 | 8.2.1 | primarySiteDiscovery populated on plan | VMs listed with count and timestamp | 6 VMs (all 6 names), discoveredVMCount=6, lastDiscoveryTime=2026-05-02T15:10:27Z | PASS |
 | 8.2.2 | secondarySiteDiscovery populated on plan | VMs listed with count and timestamp | 6 VMs (same 6 names), discoveredVMCount=6, lastDiscoveryTime=2026-05-02T15:10:36Z | PASS |
-| 8.2.3 | lastDiscoveryTime advances on reconcile | Timestamp updates | Not yet verified — controller requeue not firing (see UAT-8.002) | BLOCKED |
+| 8.2.3 | lastDiscoveryTime advances on reconcile | Timestamp updates | Deferred — depends on UAT-8.002 (requeue investigation) | DEFERRED |
 
 ### Story 8.3 — Cross-Site VM Agreement & Plan Readiness Gating
 
@@ -71,7 +71,7 @@
 | 8.3.1 | SitesInSync=True when VMs match | Condition True, reason VMsAgreed | `SitesInSync=True, VMsAgreed, "Both sites agree on VM inventory"` | PASS |
 | 8.3.2 | SitesInSync=False on VM mismatch | Condition False, VMsMismatch + delta | Not yet tested (need to create asymmetric VM setup) | PENDING |
 | 8.3.3 | DRExecution rejected when SitesInSync=False | Admission error | Not yet tested | PENDING |
-| 8.3.4 | WaitingForDiscovery during initial deploy | Condition with guidance message | Observed: `WaitingForDiscovery, "Waiting for VM discovery from etl6"` — see UAT-8.001 | PASS (with caveat) |
+| 8.3.4 | WaitingForDiscovery during initial deploy | Condition with guidance message | Originally stuck as WaitingForDiscovery (UAT-8.001). After fix: SitesInSync=True/VMsAgreed immediately after fresh deploy — verified 2026-05-09 | PASS |
 
 ### Story 8.4 — Console UI — Site-Aware Plan Status & Disagreement Display
 
