@@ -101,9 +101,9 @@ func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	// Idempotency: skip if the execution has reached a terminal result.
-	// PartiallySucceeded is re-openable via the retry annotation — handle
-	// that path separately below.
+	// Idempotency: skip if the execution has reached a fully-closed terminal result.
+	// Only Succeeded and Failed are final — PartiallySucceeded is re-openable via
+	// the retry annotation and must fall through to the retry path below.
 	if exec.Status.Result == soteriav1alpha1.ExecutionResultSucceeded ||
 		exec.Status.Result == soteriav1alpha1.ExecutionResultFailed {
 		if _, hasRetry := exec.Annotations[engine.RetryGroupsAnnotation]; hasRetry {
@@ -144,8 +144,8 @@ func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 
 	// Resume path: in-progress execution needs resume after restart.
 	// StartTime != nil means the controller already dispatched this execution.
-	// Result == "" (empty) means execution is still in-progress (not terminal).
-	if exec.Status.StartTime != nil && exec.Status.Result == "" {
+	// !IsTerminal() means execution is still in-progress (no persisted outcome yet).
+	if exec.Status.StartTime != nil && !exec.Status.IsTerminal() {
 		if exec.Spec.Mode == soteriav1alpha1.ExecutionModeReprotect {
 			return r.reconcileReprotectResume(ctx, &exec)
 		}
@@ -258,7 +258,7 @@ func (r *DRExecutionReconciler) reconcileWaveExecution(
 			return ctrl.Result{}, err
 		}
 		// If InitializeWaves already finished (0 VMs), return.
-		if exec.Status.Result != "" {
+		if exec.Status.IsTerminal() {
 			r.recordExecutionMetrics(exec)
 			return ctrl.Result{}, nil
 		}
@@ -1184,7 +1184,7 @@ func (r *DRExecutionReconciler) setRetryRejectedCondition(
 // recordExecutionMetrics observes the failover duration histogram and increments
 // the execution counter when a DRExecution reaches a terminal state.
 func (r *DRExecutionReconciler) recordExecutionMetrics(exec *soteriav1alpha1.DRExecution) {
-	if exec.Status.StartTime == nil || exec.Status.CompletionTime == nil || exec.Status.Result == "" {
+	if exec.Status.StartTime == nil || exec.Status.CompletionTime == nil || !exec.Status.IsTerminal() {
 		return
 	}
 	durationSeconds := exec.Status.CompletionTime.Sub(exec.Status.StartTime.Time).Seconds()
@@ -1232,7 +1232,7 @@ func (r *DRExecutionReconciler) verifyExclusiveExecution(
 				selfVisible = true
 				continue
 			}
-			if other.Status.Result == "" {
+			if !other.Status.IsTerminal() {
 				return fmt.Errorf(
 					"competing non-terminal execution %q found for plan %q; self-failing",
 					other.Name, exec.Spec.PlanName)
@@ -1567,7 +1567,7 @@ func (r *DRExecutionReconciler) mapVMToDRExecution(
 	}
 
 	for i := range execList.Items {
-		if execList.Items[i].Status.Result == "" {
+		if !execList.Items[i].Status.IsTerminal() {
 			return []reconcile.Request{{
 				NamespacedName: types.NamespacedName{Name: execList.Items[i].Name},
 			}}

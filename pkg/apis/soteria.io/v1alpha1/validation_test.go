@@ -20,6 +20,27 @@ import (
 	"testing"
 )
 
+func TestDRExecutionStatus_IsTerminal(t *testing.T) {
+	tests := []struct {
+		name   string
+		result ExecutionResult
+		want   bool
+	}{
+		{name: "empty result is not terminal", result: "", want: false},
+		{name: "Succeeded is terminal", result: ExecutionResultSucceeded, want: true},
+		{name: "Failed is terminal", result: ExecutionResultFailed, want: true},
+		{name: "PartiallySucceeded is terminal", result: ExecutionResultPartiallySucceeded, want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := DRExecutionStatus{Result: tt.result}
+			if got := s.IsTerminal(); got != tt.want {
+				t.Errorf("IsTerminal() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestValidateDRPlan(t *testing.T) {
 	tests := []struct {
 		name       string

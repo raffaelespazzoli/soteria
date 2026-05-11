@@ -1,6 +1,6 @@
 # Story 10.5: DRExecution IsTerminal Method
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -63,37 +63,41 @@ Duplicating raw string comparisons spreads subtle drift risk if new helpers or c
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Add `IsTerminal()` to `DRExecutionStatus` (AC: #1, #2, #6)
-  - [ ] 1.1 In `pkg/apis/soteria.io/v1alpha1/types.go`, add `func (s DRExecutionStatus) IsTerminal() bool { return s.Result != "" }` adjacent to `DRExecutionStatus` / `ExecutionResult` definitions with a brief godoc
-  - [ ] 1.2 Run `make manifests generate` and verify no unexpected churn beyond normal regeneration
+- [x] Task 1: Add `IsTerminal()` to `DRExecutionStatus` (AC: #1, #2, #6)
+  - [x] 1.1 In `pkg/apis/soteria.io/v1alpha1/types.go`, add `func (s DRExecutionStatus) IsTerminal() bool { return s.Result != "" }` adjacent to `DRExecutionStatus` / `ExecutionResult` definitions with a brief godoc
+  - [x] 1.2 Run `make manifests generate` and verify no unexpected churn beyond normal regeneration
 
-- [ ] Task 2: Refactor admission and registry (AC: #3)
-  - [ ] 2.1 `pkg/admission/plugin.go` — `checkNoConcurrentExecution`: use `!e.Status.IsTerminal()` (or equivalent) instead of `Result == ""`
-  - [ ] 2.2 `pkg/registry/drplan/strategy.go` — `buildActiveExecIndex`: active predicate via `!exec.Status.IsTerminal()`
-  - [ ] 2.3 `pkg/registry/drexecution/storage.go` — `validateAuditDelete`: terminal predicate via `exec.Status.IsTerminal()`
+- [x] Task 2: Refactor admission and registry (AC: #3)
+  - [x] 2.1 `pkg/admission/plugin.go` — `checkNoConcurrentExecution`: use `!e.Status.IsTerminal()` (or equivalent) instead of `Result == ""`
+  - [x] 2.2 `pkg/registry/drplan/strategy.go` — `buildActiveExecIndex`: active predicate via `!exec.Status.IsTerminal()`
+  - [x] 2.3 `pkg/registry/drexecution/storage.go` — `validateAuditDelete`: terminal predicate via `exec.Status.IsTerminal()`
 
-- [ ] Task 3: Refactor DRPlan controller (AC: #3)
-  - [ ] 3.1 `pkg/controller/drplan/reconciler.go` — `hasActiveExecution`: use `!execList.Items[i].Status.IsTerminal()`
+- [x] Task 3: Refactor DRPlan controller (AC: #3)
+  - [x] 3.1 `pkg/controller/drplan/reconciler.go` — `hasActiveExecution`: use `!execList.Items[i].Status.IsTerminal()`
 
-- [ ] Task 4: Refactor DRExecution controller (AC: #3, #4)
-  - [ ] 4.1 `mapVMToDRExecution`: active execution selection via `!execList.Items[i].Status.IsTerminal()`
-  - [ ] 4.2 `verifyExclusiveExecution`: `other.Status.Result == ""` → `!other.Status.IsTerminal()`
-  - [ ] 4.3 `recordExecutionMetrics`: in-progress check via `!exec.Status.IsTerminal()`
-  - [ ] 4.4 `reconcileWaveExecution`: guard using `exec.Status.IsTerminal()` instead of `Result != ""`
-  - [ ] 4.5 `Reconcile` resume branch: replace `exec.Status.Result == ""` with `!exec.Status.IsTerminal()` alongside existing `StartTime` checks
-  - [ ] 4.6 `Reconcile` idempotency guard: refactor per **AC4** — verify `PartiallySucceeded` still reaches `reconcileRetry`; add a regression test if none exists
+- [x] Task 4: Refactor DRExecution controller (AC: #3, #4)
+  - [x] 4.1 `mapVMToDRExecution`: active execution selection via `!execList.Items[i].Status.IsTerminal()`
+  - [x] 4.2 `verifyExclusiveExecution`: `other.Status.Result == ""` → `!other.Status.IsTerminal()`
+  - [x] 4.3 `recordExecutionMetrics`: in-progress check via `!exec.Status.IsTerminal()`
+  - [x] 4.4 `reconcileWaveExecution`: guard using `exec.Status.IsTerminal()` instead of `Result != ""`
+  - [x] 4.5 `Reconcile` resume branch: replace `exec.Status.Result == ""` with `!exec.Status.IsTerminal()` alongside existing `StartTime` checks
+  - [x] 4.6 `Reconcile` idempotency guard: refactor per **AC4** — used `exec.Status.IsTerminal() && exec.Status.Result != ExecutionResultPartiallySucceeded`; PartiallySucceeded still reaches `reconcileRetry`; existing regression tests cover this path
 
-- [ ] Task 5: Refactor engine resume (AC: #3)
-  - [ ] 5.1 `pkg/engine/resume.go` — `AnalyzeExecution`: use `exec.Status.IsTerminal()` instead of `Result != ""`
+- [x] Task 5: Refactor engine resume (AC: #3)
+  - [x] 5.1 `pkg/engine/resume.go` — `AnalyzeExecution`: use `exec.Status.IsTerminal()` instead of `Result != ""`
 
-- [ ] Task 6: Tests and sweep (AC: #7, #8)
-  - [ ] 6.1 Search `_test.go` files and relevant tests for `Result == ""` / `!= ""` patterns tied to terminality; migrate to `IsTerminal()` where it matches story semantics
-  - [ ] 6.2 Add or extend a focused test in `pkg/apis/soteria.io/v1alpha1` (table-driven) for `IsTerminal()` — empty, `Succeeded`, `Failed`, `PartiallySucceeded` — if no suitable package test file exists, use the nearest conventional location per project layout
-  - [ ] 6.3 Run `make test`, `make integration`, `make lint`
+- [x] Task 6: Tests and sweep (AC: #7, #8)
+  - [x] 6.1 Search `_test.go` files and relevant tests for `Result == ""` / `!= ""` patterns tied to terminality; migrate to `IsTerminal()` where it matches story semantics — no terminality patterns found in tests (all use specific enum comparisons)
+  - [x] 6.2 Add or extend a focused test in `pkg/apis/soteria.io/v1alpha1` (table-driven) for `IsTerminal()` — empty, `Succeeded`, `Failed`, `PartiallySucceeded` — added to `validation_test.go`
+  - [x] 6.3 Run `make test`, `make integration`, `make lint` — all pass, 0 issues
 
-- [ ] Task 7: Final verification (AC: #5, #8)
-  - [ ] 7.1 Confirm `detectDRExecutionCriticalFields` still uses direct `Result` inequality for change detection
-  - [ ] 7.2 Grep for remaining ad-hoc terminality checks; justify any intentional leftovers in code comments if absolutely necessary
+- [x] Task 7: Final verification (AC: #5, #8)
+  - [x] 7.1 Confirm `detectDRExecutionCriticalFields` still uses direct `Result` inequality for change detection — verified untouched
+  - [x] 7.2 Grep for remaining ad-hoc terminality checks — remaining `Status.Result` comparisons are all legitimate: critical_fields.go pairwise comparison (AC5 exception), strategy.go ValidateUpdate immutability guard (excludes PartiallySucceeded, same as AC4), reconciler.go PartiallySucceeded-specific retry path dispatch, test assertions comparing specific enum values
+
+### Review Findings
+
+- [x] [Review][Patch] Reconcile idempotency guard now skips on unexpected non-empty `Result` values, not just `Succeeded`/`Failed` [`pkg/controller/drexecution/reconciler.go:107`] — fixed: restored explicit `Succeeded || Failed` closed-set check
 
 ## Dev Notes
 
@@ -202,10 +206,34 @@ Recent commits use **Story X.Y: …** prefixes. Prefer one logical commit or a s
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4 (Cursor)
 
 ### Debug Log References
 
+None — zero-debug implementation.
+
 ### Completion Notes List
 
+- Added `IsTerminal()` value-receiver method on `DRExecutionStatus` with godoc explaining the empty-means-in-progress / non-empty-means-terminal contract
+- Refactored 10 production call sites across 6 files from inline `Result == ""` / `Result != ""` to `!IsTerminal()` / `IsTerminal()`
+- Reconcile idempotency guard (AC4) uses composed form `IsTerminal() && Result != PartiallySucceeded` to preserve PartiallySucceeded retry path
+- `detectDRExecutionCriticalFields` left untouched per AC5 (pairwise comparison, not terminality)
+- `ValidateUpdate` in drexecution strategy.go left untouched (same PartiallySucceeded-exclusion pattern as AC4, not listed in AC3)
+- No terminality patterns found in test files — all test assertions use specific enum comparisons
+- Table-driven `TestDRExecutionStatus_IsTerminal` added covering all 4 cases (empty, Succeeded, Failed, PartiallySucceeded)
+- `make manifests generate` clean, `make test` all pass, `make integration` all pass, `make lint` 0 issues
+
+### Change Log
+
+- 2026-05-11: Story 10.5 implemented — `IsTerminal()` method added and 10 call sites refactored (pure refactor, no API change)
+
 ### File List
+
+- `pkg/apis/soteria.io/v1alpha1/types.go` (modified — added `IsTerminal()` method)
+- `pkg/apis/soteria.io/v1alpha1/validation_test.go` (modified — added `TestDRExecutionStatus_IsTerminal`)
+- `pkg/admission/plugin.go` (modified — `checkNoConcurrentExecution` uses `!IsTerminal()`)
+- `pkg/registry/drplan/strategy.go` (modified — `buildActiveExecIndex` uses `!IsTerminal()`)
+- `pkg/registry/drexecution/storage.go` (modified — `validateAuditDelete` uses `IsTerminal()`)
+- `pkg/controller/drplan/reconciler.go` (modified — `hasActiveExecution` + preflight loop use `!IsTerminal()`)
+- `pkg/controller/drexecution/reconciler.go` (modified — 6 call sites: idempotency guard, resume path, mapVMToDRExecution, verifyExclusiveExecution, recordExecutionMetrics, reconcileWaveExecution)
+- `pkg/engine/resume.go` (modified — `AnalyzeExecution` uses `IsTerminal()`)

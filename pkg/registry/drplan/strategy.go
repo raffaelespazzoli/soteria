@@ -191,7 +191,7 @@ func (c *DRPlanTableConvertor) buildActiveExecIndex(ctx context.Context) activeE
 	index := make(activeExecIndex, len(execList.Items)/2+1)
 	for i := range execList.Items {
 		exec := &execList.Items[i]
-		if exec.Status.Result == "" {
+		if !exec.Status.IsTerminal() {
 			if _, dup := index[exec.Spec.PlanName]; dup {
 				klog.V(1).InfoS("Multiple non-terminal DRExecutions for plan; keeping first seen",
 					"plan", exec.Spec.PlanName)

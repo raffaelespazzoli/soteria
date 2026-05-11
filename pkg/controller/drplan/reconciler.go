@@ -447,7 +447,7 @@ func (r *DRPlanReconciler) hasActiveExecution(ctx context.Context, planName stri
 		return false
 	}
 	for i := range execList.Items {
-		if execList.Items[i].Status.Result == "" {
+		if !execList.Items[i].Status.IsTerminal() {
 			return true
 		}
 	}
@@ -1266,7 +1266,7 @@ func (r *DRPlanReconciler) composePreflightReport(
 		execListErr = true
 	} else {
 		for i := range execList.Items {
-			if execList.Items[i].Status.Result == "" {
+			if !execList.Items[i].Status.IsTerminal() {
 				if activeExecName != "" {
 					logger.Info("Multiple non-terminal DRExecutions detected",
 						"plan", plan.Name, "kept", activeExecName, "extra", execList.Items[i].Name)

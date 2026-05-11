@@ -424,6 +424,13 @@ type DRExecutionStatus struct {
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
+// IsTerminal reports whether the execution has a persisted outcome.
+// An empty Result means the execution is still in progress; any non-empty
+// value (Succeeded, PartiallySucceeded, Failed) is considered terminal.
+func (s DRExecutionStatus) IsTerminal() bool {
+	return s.Result != ""
+}
+
 type WaveStatus struct {
 	// WaveIndex is the 0-based wave ordinal.
 	WaveIndex int `json:"waveIndex"`

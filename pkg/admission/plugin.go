@@ -200,7 +200,7 @@ func (p *SoteriaAdmissionPlugin) checkNoConcurrentExecution(
 
 	for i := range execList.Items {
 		e := &execList.Items[i]
-		if e.Status.Result == "" {
+		if !e.Status.IsTerminal() {
 			return admission.NewForbidden(a, fmt.Errorf(
 				"DRPlan %q has active execution %q; concurrent executions not permitted",
 				planName, e.Name))

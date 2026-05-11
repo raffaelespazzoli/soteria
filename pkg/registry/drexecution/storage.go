@@ -108,7 +108,7 @@ func validateAuditDelete(obj runtime.Object) error {
 	if !ok {
 		return nil
 	}
-	if exec.Status.Result != "" {
+	if exec.Status.IsTerminal() {
 		return apierrors.NewForbidden(
 			soteriav1alpha1.Resource("drexecutions"), exec.Name,
 			fmt.Errorf("completed DRExecution audit records cannot be deleted (FR41)"))

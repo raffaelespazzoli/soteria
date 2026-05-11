@@ -65,7 +65,7 @@ type ResumeAnalyzer struct{}
 func (a *ResumeAnalyzer) AnalyzeExecution(exec *soteriav1alpha1.DRExecution) ResumePoint {
 	// Terminal results — execution is done, no resume needed.
 	// PartiallySucceeded is handled by retry (Story 4.6), not resume.
-	if exec.Status.Result != "" {
+	if exec.Status.IsTerminal() {
 		return ResumePoint{IsComplete: true}
 	}
 
