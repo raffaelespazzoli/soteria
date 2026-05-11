@@ -5,6 +5,8 @@ import {
   parseSiteDiscoveryDelta,
   getLastExecution,
   buildLatestExecutionMap,
+  findActiveExecution,
+  buildActiveExecMap,
   HEALTH_SORT_ORDER,
 } from '../../src/utils/drPlanUtils';
 import { getValidActions, isTransientPhase } from '../../src/utils/drPlanActions';
@@ -21,6 +23,16 @@ function makePlan(overrides: Partial<DRPlan['status']> = {}): DRPlan {
   };
 }
 
+function makeExec(mode: 'disaster' | 'planned_migration' | 'reprotect'): DRExecution {
+  return {
+    apiVersion: 'soteria.io/v1alpha1',
+    kind: 'DRExecution',
+    metadata: { name: 'exec-1', uid: 'u1', creationTimestamp: '' },
+    spec: { planName: 'test', mode },
+    status: { phase: 'Executing', isActive: true },
+  };
+}
+
 describe('getEffectivePhase', () => {
   it('returns SteadyState when no status', () => {
     const plan = makePlan();
@@ -28,68 +40,32 @@ describe('getEffectivePhase', () => {
     expect(getEffectivePhase(plan)).toBe('SteadyState');
   });
 
-  it('returns rest phase when no activeExecution', () => {
+  it('returns rest phase when no activeExec provided', () => {
     expect(getEffectivePhase(makePlan({ phase: 'FailedOver' }))).toBe('FailedOver');
   });
 
-  it('returns FailingOver from SteadyState with disaster activeExecution', () => {
-    expect(
-      getEffectivePhase(
-        makePlan({
-          phase: 'SteadyState',
-          activeExecution: 'exec-1',
-          activeExecutionMode: 'disaster',
-        }),
-      ),
-    ).toBe('FailingOver');
+  it('returns rest phase when activeExec is undefined', () => {
+    expect(getEffectivePhase(makePlan({ phase: 'FailedOver' }), undefined)).toBe('FailedOver');
   });
 
-  it('returns FailingOver from SteadyState with planned_migration', () => {
-    expect(
-      getEffectivePhase(
-        makePlan({
-          phase: 'SteadyState',
-          activeExecution: 'exec-1',
-          activeExecutionMode: 'planned_migration',
-        }),
-      ),
-    ).toBe('FailingOver');
+  it('returns FailingOver from SteadyState with disaster exec', () => {
+    expect(getEffectivePhase(makePlan({ phase: 'SteadyState' }), makeExec('disaster'))).toBe('FailingOver');
   });
 
-  it('returns Reprotecting from FailedOver with reprotect', () => {
-    expect(
-      getEffectivePhase(
-        makePlan({
-          phase: 'FailedOver',
-          activeExecution: 'exec-1',
-          activeExecutionMode: 'reprotect',
-        }),
-      ),
-    ).toBe('Reprotecting');
+  it('returns FailingOver from SteadyState with planned_migration exec', () => {
+    expect(getEffectivePhase(makePlan({ phase: 'SteadyState' }), makeExec('planned_migration'))).toBe('FailingOver');
   });
 
-  it('returns FailingBack from DRedSteadyState with planned_migration', () => {
-    expect(
-      getEffectivePhase(
-        makePlan({
-          phase: 'DRedSteadyState',
-          activeExecution: 'exec-1',
-          activeExecutionMode: 'planned_migration',
-        }),
-      ),
-    ).toBe('FailingBack');
+  it('returns Reprotecting from FailedOver with reprotect exec', () => {
+    expect(getEffectivePhase(makePlan({ phase: 'FailedOver' }), makeExec('reprotect'))).toBe('Reprotecting');
   });
 
-  it('returns Restoring from FailedBack with reprotect', () => {
-    expect(
-      getEffectivePhase(
-        makePlan({
-          phase: 'FailedBack',
-          activeExecution: 'exec-1',
-          activeExecutionMode: 'reprotect',
-        }),
-      ),
-    ).toBe('Restoring');
+  it('returns FailingBack from DRedSteadyState with planned_migration exec', () => {
+    expect(getEffectivePhase(makePlan({ phase: 'DRedSteadyState' }), makeExec('planned_migration'))).toBe('FailingBack');
+  });
+
+  it('returns Restoring from FailedBack with reprotect exec', () => {
+    expect(getEffectivePhase(makePlan({ phase: 'FailedBack' }), makeExec('reprotect'))).toBe('Restoring');
   });
 
   it('returns SteadyState when phase is undefined', () => {
@@ -241,6 +217,66 @@ describe('buildLatestExecutionMap', () => {
   });
 });
 
+describe('findActiveExecution', () => {
+  it('returns the first execution with isActive === true', () => {
+    const execs: DRExecution[] = [
+      { apiVersion: 'soteria.io/v1alpha1', kind: 'DRExecution', metadata: { name: 'e1', uid: '1', creationTimestamp: '' }, spec: { planName: 'plan-a', mode: 'disaster' }, status: { isActive: false, phase: 'Succeeded', result: 'Succeeded' } },
+      { apiVersion: 'soteria.io/v1alpha1', kind: 'DRExecution', metadata: { name: 'e2', uid: '2', creationTimestamp: '' }, spec: { planName: 'plan-a', mode: 'disaster' }, status: { isActive: true, phase: 'Executing' } },
+    ];
+    expect(findActiveExecution(execs)?.metadata?.name).toBe('e2');
+  });
+
+  it('returns undefined when no active execution exists', () => {
+    const execs: DRExecution[] = [
+      { apiVersion: 'soteria.io/v1alpha1', kind: 'DRExecution', metadata: { name: 'e1', uid: '1', creationTimestamp: '' }, spec: { planName: 'plan-a', mode: 'disaster' }, status: { isActive: false, phase: 'Succeeded', result: 'Succeeded' } },
+    ];
+    expect(findActiveExecution(execs)).toBeUndefined();
+  });
+
+  it('returns undefined for empty array', () => {
+    expect(findActiveExecution([])).toBeUndefined();
+  });
+
+  it('handles execution with undefined status', () => {
+    const execs: DRExecution[] = [
+      { apiVersion: 'soteria.io/v1alpha1', kind: 'DRExecution', metadata: { name: 'e1', uid: '1', creationTimestamp: '' }, spec: { planName: 'plan-a', mode: 'disaster' } },
+    ];
+    expect(findActiveExecution(execs)).toBeUndefined();
+  });
+});
+
+describe('buildActiveExecMap', () => {
+  it('builds a planName → active DRExecution map', () => {
+    const execs: DRExecution[] = [
+      { apiVersion: 'soteria.io/v1alpha1', kind: 'DRExecution', metadata: { name: 'e1', uid: '1', creationTimestamp: '' }, spec: { planName: 'plan-a', mode: 'disaster' }, status: { isActive: false, phase: 'Succeeded', result: 'Succeeded' } },
+      { apiVersion: 'soteria.io/v1alpha1', kind: 'DRExecution', metadata: { name: 'e2', uid: '2', creationTimestamp: '' }, spec: { planName: 'plan-a', mode: 'disaster' }, status: { isActive: true, phase: 'Executing' } },
+      { apiVersion: 'soteria.io/v1alpha1', kind: 'DRExecution', metadata: { name: 'e3', uid: '3', creationTimestamp: '' }, spec: { planName: 'plan-b', mode: 'reprotect' }, status: { isActive: true, phase: 'Pending' } },
+    ];
+    const map = buildActiveExecMap(execs);
+    expect(map.size).toBe(2);
+    expect(map.get('plan-a')?.metadata?.name).toBe('e2');
+    expect(map.get('plan-b')?.metadata?.name).toBe('e3');
+  });
+
+  it('returns empty map when no active executions', () => {
+    const execs: DRExecution[] = [
+      { apiVersion: 'soteria.io/v1alpha1', kind: 'DRExecution', metadata: { name: 'e1', uid: '1', creationTimestamp: '' }, spec: { planName: 'plan-a', mode: 'disaster' }, status: { isActive: false, phase: 'Succeeded', result: 'Succeeded' } },
+    ];
+    expect(buildActiveExecMap(execs).size).toBe(0);
+  });
+
+  it('returns empty map for empty input', () => {
+    expect(buildActiveExecMap([]).size).toBe(0);
+  });
+
+  it('skips executions without planName', () => {
+    const execs: DRExecution[] = [
+      { apiVersion: 'soteria.io/v1alpha1', kind: 'DRExecution', metadata: { name: 'e1', uid: '1', creationTimestamp: '' }, spec: { planName: '', mode: 'disaster' }, status: { isActive: true, phase: 'Executing' } },
+    ];
+    expect(buildActiveExecMap(execs).size).toBe(0);
+  });
+});
+
 describe('HEALTH_SORT_ORDER', () => {
   it('orders Error < Degraded < Unknown < Healthy', () => {
     expect(HEALTH_SORT_ORDER['Error']).toBeLessThan(HEALTH_SORT_ORDER['Degraded']);
@@ -251,34 +287,25 @@ describe('HEALTH_SORT_ORDER', () => {
 
 describe('getValidActions', () => {
   it('returns Failover + Planned Migration for SteadyState', () => {
-    const plan = makePlan({ phase: 'SteadyState' });
-    const actions = getValidActions(plan);
+    const actions = getValidActions('SteadyState');
     expect(actions.map((a) => a.key)).toEqual(['failover', 'planned_migration']);
     expect(actions[0].isDanger).toBe(true);
   });
 
   it('returns Reprotect for FailedOver', () => {
-    const plan = makePlan({ phase: 'FailedOver' });
-    expect(getValidActions(plan).map((a) => a.key)).toEqual(['reprotect']);
+    expect(getValidActions('FailedOver').map((a) => a.key)).toEqual(['reprotect']);
   });
 
   it('returns Failback and Planned Migration for DRedSteadyState', () => {
-    const plan = makePlan({ phase: 'DRedSteadyState' });
-    expect(getValidActions(plan).map((a) => a.key)).toEqual(['failback', 'planned_failback']);
+    expect(getValidActions('DRedSteadyState').map((a) => a.key)).toEqual(['failback', 'planned_failback']);
   });
 
   it('returns Restore for FailedBack', () => {
-    const plan = makePlan({ phase: 'FailedBack' });
-    expect(getValidActions(plan).map((a) => a.key)).toEqual(['restore']);
+    expect(getValidActions('FailedBack').map((a) => a.key)).toEqual(['restore']);
   });
 
   it('returns empty actions for transient phases', () => {
-    const plan = makePlan({
-      phase: 'SteadyState',
-      activeExecution: 'exec-1',
-      activeExecutionMode: 'disaster',
-    });
-    expect(getValidActions(plan)).toEqual([]);
+    expect(getValidActions('FailingOver')).toEqual([]);
   });
 });
 

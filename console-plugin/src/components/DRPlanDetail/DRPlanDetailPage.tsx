@@ -29,10 +29,7 @@ const DRPlanDetailPage: React.FC<DRPlanDetailPageProps> = (props) => {
   const name = useRouteParamName(props.match);
   const [plan, planLoaded, planError] = useDRPlan(name!);
   const [executions, executionsLoaded] = useDRExecutions(name!);
-  const activeExecName = plan?.status?.activeExecution ?? '';
-  const execution = activeExecName
-    ? (executions.find((e) => e.metadata?.name === activeExecName) ?? null)
-    : null;
+  const activeExec = executions.find((e) => e.status?.isActive === true) ?? null;
   const [activeTab, setActiveTab] = useState<string | number>(0);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const { create, isCreating, error: createError, clearError } = useCreateDRExecution();
@@ -41,11 +38,11 @@ const DRPlanDetailPage: React.FC<DRPlanDetailPageProps> = (props) => {
     null,
   );
 
-  const effectivePhase = plan ? getEffectivePhase(plan) : null;
+  const effectivePhase = plan ? getEffectivePhase(plan, activeExec ?? undefined) : null;
   const sitesInSync = plan ? getSitesInSync(plan) : { inSync: true };
   const disksConsistent = plan ? getDisksConsistent(plan) : { consistent: true };
-  const restPhase = plan?.status?.phase;
-  const realActiveExec = plan?.status?.activeExecution;
+  const restPhase = (plan?.status?.phase ?? 'SteadyState') as string;
+  const realActiveExec = activeExec?.metadata?.name ?? '';
   const effectiveOptimisticExec = realActiveExec ? null : optimisticExec;
   const isInTransition =
     (effectivePhase !== null && effectivePhase !== restPhase) || effectiveOptimisticExec !== null;
@@ -57,7 +54,7 @@ const DRPlanDetailPage: React.FC<DRPlanDetailPageProps> = (props) => {
   }, [optimisticExec]);
 
   const waveProgress: WaveProgress | null = (() => {
-    const waves = execution?.status?.waves;
+    const waves = activeExec?.status?.waves;
     if (!waves || waves.length === 0) return null;
     const completed = waves.filter((w) => w.completionTime).length;
     return { current: Math.min(completed + 1, waves.length), total: waves.length };
@@ -128,16 +125,17 @@ const DRPlanDetailPage: React.FC<DRPlanDetailPageProps> = (props) => {
                   <DiskDisagreementAlert plan={plan} onSwitchToConfig={handleSwitchToConfig} />
                 )}
               </div>
-              <PlanHeader plan={plan} />
+              <PlanHeader plan={plan} effectivePhase={effectivePhase!} />
               {isInTransition && (
                 <TransitionProgressBanner
                   plan={plan}
-                  execution={execution ?? null}
+                  execution={activeExec}
                   optimisticExec={effectiveOptimisticExec}
                 />
               )}
               <DRLifecycleDiagram
                 plan={plan}
+                effectivePhase={effectivePhase!}
                 onAction={handleAction}
                 waveProgress={isInTransition ? waveProgress : null}
                 isBlocked={!sitesInSync.inSync || !disksConsistent.consistent}

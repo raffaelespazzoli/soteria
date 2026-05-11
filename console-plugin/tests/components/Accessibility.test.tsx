@@ -66,11 +66,6 @@ const mockSteadyStatePlan: DRPlan = {
 
 const mockFailingOverPlan: DRPlan = {
   ...mockSteadyStatePlan,
-  status: {
-    ...mockSteadyStatePlan.status!,
-    activeExecution: 'erp-full-stack-failover-001',
-    activeExecutionMode: 'disaster',
-  },
 };
 
 const mockBrokenPlan: DRPlan = {
@@ -102,6 +97,8 @@ const mockExecutions: DRExecution[] = [
     metadata: { name: 'exec-1', uid: '10', creationTimestamp: '', annotations: { 'soteria.io/triggered-by': 'admin' } },
     spec: { planName: 'erp-full-stack', mode: 'planned_migration' },
     status: {
+      isActive: false,
+      phase: 'Succeeded',
       result: 'Succeeded',
       startTime: '2026-04-24T10:00:00Z',
       completionTime: '2026-04-24T10:05:00Z',
@@ -113,6 +110,8 @@ const mockExecutions: DRExecution[] = [
     metadata: { name: 'exec-2', uid: '11', creationTimestamp: '' },
     spec: { planName: 'erp-full-stack', mode: 'disaster' },
     status: {
+      isActive: false,
+      phase: 'Failed',
       result: 'Failed',
       startTime: '2026-04-23T08:00:00Z',
       completionTime: '2026-04-23T08:15:00Z',
@@ -228,14 +227,14 @@ describe('Accessibility audit — AlertBannerSystem', () => {
 describe('Accessibility audit — DRLifecycleDiagram', () => {
   it('rest state (SteadyState) passes jest-axe', async () => {
     const { container } = render(
-      <DRLifecycleDiagram plan={mockSteadyStatePlan} onAction={jest.fn()} />,
+      <DRLifecycleDiagram plan={mockSteadyStatePlan} effectivePhase="SteadyState" onAction={jest.fn()} />,
     );
     expect(await axe(container)).toHaveNoViolations();
   });
 
   it('transient state (FailingOver) passes jest-axe', async () => {
     const { container } = render(
-      <DRLifecycleDiagram plan={mockFailingOverPlan} onAction={jest.fn()} />,
+      <DRLifecycleDiagram plan={mockFailingOverPlan} effectivePhase="FailingOver" onAction={jest.fn()} />,
     );
     expect(await axe(container)).toHaveNoViolations();
   });

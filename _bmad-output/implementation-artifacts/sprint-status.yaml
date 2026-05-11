@@ -308,5 +308,5 @@ development_status:
   10-4-remove-activeexecution-fields-from-drplanstatus: done
   10-5-drexecution-isterminal-method: done
   10-6-drexecution-phase-isactive-fields: done
-  10-7-console-ui-derived-active-execution-state: ready-for-dev
+  10-7-console-ui-derived-active-execution-state: done
   epic-10-retrospective: optional

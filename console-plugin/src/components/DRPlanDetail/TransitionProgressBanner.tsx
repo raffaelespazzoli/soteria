@@ -3,6 +3,7 @@ import { Button, Progress, ProgressMeasureLocation, Spinner } from '@patternfly/
 import { useHistory } from 'react-router-dom';
 import { DRExecution, DRPlan } from '../../models/types';
 import { getEffectivePhase } from '../../utils/drPlanUtils';
+
 import { ACTION_CONFIG } from '../../utils/drPlanActions';
 import { TRANSITIONS } from './DRLifecycleDiagram';
 
@@ -30,7 +31,7 @@ const TransitionProgressBanner: React.FC<TransitionProgressBannerProps> = ({
   optimisticExec,
 }) => {
   const history = useHistory();
-  const effectivePhase = getEffectivePhase(plan);
+  const effectivePhase = getEffectivePhase(plan, execution ?? undefined);
   const restPhase = plan.status?.phase;
   const [elapsedState, setElapsedState] = useState({ text: '', ms: 0 });
   const startTime = execution?.status?.startTime;
@@ -105,8 +106,8 @@ const TransitionProgressBanner: React.FC<TransitionProgressBannerProps> = ({
     estimatedRemaining = `~${formatElapsed(remainingMs)}`;
   }
 
-  const activeExec = plan.status?.activeExecution;
-  const execDetailPath = activeExec ? `/disaster-recovery/executions/${activeExec}` : '';
+  const execName = execution?.metadata?.name;
+  const execDetailPath = execName ? `/disaster-recovery/executions/${execName}` : '';
 
   return (
     <div

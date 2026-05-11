@@ -30,13 +30,18 @@ function makePlan(overrides: Partial<DRPlan['status']> = {}): DRPlan {
   };
 }
 
-function makeExecution(overrides: Partial<DRExecution['status']> = {}): DRExecution {
+function makeExecution(
+  overrides: Partial<DRExecution['status']> = {},
+  specOverrides: Partial<DRExecution['spec']> = {},
+): DRExecution {
   return {
     apiVersion: 'soteria.io/v1alpha1',
     kind: 'DRExecution',
     metadata: { name: 'exec-001', uid: '2', creationTimestamp: '' },
-    spec: { planName: 'erp-full-stack', mode: 'disaster' },
+    spec: { planName: 'erp-full-stack', mode: 'disaster', ...specOverrides },
     status: {
+      phase: 'Executing',
+      isActive: true,
       startTime: new Date(Date.now() - 60000).toISOString(),
       waves: [
         { waveIndex: 0, completionTime: new Date().toISOString() },
@@ -58,41 +63,25 @@ describe('TransitionProgressBanner', () => {
   });
 
   it('renders "Failing Over in progress" during FailingOver', () => {
-    const plan = makePlan({
-      phase: 'SteadyState',
-      activeExecution: 'exec-001',
-      activeExecutionMode: 'disaster',
-    });
+    const plan = makePlan({ phase: 'SteadyState' });
     render(<TransitionProgressBanner plan={plan} execution={makeExecution()} />);
     expect(screen.getByText('Failing Over in progress')).toBeInTheDocument();
   });
 
   it('renders "Reprotecting in progress" during Reprotecting', () => {
-    const plan = makePlan({
-      phase: 'FailedOver',
-      activeExecution: 'exec-002',
-      activeExecutionMode: 'reprotect',
-    });
-    render(<TransitionProgressBanner plan={plan} execution={makeExecution()} />);
+    const plan = makePlan({ phase: 'FailedOver' });
+    render(<TransitionProgressBanner plan={plan} execution={makeExecution({}, { mode: 'reprotect' })} />);
     expect(screen.getByText('Reprotecting in progress')).toBeInTheDocument();
   });
 
   it('renders wave progress showing current in-progress wave', () => {
-    const plan = makePlan({
-      phase: 'SteadyState',
-      activeExecution: 'exec-001',
-      activeExecutionMode: 'disaster',
-    });
+    const plan = makePlan({ phase: 'SteadyState' });
     render(<TransitionProgressBanner plan={plan} execution={makeExecution()} />);
     expect(screen.getByText(/Wave 2 of 3/)).toBeInTheDocument();
   });
 
   it('shows "Starting..." when no waves data', () => {
-    const plan = makePlan({
-      phase: 'SteadyState',
-      activeExecution: 'exec-001',
-      activeExecutionMode: 'disaster',
-    });
+    const plan = makePlan({ phase: 'SteadyState' });
     const exec = makeExecution();
     delete exec.status!.waves;
     render(<TransitionProgressBanner plan={plan} execution={exec} />);
@@ -100,31 +89,19 @@ describe('TransitionProgressBanner', () => {
   });
 
   it('renders execution details control during transition', () => {
-    const plan = makePlan({
-      phase: 'SteadyState',
-      activeExecution: 'exec-001',
-      activeExecutionMode: 'disaster',
-    });
+    const plan = makePlan({ phase: 'SteadyState' });
     render(<TransitionProgressBanner plan={plan} execution={makeExecution()} />);
     expect(screen.getByRole('button', { name: 'View execution details' })).toBeInTheDocument();
   });
 
   it('renders elapsed time', () => {
-    const plan = makePlan({
-      phase: 'SteadyState',
-      activeExecution: 'exec-001',
-      activeExecutionMode: 'disaster',
-    });
+    const plan = makePlan({ phase: 'SteadyState' });
     render(<TransitionProgressBanner plan={plan} execution={makeExecution()} />);
     expect(screen.getByText(/Elapsed:/)).toBeInTheDocument();
   });
 
   it('banner disappears when transition completes (re-render with rest state)', () => {
-    const plan = makePlan({
-      phase: 'SteadyState',
-      activeExecution: 'exec-001',
-      activeExecutionMode: 'disaster',
-    });
+    const plan = makePlan({ phase: 'SteadyState' });
     const { rerender, container } = render(
       <TransitionProgressBanner plan={plan} execution={makeExecution()} />,
     );
@@ -144,11 +121,7 @@ describe('TransitionProgressBanner', () => {
   });
 
   it('has no accessibility violations during active transition', async () => {
-    const plan = makePlan({
-      phase: 'SteadyState',
-      activeExecution: 'exec-001',
-      activeExecutionMode: 'disaster',
-    });
+    const plan = makePlan({ phase: 'SteadyState' });
     const { container } = render(
       <TransitionProgressBanner plan={plan} execution={makeExecution()} />,
     );
@@ -228,11 +201,7 @@ describe('TransitionProgressBanner', () => {
     });
 
     it('renders real execution data when both optimisticExec and execution are provided', () => {
-      const plan = makePlan({
-        phase: 'SteadyState',
-        activeExecution: 'exec-001',
-        activeExecutionMode: 'disaster',
-      });
+      const plan = makePlan({ phase: 'SteadyState' });
       render(
         <TransitionProgressBanner
           plan={plan}
@@ -276,14 +245,9 @@ describe('TransitionProgressBanner', () => {
       expect(screen.getByText('Starting Failover...')).toBeInTheDocument();
       expect(screen.getByTestId('transition-progress-banner')).toBeInTheDocument();
 
-      const realPlan = makePlan({
-        phase: 'SteadyState',
-        activeExecution: 'exec-001',
-        activeExecutionMode: 'disaster',
-      });
       rerender(
         <TransitionProgressBanner
-          plan={realPlan}
+          plan={plan}
           execution={makeExecution()}
           optimisticExec={null}
         />,

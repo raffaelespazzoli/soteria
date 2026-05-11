@@ -26,6 +26,8 @@ const mockExecutions: DRExecution[] = [
     },
     spec: { planName: 'erp-full-stack', mode: 'disaster' },
     status: {
+      isActive: false,
+      phase: 'Failed',
       result: 'PartiallySucceeded',
       startTime: '2026-03-18T03:14:00Z',
       completionTime: '2026-03-18T03:36:41Z',
@@ -41,6 +43,8 @@ const mockExecutions: DRExecution[] = [
     },
     spec: { planName: 'erp-full-stack', mode: 'planned_migration' },
     status: {
+      isActive: false,
+      phase: 'Succeeded',
       result: 'Succeeded',
       startTime: '2026-04-20T14:32:00Z',
       completionTime: '2026-04-20T14:49:22Z',
@@ -53,7 +57,7 @@ const otherPlanExecution: DRExecution = {
   kind: 'DRExecution',
   metadata: { name: 'other-plan-exec', uid: 'e3' },
   spec: { planName: 'other-plan', mode: 'disaster' },
-  status: { result: 'Failed', startTime: '2026-04-01T00:00:00Z' },
+  status: { isActive: false, phase: 'Failed', result: 'Failed', startTime: '2026-04-01T00:00:00Z' },
 };
 
 describe('ExecutionHistoryTable', () => {
@@ -61,6 +65,7 @@ describe('ExecutionHistoryTable', () => {
     render(<ExecutionHistoryTable executions={mockExecutions} planName="erp-full-stack" />);
     expect(screen.getByText('Date')).toBeInTheDocument();
     expect(screen.getByText('Mode')).toBeInTheDocument();
+    expect(screen.getByText('Phase')).toBeInTheDocument();
     expect(screen.getByText('Result')).toBeInTheDocument();
     expect(screen.getByText('Duration')).toBeInTheDocument();
     expect(screen.getByText('Triggered By')).toBeInTheDocument();
@@ -94,7 +99,8 @@ describe('ExecutionHistoryTable', () => {
   it('renders ExecutionResultBadge for result column', () => {
     render(<ExecutionHistoryTable executions={mockExecutions} planName="erp-full-stack" />);
     expect(screen.getByText('Partial')).toBeInTheDocument();
-    expect(screen.getByText('Succeeded')).toBeInTheDocument();
+    const succeededBadges = screen.getAllByText('Succeeded');
+    expect(succeededBadges.length).toBeGreaterThanOrEqual(1);
   });
 
   it('navigates to execution detail when row is clicked', () => {

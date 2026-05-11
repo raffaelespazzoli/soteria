@@ -1,10 +1,11 @@
 import { Flex, FlexItem } from '@patternfly/react-core';
 import { DRPlan } from '../../models/types';
-import { getEffectivePhase } from '../../utils/drPlanUtils';
+import { EffectivePhase } from '../../utils/drPlanUtils';
 import PhaseBadge from '../shared/PhaseBadge';
 
 interface PlanHeaderProps {
   plan: DRPlan;
+  effectivePhase: EffectivePhase;
 }
 
 function getVMCount(plan: DRPlan): number {
@@ -17,8 +18,7 @@ function getWaveCount(plan: DRPlan): number {
   return plan.status?.waves?.length ?? 0;
 }
 
-const PlanHeader: React.FC<PlanHeaderProps> = ({ plan }) => {
-  const effectivePhase = getEffectivePhase(plan);
+const PlanHeader: React.FC<PlanHeaderProps> = ({ plan, effectivePhase }) => {
   const vmCount = getVMCount(plan);
   const waveCount = getWaveCount(plan);
   const activeSite = plan.status?.activeSite;

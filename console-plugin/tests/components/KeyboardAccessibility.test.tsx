@@ -37,11 +37,6 @@ const mockSteadyStatePlan: DRPlan = {
 
 const mockFailingOverPlan: DRPlan = {
   ...mockSteadyStatePlan,
-  status: {
-    ...mockSteadyStatePlan.status!,
-    activeExecution: 'erp-full-stack-failover-001',
-    activeExecutionMode: 'disaster',
-  },
 };
 
 const mockDRedSteadyStatePlan: DRPlan = {
@@ -107,7 +102,7 @@ describe('Keyboard accessibility — DRLifecycleDiagram', () => {
   it('Failover button is reachable via Tab from SteadyState', async () => {
     const user = userEvent.setup();
     render(
-      <DRLifecycleDiagram plan={mockSteadyStatePlan} onAction={jest.fn()} />,
+      <DRLifecycleDiagram plan={mockSteadyStatePlan} effectivePhase="SteadyState" onAction={jest.fn()} />,
     );
     const failoverButton = screen.getByRole('button', { name: 'Failover' });
 
@@ -122,7 +117,7 @@ describe('Keyboard accessibility — DRLifecycleDiagram', () => {
     const user = userEvent.setup();
     const onAction = jest.fn();
     render(
-      <DRLifecycleDiagram plan={mockSteadyStatePlan} onAction={onAction} />,
+      <DRLifecycleDiagram plan={mockSteadyStatePlan} effectivePhase="SteadyState" onAction={onAction} />,
     );
     const failoverButton = screen.getByRole('button', { name: 'Failover' });
     failoverButton.focus();
@@ -133,7 +128,7 @@ describe('Keyboard accessibility — DRLifecycleDiagram', () => {
   it('Failback button is reachable via Tab from DRedSteadyState', async () => {
     const user = userEvent.setup();
     render(
-      <DRLifecycleDiagram plan={mockDRedSteadyStatePlan} onAction={jest.fn()} />,
+      <DRLifecycleDiagram plan={mockDRedSteadyStatePlan} effectivePhase="DRedSteadyState" onAction={jest.fn()} />,
     );
     const failbackButton = screen.getByRole('button', { name: 'Failback' });
 
@@ -146,7 +141,7 @@ describe('Keyboard accessibility — DRLifecycleDiagram', () => {
 
   it('no action buttons during transient phase', () => {
     render(
-      <DRLifecycleDiagram plan={mockFailingOverPlan} onAction={jest.fn()} />,
+      <DRLifecycleDiagram plan={mockFailingOverPlan} effectivePhase="FailingOver" onAction={jest.fn()} />,
     );
     expect(
       screen.queryByRole('button', { name: /failover|reprotect|failback|restore/i }),

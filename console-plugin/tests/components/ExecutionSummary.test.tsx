@@ -13,6 +13,8 @@ const mockSucceeded: DRExecution = {
   metadata: { name: 'test-1', uid: '1' },
   spec: { planName: 'erp-full-stack', mode: 'disaster' },
   status: {
+    isActive: false,
+    phase: 'Succeeded',
     result: 'Succeeded',
     startTime: new Date(now - 17 * 60 * 1000).toISOString(),
     completionTime: new Date(now).toISOString(),
@@ -38,6 +40,7 @@ const mockPartial: DRExecution = {
   ...mockSucceeded,
   status: {
     ...mockSucceeded.status!,
+    phase: 'PartiallySucceeded',
     result: 'PartiallySucceeded',
     waves: [
       {
@@ -54,6 +57,8 @@ const mockPartial: DRExecution = {
 const mockActive: DRExecution = {
   ...mockSucceeded,
   status: {
+    isActive: true,
+    phase: 'Executing',
     startTime: new Date(now - 5 * 60 * 1000).toISOString(),
     waves: [
       {

@@ -11,6 +11,7 @@ import {
   getSitesInSync,
   getDisksConsistent,
   buildLatestExecutionMap,
+  buildActiveExecMap,
   HEALTH_SORT_ORDER,
   EffectivePhase,
   ReplicationHealth,
@@ -52,9 +53,10 @@ interface EnrichedPlan {
 
 function enrichPlans(plans: DRPlan[], executions: DRExecution[]): EnrichedPlan[] {
   const latestByPlan = buildLatestExecutionMap(executions);
+  const activeByPlan = buildActiveExecMap(executions);
   return plans.map((plan) => ({
     plan,
-    effectivePhase: getEffectivePhase(plan),
+    effectivePhase: getEffectivePhase(plan, activeByPlan.get(plan.metadata?.name ?? '')),
     health: getReplicationHealth(plan),
     lastExec: latestByPlan.get(plan.metadata?.name ?? '') ?? null,
     sitesInSync: getSitesInSync(plan),
@@ -308,6 +310,7 @@ export default function DRDashboard() {
                 <Td isActionCell>
                   <DRPlanActions
                     plan={ep.plan}
+                    effectivePhase={ep.effectivePhase}
                     onAction={(_action, p) =>
                       history.push(`/disaster-recovery/plans/${p.metadata?.name ?? ''}`)
                     }

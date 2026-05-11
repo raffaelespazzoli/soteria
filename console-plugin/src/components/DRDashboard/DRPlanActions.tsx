@@ -10,9 +10,11 @@ import {
 import { EllipsisVIcon } from '@patternfly/react-icons';
 import { DRPlan } from '../../models/types';
 import { DRAction, getValidActions } from '../../utils/drPlanActions';
+import { EffectivePhase } from '../../utils/drPlanUtils';
 
 interface DRPlanActionsProps {
   plan: DRPlan;
+  effectivePhase: EffectivePhase;
   onAction?: (actionKey: string, plan: DRPlan) => void;
   isDisabled?: boolean;
   disabledTooltip?: string;
@@ -20,12 +22,13 @@ interface DRPlanActionsProps {
 
 const DRPlanActions: React.FC<DRPlanActionsProps> = ({
   plan,
+  effectivePhase,
   onAction,
   isDisabled,
   disabledTooltip,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const actions = getValidActions(plan);
+  const actions = getValidActions(effectivePhase);
 
   if (actions.length === 0) return null;
 

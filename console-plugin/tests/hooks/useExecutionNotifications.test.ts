@@ -23,6 +23,8 @@ const mockStartedExecution: DRExecution = {
   },
   spec: { planName: 'erp-full-stack', mode: 'disaster' },
   status: {
+    isActive: true,
+    phase: 'Pending',
     startTime: new Date(now).toISOString(),
     waves: [],
   },
@@ -31,6 +33,8 @@ const mockStartedExecution: DRExecution = {
 const mockSucceededExecution: DRExecution = {
   ...mockStartedExecution,
   status: {
+    isActive: false,
+    phase: 'Succeeded',
     result: 'Succeeded',
     startTime: new Date(now - 17 * 60 * 1000).toISOString(),
     completionTime: new Date(now).toISOString(),
@@ -55,6 +59,8 @@ const mockSucceededExecution: DRExecution = {
 const mockPartialExecution: DRExecution = {
   ...mockStartedExecution,
   status: {
+    isActive: false,
+    phase: 'PartiallySucceeded',
     result: 'PartiallySucceeded',
     startTime: new Date(now - 10 * 60 * 1000).toISOString(),
     completionTime: new Date(now).toISOString(),
@@ -73,6 +79,8 @@ const mockPartialExecution: DRExecution = {
 const mockFailedExecution: DRExecution = {
   ...mockStartedExecution,
   status: {
+    isActive: false,
+    phase: 'Failed',
     result: 'Failed',
     startTime: new Date(now - 5 * 60 * 1000).toISOString(),
     completionTime: new Date(now).toISOString(),
@@ -84,6 +92,8 @@ const mockReprotectExecution: DRExecution = {
   ...mockStartedExecution,
   spec: { planName: 'erp-full-stack', mode: 'reprotect' },
   status: {
+    isActive: false,
+    phase: 'Succeeded',
     result: 'Succeeded',
     startTime: new Date(now - 3 * 60 * 1000).toISOString(),
     completionTime: new Date(now).toISOString(),
@@ -95,6 +105,8 @@ const mockPlannedMigration: DRExecution = {
   ...mockStartedExecution,
   spec: { planName: 'erp-full-stack', mode: 'planned_migration' },
   status: {
+    isActive: true,
+    phase: 'Pending',
     startTime: new Date(now).toISOString(),
     waves: [],
   },
@@ -198,6 +210,8 @@ describe('useExecutionNotifications', () => {
     const reprotectStarted: DRExecution = {
       ...mockReprotectExecution,
       status: {
+        isActive: true,
+        phase: 'Pending',
         startTime: new Date(now).toISOString(),
         waves: [],
       },

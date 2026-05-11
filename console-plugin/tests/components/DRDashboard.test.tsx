@@ -69,6 +69,8 @@ const mockExecutions: DRExecution[] = [
     metadata: { name: 'exec-1', uid: '10', creationTimestamp: '' },
     spec: { planName: 'plan-alpha', mode: 'planned_migration' },
     status: {
+      isActive: false,
+      phase: 'Succeeded',
       result: 'Succeeded',
       startTime: '2026-04-24T10:00:00Z',
       completionTime: '2026-04-24T10:05:00Z',

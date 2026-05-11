@@ -312,7 +312,7 @@ describe('DRPlanDetailPage', () => {
       expect(screen.getByLabelText('Execution starting')).toBeInTheDocument();
     });
 
-    it('replaces optimistic banner with real data when activeExecution arrives', async () => {
+    it('replaces optimistic banner with real data when active DRExecution arrives', async () => {
       mockCreate.mockResolvedValue({
         apiVersion: 'soteria.io/v1alpha1',
         kind: 'DRExecution',
@@ -323,25 +323,18 @@ describe('DRPlanDetailPage', () => {
       await triggerFailoverConfirm();
       expect(screen.getByText('Starting Failover...')).toBeInTheDocument();
 
-      const updatedPlan: DRPlan = {
-        ...mockPlan,
-        status: {
-          ...mockPlan.status,
-          activeExecution: 'erp-full-stack-failover-123',
-          activeExecutionMode: 'disaster',
-        },
-      };
       const exec = {
         apiVersion: 'soteria.io/v1alpha1',
         kind: 'DRExecution',
         metadata: { name: 'erp-full-stack-failover-123', uid: 'uid-1', creationTimestamp: '' },
         spec: { planName: 'erp-full-stack', mode: 'disaster' as const },
         status: {
+          phase: 'Executing' as const,
+          isActive: true,
           startTime: new Date().toISOString(),
           waves: [{ waveIndex: 0 }, { waveIndex: 1 }],
         },
       };
-      mockUseDRPlan.mockReturnValue([updatedPlan, true, null]);
       mockUseDRExecutions.mockReturnValue([[exec], true, null]);
 
       await act(async () => {

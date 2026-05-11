@@ -1,4 +1,5 @@
 import { Label, LabelProps, Button, Tooltip } from '@patternfly/react-core';
+
 import { DRExecution, DRExecutionMode, DRGroupResultValue, WaveStatus } from '../../models/types';
 import { useElapsedTime, formatElapsedMs } from '../../hooks/useElapsedTime';
 import { formatDuration } from '../../utils/formatters';
@@ -78,6 +79,8 @@ const ExecutionHeader: React.FC<ExecutionHeaderProps> = ({
     flexWrap: 'wrap',
   };
 
+  const phaseLabel = status?.phase;
+
   if (isComplete) {
     return (
       <div style={headerStyle} data-testid="execution-header">
@@ -93,6 +96,11 @@ const ExecutionHeader: React.FC<ExecutionHeaderProps> = ({
             </span>
           </span>
           {status?.result && <ExecutionResultBadge result={status.result} />}
+          {phaseLabel && (
+            <Label isCompact data-testid="execution-phase">
+              {phaseLabel}
+            </Label>
+          )}
           {showRetryAll &&
             (isRetryDisabled && retryTooltip ? (
               <Tooltip content={retryTooltip}>
@@ -123,6 +131,11 @@ const ExecutionHeader: React.FC<ExecutionHeaderProps> = ({
         <Label status={modeDisplay.status} isCompact>
           {modeDisplay.label}
         </Label>
+        {phaseLabel && (
+          <Label isCompact data-testid="execution-phase">
+            {phaseLabel}
+          </Label>
+        )}
         {status?.startTime && (
           <span>
             Started:{' '}

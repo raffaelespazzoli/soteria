@@ -1,6 +1,6 @@
 # Story 10.7: Console UI — Derived Active Execution State
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -52,102 +52,108 @@ This story migrates the Console plugin to:
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Update TypeScript interfaces (AC: #1, #2)
-  - [ ] 1.1 In `console-plugin/src/models/types.ts`, remove `activeExecution?: string` and `activeExecutionMode?: DRExecutionMode` from the `DRPlanStatus` interface
-  - [ ] 1.2 Verify `PreflightReport.activeExecution` is NOT removed — it is a separate report snapshot field
-  - [ ] 1.3 Add `DRExecutionPhase` type: `type DRExecutionPhase = 'Pending' | 'Executing' | 'Succeeded' | 'PartiallySucceeded' | 'Failed'`
-  - [ ] 1.4 Add `phase?: DRExecutionPhase` and `isActive: boolean` to `DRExecutionStatus` interface (phase is optional for backward compat with old resources; isActive is non-optional as the Go side always serializes it)
-  - [ ] 1.5 Verify `DRExecution` interface and `DRExecutionSpec` interface are unchanged — `spec.mode` and `spec.planName` remain
+- [x] Task 1: Update TypeScript interfaces (AC: #1, #2)
+  - [x] 1.1 In `console-plugin/src/models/types.ts`, remove `activeExecution?: string` and `activeExecutionMode?: DRExecutionMode` from the `DRPlanStatus` interface
+  - [x] 1.2 Verify `PreflightReport.activeExecution` is NOT removed — it is a separate report snapshot field
+  - [x] 1.3 Add `DRExecutionPhase` type: `type DRExecutionPhase = 'Pending' | 'Executing' | 'Succeeded' | 'PartiallySucceeded' | 'Failed'`
+  - [x] 1.4 Add `phase?: DRExecutionPhase` and `isActive: boolean` to `DRExecutionStatus` interface (phase is optional for backward compat with old resources; isActive is non-optional as the Go side always serializes it)
+  - [x] 1.5 Verify `DRExecution` interface and `DRExecutionSpec` interface are unchanged — `spec.mode` and `spec.planName` remain
 
-- [ ] Task 2: Rewrite `getEffectivePhase` to accept optional DRExecution (AC: #3)
-  - [ ] 2.1 In `console-plugin/src/utils/drPlanUtils.ts`, change function signature from `getEffectivePhase(plan: DRPlan): EffectivePhase` to `getEffectivePhase(plan: DRPlan, activeExec?: DRExecution): EffectivePhase`
-  - [ ] 2.2 Replace `if (!plan.status?.activeExecution)` with `if (!activeExec)`
-  - [ ] 2.3 Replace `const mode = plan.status.activeExecutionMode` with `const mode = activeExec.spec.mode`
-  - [ ] 2.4 Update the JSDoc comment: remove "derived from activeExecution + activeExecutionMode", add "derived from the active DRExecution resource (if any) matched by isActive flag"
-  - [ ] 2.5 Add import for `DRExecution` type if not already imported
+- [x] Task 2: Rewrite `getEffectivePhase` to accept optional DRExecution (AC: #3)
+  - [x] 2.1 In `console-plugin/src/utils/drPlanUtils.ts`, change function signature from `getEffectivePhase(plan: DRPlan): EffectivePhase` to `getEffectivePhase(plan: DRPlan, activeExec?: DRExecution): EffectivePhase`
+  - [x] 2.2 Replace `if (!plan.status?.activeExecution)` with `if (!activeExec)`
+  - [x] 2.3 Replace `const mode = plan.status.activeExecutionMode` with `const mode = activeExec.spec.mode`
+  - [x] 2.4 Update the JSDoc comment: remove "derived from activeExecution + activeExecutionMode", add "derived from the active DRExecution resource (if any) matched by isActive flag"
+  - [x] 2.5 Add import for `DRExecution` type if not already imported
 
-- [ ] Task 3: Add `findActiveExecution` and `buildActiveExecMap` helpers (AC: #4)
-  - [ ] 3.1 In `console-plugin/src/utils/drPlanUtils.ts`, add `findActiveExecution(executions: DRExecution[]): DRExecution | undefined` — returns the first execution with `status?.isActive === true`
-  - [ ] 3.2 Add `buildActiveExecMap(executions: DRExecution[]): Map<string, DRExecution>` — builds a `planName → DRExecution` map from active executions keyed by `exec.spec.planName`. Used by the dashboard for O(1) lookup per plan row
+- [x] Task 3: Add `findActiveExecution` and `buildActiveExecMap` helpers (AC: #4)
+  - [x] 3.1 In `console-plugin/src/utils/drPlanUtils.ts`, add `findActiveExecution(executions: DRExecution[]): DRExecution | undefined` — returns the first execution with `status?.isActive === true`
+  - [x] 3.2 Add `buildActiveExecMap(executions: DRExecution[]): Map<string, DRExecution>` — builds a `planName → DRExecution` map from active executions keyed by `exec.spec.planName`. Used by the dashboard for O(1) lookup per plan row
 
-- [ ] Task 4: Update `DRPlanDetailPage` to derive from matched DRExecution (AC: #5, #10)
-  - [ ] 4.1 Replace `const activeExecName = plan?.status?.activeExecution ?? ''` with: derive the active execution from the executions list: `const activeExec = executions.find(e => e.status?.isActive === true) ?? null`
-  - [ ] 4.2 Remove the stale `activeExecName` → `.find(e => e.metadata?.name === activeExecName)` lookup — replace with `activeExec` directly
-  - [ ] 4.3 Update `effectivePhase` computation: change `getEffectivePhase(plan)` to `getEffectivePhase(plan, activeExec ?? undefined)`
-  - [ ] 4.4 Replace `const realActiveExec = plan?.status?.activeExecution` with `const realActiveExec = activeExec?.metadata?.name ?? ''` — this drives the optimistic state clearance
-  - [ ] 4.5 Verify `effectiveOptimisticExec = realActiveExec ? null : optimisticExec` still works — when `realActiveExec` is truthy (non-empty string or non-null), optimistic is cleared
-  - [ ] 4.6 Verify `isInTransition` logic remains correct: `(effectivePhase !== restPhase) || effectiveOptimisticExec !== null`
-  - [ ] 4.7 Pass `activeExec` as `execution` prop to `TransitionProgressBanner` (replaces the old `execution` which was found by name match)
+- [x] Task 4: Update `DRPlanDetailPage` to derive from matched DRExecution (AC: #5, #10)
+  - [x] 4.1 Replace `const activeExecName = plan?.status?.activeExecution ?? ''` with: derive the active execution from the executions list: `const activeExec = executions.find(e => e.status?.isActive === true) ?? null`
+  - [x] 4.2 Remove the stale `activeExecName` → `.find(e => e.metadata?.name === activeExecName)` lookup — replace with `activeExec` directly
+  - [x] 4.3 Update `effectivePhase` computation: change `getEffectivePhase(plan)` to `getEffectivePhase(plan, activeExec ?? undefined)`
+  - [x] 4.4 Replace `const realActiveExec = plan?.status?.activeExecution` with `const realActiveExec = activeExec?.metadata?.name ?? ''` — this drives the optimistic state clearance
+  - [x] 4.5 Verify `effectiveOptimisticExec = realActiveExec ? null : optimisticExec` still works — when `realActiveExec` is truthy (non-empty string or non-null), optimistic is cleared
+  - [x] 4.6 Verify `isInTransition` logic remains correct: `(effectivePhase !== restPhase) || effectiveOptimisticExec !== null`
+  - [x] 4.7 Pass `activeExec` as `execution` prop to `TransitionProgressBanner` (replaces the old `execution` which was found by name match)
 
-- [ ] Task 5: Update `TransitionProgressBanner` to use execution prop (AC: #7)
-  - [ ] 5.1 Replace `getEffectivePhase(plan)` with `getEffectivePhase(plan, execution ?? undefined)` — pass the execution prop through
-  - [ ] 5.2 Replace `plan.status?.activeExecution` in the "View execution details" link with `execution?.metadata?.name`
-  - [ ] 5.3 Verify `isRealTransition = effectivePhase !== restPhase` still works correctly
-  - [ ] 5.4 Verify `showOptimistic = !execution && !!optimisticExec` still works — when no real execution object exists but optimistic is set
+- [x] Task 5: Update `TransitionProgressBanner` to use execution prop (AC: #7)
+  - [x] 5.1 Replace `getEffectivePhase(plan)` with `getEffectivePhase(plan, execution ?? undefined)` — pass the execution prop through
+  - [x] 5.2 Replace `plan.status?.activeExecution` in the "View execution details" link with `execution?.metadata?.name`
+  - [x] 5.3 Verify `isRealTransition = effectivePhase !== restPhase` still works correctly
+  - [x] 5.4 Verify `showOptimistic = !execution && !!optimisticExec` still works — when no real execution object exists but optimistic is set
 
-- [ ] Task 6: Update `DRDashboard` to use DRExecution index for effective phase (AC: #6)
-  - [ ] 6.1 In `enrichPlans` function, add a `buildActiveExecMap(executions)` call to build the active execution index
-  - [ ] 6.2 Change `effectivePhase: getEffectivePhase(plan)` to `effectivePhase: getEffectivePhase(plan, activeExecMap.get(plan.metadata?.name ?? '') ?? undefined)` — passes the matched DRExecution for each plan
-  - [ ] 6.3 Update `enrichPlans` signature to accept `executions: DRExecution[]` if not already
-  - [ ] 6.4 Verify `enrichPlans` is called with the executions list at the call site
+- [x] Task 6: Update `DRDashboard` to use DRExecution index for effective phase (AC: #6)
+  - [x] 6.1 In `enrichPlans` function, add a `buildActiveExecMap(executions)` call to build the active execution index
+  - [x] 6.2 Change `effectivePhase: getEffectivePhase(plan)` to `effectivePhase: getEffectivePhase(plan, activeExecMap.get(plan.metadata?.name ?? '') ?? undefined)` — passes the matched DRExecution for each plan
+  - [x] 6.3 Update `enrichPlans` signature to accept `executions: DRExecution[]` if not already
+  - [x] 6.4 Verify `enrichPlans` is called with the executions list at the call site
 
-- [ ] Task 7: Update other callers of `getEffectivePhase` (AC: #3)
-  - [ ] 7.1 `PlanHeader.tsx`: calls `getEffectivePhase(plan)`. Pass `effectivePhase` as a prop from `DRPlanDetailPage` (cleaner — avoids threading `activeExec` through)
-  - [ ] 7.2 `DRLifecycleDiagram.tsx`: calls `getEffectivePhase(plan)`. Same approach — pass `effectivePhase` as a prop from `DRPlanDetailPage` (already computed there)
-  - [ ] 7.3 `drPlanActions.ts` `getValidActions`: calls `getEffectivePhase(plan)`. Update to accept `effectivePhase` directly to decouple from DRExecution — preferred since callers already have the effective phase
-  - [ ] 7.4 Compile-check: search for all `getEffectivePhase(` calls in `console-plugin/src/` and verify each is updated
+- [x] Task 7: Update other callers of `getEffectivePhase` (AC: #3)
+  - [x] 7.1 `PlanHeader.tsx`: calls `getEffectivePhase(plan)`. Pass `effectivePhase` as a prop from `DRPlanDetailPage` (cleaner — avoids threading `activeExec` through)
+  - [x] 7.2 `DRLifecycleDiagram.tsx`: calls `getEffectivePhase(plan)`. Same approach — pass `effectivePhase` as a prop from `DRPlanDetailPage` (already computed there)
+  - [x] 7.3 `drPlanActions.ts` `getValidActions`: calls `getEffectivePhase(plan)`. Update to accept `effectivePhase` directly to decouple from DRExecution — preferred since callers already have the effective phase
+  - [x] 7.4 Compile-check: search for all `getEffectivePhase(` calls in `console-plugin/src/` and verify each is updated
 
-- [ ] Task 8: Add Phase column to `ExecutionHistoryTable` (AC: #8)
-  - [ ] 8.1 In `console-plugin/src/components/DRPlanDetail/ExecutionHistoryTable.tsx` (or wherever the execution history columns are defined), add a "Phase" column after Mode and before Result
-  - [ ] 8.2 Render `exec.status?.phase ?? ''` in the Phase cell
-  - [ ] 8.3 Verify column order matches Go table convertor: Name, Plan, Mode, Phase, (Active — optional, boolean columns are less useful in UI tables), Result, Duration, Age
+- [x] Task 8: Add Phase column to `ExecutionHistoryTable` (AC: #8)
+  - [x] 8.1 In `console-plugin/src/components/DRPlanDetail/ExecutionHistoryTable.tsx` (or wherever the execution history columns are defined), add a "Phase" column after Mode and before Result
+  - [x] 8.2 Render `exec.status?.phase ?? ''` in the Phase cell
+  - [x] 8.3 Verify column order matches Go table convertor: Name, Plan, Mode, Phase, (Active — optional, boolean columns are less useful in UI tables), Result, Duration, Age
 
-- [ ] Task 9: Update `ExecutionDetailPage` header with Phase (AC: #9)
-  - [ ] 9.1 In `ExecutionHeader` component, display execution phase alongside existing result display
-  - [ ] 9.2 When `result` is empty (in-flight execution), show `phase` as the primary status indicator (e.g., "Pending" or "Executing")
-  - [ ] 9.3 When `result` is set, the existing result display takes precedence; phase is supplementary
+- [x] Task 9: Update `ExecutionDetailPage` header with Phase (AC: #9)
+  - [x] 9.1 In `ExecutionHeader` component, display execution phase alongside existing result display
+  - [x] 9.2 When `result` is empty (in-flight execution), show `phase` as the primary status indicator (e.g., "Pending" or "Executing")
+  - [x] 9.3 When `result` is set, the existing result display takes precedence; phase is supplementary
 
-- [ ] Task 10: Update `getEffectivePhase` tests (AC: #11)
-  - [ ] 10.1 In `console-plugin/tests/utils/drPlanUtils.test.ts`, update all `getEffectivePhase` test cases:
+- [x] Task 10: Update `getEffectivePhase` tests (AC: #11)
+  - [x] 10.1 In `console-plugin/tests/utils/drPlanUtils.test.ts`, update all `getEffectivePhase` test cases:
     - Remove `activeExecution` and `activeExecutionMode` from `makePlan` overrides
     - Create DRExecution fixtures with `status: { phase: 'Executing', isActive: true }` for active cases
     - Pass the execution as the second argument: `getEffectivePhase(plan, exec)`
     - For idle/no-execution cases, call `getEffectivePhase(plan)` or `getEffectivePhase(plan, undefined)`
-  - [ ] 10.2 Add tests for `findActiveExecution` and `buildActiveExecMap` — verify `isActive === true` filtering
+  - [x] 10.2 Add tests for `findActiveExecution` and `buildActiveExecMap` — verify `isActive === true` filtering
 
-- [ ] Task 11: Update `DRPlanDetailPage` tests (AC: #11)
-  - [ ] 11.1 Update the optimistic execution test suite:
+- [x] Task 11: Update `DRPlanDetailPage` tests (AC: #11)
+  - [x] 11.1 Update the optimistic execution test suite:
     - Remove `activeExecution` from updated plan fixtures
     - Add DRExecution fixtures with `isActive: true` and `phase: 'Executing'` to the `useDRExecutions` mock return value when testing "real execution replaces optimistic"
     - For "optimistic renders when no real execution", ensure `useDRExecutions` returns an empty list or only terminal executions (with `isActive: false`)
-  - [ ] 11.2 Update any plan fixtures that set `activeExecution`/`activeExecutionMode` on `plan.status`
+  - [x] 11.2 Update any plan fixtures that set `activeExecution`/`activeExecutionMode` on `plan.status`
 
-- [ ] Task 12: Update `TransitionProgressBanner` tests (AC: #11)
-  - [ ] 12.1 Update all plan fixtures:
+- [x] Task 12: Update `TransitionProgressBanner` tests (AC: #11)
+  - [x] 12.1 Update all plan fixtures:
     - Remove `activeExecution` and `activeExecutionMode` from plan status mocks
     - Provide DRExecution fixtures with `phase` and `isActive` as the `execution` prop when testing active transition state
     - For idle/optimistic-only tests, pass `execution={null}`
-  - [ ] 12.2 Verify the `getEffectivePhase` call inside the component uses the execution prop
+  - [x] 12.2 Verify the `getEffectivePhase` call inside the component uses the execution prop
 
-- [ ] Task 13: Update `DRLifecycleDiagram` and `DRPlanActions` tests (AC: #11)
-  - [ ] 13.1 In `DRLifecycleDiagram` tests: update plan fixtures, pass `effectivePhase` prop if component now receives it
-  - [ ] 13.2 In `DRPlanActions` tests: update `makePlan` helper, pass effective phase directly
+- [x] Task 13: Update `DRLifecycleDiagram` and `DRPlanActions` tests (AC: #11)
+  - [x] 13.1 In `DRLifecycleDiagram` tests: update plan fixtures, pass `effectivePhase` prop if component now receives it
+  - [x] 13.2 In `DRPlanActions` tests: update `makePlan` helper, pass effective phase directly
 
-- [ ] Task 14: Update `ExecutionHistoryTable` and `ExecutionDetailPage` tests (AC: #8, #9, #11)
-  - [ ] 14.1 Add Phase column assertions to `ExecutionHistoryTable` tests
-  - [ ] 14.2 Add phase display assertions to `ExecutionHeader` / `ExecutionDetailPage` tests
-  - [ ] 14.3 Test in-flight execution showing "Executing" phase when result is empty
+- [x] Task 14: Update `ExecutionHistoryTable` and `ExecutionDetailPage` tests (AC: #8, #9, #11)
+  - [x] 14.1 Add Phase column assertions to `ExecutionHistoryTable` tests
+  - [x] 14.2 Add phase display assertions to `ExecutionHeader` / `ExecutionDetailPage` tests
+  - [x] 14.3 Test in-flight execution showing "Executing" phase when result is empty
 
-- [ ] Task 15: Update remaining test files and final sweep (AC: #11)
-  - [ ] 15.1 `Accessibility.test.tsx`: remove `activeExecution`/`activeExecutionMode` from plan status mocks
-  - [ ] 15.2 `KeyboardAccessibility.test.tsx`: remove `activeExecution`/`activeExecutionMode` from plan status mocks
-  - [ ] 15.3 Update all DRExecution test fixtures to include `phase` and `isActive` fields
-  - [ ] 15.4 Run `rg 'activeExecution|activeExecutionMode' console-plugin/` to verify zero remaining references on plan status (expect only `PreflightReport.activeExecution` and `DRExecution.spec.mode`)
+- [x] Task 15: Update remaining test files and final sweep (AC: #11)
+  - [x] 15.1 `Accessibility.test.tsx`: remove `activeExecution`/`activeExecutionMode` from plan status mocks
+  - [x] 15.2 `KeyboardAccessibility.test.tsx`: remove `activeExecution`/`activeExecutionMode` from plan status mocks
+  - [x] 15.3 Update all DRExecution test fixtures to include `phase` and `isActive` fields
+  - [x] 15.4 Run `rg 'activeExecution|activeExecutionMode' console-plugin/` to verify zero remaining references on plan status (expect only `PreflightReport.activeExecution` and `DRExecution.spec.mode`)
 
-- [ ] Task 16: Run full test suite (AC: #11)
-  - [ ] 16.1 Run `cd console-plugin && yarn test` — all tests pass with zero regressions
-  - [ ] 16.2 Run `cd console-plugin && yarn lint` — zero lint errors
-  - [ ] 16.3 Verify jest-axe accessibility audits pass
+- [x] Task 16: Run full test suite (AC: #11)
+  - [x] 16.1 Run `cd console-plugin && yarn test` — all tests pass with zero regressions
+  - [x] 16.2 Run `cd console-plugin && yarn lint` — zero lint errors
+  - [x] 16.3 Verify jest-axe accessibility audits pass
+
+### Review Findings
+
+- [x] [Review][Patch] ExecutionHeader omits phase for completed executions, so terminal runs never show the supplementary phase required by AC9 [`console-plugin/src/components/ExecutionDetail/ExecutionHeader.tsx:84`]
+- [x] [Review][Patch] DRPlanDetailPage treats a missing `status.phase` as an in-progress transition because it compares the derived default phase to raw `undefined` [`console-plugin/src/components/DRPlanDetail/DRPlanDetailPage.tsx:44`]
+- [x] [Review][Patch] Story tracking was marked `done` while the Tasks/Subtasks checklist is still entirely unchecked [`_bmad-output/implementation-artifacts/10-7-console-ui-derived-active-execution-state.md:3`]
 
 ## Dev Notes
 

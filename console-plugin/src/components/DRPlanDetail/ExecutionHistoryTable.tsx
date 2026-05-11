@@ -66,6 +66,7 @@ export const ExecutionHistoryTable: React.FC<ExecutionHistoryTableProps> = ({
         <Tr>
           <Th>Date</Th>
           <Th>Mode</Th>
+          <Th>Phase</Th>
           <Th>Result</Th>
           <Th>Duration</Th>
           <Th>Triggered By</Th>
@@ -83,6 +84,7 @@ export const ExecutionHistoryTable: React.FC<ExecutionHistoryTableProps> = ({
             >
               <Td dataLabel="Date">{formatDate(exec.status?.startTime)}</Td>
               <Td dataLabel="Mode">{formatMode(exec.spec?.mode)}</Td>
+              <Td dataLabel="Phase">{exec.status?.phase ?? ''}</Td>
               <Td dataLabel="Result">
                 {exec.status?.result ? (
                   <ExecutionResultBadge result={exec.status.result as DRExecutionResult} />

@@ -1,7 +1,7 @@
 import { CSSProperties, useMemo } from 'react';
 import { Button, Tooltip } from '@patternfly/react-core';
 import { DRPlan } from '../../models/types';
-import { getEffectivePhase, RestPhase, TransientPhase } from '../../utils/drPlanUtils';
+import { EffectivePhase, RestPhase, TransientPhase } from '../../utils/drPlanUtils';
 import { isTransientPhase, getValidActions, DRAction } from '../../utils/drPlanActions';
 
 import steadyStateImg from '../../assets/state-steady-state.png';
@@ -294,6 +294,7 @@ export interface WaveProgress {
 
 interface DRLifecycleDiagramProps {
   plan: DRPlan;
+  effectivePhase: EffectivePhase;
   onAction: (action: string, plan: DRPlan) => void;
   waveProgress?: WaveProgress | null;
   isBlocked?: boolean;
@@ -302,18 +303,18 @@ interface DRLifecycleDiagramProps {
 
 const DRLifecycleDiagram: React.FC<DRLifecycleDiagramProps> = ({
   plan,
+  effectivePhase,
   onAction,
   waveProgress,
   isBlocked,
   blockedTooltip,
 }) => {
   const restPhase = (plan.status?.phase ?? 'SteadyState') as RestPhase;
-  const effectivePhase = getEffectivePhase(plan);
   const inTransition = isTransientPhase(effectivePhase);
   const primarySite = plan.spec?.primarySite ?? 'Primary';
   const secondarySite = plan.spec?.secondarySite ?? 'Secondary';
 
-  const validActions = useMemo(() => getValidActions(plan), [plan]);
+  const validActions = useMemo(() => getValidActions(effectivePhase), [effectivePhase]);
 
   const activeTransition = useMemo(
     () => (inTransition ? TRANSITIONS.find((t) => t.transient === effectivePhase) : null),

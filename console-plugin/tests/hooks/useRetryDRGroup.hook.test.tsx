@@ -16,6 +16,8 @@ const baseExecution: DRExecution = {
   metadata: { name: 'erp-failover-001', uid: '1' },
   spec: { planName: 'erp-full-stack', mode: 'disaster' },
   status: {
+    isActive: false,
+    phase: 'PartiallySucceeded',
     result: 'PartiallySucceeded',
     startTime: '2026-04-28T10:00:00Z',
     completionTime: '2026-04-28T10:10:00Z',

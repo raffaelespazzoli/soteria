@@ -17,14 +17,15 @@ export interface ReplicationHealth {
 }
 
 /**
- * Derives the effective phase from a DRPlan. Rest states are stored on
- * status.phase; transient states are derived from activeExecution + activeExecutionMode.
+ * Derives the effective phase from a DRPlan and an optional active DRExecution.
+ * Rest states are stored on status.phase; transient states are derived from the
+ * active DRExecution resource (if any) matched by isActive flag.
  * Mirrors the Go EffectivePhase() helper from pkg/engine/.
  */
-export function getEffectivePhase(plan: DRPlan): EffectivePhase {
+export function getEffectivePhase(plan: DRPlan, activeExec?: DRExecution): EffectivePhase {
   const phase = plan.status?.phase;
-  if (!plan.status?.activeExecution) return (phase as RestPhase) ?? 'SteadyState';
-  const mode = plan.status.activeExecutionMode;
+  if (!activeExec) return (phase as RestPhase) ?? 'SteadyState';
+  const mode = activeExec.spec.mode;
   switch (phase) {
     case 'SteadyState':
       return mode === 'planned_migration' || mode === 'disaster' ? 'FailingOver' : 'SteadyState';
@@ -93,6 +94,29 @@ export function buildLatestExecutionMap(executions: DRExecution[]): Map<string, 
     if (newTime > existingTime) {
       map.set(planName, exec);
     }
+  }
+  return map;
+}
+
+/**
+ * Returns the first DRExecution with isActive === true, or undefined if none.
+ */
+export function findActiveExecution(executions: DRExecution[]): DRExecution | undefined {
+  return executions.find((e) => e.status?.isActive === true);
+}
+
+/**
+ * Builds a Map of planName → active DRExecution in a single O(E) pass.
+ * Only includes executions with isActive === true. Used by the dashboard
+ * for O(1) lookup per plan row.
+ */
+export function buildActiveExecMap(executions: DRExecution[]): Map<string, DRExecution> {
+  const map = new Map<string, DRExecution>();
+  for (const exec of executions) {
+    if (exec.status?.isActive !== true) continue;
+    const planName = exec.spec?.planName;
+    if (!planName) continue;
+    map.set(planName, exec);
   }
   return map;
 }

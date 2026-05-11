@@ -86,8 +86,6 @@ export interface SiteDiscovery {
 
 export interface DRPlanStatus {
   phase?: string;
-  activeExecution?: string;
-  activeExecutionMode?: DRExecutionMode;
   activeSite?: string;
   conditions?: Condition[];
   observedGeneration?: number;
@@ -194,6 +192,8 @@ export interface PreflightChunk {
 
 // --- DRExecution ---
 
+export type DRExecutionPhase = 'Pending' | 'Executing' | 'Succeeded' | 'PartiallySucceeded' | 'Failed';
+
 export interface DRExecution extends K8sResourceCommon {
   spec: DRExecutionSpec;
   status?: DRExecutionStatus;
@@ -205,6 +205,8 @@ export interface DRExecutionSpec {
 }
 
 export interface DRExecutionStatus {
+  phase?: DRExecutionPhase;
+  isActive: boolean;
   result?: DRExecutionResult;
   waves?: WaveStatus[];
   startTime?: string;

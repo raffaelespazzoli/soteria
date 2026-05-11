@@ -40,6 +40,8 @@ const mockActiveExecution: DRExecution = {
   },
   spec: { planName: 'erp-full-stack', mode: 'disaster' },
   status: {
+    isActive: true,
+    phase: 'Executing',
     startTime: new Date(now - 4 * 60 * 1000).toISOString(),
     waves: [
       {
@@ -90,6 +92,8 @@ const mockActiveExecution: DRExecution = {
 const mockCompletedExecution: DRExecution = {
   ...mockActiveExecution,
   status: {
+    isActive: false,
+    phase: 'Succeeded',
     startTime: new Date(now - 10 * 60 * 1000).toISOString(),
     completionTime: new Date(now).toISOString(),
     result: 'Succeeded',
@@ -242,6 +246,8 @@ describe('ExecutionDetailPage', () => {
 const mockPartialExecution: DRExecution = {
   ...mockActiveExecution,
   status: {
+    isActive: false,
+    phase: 'PartiallySucceeded',
     startTime: new Date(now - 17 * 60 * 1000).toISOString(),
     completionTime: new Date(now).toISOString(),
     result: 'PartiallySucceeded',

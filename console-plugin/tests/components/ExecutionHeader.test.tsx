@@ -16,6 +16,8 @@ const baseExecution: DRExecution = {
   metadata: { name: 'erp-failover-001', uid: '1' },
   spec: { planName: 'erp-full-stack', mode: 'disaster' },
   status: {
+    isActive: true,
+    phase: 'Executing',
     startTime: new Date(now - 4 * 60 * 1000).toISOString(),
     waves: [
       {
@@ -36,6 +38,8 @@ const baseExecution: DRExecution = {
 const completedExecution: DRExecution = {
   ...baseExecution,
   status: {
+    isActive: false,
+    phase: 'Succeeded',
     startTime: new Date(now - 10 * 60 * 1000).toISOString(),
     completionTime: new Date(now).toISOString(),
     result: 'Succeeded',
@@ -89,7 +93,8 @@ describe('ExecutionHeader', () => {
   it('shows total duration and result badge when complete', () => {
     render(<ExecutionHeader execution={completedExecution} />);
     expect(screen.getByText(/Duration/)).toBeInTheDocument();
-    expect(screen.getByText('Succeeded')).toBeInTheDocument();
+    const succeededElements = screen.getAllByText('Succeeded');
+    expect(succeededElements.length).toBeGreaterThanOrEqual(1);
   });
 
   it('applies monospace font to time displays', () => {
@@ -132,6 +137,8 @@ describe('ExecutionHeader', () => {
 const partialExecution: DRExecution = {
   ...baseExecution,
   status: {
+    isActive: false,
+    phase: 'PartiallySucceeded',
     startTime: new Date(now - 10 * 60 * 1000).toISOString(),
     completionTime: new Date(now).toISOString(),
     result: 'PartiallySucceeded',

@@ -1,5 +1,5 @@
-import { DRExecutionMode, DRPlan } from '../models/types';
-import { EffectivePhase, getEffectivePhase } from './drPlanUtils';
+import { DRExecutionMode } from '../models/types';
+import { EffectivePhase } from './drPlanUtils';
 
 export interface DRAction {
   key: string;
@@ -65,9 +65,8 @@ export function resolveActionKey(action: string): string {
   return LABEL_TO_KEY[action] ?? action;
 }
 
-export function getValidActions(plan: DRPlan): DRAction[] {
-  const phase = getEffectivePhase(plan);
-  return ACTIONS_BY_PHASE[phase] ?? [];
+export function getValidActions(effectivePhase: EffectivePhase): DRAction[] {
+  return ACTIONS_BY_PHASE[effectivePhase] ?? [];
 }
 
 export function isTransientPhase(phase: EffectivePhase): boolean {
