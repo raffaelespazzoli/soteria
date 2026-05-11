@@ -2602,11 +2602,63 @@ So that the DRPlan API clearly communicates that plans are static configuration 
 **And** all unit and integration tests pass with zero regressions
 **And** `make lint` passes
 
-### Story 10.5: Console UI — Derived Active Execution State
+### Story 10.5: DRExecution IsTerminal Method
+
+As a maintainer of the DR orchestrator codebase,
+I want a single `IsTerminal()` method on `DRExecutionStatus` and all duplicated `Result == ""` / `Result != ""` checks refactored to use it,
+So that "active" vs terminal execution semantics stay consistent across admission, controllers, registry, engine, and API server logic.
+
+**Acceptance Criteria:**
+
+**Given** `DRExecutionStatus` in `pkg/apis/soteria.io/v1alpha1/types.go`
+**When** `IsTerminal()` is added as a value-receiver method returning `s.Result != ""`
+**Then** all production call sites that check `Status.Result == ""` or `Status.Result != ""` for terminal semantics are refactored to use `!Status.IsTerminal()` or `Status.IsTerminal()`
+
+**Given** the `Reconcile` idempotency guard that checks `Result == Succeeded || Result == Failed`
+**When** refactored
+**Then** `PartiallySucceeded` still reaches the retry path (not early-exited)
+
+**Given** `detectDRExecutionCriticalFields` which compares `oldExec.Status.Result != newExec.Status.Result`
+**When** reviewed
+**Then** it is left untouched — pairwise comparison is not a terminality check
+
+**Given** all unit and integration tests
+**When** run after refactoring
+**Then** all pass with zero regressions
+**And** `make lint` passes
+
+### Story 10.6: DRExecution Phase and IsActive Status Fields
+
+As a platform engineer and console operator,
+I want `DRExecution` status to expose an explicit lifecycle `Phase` and an `IsActive` flag alongside the existing `Result`,
+So that execution state is self-describing in the API, in `kubectl get` table output, and for future consumers without re-deriving semantics from `Result` and timestamps alone.
+
+**Acceptance Criteria:**
+
+**Given** `DRExecutionStatus` in `pkg/apis/soteria.io/v1alpha1/types.go`
+**When** updated
+**Then** `Phase` (type `ExecutionPhase`, enum: Pending/Executing/Succeeded/PartiallySucceeded/Failed) is added with `json:"phase,omitempty"` and kubebuilder Enum validation
+**And** `IsActive` (type `bool`) is added with `json:"isActive"` **without** `omitempty` so `false` is always serialized
+
+**Given** all write paths (`PrepareForCreate`, `reconcileSetup`, `finishExecution`, `failExecution`, `reconcileReprotect`, `ExecuteRetry`)
+**When** setting execution status
+**Then** `Phase` and `IsActive` are set alongside existing `Result` and `CompletionTime` writes
+**And** `PrepareForCreate` sets `Pending`/`true`, `reconcileSetup` sets `Executing`/`true`, terminal paths set terminal phase/`false`
+
+**Given** the DRExecution table convertor in `pkg/registry/drexecution/storage.go`
+**When** rendering `kubectl get drexecutions`
+**Then** Phase and Active columns appear between Mode and Result (column order: Name, Plan, Mode, Phase, Active, Result, Duration, Age)
+
+**Given** all unit and integration tests
+**When** run after changes
+**Then** all pass with zero regressions
+**And** `make lint` passes
+
+### Story 10.7: Console UI — Derived Active Execution State
 
 As an operator,
-I want the Console plugin to derive active execution state from DRExecution resources instead of reading DRPlan status fields,
-So that the UI accurately reflects execution state from the source of truth.
+I want the Console plugin to derive active execution state from DRExecution resources using the new `isActive` flag and to display execution `phase`,
+So that the UI accurately reflects execution state from the source of truth with richer status information.
 
 **Acceptance Criteria:**
 
@@ -2614,28 +2666,38 @@ So that the UI accurately reflects execution state from the source of truth.
 **When** updated
 **Then** the `activeExecution` and `activeExecutionMode` fields are removed from the interface
 
+**Given** the `DRExecutionStatus` TypeScript interface
+**When** updated
+**Then** `phase` (string union) and `isActive` (boolean, non-optional) fields are added
+
 **Given** the `getEffectivePhase` utility in `console-plugin/src/utils/drPlanUtils.ts`
 **When** computing effective phase for a plan
 **Then** it accepts the active DRExecution (or undefined) as a parameter instead of reading `plan.status.activeExecution` and `plan.status.activeExecutionMode`
-**And** callers pass the result of matching a plan to its non-terminal DRExecution from the `useDRExecutions` watch
+**And** active execution detection uses `e.status?.isActive === true` (not `!e.status?.result`)
 
 **Given** the DRPlan detail page
 **When** rendering the transition progress banner
-**Then** it derives `isInTransition` and the execution link from the matched DRExecution resource, not from `plan.status.activeExecution`
+**Then** it derives `isInTransition` and the execution link from the DRExecution matched via `isActive === true`, not from `plan.status.activeExecution`
 
 **Given** the DR Dashboard table
 **When** rendering effective phase per plan row
-**Then** it matches each plan to its active DRExecution (if any) using the `useDRExecutions` list watch filtered by `spec.planName`
-**And** performance is maintained by using a single LIST watch for all executions, indexed client-side by planName
+**Then** it builds a client-side `planName → DRExecution` index of active executions (filtered by `isActive === true`)
+
+**Given** the ExecutionHistoryTable
+**When** rendering execution history
+**Then** a Phase column is displayed between Mode and Result
+
+**Given** the ExecutionDetailPage header
+**When** displaying an in-flight execution (no result)
+**Then** the execution's `phase` (Pending or Executing) is shown as the primary status indicator
 
 **Given** the optimistic execution detection (Story 8.5)
 **When** the user triggers an execution
-**Then** the optimistic state continues to work as before — it is already local React state independent of `plan.status.activeExecution`
-**And** once the real DRExecution appears in the watch, the optimistic state is replaced
+**Then** the optimistic state continues to work — once a real DRExecution with `isActive === true` appears in the watch, the optimistic state is replaced
 
 **Given** all existing console tests
 **When** updated
 **Then** tests no longer set `activeExecution` / `activeExecutionMode` on plan status mocks
-**And** tests provide DRExecution fixtures for the derived pattern
+**And** DRExecution test fixtures include `phase` and `isActive` fields
 **And** jest-axe accessibility audit passes
 **And** all tests pass with zero regressions
