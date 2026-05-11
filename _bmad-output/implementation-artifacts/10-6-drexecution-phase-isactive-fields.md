@@ -1,6 +1,6 @@
 # Story 10.6: DRExecution Phase and IsActive Status Fields
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -41,37 +41,42 @@ Together, these make status self-describing while preserving backward compatibil
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1: Add `ExecutionPhase`, fields, and `resultToPhase`** (AC: #1, #2, #10)
-  - [ ] 1.1 In `pkg/apis/soteria.io/v1alpha1/types.go`, add `ExecutionPhase` string type and typed constants (`Pending`, `Executing`, `Succeeded`, `PartiallySucceeded`, `Failed`).
-  - [ ] 1.2 Extend `DRExecutionStatus` with `Phase` and `IsActive` exactly as specified: `Phase` omitempty + kubebuilder Enum; **`IsActive` MUST use `json:"isActive"` with NO omitempty**.
-  - [ ] 1.3 Add `func resultToPhase(r ExecutionResult) ExecutionPhase` next to phase/result definitions (handle only terminal result values used in production paths; document or panic-free map empty/unknown — align with existing `ExecutionResult` usage).
-  - [ ] 1.4 Run `make manifests generate`; commit regenerated files (`zz_generated.*`, CRDs) with application code.
+- [x] **Task 1: Add `ExecutionPhase`, fields, and `resultToPhase`** (AC: #1, #2, #10)
+  - [x] 1.1 In `pkg/apis/soteria.io/v1alpha1/types.go`, add `ExecutionPhase` string type and typed constants (`Pending`, `Executing`, `Succeeded`, `PartiallySucceeded`, `Failed`).
+  - [x] 1.2 Extend `DRExecutionStatus` with `Phase` and `IsActive` exactly as specified: `Phase` omitempty + kubebuilder Enum; **`IsActive` MUST use `json:"isActive"` with NO omitempty**.
+  - [x] 1.3 Add `func ResultToPhase(r ExecutionResult) ExecutionPhase` next to phase/result definitions (exported for cross-package use; empty/unknown result maps to Pending as safe fallback).
+  - [x] 1.4 Run `make manifests generate`; commit regenerated files (`zz_generated.*`, CRDs) with application code.
 
-- [ ] **Task 2: `PrepareForCreate` initial status** (AC: #3)
-  - [ ] 2.1 Replace `exec.Status = soteriav1alpha1.DRExecutionStatus{}` with `DRExecutionStatus{Phase: ExecutionPhasePending, IsActive: true}` in `pkg/registry/drexecution/strategy.go`.
-  - [ ] 2.2 Extend `TestPrepareForCreate_*` tests in `pkg/registry/drexecution/strategy_test.go` to assert `Phase` and `IsActive`.
+- [x] **Task 2: `PrepareForCreate` initial status** (AC: #3)
+  - [x] 2.1 Replace `exec.Status = soteriav1alpha1.DRExecutionStatus{}` with `DRExecutionStatus{Phase: ExecutionPhasePending, IsActive: true}` in `pkg/registry/drexecution/strategy.go`.
+  - [x] 2.2 Extend `TestPrepareForCreate_*` tests in `pkg/registry/drexecution/strategy_test.go` to assert `Phase` and `IsActive`.
 
-- [ ] **Task 3: Reconciler — `reconcileSetup`, `failExecution`, `reconcileReprotect`** (AC: #4, #6, #7)
-  - [ ] 3.1 In `reconcileSetup`, when setting `StartTime`, set `exec.Status.Phase = ExecutionPhaseExecuting` (leave `IsActive` true).
-  - [ ] 3.2 In `failExecution`, set `Phase = ExecutionPhaseFailed` and `IsActive = false`.
-  - [ ] 3.3 In `reconcileReprotect`, when writing terminal status, set `Phase` from result and `IsActive = false`.
+- [x] **Task 3: Reconciler — `reconcileSetup`, `failExecution`, `reconcileReprotect`** (AC: #4, #6, #7)
+  - [x] 3.1 In `reconcileSetup`, when setting `StartTime`, set `exec.Status.Phase = ExecutionPhaseExecuting` (leave `IsActive` true).
+  - [x] 3.2 In `failExecution`, set `Phase = ExecutionPhaseFailed` and `IsActive = false`.
+  - [x] 3.3 In `reconcileReprotect`, when writing terminal status, set `Phase` from result and `IsActive = false`.
 
-- [ ] **Task 4: Engine — `finishExecution`, `ExecuteRetry`** (AC: #5, #8)
-  - [ ] 4.1 In `finishExecution`, set `exec.Status.Phase = resultToPhase(result)` and `exec.Status.IsActive = false`.
-  - [ ] 4.2 In `ExecuteRetry`, after recomputing `Result`, set `Phase` and `IsActive = false`.
+- [x] **Task 4: Engine — `finishExecution`, `ExecuteRetry`** (AC: #5, #8)
+  - [x] 4.1 In `finishExecution`, set `exec.Status.Phase = ResultToPhase(result)` and `exec.Status.IsActive = false`.
+  - [x] 4.2 In `ExecuteRetry`, after recomputing `Result`, set `Phase` and `IsActive = false`.
 
-- [ ] **Task 5: Table convertor** (AC: #9)
-  - [ ] 5.1 Update `execTableColumns` with `Phase` and `Active` after `Mode`, before `Result`.
-  - [ ] 5.2 Update `execToRow` cells: include `string(exec.Status.Phase)` and `exec.Status.IsActive`.
-  - [ ] 5.3 Update `pkg/registry/drexecution/storage_test.go` expectations for column count, names, and cell values.
+- [x] **Task 5: Table convertor** (AC: #9)
+  - [x] 5.1 Update `execTableColumns` with `Phase` and `Active` after `Mode`, before `Result`.
+  - [x] 5.2 Update `execToRow` cells: include `string(exec.Status.Phase)` and `exec.Status.IsActive`.
+  - [x] 5.3 Update `pkg/registry/drexecution/storage_test.go` expectations for column count, names, and cell values.
 
-- [ ] **Task 6: Sweep tests and critical fields** (AC: #11, #12)
-  - [ ] 6.1 Search for `DRExecutionStatus{` / status fixtures in tests; add or adjust `Phase` / `IsActive` where assertions depend on table output or JSON shape.
-  - [ ] 6.2 Verify `drexecutionStatusStrategy.ValidateUpdate` tests in `strategy_test.go` still pass; add cases if Phase/IsActive-only updates need explicit coverage (should follow Result gates).
-  - [ ] 6.3 Run `make test`, `make integration`, `make lint`; fix failures.
+- [x] **Task 6: Sweep tests and critical fields** (AC: #11, #12)
+  - [x] 6.1 Search for `DRExecutionStatus{` / status fixtures in tests; add or adjust `Phase` / `IsActive` where assertions depend on table output or JSON shape.
+  - [x] 6.2 Verify `drexecutionStatusStrategy.ValidateUpdate` tests in `strategy_test.go` still pass; add cases if Phase/IsActive-only updates need explicit coverage (should follow Result gates).
+  - [x] 6.3 Run `make test`, `make integration`, `make lint`; fix failures.
 
-- [ ] **Task 7: Commit** (convention)
-  - [ ] 7.1 Commit with message: `Story 10.6: DRExecution Phase and IsActive status fields`
+- [x] **Task 7: Commit** (convention)
+  - [x] 7.1 Commit with message: `Story 10.6: DRExecution Phase and IsActive status fields`
+
+### Review Findings
+
+- [x] [Review][Patch] Set `IsActive = true` when `reconcileSetup` moves an execution into `Executing` [`pkg/controller/drexecution/reconciler.go:1340`]
+- [x] [Review][Patch] Add direct tests for the new `Phase` / `IsActive` writes in executor and reconciler completion paths [`pkg/engine/executor_test.go:1510`]
 
 ## Dev Notes
 
@@ -215,10 +220,43 @@ func execToRow(exec *soteriav1alpha1.DRExecution) metav1.TableRow {
 
 ### Agent Model Used
 
+Opus 4.6 via Cursor Agent
+
 ### Debug Log References
+
+No issues encountered during implementation. All tests passed on first run after changes.
 
 ### Completion Notes List
 
+- Added `ExecutionPhase` type with 5 constants (Pending, Executing, Succeeded, PartiallySucceeded, Failed) in types.go
+- Added `Phase` and `IsActive` fields to `DRExecutionStatus` — `Phase` before `IsActive` before `Result`; `IsActive` uses `json:"isActive"` without omitempty per explicit requirement
+- Added exported `ResultToPhase()` helper mapping terminal ExecutionResult → ExecutionPhase (exported because called from controller + engine packages)
+- `PrepareForCreate` initializes status with `Phase: Pending, IsActive: true`
+- `reconcileSetup` sets `Phase = Executing` when StartTime is set
+- `failExecution` sets `Phase = Failed, IsActive = false` alongside Result
+- `reconcileReprotect` sets `Phase = ResultToPhase(result), IsActive = false` on terminal write
+- `finishExecution` (engine) sets `Phase = ResultToPhase(result), IsActive = false` alongside Result + CompletionTime
+- `ExecuteRetry` (engine) sets `Phase = ResultToPhase(result), IsActive = false` after recomputing Result
+- Table convertor extended: 8 columns (Name, Plan, Mode, Phase, Active, Result, Duration, Age)
+- All existing tests updated for new column count and cell indices
+- New tests: `TestPrepareForCreate_SetsPhaseAndIsActive`, `TestResultToPhase`
+- Backward compatibility preserved: zero-value Phase="" and IsActive=false for older objects; IsTerminal() unchanged
+- ValidateUpdate tests confirmed passing — Phase/IsActive written in same patches as Result on terminal transitions
+- `make test`, `make integration`, `make lint` all pass with 0 issues
+
 ### File List
 
+- pkg/apis/soteria.io/v1alpha1/types.go — added ExecutionPhase type, constants, ResultToPhase(), Phase+IsActive fields on DRExecutionStatus
+- pkg/apis/soteria.io/v1alpha1/zz_generated.deepcopy.go — regenerated
+- pkg/apis/soteria.io/v1alpha1/zz_generated.openapi.go — regenerated
+- pkg/apis/soteria.io/v1alpha1/validation_test.go — added TestResultToPhase
+- pkg/registry/drexecution/strategy.go — PrepareForCreate sets Phase+IsActive
+- pkg/registry/drexecution/strategy_test.go — added TestPrepareForCreate_SetsPhaseAndIsActive
+- pkg/registry/drexecution/storage.go — table convertor: added Phase+Active columns and cells
+- pkg/registry/drexecution/storage_test.go — updated column count, names, cell indices, and fixtures
+- pkg/controller/drexecution/reconciler.go — reconcileSetup sets Phase=Executing; failExecution sets Phase=Failed+IsActive=false; reconcileReprotect sets terminal Phase+IsActive=false
+- pkg/engine/executor.go — finishExecution sets Phase+IsActive; ExecuteRetry sets Phase+IsActive
+
 ### Change Log
+
+- 2026-05-11: Story 10.6 implemented — DRExecution Phase and IsActive status fields across API types, registry, controller, engine, and table convertor

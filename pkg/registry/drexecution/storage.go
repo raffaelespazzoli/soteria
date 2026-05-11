@@ -150,13 +150,15 @@ func (r *StatusREST) ConvertToTable(
 // ---------- Custom table convertor ----------
 
 // DRExecutionTableConvertor produces rich kubectl columns:
-// NAME, PLAN, MODE, RESULT, DURATION, AGE.
+// NAME, PLAN, MODE, PHASE, ACTIVE, RESULT, DURATION, AGE.
 type DRExecutionTableConvertor struct{}
 
 var execTableColumns = []metav1.TableColumnDefinition{
 	{Name: "Name", Type: "string", Format: "name"},
 	{Name: "Plan", Type: "string"},
 	{Name: "Mode", Type: "string"},
+	{Name: "Phase", Type: "string"},
+	{Name: "Active", Type: "boolean"},
 	{Name: "Result", Type: "string"},
 	{Name: "Duration", Type: "string"},
 	{Name: "Age", Type: "string"},
@@ -186,6 +188,8 @@ func execToRow(exec *soteriav1alpha1.DRExecution) metav1.TableRow {
 			exec.Name,
 			exec.Spec.PlanName,
 			string(exec.Spec.Mode),
+			string(exec.Status.Phase),
+			exec.Status.IsActive,
 			string(exec.Status.Result),
 			execDuration(exec),
 			translateTimestampSince(exec.CreationTimestamp),

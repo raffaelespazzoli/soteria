@@ -41,6 +41,27 @@ func TestDRExecutionStatus_IsTerminal(t *testing.T) {
 	}
 }
 
+func TestResultToPhase(t *testing.T) {
+	tests := []struct {
+		name   string
+		result ExecutionResult
+		want   ExecutionPhase
+	}{
+		{name: "Succeeded maps to Succeeded", result: ExecutionResultSucceeded, want: ExecutionPhaseSucceeded},
+		{name: "PartiallySucceeded maps to PartiallySucceeded", result: ExecutionResultPartiallySucceeded, want: ExecutionPhasePartiallySucceeded},
+		{name: "Failed maps to Failed", result: ExecutionResultFailed, want: ExecutionPhaseFailed},
+		{name: "empty result maps to Pending", result: "", want: ExecutionPhasePending},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ResultToPhase(tt.result)
+			if got != tt.want {
+				t.Errorf("ResultToPhase(%q) = %q, want %q", tt.result, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestValidateDRPlan(t *testing.T) {
 	tests := []struct {
 		name       string

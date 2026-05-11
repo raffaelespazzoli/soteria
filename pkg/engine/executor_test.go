@@ -241,6 +241,12 @@ func TestWaveExecutor_SingleWave_SingleChunk_Succeeds(t *testing.T) {
 	if exec.Status.Result != soteriav1alpha1.ExecutionResultSucceeded {
 		t.Errorf("expected result %q, got %q", soteriav1alpha1.ExecutionResultSucceeded, exec.Status.Result)
 	}
+	if exec.Status.Phase != soteriav1alpha1.ExecutionPhaseSucceeded {
+		t.Errorf("expected Phase %q, got %q", soteriav1alpha1.ExecutionPhaseSucceeded, exec.Status.Phase)
+	}
+	if exec.Status.IsActive {
+		t.Error("expected IsActive to be false after successful execution")
+	}
 	if len(handler.getCalls()) == 0 {
 		t.Error("expected handler to be called")
 	}
@@ -1520,6 +1526,12 @@ func TestWaveExecutor_RetryOneGroup_Succeeds_ResultSucceeded(t *testing.T) {
 	if exec.Status.Result != soteriav1alpha1.ExecutionResultSucceeded {
 		t.Errorf("expected Succeeded after retry, got %q", exec.Status.Result)
 	}
+	if exec.Status.Phase != soteriav1alpha1.ExecutionPhaseSucceeded {
+		t.Errorf("expected Phase %q after retry, got %q", soteriav1alpha1.ExecutionPhaseSucceeded, exec.Status.Phase)
+	}
+	if exec.Status.IsActive {
+		t.Error("expected IsActive to be false after retry completion")
+	}
 
 	retryGroup := exec.Status.Waves[0].Groups[1]
 	if retryGroup.Result != soteriav1alpha1.DRGroupResultCompleted {
@@ -1568,6 +1580,12 @@ func TestWaveExecutor_RetryOneOfTwo_Succeeds_ResultPartiallySucceeded(t *testing
 	if exec.Status.Result != soteriav1alpha1.ExecutionResultPartiallySucceeded {
 		t.Errorf("expected PartiallySucceeded (1 still failed), got %q", exec.Status.Result)
 	}
+	if exec.Status.Phase != soteriav1alpha1.ExecutionPhasePartiallySucceeded {
+		t.Errorf("expected Phase %q, got %q", soteriav1alpha1.ExecutionPhasePartiallySucceeded, exec.Status.Phase)
+	}
+	if exec.Status.IsActive {
+		t.Error("expected IsActive to be false after retry completion")
+	}
 }
 
 func TestWaveExecutor_RetryAllFailed_AllSucceed_ResultSucceeded(t *testing.T) {
@@ -1612,6 +1630,12 @@ func TestWaveExecutor_RetryAllFailed_AllSucceed_ResultSucceeded(t *testing.T) {
 
 	if exec.Status.Result != soteriav1alpha1.ExecutionResultSucceeded {
 		t.Errorf("expected Succeeded after all retries succeed, got %q", exec.Status.Result)
+	}
+	if exec.Status.Phase != soteriav1alpha1.ExecutionPhaseSucceeded {
+		t.Errorf("expected Phase %q, got %q", soteriav1alpha1.ExecutionPhaseSucceeded, exec.Status.Phase)
+	}
+	if exec.Status.IsActive {
+		t.Error("expected IsActive to be false after retry completion")
 	}
 }
 

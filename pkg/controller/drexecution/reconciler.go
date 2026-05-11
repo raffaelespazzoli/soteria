@@ -644,6 +644,8 @@ func (r *DRExecutionReconciler) reconcileReprotect(
 	execResult := result.Result()
 	execPatch := client.MergeFrom(exec.DeepCopy())
 	exec.Status.Result = execResult
+	exec.Status.Phase = soteriav1alpha1.ResultToPhase(execResult)
+	exec.Status.IsActive = false
 	exec.Status.CompletionTime = &now
 
 	condStatus := metav1.ConditionTrue
@@ -955,6 +957,8 @@ func (r *DRExecutionReconciler) failExecution(
 	now := metav1.Now()
 	patch := client.MergeFrom(exec.DeepCopy())
 	exec.Status.Result = soteriav1alpha1.ExecutionResultFailed
+	exec.Status.Phase = soteriav1alpha1.ExecutionPhaseFailed
+	exec.Status.IsActive = false
 	if exec.Status.StartTime == nil {
 		exec.Status.StartTime = &now
 	}
@@ -1334,6 +1338,8 @@ func (r *DRExecutionReconciler) reconcileSetup(
 	now := metav1.Now()
 	execPatch := client.MergeFrom(exec.DeepCopy())
 	exec.Status.StartTime = &now
+	exec.Status.Phase = soteriav1alpha1.ExecutionPhaseExecuting
+	exec.Status.IsActive = true
 	meta.SetStatusCondition(&exec.Status.Conditions, metav1.Condition{
 		Type:               "Progressing",
 		Status:             metav1.ConditionTrue,

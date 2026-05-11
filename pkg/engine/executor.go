@@ -990,6 +990,8 @@ func (e *WaveExecutor) finishExecution(
 
 	now := metav1.Now()
 	exec.Status.Result = result
+	exec.Status.Phase = soteriav1alpha1.ResultToPhase(result)
+	exec.Status.IsActive = false
 	exec.Status.CompletionTime = &now
 
 	condStatus := metav1.ConditionTrue
@@ -1342,6 +1344,8 @@ func (e *WaveExecutor) ExecuteRetry(ctx context.Context, input RetryInput) error
 	logger.Info("Retry execution completed", "result", result)
 
 	exec.Status.Result = result
+	exec.Status.Phase = soteriav1alpha1.ResultToPhase(result)
+	exec.Status.IsActive = false
 	now := metav1.Now()
 	exec.Status.CompletionTime = &now
 	if err := e.persistStatus(ctx, exec); err != nil {

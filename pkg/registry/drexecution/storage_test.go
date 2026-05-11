@@ -45,6 +45,8 @@ func TestTableConvertor_CompletedExecution(t *testing.T) {
 			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
 		},
 		Status: soteriav1alpha1.DRExecutionStatus{
+			Phase:          soteriav1alpha1.ExecutionPhaseSucceeded,
+			IsActive:       false,
 			Result:         soteriav1alpha1.ExecutionResultSucceeded,
 			StartTime:      &start,
 			CompletionTime: &end,
@@ -57,10 +59,10 @@ func TestTableConvertor_CompletedExecution(t *testing.T) {
 		t.Fatalf("ConvertToTable error: %v", err)
 	}
 
-	if len(table.ColumnDefinitions) != 6 {
-		t.Fatalf("expected 6 columns, got %d", len(table.ColumnDefinitions))
+	if len(table.ColumnDefinitions) != 8 {
+		t.Fatalf("expected 8 columns, got %d", len(table.ColumnDefinitions))
 	}
-	wantCols := []string{"Name", "Plan", "Mode", "Result", "Duration", "Age"}
+	wantCols := []string{"Name", "Plan", "Mode", "Phase", "Active", "Result", "Duration", "Age"}
 	for i, col := range table.ColumnDefinitions {
 		if col.Name != wantCols[i] {
 			t.Errorf("column %d: expected %q, got %q", i, wantCols[i], col.Name)
@@ -81,9 +83,15 @@ func TestTableConvertor_CompletedExecution(t *testing.T) {
 		t.Errorf("MODE: expected planned_migration, got %v", cells[2])
 	}
 	if cells[3] != "Succeeded" {
-		t.Errorf("RESULT: expected Succeeded, got %v", cells[3])
+		t.Errorf("PHASE: expected Succeeded, got %v", cells[3])
 	}
-	dur := cells[4].(string)
+	if cells[4] != false {
+		t.Errorf("ACTIVE: expected false, got %v", cells[4])
+	}
+	if cells[5] != "Succeeded" {
+		t.Errorf("RESULT: expected Succeeded, got %v", cells[5])
+	}
+	dur := cells[6].(string)
 	if dur == "" {
 		t.Error("DURATION should not be empty for completed execution")
 	}
@@ -102,6 +110,8 @@ func TestTableConvertor_InProgressExecution(t *testing.T) {
 			Mode:     soteriav1alpha1.ExecutionModeDisaster,
 		},
 		Status: soteriav1alpha1.DRExecutionStatus{
+			Phase:     soteriav1alpha1.ExecutionPhaseExecuting,
+			IsActive:  true,
 			StartTime: &start,
 		},
 	}
@@ -113,11 +123,17 @@ func TestTableConvertor_InProgressExecution(t *testing.T) {
 	}
 
 	cells := table.Rows[0].Cells
-	if cells[3] != "" {
-		t.Errorf("RESULT: expected empty for in-progress, got %v", cells[3])
+	if cells[3] != "Executing" {
+		t.Errorf("PHASE: expected Executing for in-progress, got %v", cells[3])
 	}
-	if cells[4] != "" {
-		t.Errorf("DURATION: expected empty for in-progress, got %v", cells[4])
+	if cells[4] != true {
+		t.Errorf("ACTIVE: expected true for in-progress, got %v", cells[4])
+	}
+	if cells[5] != "" {
+		t.Errorf("RESULT: expected empty for in-progress, got %v", cells[5])
+	}
+	if cells[6] != "" {
+		t.Errorf("DURATION: expected empty for in-progress, got %v", cells[6])
 	}
 }
 
@@ -135,6 +151,8 @@ func TestTableConvertor_FailedExecution(t *testing.T) {
 			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
 		},
 		Status: soteriav1alpha1.DRExecutionStatus{
+			Phase:          soteriav1alpha1.ExecutionPhaseFailed,
+			IsActive:       false,
 			Result:         soteriav1alpha1.ExecutionResultFailed,
 			StartTime:      &start,
 			CompletionTime: &end,
@@ -149,9 +167,15 @@ func TestTableConvertor_FailedExecution(t *testing.T) {
 
 	cells := table.Rows[0].Cells
 	if cells[3] != "Failed" {
-		t.Errorf("RESULT: expected Failed, got %v", cells[3])
+		t.Errorf("PHASE: expected Failed, got %v", cells[3])
 	}
-	if cells[4] == "" {
+	if cells[4] != false {
+		t.Errorf("ACTIVE: expected false, got %v", cells[4])
+	}
+	if cells[5] != "Failed" {
+		t.Errorf("RESULT: expected Failed, got %v", cells[5])
+	}
+	if cells[6] == "" {
 		t.Error("DURATION should not be empty for failed execution with timestamps")
 	}
 }

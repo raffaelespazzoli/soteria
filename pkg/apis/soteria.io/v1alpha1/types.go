@@ -382,6 +382,33 @@ const (
 	ExecutionResultFailed             ExecutionResult = "Failed"
 )
 
+// ExecutionPhase is the lifecycle phase of a DRExecution.
+type ExecutionPhase string
+
+const (
+	ExecutionPhasePending            ExecutionPhase = "Pending"
+	ExecutionPhaseExecuting          ExecutionPhase = "Executing"
+	ExecutionPhaseSucceeded          ExecutionPhase = "Succeeded"
+	ExecutionPhasePartiallySucceeded ExecutionPhase = "PartiallySucceeded"
+	ExecutionPhaseFailed             ExecutionPhase = "Failed"
+)
+
+// ResultToPhase maps a terminal ExecutionResult to its corresponding
+// ExecutionPhase. Callers must only pass terminal (non-empty) results;
+// an empty result maps to ExecutionPhasePending as a safe fallback.
+func ResultToPhase(r ExecutionResult) ExecutionPhase {
+	switch r {
+	case ExecutionResultSucceeded:
+		return ExecutionPhaseSucceeded
+	case ExecutionResultPartiallySucceeded:
+		return ExecutionPhasePartiallySucceeded
+	case ExecutionResultFailed:
+		return ExecutionPhaseFailed
+	default:
+		return ExecutionPhasePending
+	}
+}
+
 // DRGroupResult is the outcome of a single DRGroup within a wave.
 type DRGroupResult string
 
@@ -411,6 +438,12 @@ type DRExecutionSpec struct {
 }
 
 type DRExecutionStatus struct {
+	// Phase is the lifecycle phase of the execution.
+	// +kubebuilder:validation:Enum=Pending;Executing;Succeeded;PartiallySucceeded;Failed
+	Phase ExecutionPhase `json:"phase,omitempty"`
+	// IsActive indicates whether the execution is in-flight (Pending or Executing).
+	// Set to true on creation, false when a terminal Result is written.
+	IsActive bool `json:"isActive"`
 	// Result is the overall execution outcome.
 	// +kubebuilder:validation:Enum=Succeeded;PartiallySucceeded;Failed
 	Result ExecutionResult `json:"result,omitempty"`

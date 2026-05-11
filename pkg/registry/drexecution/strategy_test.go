@@ -35,6 +35,28 @@ func TestStrategy_NamespaceScoped_ReturnsFalse(t *testing.T) {
 	}
 }
 
+func TestPrepareForCreate_SetsPhaseAndIsActive(t *testing.T) {
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "exec-phase"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-1",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+	}
+
+	Strategy.PrepareForCreate(context.Background(), exec)
+
+	if exec.Status.Phase != soteriav1alpha1.ExecutionPhasePending {
+		t.Errorf("expected Phase %q, got %q", soteriav1alpha1.ExecutionPhasePending, exec.Status.Phase)
+	}
+	if !exec.Status.IsActive {
+		t.Error("expected IsActive to be true after PrepareForCreate")
+	}
+	if exec.Status.Result != "" {
+		t.Errorf("expected empty Result, got %q", exec.Status.Result)
+	}
+}
+
 func TestPrepareForCreate_StampsTriggeredByAnnotation(t *testing.T) {
 	ctx := request.WithUser(context.Background(), &user.DefaultInfo{
 		Name: "carlos@corp",

@@ -248,6 +248,21 @@ func schema_pkg_apis_soteriaio_v1alpha1_DRExecutionStatus(ref common.ReferenceCa
 			SchemaProps: spec.SchemaProps{
 				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
+					"phase": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Phase is the lifecycle phase of the execution.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"isActive": {
+						SchemaProps: spec.SchemaProps{
+							Description: "IsActive indicates whether the execution is in-flight (Pending or Executing). Set to true on creation, false when a terminal Result is written.",
+							Default:     false,
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
 					"result": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Result is the overall execution outcome.",
@@ -296,6 +311,7 @@ func schema_pkg_apis_soteriaio_v1alpha1_DRExecutionStatus(ref common.ReferenceCa
 						},
 					},
 				},
+				Required: []string{"isActive"},
 			},
 		},
 		Dependencies: []string{

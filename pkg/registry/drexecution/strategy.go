@@ -44,7 +44,10 @@ func (drexecutionStrategy) NamespaceScoped() bool { return false }
 
 func (drexecutionStrategy) PrepareForCreate(ctx context.Context, obj runtime.Object) {
 	exec := obj.(*soteriav1alpha1.DRExecution)
-	exec.Status = soteriav1alpha1.DRExecutionStatus{}
+	exec.Status = soteriav1alpha1.DRExecutionStatus{
+		Phase:    soteriav1alpha1.ExecutionPhasePending,
+		IsActive: true,
+	}
 	exec.Generation = 1
 
 	if exec.Labels == nil {
