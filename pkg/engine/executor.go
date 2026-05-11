@@ -17,9 +17,11 @@ limitations under the License.
 // executor.go implements the wave executor — the runtime orchestration engine
 // that drives DR operations wave by wave. The execution pipeline re-discovers
 // VMs at execution time (not relying on stale DRPlan status), then processes
-// waves sequentially with concurrent DRGroups within each wave. A pluggable
-// DRGroupHandler interface abstracts per-group workflow steps (planned migration,
-// disaster failover) so the executor is workflow-agnostic.
+// waves sequentially with DRGroup chunks within each wave also executing
+// sequentially. VM-level parallelism within each chunk is preserved by the
+// handler. A pluggable DRGroupHandler interface abstracts per-group workflow
+// steps (planned migration, disaster failover) so the executor is
+// workflow-agnostic.
 //
 // Pipeline: discover → group by wave → resolve consistency → chunk → execute waves → complete.
 
@@ -170,9 +172,10 @@ type VMHealthValidator interface {
 	ValidateVMHealth(ctx context.Context, vmName, namespace string) error
 }
 
-// WaveExecutor orchestrates sequential wave execution with concurrent DRGroups.
-// Status updates are serialized via statusMu to prevent races when multiple
-// goroutines update the same DRExecution concurrently.
+// WaveExecutor orchestrates sequential wave execution with sequential DRGroup
+// chunks within each wave. VM-level parallelism is preserved within each chunk
+// by the handler. statusMu serializes in-memory status updates from the
+// handler's internal goroutines.
 type WaveExecutor struct {
 	Client            client.Client
 	CoreClient        corev1client.CoreV1Interface
@@ -319,7 +322,7 @@ func (e *WaveExecutor) InitializeWaves(
 }
 
 // ExecuteWaveHandler runs handler operations for a single wave: creates
-// DRGroupStatus resources, resolves drivers, and executes groups concurrently.
+// DRGroupStatus resources, resolves drivers, and executes groups sequentially.
 // Unlike executeWave, this is exported for the reconciler to drive wave-by-wave
 // execution with VM readiness gates.
 func (e *WaveExecutor) ExecuteWaveHandler(
@@ -420,9 +423,11 @@ func (e *WaveExecutor) reconstructChunkFromStatus(
 	}
 }
 
-// executeWave runs all DRGroup chunks in a wave concurrently using
-// sync.WaitGroup (NOT errgroup, which cancels siblings on first error —
-// opposite of fail-forward semantics).
+// executeWave runs DRGroup chunks within a wave sequentially. Each chunk
+// completes (including its checkpoint write) before the next begins,
+// eliminating resource-version conflicts between concurrent writers.
+// VM-level parallelism within each chunk is preserved by the handler.
+// Fail-forward: a failed chunk does not prevent subsequent chunks from running.
 func (e *WaveExecutor) executeWave(
 	ctx context.Context, waveIdx int, chunks []DRGroupChunk,
 	handler DRGroupHandler, exec *soteriav1alpha1.DRExecution,
@@ -433,20 +438,21 @@ func (e *WaveExecutor) executeWave(
 	now := metav1.Now()
 	e.setWaveStartTime(exec, waveIdx, &now)
 
-	var wg sync.WaitGroup
 	for i, chunk := range chunks {
-		wg.Add(1)
-		go func(idx int, c DRGroupChunk) {
-			defer wg.Done()
-			e.executeGroup(ctx, waveIdx, idx, c, handler, exec)
-		}(i, chunk)
+		if ctx.Err() != nil {
+			logger.Info("Context cancelled, skipping remaining chunks",
+				"wave", waveIdx, "skippedFrom", i)
+			break
+		}
+		e.executeGroup(ctx, waveIdx, i, chunk, handler, exec)
 	}
-	wg.Wait()
 
-	completionTime := metav1.Now()
-	e.setWaveCompletionTime(exec, waveIdx, &completionTime)
-	e.writeCheckpoint(ctx, exec, fmt.Sprintf("wave-%d", waveIdx))
-	logger.Info("Wave execution completed", "wave", waveIdx)
+	if ctx.Err() == nil {
+		completionTime := metav1.Now()
+		e.setWaveCompletionTime(exec, waveIdx, &completionTime)
+		e.writeCheckpoint(ctx, exec, fmt.Sprintf("wave-%d", waveIdx))
+		logger.Info("Wave execution completed", "wave", waveIdx)
+	}
 }
 
 // executeGroup processes a single DRGroup chunk: creates DRGroupStatus,
@@ -1307,7 +1313,7 @@ func ResolveRetryGroups(
 
 // ExecuteRetry re-executes failed DRGroups respecting wave ordering. Groups
 // from wave N are retried before groups from wave N+1. Within a wave, groups
-// are retried concurrently (same fail-forward semantics as initial execution).
+// are retried sequentially (same fail-forward semantics as initial execution).
 // Does NOT call CompleteTransition — the plan phase was already advanced during
 // initial execution.
 func (e *WaveExecutor) ExecuteRetry(ctx context.Context, input RetryInput) error {
@@ -1355,7 +1361,8 @@ func (e *WaveExecutor) ExecuteRetry(ctx context.Context, input RetryInput) error
 	return nil
 }
 
-// executeRetryWave runs retry groups within a wave concurrently.
+// executeRetryWave runs retry groups within a wave sequentially, matching the
+// primary execution path. Each retry group completes before the next begins.
 func (e *WaveExecutor) executeRetryWave(
 	ctx context.Context, waveIdx int, targets []RetryTarget,
 	handler DRGroupHandler, exec *soteriav1alpha1.DRExecution,
@@ -1364,17 +1371,18 @@ func (e *WaveExecutor) executeRetryWave(
 	logger := log.FromContext(ctx)
 	logger.Info("Starting retry wave", "wave", waveIdx, "groups", len(targets))
 
-	var wg sync.WaitGroup
-	for _, target := range targets {
-		wg.Add(1)
-		go func(t RetryTarget) {
-			defer wg.Done()
-			e.executeRetryGroup(ctx, t, handler, exec, plan)
-		}(target)
+	for i, target := range targets {
+		if ctx.Err() != nil {
+			logger.Info("Context cancelled, skipping remaining retry groups",
+				"wave", waveIdx, "skippedFrom", i)
+			break
+		}
+		e.executeRetryGroup(ctx, target, handler, exec, plan)
 	}
-	wg.Wait()
 
-	logger.Info("Retry wave completed", "wave", waveIdx)
+	if ctx.Err() == nil {
+		logger.Info("Retry wave completed", "wave", waveIdx)
+	}
 }
 
 // executeRetryGroup re-executes a single failed DRGroup: increments RetryCount,

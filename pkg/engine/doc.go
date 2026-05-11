@@ -45,12 +45,15 @@ limitations under the License.
 //
 //   - Wave executor (executor.go): orchestrates DR execution by running the full
 //     discover → group → chunk pipeline at execution time, then executing waves
-//     sequentially with concurrent DRGroups within each wave. The DRGroupHandler
-//     interface abstracts per-group workflow steps; a NoOpHandler (handler_noop.go)
-//     enables testing the executor loop without real storage operations. The
-//     executor uses fail-forward semantics: a failed DRGroup does not block
-//     siblings or subsequent waves. Status updates are serialized via mutex and
-//     written to the DRExecution status subresource after each group completes.
+//     sequentially with DRGroup chunks within each wave also executing
+//     sequentially. VM-level parallelism within each chunk is preserved by the
+//     handler's internal goroutines (StopReplication per VG, StartVM per VM).
+//     The DRGroupHandler interface abstracts per-group workflow steps; a
+//     NoOpHandler (handler_noop.go) enables testing the executor loop without
+//     real storage operations. The executor uses fail-forward semantics: a failed
+//     DRGroup does not block subsequent chunks or waves. Status updates are
+//     serialized via mutex and written to the DRExecution status subresource
+//     after each group completes.
 //
 //   - Unified FailoverHandler (failover.go): implements both planned migration and
 //     disaster failover through a single DRGroupHandler driven by FailoverConfig
@@ -129,12 +132,14 @@ limitations under the License.
 //     retry exhaustion, the group is marked Failed and execution continues
 //     fail-forward. NoOpCheckpointer records calls for unit testing.
 //
-//     Checkpoint timing guarantee: at most one in-flight DRGroup can be lost on
-//     crash — the last group whose checkpoint write completed is the recovery
-//     point. The statusMu mutex serializes in-memory status updates; the
-//     checkpoint write happens immediately after each group status update.
-//     Concurrent DRPlan executions use separate DRExecution resources and separate
-//     checkpoint write paths — no shared mutex between executions.
+//     Checkpoint timing guarantee: with sequential chunk execution, only one
+//     chunk writes to the DRExecution at any given time. At most one in-flight
+//     DRGroup can be lost on crash — the last group whose checkpoint write
+//     completed is the recovery point. The statusMu mutex serializes in-memory
+//     status updates from the handler's internal goroutines; the checkpoint
+//     write happens immediately after each group status update. Separate
+//     DRPlan executions use separate DRExecution resources and independent
+//     checkpoint write paths.
 //
 //   - Execution state reconstruction and resume (resume.go): On startup,
 //     controller-runtime syncs informer caches and queues a reconcile for every

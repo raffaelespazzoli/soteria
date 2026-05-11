@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -328,21 +327,14 @@ func (h *trackingHandler) ExecuteGroup(ctx context.Context, group ExecutionGroup
 	return h.tracker.inner.ExecuteGroup(ctx, group)
 }
 
-func TestWaveExecutor_ConcurrentDRGroups(t *testing.T) {
-	plan := newTestPlan("plan-conc")
+func TestWaveExecutor_SequentialChunks(t *testing.T) {
+	plan := newTestPlan("plan-seq")
 	plan.Spec.MaxConcurrentFailovers = 1 // Force 1 VM per chunk = 3 chunks
-	exec := newTestExecution("exec-conc", "plan-conc")
+	exec := newTestExecution("exec-seq", "plan-seq")
 	vms := makeVMs([]string{"vm-1", "vm-2", "vm-3"}, "alpha")
 	cl := newFakeClient(vms, plan, exec)
 
-	var started int32
-	var barrier sync.WaitGroup
-	barrier.Add(3)
-
-	concHandler := &concurrencyHandler{
-		started: &started,
-		barrier: &barrier,
-	}
+	seqHandler := &sequentialOrderHandler{}
 
 	executor := newTestExecutor(cl, &mockVMDiscoverer{vms: vms},
 		&mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{"ns-1": soteriav1alpha1.ConsistencyLevelVM}})
@@ -350,16 +342,25 @@ func TestWaveExecutor_ConcurrentDRGroups(t *testing.T) {
 	err := executor.Execute(context.Background(), ExecuteInput{
 		Execution: exec,
 		Plan:      plan,
-		Handler:   concHandler,
+		Handler:   seqHandler,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// All 3 groups started concurrently within the wave (barrier wouldn't
-	// release otherwise — each goroutine calls Done() and then Wait()).
-	if atomic.LoadInt32(&started) != 3 {
-		t.Errorf("expected 3 concurrent starts, got %d", atomic.LoadInt32(&started))
+	// Verify sequential ordering: each group's completion must precede the
+	// next group's start (no concurrency).
+	events := seqHandler.getEvents()
+	if len(events) != 3 {
+		t.Fatalf("expected 3 group events, got %d", len(events))
+	}
+	for i := 1; i < len(events); i++ {
+		prev := events[i-1]
+		curr := events[i]
+		if !curr.start.After(prev.completion) && curr.start != prev.completion {
+			t.Errorf("group %d started at %v before group %d completed at %v — not sequential",
+				i, curr.start, i-1, prev.completion)
+		}
 	}
 
 	if exec.Status.Result != soteriav1alpha1.ExecutionResultSucceeded {
@@ -367,16 +368,98 @@ func TestWaveExecutor_ConcurrentDRGroups(t *testing.T) {
 	}
 }
 
-type concurrencyHandler struct {
-	started *int32
-	barrier *sync.WaitGroup
+type groupEvent struct {
+	name       string
+	start      time.Time
+	completion time.Time
 }
 
-func (h *concurrencyHandler) ExecuteGroup(_ context.Context, _ ExecutionGroup) error {
-	atomic.AddInt32(h.started, 1)
-	h.barrier.Done()
-	h.barrier.Wait()
+type sequentialOrderHandler struct {
+	mu     sync.Mutex
+	events []groupEvent
+}
+
+func (h *sequentialOrderHandler) ExecuteGroup(_ context.Context, group ExecutionGroup) error {
+	start := time.Now()
+	time.Sleep(time.Millisecond)
+	completion := time.Now()
+
+	h.mu.Lock()
+	h.events = append(h.events, groupEvent{
+		name:       group.Chunk.Name,
+		start:      start,
+		completion: completion,
+	})
+	h.mu.Unlock()
 	return nil
+}
+
+func (h *sequentialOrderHandler) getEvents() []groupEvent {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	out := make([]groupEvent, len(h.events))
+	copy(out, h.events)
+	return out
+}
+
+func TestWaveExecutor_SequentialChunks_CheckpointOrdering(t *testing.T) {
+	plan := newTestPlan("plan-seq-cp")
+	plan.Spec.MaxConcurrentFailovers = 1 // 1 VM per chunk = 3 chunks
+	exec := newTestExecution("exec-seq-cp", "plan-seq-cp")
+	vms := makeVMs([]string{"vm-1", "vm-2", "vm-3"}, "alpha")
+	cl := newFakeClient(vms, plan, exec)
+
+	cp := &NoOpCheckpointer{}
+	seqHandler := &sequentialOrderHandler{}
+
+	executor := newTestExecutor(cl, &mockVMDiscoverer{vms: vms},
+		&mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{"ns-1": soteriav1alpha1.ConsistencyLevelVM}})
+	executor.Checkpointer = cp
+
+	err := executor.Execute(context.Background(), ExecuteInput{
+		Execution: exec,
+		Plan:      plan,
+		Handler:   seqHandler,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// 3 group checkpoints + 1 wave checkpoint = 4 total.
+	calls := cp.GetCalls()
+	if len(calls) != 4 {
+		t.Errorf("expected 4 checkpoint calls (3 groups + 1 wave), got %d: %v", len(calls), calls)
+	}
+
+	// Verify checkpoint ordering via terminal group counts: each successive
+	// checkpoint must have >= the previous count of terminal groups.
+	tc := cp.GetTerminalCounts()
+	if len(tc) != 4 {
+		t.Fatalf("expected 4 terminal counts, got %d: %v", len(tc), tc)
+	}
+	expectedCounts := []int{1, 2, 3, 3}
+	for i, count := range tc {
+		if count != expectedCounts[i] {
+			t.Errorf("terminalCounts[%d]: expected %d, got %d (full: %v)",
+				i, expectedCounts[i], count, tc)
+		}
+	}
+
+	// Verify handler-level sequential ordering.
+	events := seqHandler.getEvents()
+	if len(events) != 3 {
+		t.Fatalf("expected 3 group events, got %d", len(events))
+	}
+	expectedOrder := []string{"wave-alpha-group-0", "wave-alpha-group-1", "wave-alpha-group-2"}
+	for i, ev := range events {
+		if ev.name != expectedOrder[i] {
+			t.Errorf("event[%d]: expected group %q, got %q", i, expectedOrder[i], ev.name)
+		}
+	}
+
+	if exec.Status.Result != soteriav1alpha1.ExecutionResultSucceeded {
+		t.Errorf("expected result %q, got %q", soteriav1alpha1.ExecutionResultSucceeded, exec.Status.Result)
+	}
 }
 
 func TestWaveExecutor_FailForward_GroupFails(t *testing.T) {
@@ -1696,24 +1779,28 @@ func TestWaveExecutor_RetryFails_GroupBackToFailed(t *testing.T) {
 
 func TestWaveExecutor_RetryWaveOrdering(t *testing.T) {
 	plan := newRetryTestPlan("plan-retryord", []soteriav1alpha1.WaveInfo{
-		{WaveKey: "alpha", VMs: []soteriav1alpha1.DiscoveredVM{{Name: "vm-1", Namespace: "ns-1"}}},
-		{WaveKey: "beta", VMs: []soteriav1alpha1.DiscoveredVM{{Name: "vm-2", Namespace: "ns-1"}}},
-		{WaveKey: "gamma", VMs: []soteriav1alpha1.DiscoveredVM{{Name: "vm-3", Namespace: "ns-1"}}},
+		{WaveKey: "alpha", VMs: []soteriav1alpha1.DiscoveredVM{
+			{Name: "vm-1", Namespace: "ns-1"},
+			{Name: "vm-2", Namespace: "ns-1"},
+		}},
+		{WaveKey: "beta", VMs: []soteriav1alpha1.DiscoveredVM{{Name: "vm-3", Namespace: "ns-1"}}},
+		{WaveKey: "gamma", VMs: []soteriav1alpha1.DiscoveredVM{{Name: "vm-4", Namespace: "ns-1"}}},
 	})
 	exec := newPartiallySucceededExec("exec-retryord", "plan-retryord", [][]soteriav1alpha1.DRGroupExecutionStatus{
 		{
 			{Name: "wave-alpha-group-0", Result: soteriav1alpha1.DRGroupResultFailed, VMNames: []string{"vm-1"}},
+			{Name: "wave-alpha-group-1", Result: soteriav1alpha1.DRGroupResultFailed, VMNames: []string{"vm-2"}},
 		},
 		{
-			{Name: "wave-beta-group-0", Result: soteriav1alpha1.DRGroupResultCompleted, VMNames: []string{"vm-2"}},
+			{Name: "wave-beta-group-0", Result: soteriav1alpha1.DRGroupResultCompleted, VMNames: []string{"vm-3"}},
 		},
 		{
-			{Name: "wave-gamma-group-0", Result: soteriav1alpha1.DRGroupResultFailed, VMNames: []string{"vm-3"}},
+			{Name: "wave-gamma-group-0", Result: soteriav1alpha1.DRGroupResultFailed, VMNames: []string{"vm-4"}},
 		},
 	})
 
 	vms := makeMultiWaveVMs(map[string][]string{
-		"alpha": {"vm-1"}, "beta": {"vm-2"}, "gamma": {"vm-3"},
+		"alpha": {"vm-1", "vm-2"}, "beta": {"vm-3"}, "gamma": {"vm-4"},
 	})
 	cl := newFakeClient(vms, plan, exec)
 
@@ -1734,6 +1821,7 @@ func TestWaveExecutor_RetryWaveOrdering(t *testing.T) {
 
 	targets := []RetryTarget{
 		{WaveIndex: 0, GroupIndex: 0, GroupName: "wave-alpha-group-0"},
+		{WaveIndex: 0, GroupIndex: 1, GroupName: "wave-alpha-group-1"},
 		{WaveIndex: 2, GroupIndex: 0, GroupName: "wave-gamma-group-0"},
 	}
 
@@ -1752,12 +1840,16 @@ func TestWaveExecutor_RetryWaveOrdering(t *testing.T) {
 	copy(order, executionOrder)
 	orderMu.Unlock()
 
-	if len(order) != 2 {
-		t.Fatalf("expected 2 groups executed, got %d", len(order))
+	if len(order) != 3 {
+		t.Fatalf("expected 3 groups executed, got %d", len(order))
 	}
-	// Wave 0 should execute before wave 2.
-	if order[0] != "wave-alpha-group-0" || order[1] != "wave-gamma-group-0" {
-		t.Errorf("wave ordering violated: got %v", order)
+	// Wave 0 groups execute sequentially (group-0 before group-1),
+	// then wave 2 group.
+	expected := []string{"wave-alpha-group-0", "wave-alpha-group-1", "wave-gamma-group-0"}
+	for i, name := range expected {
+		if order[i] != name {
+			t.Errorf("order[%d]: expected %q, got %q (full order: %v)", i, name, order[i], order)
+		}
 	}
 }
 

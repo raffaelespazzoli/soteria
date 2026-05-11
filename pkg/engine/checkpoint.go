@@ -133,10 +133,11 @@ func (c *KubeCheckpointer) WriteCheckpoint(ctx context.Context, exec *soteriav1a
 // Used in unit tests to verify checkpoint integration without Kubernetes API
 // access. Configurable to fail for error-path testing.
 type NoOpCheckpointer struct {
-	mu       sync.Mutex
-	Calls    []string
-	FailNext bool
-	FailErr  error
+	mu             sync.Mutex
+	Calls          []string
+	TerminalCounts []int
+	FailNext       bool
+	FailErr        error
 }
 
 func (c *NoOpCheckpointer) WriteCheckpoint(_ context.Context, exec *soteriav1alpha1.DRExecution) error {
@@ -144,6 +145,17 @@ func (c *NoOpCheckpointer) WriteCheckpoint(_ context.Context, exec *soteriav1alp
 	defer c.mu.Unlock()
 
 	c.Calls = append(c.Calls, exec.Name)
+
+	var terminal int
+	for _, wave := range exec.Status.Waves {
+		for _, group := range wave.Groups {
+			if group.Result == soteriav1alpha1.DRGroupResultCompleted ||
+				group.Result == soteriav1alpha1.DRGroupResultFailed {
+				terminal++
+			}
+		}
+	}
+	c.TerminalCounts = append(c.TerminalCounts, terminal)
 
 	if c.FailNext {
 		c.FailNext = false
@@ -161,6 +173,15 @@ func (c *NoOpCheckpointer) GetCalls() []string {
 	defer c.mu.Unlock()
 	out := make([]string, len(c.Calls))
 	copy(out, c.Calls)
+	return out
+}
+
+// GetTerminalCounts returns the number of terminal groups at each checkpoint.
+func (c *NoOpCheckpointer) GetTerminalCounts() []int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make([]int, len(c.TerminalCounts))
+	copy(out, c.TerminalCounts)
 	return out
 }
 
