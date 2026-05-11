@@ -21,7 +21,9 @@ export function useElapsedTime(
   startTime: string | undefined,
   isRunning: boolean,
 ): UseElapsedTimeResult {
-  const [elapsedMs, setElapsedMs] = useState(0);
+  const [elapsedMs, setElapsedMs] = useState(() =>
+    startTime ? Date.now() - new Date(startTime).getTime() : 0,
+  );
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
@@ -30,20 +32,15 @@ export function useElapsedTime(
       intervalRef.current = null;
     }
 
-    if (!startTime) {
-      setElapsedMs(0);
+    if (!startTime || !isRunning) {
       return;
     }
 
-    function update() {
-      setElapsedMs(Date.now() - new Date(startTime!).getTime());
-    }
-
-    update();
-
-    if (isRunning) {
-      intervalRef.current = setInterval(update, 1000);
-    }
+    const tick = () => {
+      setElapsedMs(Date.now() - new Date(startTime).getTime());
+    };
+    tick();
+    intervalRef.current = setInterval(tick, 1000);
 
     return () => {
       if (intervalRef.current) {

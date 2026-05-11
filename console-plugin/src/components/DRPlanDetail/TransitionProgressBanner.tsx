@@ -24,11 +24,15 @@ function formatElapsed(ms: number): string {
   return `${hours}h ${remainingMinutes}m`;
 }
 
-const TransitionProgressBanner: React.FC<TransitionProgressBannerProps> = ({ plan, execution, optimisticExec }) => {
+const TransitionProgressBanner: React.FC<TransitionProgressBannerProps> = ({
+  plan,
+  execution,
+  optimisticExec,
+}) => {
   const history = useHistory();
   const effectivePhase = getEffectivePhase(plan);
   const restPhase = plan.status?.phase;
-  const [elapsed, setElapsed] = useState('');
+  const [elapsedState, setElapsedState] = useState({ text: '', ms: 0 });
   const startTime = execution?.status?.startTime;
 
   useEffect(() => {
@@ -36,12 +40,14 @@ const TransitionProgressBanner: React.FC<TransitionProgressBannerProps> = ({ pla
 
     function update() {
       const ms = Date.now() - new Date(startTime!).getTime();
-      setElapsed(formatElapsed(ms));
+      setElapsedState({ text: formatElapsed(ms), ms });
     }
     update();
     const timer = setInterval(update, 1000);
     return () => clearInterval(timer);
   }, [startTime]);
+
+  const elapsed = elapsedState.text;
 
   const isRealTransition = effectivePhase !== restPhase;
   const showOptimistic = !execution && !!optimisticExec;
@@ -60,7 +66,8 @@ const TransitionProgressBanner: React.FC<TransitionProgressBannerProps> = ({ pla
             display: 'flex',
             alignItems: 'center',
             gap: 'var(--pf-t--global--spacer--sm, var(--pf-v5-global--spacer--sm))',
-            fontSize: 'var(--pf-t--global--font--size--body--default, var(--pf-v5-global--FontSize--md))',
+            fontSize:
+              'var(--pf-t--global--font--size--body--default, var(--pf-v5-global--FontSize--md))',
           }}
           role="status"
           aria-live="polite"
@@ -72,11 +79,11 @@ const TransitionProgressBanner: React.FC<TransitionProgressBannerProps> = ({ pla
     );
   }
 
-  const transition = TRANSITIONS.find(t => t.transient === effectivePhase);
+  const transition = TRANSITIONS.find((t) => t.transient === effectivePhase);
   if (!transition) return null;
 
   const waves = execution?.status?.waves;
-  const completedWaves = waves ? waves.filter(w => w.completionTime).length : 0;
+  const completedWaves = waves ? waves.filter((w) => w.completionTime).length : 0;
   const totalWaves = waves?.length ?? 0;
   const pctComplete = totalWaves > 0 ? Math.round((completedWaves / totalWaves) * 100) : 0;
 
@@ -92,9 +99,8 @@ const TransitionProgressBanner: React.FC<TransitionProgressBannerProps> = ({ pla
   }
 
   let estimatedRemaining = 'calculating...';
-  if (totalWaves > 0 && completedWaves > 0 && startTime) {
-    const elapsedMs = Date.now() - new Date(startTime).getTime();
-    const avgPerWave = elapsedMs / completedWaves;
+  if (totalWaves > 0 && completedWaves > 0 && startTime && elapsedState.ms > 0) {
+    const avgPerWave = elapsedState.ms / completedWaves;
     const remainingMs = (totalWaves - completedWaves) * avgPerWave;
     estimatedRemaining = `~${formatElapsed(remainingMs)}`;
   }
@@ -132,11 +138,7 @@ const TransitionProgressBanner: React.FC<TransitionProgressBannerProps> = ({ pla
           <strong>{estimatedRemaining}</strong>
         </span>
         {execDetailPath && (
-          <Button
-            variant="link"
-            isInline
-            onClick={() => history.push(execDetailPath)}
-          >
+          <Button variant="link" isInline onClick={() => history.push(execDetailPath)}>
             View execution details
           </Button>
         )}

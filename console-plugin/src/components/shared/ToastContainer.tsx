@@ -1,9 +1,4 @@
-import {
-  Alert,
-  AlertActionCloseButton,
-  AlertActionLink,
-  AlertGroup,
-} from '@patternfly/react-core';
+import { Alert, AlertActionCloseButton, AlertActionLink, AlertGroup } from '@patternfly/react-core';
 import { useHistory } from 'react-router-dom';
 import { useToastNotifications } from '../../hooks/useToastNotifications';
 
@@ -20,9 +15,7 @@ const ToastContainer: React.FC = () => {
           key={toast.id}
           variant={toast.variant}
           title={toast.title}
-          actionClose={
-            <AlertActionCloseButton onClose={() => removeToast(toast.id)} />
-          }
+          actionClose={<AlertActionCloseButton onClose={() => removeToast(toast.id)} />}
           actionLinks={
             toast.linkTo ? (
               <AlertActionLink

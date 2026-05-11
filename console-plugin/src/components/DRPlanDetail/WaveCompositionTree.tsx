@@ -11,7 +11,13 @@ import {
   StorageDomainIcon,
 } from '@patternfly/react-icons';
 import ReplicationHealthIndicator from '../shared/ReplicationHealthIndicator';
-import { DRPlan, DiscoveredVM, VolumeGroupInfo, VolumeGroupHealth, PreflightVolumeGroup } from '../../models/types';
+import {
+  DRPlan,
+  DiscoveredVM,
+  VolumeGroupInfo,
+  VolumeGroupHealth,
+  PreflightVolumeGroup,
+} from '../../models/types';
 import { ReplicationHealthStatus } from '../../utils/drPlanUtils';
 
 function getVGHealth(
@@ -23,17 +29,9 @@ function getVGHealth(
   return { status: vg.health as ReplicationHealthStatus };
 }
 
-function getStorageBackend(
-  vmName: string,
-  vmNamespace: string,
-  plan: DRPlan,
-): string {
-  const preflightVMs = plan.status?.preflight?.waves?.flatMap(
-    (w) => w.vms ?? [],
-  );
-  const pvm = preflightVMs?.find(
-    (v) => v.name === vmName && v.namespace === vmNamespace,
-  );
+function getStorageBackend(vmName: string, vmNamespace: string, plan: DRPlan): string {
+  const preflightVMs = plan.status?.preflight?.waves?.flatMap((w) => w.vms ?? []);
+  const pvm = preflightVMs?.find((v) => v.name === vmName && v.namespace === vmNamespace);
   return pvm?.storageBackend ?? 'unknown';
 }
 
@@ -50,7 +48,10 @@ function getAggregateHealth(
   return 'Healthy';
 }
 
-const HEALTH_LABEL_COLORS: Record<ReplicationHealthStatus, 'green' | 'yellow' | 'blue' | 'red' | 'grey'> = {
+const HEALTH_LABEL_COLORS: Record<
+  ReplicationHealthStatus,
+  'green' | 'yellow' | 'blue' | 'red' | 'grey'
+> = {
   Healthy: 'green',
   Degraded: 'yellow',
   Syncing: 'blue',
@@ -68,7 +69,13 @@ const HEALTH_ICONS: Record<ReplicationHealthStatus, React.ReactElement> = {
   Unknown: <QuestionCircleIcon />,
 };
 
-function AggregateHealthBadge({ groups, healthData }: { groups: VolumeGroupInfo[]; healthData: VolumeGroupHealth[] }) {
+function AggregateHealthBadge({
+  groups,
+  healthData,
+}: {
+  groups: VolumeGroupInfo[];
+  healthData: VolumeGroupHealth[];
+}) {
   const statuses = groups.map((g) => getVGHealth(g.name, healthData).status);
   const worst = getAggregateHealth(groups, healthData);
 
@@ -81,7 +88,12 @@ function AggregateHealthBadge({ groups, healthData }: { groups: VolumeGroupInfo[
       return acc;
     }, {});
     label = Object.entries(counts)
-      .sort(([a], [b]) => (HEALTH_LABEL_COLORS[a as ReplicationHealthStatus] < HEALTH_LABEL_COLORS[b as ReplicationHealthStatus] ? -1 : 1))
+      .sort(([a], [b]) =>
+        HEALTH_LABEL_COLORS[a as ReplicationHealthStatus] <
+        HEALTH_LABEL_COLORS[b as ReplicationHealthStatus]
+          ? -1
+          : 1,
+      )
       .map(([s, n]) => `${n} ${s}`)
       .join(', ');
   }
@@ -117,15 +129,27 @@ function VMNodeContent({
 
   return (
     <span
-      style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--pf-t--global--spacer--sm)', flexWrap: 'wrap' }}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 'var(--pf-t--global--spacer--sm)',
+        flexWrap: 'wrap',
+      }}
       aria-label={ariaStr}
     >
       <span style={{ fontWeight: 600 }}>{vmName}</span>
       <Label isCompact>{storageBackend}</Label>
       {consistencyLevel === 'namespace' ? (
-        <Label isCompact color="blue">NS: {namespace}</Label>
+        <Label isCompact color="blue">
+          NS: {namespace}
+        </Label>
       ) : (
-        <span style={{ fontSize: 'var(--pf-t--global--font--size--body--default)', color: 'var(--pf-t--global--text--color--subtle)' }}>
+        <span
+          style={{
+            fontSize: 'var(--pf-t--global--font--size--body--default)',
+            color: 'var(--pf-t--global--text--color--subtle)',
+          }}
+        >
           VM-level
         </span>
       )}
@@ -203,15 +227,28 @@ function buildVGDiskNodes(vg: PreflightVolumeGroup): TreeViewDataItem[] {
     if (disk.sites?.length) {
       return {
         name: (
-          <span style={{ fontWeight: 600, fontSize: 'var(--pf-t--global--font--size--body--sm, var(--pf-v5-global--FontSize--sm))' }}>
+          <span
+            style={{
+              fontWeight: 600,
+              fontSize:
+                'var(--pf-t--global--font--size--body--sm, var(--pf-v5-global--FontSize--sm))',
+            }}
+          >
             {disk.name}
           </span>
         ),
         id: `vg-disk-${vg.name}-${disk.name}`,
         children: disk.sites.map((sm) => ({
           name: (
-            <span style={{ fontSize: 'var(--pf-t--global--font--size--body--sm, var(--pf-v5-global--FontSize--sm))' }}>
-              <Label isCompact color="teal">{sm.site}</Label>{' '}
+            <span
+              style={{
+                fontSize:
+                  'var(--pf-t--global--font--size--body--sm, var(--pf-v5-global--FontSize--sm))',
+              }}
+            >
+              <Label isCompact color="teal">
+                {sm.site}
+              </Label>{' '}
               {sm.pvcName || 'N/A'} ({sm.pvcNamespace || 'N/A'})
             </span>
           ),
@@ -221,7 +258,12 @@ function buildVGDiskNodes(vg: PreflightVolumeGroup): TreeViewDataItem[] {
     }
     return {
       name: (
-        <span style={{ fontSize: 'var(--pf-t--global--font--size--body--sm, var(--pf-v5-global--FontSize--sm))' }}>
+        <span
+          style={{
+            fontSize:
+              'var(--pf-t--global--font--size--body--sm, var(--pf-v5-global--FontSize--sm))',
+          }}
+        >
           {disk.name} → {disk.pvcName ?? 'N/A'} ({disk.pvcNamespace ?? 'N/A'})
         </span>
       ),
@@ -232,26 +274,35 @@ function buildVGDiskNodes(vg: PreflightVolumeGroup): TreeViewDataItem[] {
 
 function buildLegacyVGNodes(names: string[], waveKey: string): TreeViewDataItem[] {
   return names.map((name) => ({
-    name: (
-      <span style={{ fontWeight: 600 }}>{name}</span>
-    ),
+    name: <span style={{ fontWeight: 600 }}>{name}</span>,
     id: `vg-legacy-${waveKey}-${name}`,
   }));
 }
 
-function buildVGNodes(
-  preflightVGs: PreflightVolumeGroup[],
-  waveKey: string,
-): TreeViewDataItem[] {
+function buildVGNodes(preflightVGs: PreflightVolumeGroup[], waveKey: string): TreeViewDataItem[] {
   if (preflightVGs.length === 0) return [];
   return preflightVGs.map((vg) => ({
     name: (
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--pf-t--global--spacer--sm)' }}>
+      <span
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 'var(--pf-t--global--spacer--sm)',
+        }}
+      >
         <span style={{ fontWeight: 600 }}>{vg.name}</span>
         {vg.site && !vg.disks?.some((d) => d.sites?.length) && (
-          <Label isCompact color="blue">{vg.site}</Label>
+          <Label isCompact color="blue">
+            {vg.site}
+          </Label>
         )}
-        <span style={{ fontSize: 'var(--pf-t--global--font--size--body--sm, var(--pf-v5-global--FontSize--sm))', color: 'var(--pf-t--global--text--color--subtle)' }}>
+        <span
+          style={{
+            fontSize:
+              'var(--pf-t--global--font--size--body--sm, var(--pf-v5-global--FontSize--sm))',
+            color: 'var(--pf-t--global--text--color--subtle)',
+          }}
+        >
           {vg.disks?.length ?? 0} disk{(vg.disks?.length ?? 0) !== 1 ? 's' : ''}
         </span>
       </span>
@@ -294,7 +345,13 @@ function buildDRGroupChunks(
     if (vmNodes.length > 0) {
       children.push({
         name: (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--pf-t--global--spacer--sm)' }}>
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 'var(--pf-t--global--spacer--sm)',
+            }}
+          >
             <VirtualMachineIcon />
             <span style={{ fontWeight: 600 }}>Virtual Machines ({vmNodes.length})</span>
           </span>
@@ -307,7 +364,13 @@ function buildDRGroupChunks(
     if (chunkVGNodes.length > 0) {
       children.push({
         name: (
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--pf-t--global--spacer--sm)' }}>
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 'var(--pf-t--global--spacer--sm)',
+            }}
+          >
             <StorageDomainIcon />
             <span style={{ fontWeight: 600 }}>Volume Groups ({chunkVGNodes.length})</span>
           </span>
@@ -320,7 +383,9 @@ function buildDRGroupChunks(
 
     chunks.push({
       name: (
-        <span>DRGroup chunk {chunkNum} (maxConcurrent: {chunkSize})</span>
+        <span>
+          DRGroup chunk {chunkNum} (maxConcurrent: {chunkSize})
+        </span>
       ),
       id: `chunk-${i}`,
       children,
@@ -335,30 +400,34 @@ interface WaveCompositionTreeProps {
 }
 
 export const WaveCompositionTree: React.FC<WaveCompositionTreeProps> = ({ plan }) => {
-  const healthData = plan.status?.replicationHealth ?? [];
   const maxConcurrent = plan.spec?.maxConcurrentFailovers ?? 0;
 
   const waveItems: TreeViewDataItem[] = useMemo(() => {
+    const healthData = plan.status?.replicationHealth ?? [];
     const waves = plan.status?.waves ?? [];
     return waves.map((wave, idx) => {
       const groups = wave.groups ?? [];
-      const vmCount = groups.reduce((sum, g) => sum + (g.vmNames?.length ?? 0), 0) || wave.vms?.length || 0;
-      const children = groups.length > 0
-        ? buildDRGroupChunks(groups, maxConcurrent, plan, healthData, wave.waveKey)
-        : buildDiscoveredVMNodes(wave.vms ?? [], plan, healthData);
+      const vmCount =
+        groups.reduce((sum, g) => sum + (g.vmNames?.length ?? 0), 0) || wave.vms?.length || 0;
+      const children =
+        groups.length > 0
+          ? buildDRGroupChunks(groups, maxConcurrent, plan, healthData, wave.waveKey)
+          : buildDiscoveredVMNodes(wave.vms ?? [], plan, healthData);
       const aggHealth = groups.length > 0 ? getAggregateHealth(groups, healthData) : null;
       const waveLabel = `Wave ${idx + 1}, ${vmCount} VMs${aggHealth ? `, replication ${aggHealth.toLowerCase()}` : ''}`;
 
       return {
         name: (
           <span
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--pf-t--global--spacer--sm)' }}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 'var(--pf-t--global--spacer--sm)',
+            }}
             aria-label={waveLabel}
           >
             Wave {idx + 1} — {vmCount} VMs
-            {groups.length > 0 && (
-              <AggregateHealthBadge groups={groups} healthData={healthData} />
-            )}
+            {groups.length > 0 && <AggregateHealthBadge groups={groups} healthData={healthData} />}
           </span>
         ),
         id: `wave-${idx}`,
@@ -366,11 +435,16 @@ export const WaveCompositionTree: React.FC<WaveCompositionTreeProps> = ({ plan }
         defaultExpanded: false,
       };
     });
-  }, [plan, healthData, maxConcurrent]);
+  }, [plan, maxConcurrent]);
 
   if (waveItems.length === 0) {
     return (
-      <div style={{ padding: 'var(--pf-t--global--spacer--lg)', color: 'var(--pf-t--global--text--color--subtle)' }}>
+      <div
+        style={{
+          padding: 'var(--pf-t--global--spacer--lg)',
+          color: 'var(--pf-t--global--text--color--subtle)',
+        }}
+      >
         No waves configured for this plan
       </div>
     );

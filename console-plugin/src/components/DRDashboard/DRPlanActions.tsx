@@ -18,7 +18,12 @@ interface DRPlanActionsProps {
   disabledTooltip?: string;
 }
 
-const DRPlanActions: React.FC<DRPlanActionsProps> = ({ plan, onAction, isDisabled, disabledTooltip }) => {
+const DRPlanActions: React.FC<DRPlanActionsProps> = ({
+  plan,
+  onAction,
+  isDisabled,
+  disabledTooltip,
+}) => {
   const [isOpen, setIsOpen] = useState(false);
   const actions = getValidActions(plan);
 
@@ -47,11 +52,7 @@ const DRPlanActions: React.FC<DRPlanActionsProps> = ({ plan, onAction, isDisable
     return (
       <Tooltip content={disabledTooltip}>
         <span style={{ display: 'inline-block' }}>
-          <Dropdown
-            isOpen={false}
-            onOpenChange={() => {}}
-            toggle={toggle}
-          >
+          <Dropdown isOpen={false} onOpenChange={() => {}} toggle={toggle}>
             <DropdownList />
           </Dropdown>
         </span>
@@ -60,11 +61,7 @@ const DRPlanActions: React.FC<DRPlanActionsProps> = ({ plan, onAction, isDisable
   }
 
   return (
-    <Dropdown
-      isOpen={isOpen}
-      onOpenChange={setIsOpen}
-      toggle={toggle}
-    >
+    <Dropdown isOpen={isOpen} onOpenChange={setIsOpen} toggle={toggle}>
       <DropdownList>
         {actions.map((action) => (
           <DropdownItem

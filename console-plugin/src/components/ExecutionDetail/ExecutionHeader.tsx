@@ -14,10 +14,7 @@ function getModeDisplay(mode: DRExecutionMode) {
   return MODE_LABELS[mode] ?? { label: mode, status: 'custom' as const };
 }
 
-function estimateRemaining(
-  elapsedMs: number,
-  waves: WaveStatus[] | undefined,
-): string {
+function estimateRemaining(elapsedMs: number, waves: WaveStatus[] | undefined): string {
   if (!waves || waves.length === 0) return 'calculating...';
   const completedWaves = waves.filter((w) => w.completionTime).length;
   if (completedWaves === 0) return 'calculating...';
@@ -37,7 +34,8 @@ const lgFontStyle: React.CSSProperties = {
 function getFailedGroupCount(execution: DRExecution): number {
   if (!execution.status?.waves) return 0;
   return execution.status.waves.reduce(
-    (count, w) => count + (w.groups?.filter((g) => g.result === DRGroupResultValue.Failed).length ?? 0),
+    (count, w) =>
+      count + (w.groups?.filter((g) => g.result === DRGroupResultValue.Failed).length ?? 0),
     0,
   );
 }
@@ -60,8 +58,7 @@ const ExecutionHeader: React.FC<ExecutionHeaderProps> = ({
   const { elapsed, elapsedMs } = useElapsedTime(status?.startTime, !isComplete);
   const modeDisplay = getModeDisplay(spec.mode);
   const failedGroupCount = getFailedGroupCount(execution);
-  const showRetryAll =
-    status?.result === 'PartiallySucceeded' && failedGroupCount > 1;
+  const showRetryAll = status?.result === 'PartiallySucceeded' && failedGroupCount > 1;
 
   const headerStyle: React.CSSProperties = {
     marginBottom: 'var(--pf-t--global--spacer--md, var(--pf-v5-global--spacer--md))',
@@ -69,7 +66,8 @@ const ExecutionHeader: React.FC<ExecutionHeaderProps> = ({
 
   const nameStyle: React.CSSProperties = {
     fontSize: 'var(--pf-t--global--font--size--heading--h1, var(--pf-v5-global--FontSize--2xl))',
-    fontWeight: 'var(--pf-t--global--font--weight--heading--default, 700)' as React.CSSProperties['fontWeight'],
+    fontWeight:
+      'var(--pf-t--global--font--weight--heading--default, 700)' as React.CSSProperties['fontWeight'],
     marginBottom: 'var(--pf-t--global--spacer--sm, var(--pf-v5-global--spacer--sm))',
   };
 
@@ -95,8 +93,8 @@ const ExecutionHeader: React.FC<ExecutionHeaderProps> = ({
             </span>
           </span>
           {status?.result && <ExecutionResultBadge result={status.result} />}
-          {showRetryAll && (
-            isRetryDisabled && retryTooltip ? (
+          {showRetryAll &&
+            (isRetryDisabled && retryTooltip ? (
               <Tooltip content={retryTooltip}>
                 <Button variant="primary" size="sm" isDisabled aria-label="Retry All Failed">
                   Retry All Failed
@@ -112,8 +110,7 @@ const ExecutionHeader: React.FC<ExecutionHeaderProps> = ({
               >
                 Retry All Failed
               </Button>
-            )
-          )}
+            ))}
         </div>
       </div>
     );
@@ -138,8 +135,7 @@ const ExecutionHeader: React.FC<ExecutionHeaderProps> = ({
           </span>
         )}
         <span>
-          Elapsed:{' '}
-          <span style={{ ...monoStyle, ...lgFontStyle }}>{elapsed}</span>
+          Elapsed: <span style={{ ...monoStyle, ...lgFontStyle }}>{elapsed}</span>
         </span>
         <span>
           Est. remaining:{' '}

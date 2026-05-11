@@ -1,13 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { DocumentTitle } from '@openshift-console/dynamic-plugin-sdk';
-import {
-  Alert,
-  PageSection,
-  Skeleton,
-  Tab,
-  Tabs,
-  TabTitleText,
-} from '@patternfly/react-core';
+import { Alert, PageSection, Skeleton, Tab, Tabs, TabTitleText } from '@patternfly/react-core';
 import DRBreadcrumb from '../shared/DRBreadcrumb';
 import ToastContainer from '../shared/ToastContainer';
 import PlanHeader from './PlanHeader';
@@ -38,13 +31,15 @@ const DRPlanDetailPage: React.FC<DRPlanDetailPageProps> = (props) => {
   const [executions, executionsLoaded] = useDRExecutions(name!);
   const activeExecName = plan?.status?.activeExecution ?? '';
   const execution = activeExecName
-    ? executions.find(e => e.metadata?.name === activeExecName) ?? null
+    ? (executions.find((e) => e.metadata?.name === activeExecName) ?? null)
     : null;
   const [activeTab, setActiveTab] = useState<string | number>(0);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const { create, isCreating, error: createError, clearError } = useCreateDRExecution();
   useExecutionNotifications();
-  const [optimisticExec, setOptimisticExec] = useState<{ name: string; action: string } | null>(null);
+  const [optimisticExec, setOptimisticExec] = useState<{ name: string; action: string } | null>(
+    null,
+  );
 
   const effectivePhase = plan ? getEffectivePhase(plan) : null;
   const sitesInSync = plan ? getSitesInSync(plan) : { inSync: true };
@@ -52,7 +47,8 @@ const DRPlanDetailPage: React.FC<DRPlanDetailPageProps> = (props) => {
   const restPhase = plan?.status?.phase;
   const realActiveExec = plan?.status?.activeExecution;
   const effectiveOptimisticExec = realActiveExec ? null : optimisticExec;
-  const isInTransition = (effectivePhase !== null && effectivePhase !== restPhase) || effectiveOptimisticExec !== null;
+  const isInTransition =
+    (effectivePhase !== null && effectivePhase !== restPhase) || effectiveOptimisticExec !== null;
 
   useEffect(() => {
     if (!optimisticExec) return;
@@ -63,12 +59,12 @@ const DRPlanDetailPage: React.FC<DRPlanDetailPageProps> = (props) => {
   const waveProgress: WaveProgress | null = (() => {
     const waves = execution?.status?.waves;
     if (!waves || waves.length === 0) return null;
-    const completed = waves.filter(w => w.completionTime).length;
+    const completed = waves.filter((w) => w.completionTime).length;
     return { current: Math.min(completed + 1, waves.length), total: waves.length };
   })();
 
-  const handleAction = useCallback((_action: string, _plan: DRPlan) => {
-    setPendingAction(_action);
+  const handleAction = useCallback((action: string, _plan: DRPlan) => {
+    setPendingAction(action);
   }, []);
 
   const handleConfirm = useCallback(async () => {
@@ -89,7 +85,11 @@ const DRPlanDetailPage: React.FC<DRPlanDetailPageProps> = (props) => {
 
   const handleSwitchToConfig = useCallback(() => {
     setActiveTab(3);
-    setTimeout(() => document.getElementById('site-discovery-section')?.scrollIntoView({ behavior: 'smooth' }), 100);
+    setTimeout(
+      () =>
+        document.getElementById('site-discovery-section')?.scrollIntoView({ behavior: 'smooth' }),
+      100,
+    );
   }, []);
 
   const preflightData =
@@ -130,7 +130,11 @@ const DRPlanDetailPage: React.FC<DRPlanDetailPageProps> = (props) => {
               </div>
               <PlanHeader plan={plan} />
               {isInTransition && (
-                <TransitionProgressBanner plan={plan} execution={execution ?? null} optimisticExec={effectiveOptimisticExec} />
+                <TransitionProgressBanner
+                  plan={plan}
+                  execution={execution ?? null}
+                  optimisticExec={effectiveOptimisticExec}
+                />
               )}
               <DRLifecycleDiagram
                 plan={plan}
@@ -151,7 +155,11 @@ const DRPlanDetailPage: React.FC<DRPlanDetailPageProps> = (props) => {
             </Tab>
             <Tab eventKey={2} title={<TabTitleText>History</TabTitleText>}>
               {!executionsLoaded ? (
-                <Skeleton width="100%" height="200px" screenreaderText="Loading execution history" />
+                <Skeleton
+                  width="100%"
+                  height="200px"
+                  screenreaderText="Loading execution history"
+                />
               ) : (
                 <ExecutionHistoryTable executions={executions} planName={name!} />
               )}

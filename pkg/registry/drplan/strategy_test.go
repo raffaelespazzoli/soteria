@@ -179,8 +179,11 @@ func TestConvertToTable_DeriveEffectivePhase_FromExecution(t *testing.T) {
 		drexecutionLister: &stubExecLister{
 			executions: []soteriav1alpha1.DRExecution{{
 				ObjectMeta: metav1.ObjectMeta{Name: "exec-pm-1"},
-				Spec:       soteriav1alpha1.DRExecutionSpec{PlanName: "my-plan", Mode: soteriav1alpha1.ExecutionModePlannedMigration},
-				Status:     soteriav1alpha1.DRExecutionStatus{},
+				Spec: soteriav1alpha1.DRExecutionSpec{
+					PlanName: "my-plan",
+					Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+				},
+				Status: soteriav1alpha1.DRExecutionStatus{},
 			}},
 		},
 	}
@@ -234,8 +237,13 @@ func TestConvertToTable_TerminalExecution_Ignored(t *testing.T) {
 		drexecutionLister: &stubExecLister{
 			executions: []soteriav1alpha1.DRExecution{{
 				ObjectMeta: metav1.ObjectMeta{Name: "exec-done"},
-				Spec:       soteriav1alpha1.DRExecutionSpec{PlanName: "my-plan", Mode: soteriav1alpha1.ExecutionModePlannedMigration},
-				Status:     soteriav1alpha1.DRExecutionStatus{Result: soteriav1alpha1.ExecutionResultSucceeded},
+				Spec: soteriav1alpha1.DRExecutionSpec{
+					PlanName: "my-plan",
+					Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+				},
+				Status: soteriav1alpha1.DRExecutionStatus{
+					Result: soteriav1alpha1.ExecutionResultSucceeded,
+				},
 			}},
 		},
 	}
@@ -251,7 +259,8 @@ func TestConvertToTable_TerminalExecution_Ignored(t *testing.T) {
 	}
 	cells := table.Rows[0].Cells
 	if cells[2] != soteriav1alpha1.PhaseSteadyState {
-		t.Errorf("Effective Phase = %q, want rest phase %q (terminal exec should be ignored)", cells[2], soteriav1alpha1.PhaseSteadyState)
+		t.Errorf("Effective Phase = %q, want rest phase %q (terminal exec should be ignored)",
+			cells[2], soteriav1alpha1.PhaseSteadyState)
 	}
 	if cells[5] != "" {
 		t.Errorf("Active Execution = %q, want empty (terminal exec ignored)", cells[5])
@@ -293,9 +302,18 @@ func TestConvertToTable_BulkList_SingleQuery(t *testing.T) {
 
 	planList := &soteriav1alpha1.DRPlanList{
 		Items: []soteriav1alpha1.DRPlan{
-			{ObjectMeta: metav1.ObjectMeta{Name: "plan-a"}, Status: soteriav1alpha1.DRPlanStatus{Phase: soteriav1alpha1.PhaseSteadyState}},
-			{ObjectMeta: metav1.ObjectMeta{Name: "plan-b"}, Status: soteriav1alpha1.DRPlanStatus{Phase: soteriav1alpha1.PhaseFailedOver}},
-			{ObjectMeta: metav1.ObjectMeta{Name: "plan-c"}, Status: soteriav1alpha1.DRPlanStatus{Phase: soteriav1alpha1.PhaseSteadyState}},
+			{
+				ObjectMeta: metav1.ObjectMeta{Name: "plan-a"},
+				Status:     soteriav1alpha1.DRPlanStatus{Phase: soteriav1alpha1.PhaseSteadyState},
+			},
+			{
+				ObjectMeta: metav1.ObjectMeta{Name: "plan-b"},
+				Status:     soteriav1alpha1.DRPlanStatus{Phase: soteriav1alpha1.PhaseFailedOver},
+			},
+			{
+				ObjectMeta: metav1.ObjectMeta{Name: "plan-c"},
+				Status:     soteriav1alpha1.DRPlanStatus{Phase: soteriav1alpha1.PhaseSteadyState},
+			},
 		},
 	}
 
@@ -344,7 +362,8 @@ func TestConvertToTable_ListError_ShowsIdleNotFallback(t *testing.T) {
 	}
 	cells := table.Rows[0].Cells
 	if cells[2] != soteriav1alpha1.PhaseSteadyState {
-		t.Errorf("Effective Phase = %q, want %q (must not fall back to stale status)", cells[2], soteriav1alpha1.PhaseSteadyState)
+		t.Errorf("Effective Phase = %q, want %q (must not fall back to stale status)",
+			cells[2], soteriav1alpha1.PhaseSteadyState)
 	}
 	if cells[5] != "" {
 		t.Errorf("Active Execution = %q, want empty (must not fall back to stale status)", cells[5])
@@ -357,13 +376,19 @@ func TestConvertToTable_DuplicateActive_KeepsFirst(t *testing.T) {
 			executions: []soteriav1alpha1.DRExecution{
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "exec-first"},
-					Spec:       soteriav1alpha1.DRExecutionSpec{PlanName: "my-plan", Mode: soteriav1alpha1.ExecutionModePlannedMigration},
-					Status:     soteriav1alpha1.DRExecutionStatus{},
+					Spec: soteriav1alpha1.DRExecutionSpec{
+						PlanName: "my-plan",
+						Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+					},
+					Status: soteriav1alpha1.DRExecutionStatus{},
 				},
 				{
 					ObjectMeta: metav1.ObjectMeta{Name: "exec-second"},
-					Spec:       soteriav1alpha1.DRExecutionSpec{PlanName: "my-plan", Mode: soteriav1alpha1.ExecutionModeDisaster},
-					Status:     soteriav1alpha1.DRExecutionStatus{},
+					Spec: soteriav1alpha1.DRExecutionSpec{
+						PlanName: "my-plan",
+						Mode:     soteriav1alpha1.ExecutionModeDisaster,
+					},
+					Status: soteriav1alpha1.DRExecutionStatus{},
 				},
 			},
 		},

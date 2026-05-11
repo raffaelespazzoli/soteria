@@ -16,10 +16,30 @@ export interface ActionConfig {
 
 export const ACTION_CONFIG: Record<string, ActionConfig> = {
   failover: { label: 'Failover', keyword: 'FAILOVER', mode: 'disaster', confirmVariant: 'danger' },
-  planned_migration: { label: 'Planned Migration', keyword: 'MIGRATE', mode: 'planned_migration', confirmVariant: 'primary' },
-  reprotect: { label: 'Reprotect', keyword: 'REPROTECT', mode: 'reprotect', confirmVariant: 'primary' },
-  failback: { label: 'Failback', keyword: 'FAILBACK', mode: 'planned_migration', confirmVariant: 'primary' },
-  planned_failback: { label: 'Planned Migration', keyword: 'MIGRATE', mode: 'planned_migration', confirmVariant: 'primary' },
+  planned_migration: {
+    label: 'Planned Migration',
+    keyword: 'MIGRATE',
+    mode: 'planned_migration',
+    confirmVariant: 'primary',
+  },
+  reprotect: {
+    label: 'Reprotect',
+    keyword: 'REPROTECT',
+    mode: 'reprotect',
+    confirmVariant: 'primary',
+  },
+  failback: {
+    label: 'Failback',
+    keyword: 'FAILBACK',
+    mode: 'planned_migration',
+    confirmVariant: 'primary',
+  },
+  planned_failback: {
+    label: 'Planned Migration',
+    keyword: 'MIGRATE',
+    mode: 'planned_migration',
+    confirmVariant: 'primary',
+  },
   restore: { label: 'Restore', keyword: 'RESTORE', mode: 'reprotect', confirmVariant: 'primary' },
 };
 

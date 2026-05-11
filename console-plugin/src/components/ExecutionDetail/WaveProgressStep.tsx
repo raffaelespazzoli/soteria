@@ -1,11 +1,17 @@
-import { useState, useEffect } from 'react';
-import { ProgressStep, ProgressStepProps, ExpandableSection, Spinner } from '@patternfly/react-core';
+import { useCallback, useState } from 'react';
 import {
-  CheckCircleIcon,
-  ExclamationCircleIcon,
-  PendingIcon,
-} from '@patternfly/react-icons';
-import { WaveStatus, DRGroupExecutionStatus, DRGroupResultValue, DRExecutionResult } from '../../models/types';
+  ProgressStep,
+  ProgressStepProps,
+  ExpandableSection,
+  Spinner,
+} from '@patternfly/react-core';
+import { CheckCircleIcon, ExclamationCircleIcon, PendingIcon } from '@patternfly/react-icons';
+import {
+  WaveStatus,
+  DRGroupExecutionStatus,
+  DRGroupResultValue,
+  DRExecutionResult,
+} from '../../models/types';
 import { formatElapsedMs } from '../../hooks/useElapsedTime';
 import FailedGroupDetail from './FailedGroupDetail';
 
@@ -61,28 +67,46 @@ const GroupStatusDisplay: React.FC<GroupStatusDisplayProps> = ({ group }) => {
     case DRGroupResultValue.WaitingForVMReady:
       return (
         <span>
-          <Spinner size="md" aria-label={`${group.name} in progress`} style={iconStyle('--pf-t--global--icon--color--status--info--default, --pf-v5-global--info-color--100')} />
+          <Spinner
+            size="md"
+            aria-label={`${group.name} in progress`}
+            style={iconStyle(
+              '--pf-t--global--icon--color--status--info--default, --pf-v5-global--info-color--100',
+            )}
+          />
           {' In Progress'}
         </span>
       );
     case DRGroupResultValue.Completed:
       return (
         <span>
-          <CheckCircleIcon style={iconStyle('--pf-t--global--icon--color--status--success--default, --pf-v5-global--success-color--100')} />
+          <CheckCircleIcon
+            style={iconStyle(
+              '--pf-t--global--icon--color--status--success--default, --pf-v5-global--success-color--100',
+            )}
+          />
           {' Completed'}
         </span>
       );
     case DRGroupResultValue.Failed:
       return (
         <span>
-          <ExclamationCircleIcon style={iconStyle('--pf-t--global--icon--color--status--danger--default, --pf-v5-global--danger-color--100')} />
+          <ExclamationCircleIcon
+            style={iconStyle(
+              '--pf-t--global--icon--color--status--danger--default, --pf-v5-global--danger-color--100',
+            )}
+          />
           {' Failed'}
         </span>
       );
     default:
       return (
         <span>
-          <PendingIcon style={iconStyle('--pf-t--global--icon--color--disabled, --pf-v5-global--disabled-color--100')} />
+          <PendingIcon
+            style={iconStyle(
+              '--pf-t--global--icon--color--disabled, --pf-v5-global--disabled-color--100',
+            )}
+          />
           {' Pending'}
         </span>
       );
@@ -116,12 +140,14 @@ const WaveProgressStep: React.FC<WaveProgressStepProps> = ({
   const vmCount = getVMCount(wave);
   const waveElapsed = getWaveElapsed(wave);
 
-  const defaultExpanded = state === 'inProgress' || state === 'partiallyFailed';
-  const [isExpanded, setIsExpanded] = useState(defaultExpanded);
+  const shouldAutoExpand = state === 'inProgress' || state === 'partiallyFailed';
+  const [manualToggle, setManualToggle] = useState<boolean | null>(null);
 
-  useEffect(() => {
-    if (state === 'inProgress' || state === 'partiallyFailed') setIsExpanded(true);
-  }, [state]);
+  const isExpanded = manualToggle ?? shouldAutoExpand;
+
+  const setIsExpanded = useCallback((expanded: boolean) => {
+    setManualToggle(expanded);
+  }, []);
 
   const description =
     state === 'pending'
@@ -148,14 +174,20 @@ const WaveProgressStep: React.FC<WaveProgressStepProps> = ({
           <div
             role="list"
             aria-label={`Wave ${index + 1} groups`}
-            style={{ paddingLeft: 'var(--pf-t--global--spacer--md, var(--pf-v5-global--spacer--md))' }}
+            style={{
+              paddingLeft: 'var(--pf-t--global--spacer--md, var(--pf-v5-global--spacer--md))',
+            }}
           >
             {wave.groups.map((group, gIdx) => {
               const isFailed = group.result === DRGroupResultValue.Failed;
               const showRetryButton = isFailed && executionResult === 'PartiallySucceeded';
-              const scopedError = retryError && (retriedGroup === null || retriedGroup === 'all-failed' || retriedGroup === group.name)
-                ? retryError
-                : null;
+              const scopedError =
+                retryError &&
+                (retriedGroup === null ||
+                  retriedGroup === 'all-failed' ||
+                  retriedGroup === group.name)
+                  ? retryError
+                  : null;
               return (
                 <div key={`${group.name}-${gIdx}`} role="listitem">
                   <div
@@ -169,12 +201,22 @@ const WaveProgressStep: React.FC<WaveProgressStepProps> = ({
                     }}
                   >
                     <strong>{group.name}</strong>
-                    <span style={{ color: 'var(--pf-t--global--text--color--subtle, var(--pf-v5-global--Color--200))' }}>
+                    <span
+                      style={{
+                        color:
+                          'var(--pf-t--global--text--color--subtle, var(--pf-v5-global--Color--200))',
+                      }}
+                    >
                       ({group.vmNames?.join(', ') ?? 'no VMs'})
                     </span>
                     <GroupStatusDisplay group={group} />
                     {group.startTime && (
-                      <span style={{ fontFamily: 'var(--pf-t--global--font--family--mono, var(--pf-v5-global--FontFamily--monospace))' }}>
+                      <span
+                        style={{
+                          fontFamily:
+                            'var(--pf-t--global--font--family--mono, var(--pf-v5-global--FontFamily--monospace))',
+                        }}
+                      >
                         {getGroupElapsed(group)}
                       </span>
                     )}

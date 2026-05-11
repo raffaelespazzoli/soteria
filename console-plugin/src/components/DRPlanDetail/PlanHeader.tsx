@@ -34,8 +34,10 @@ const PlanHeader: React.FC<PlanHeaderProps> = ({ plan }) => {
         <FlexItem>
           <span
             style={{
-              fontSize: 'var(--pf-t--global--font--size--body--lg, var(--pf-v5-global--FontSize--lg))',
-              fontWeight: 'var(--pf-t--global--font--weight--body--bold, var(--pf-v5-global--FontWeight--bold))' as unknown as number,
+              fontSize:
+                'var(--pf-t--global--font--size--body--lg, var(--pf-v5-global--FontSize--lg))',
+              fontWeight:
+                'var(--pf-t--global--font--weight--body--bold, var(--pf-v5-global--FontWeight--bold))' as unknown as number,
             }}
           >
             {plan.metadata?.name}
@@ -50,10 +52,26 @@ const PlanHeader: React.FC<PlanHeaderProps> = ({ plan }) => {
         style={{ marginTop: 'var(--pf-t--global--spacer--sm, var(--pf-v5-global--spacer--sm))' }}
       >
         <FlexItem>
-          <strong style={{ fontSize: 'var(--pf-t--global--font--size--body--lg, var(--pf-v5-global--FontSize--lg))' }}>{vmCount}</strong> {vmCount === 1 ? 'VM' : 'VMs'}
+          <strong
+            style={{
+              fontSize:
+                'var(--pf-t--global--font--size--body--lg, var(--pf-v5-global--FontSize--lg))',
+            }}
+          >
+            {vmCount}
+          </strong>{' '}
+          {vmCount === 1 ? 'VM' : 'VMs'}
         </FlexItem>
         <FlexItem>
-          <strong style={{ fontSize: 'var(--pf-t--global--font--size--body--lg, var(--pf-v5-global--FontSize--lg))' }}>{waveCount}</strong> {waveCount === 1 ? 'wave' : 'waves'}
+          <strong
+            style={{
+              fontSize:
+                'var(--pf-t--global--font--size--body--lg, var(--pf-v5-global--FontSize--lg))',
+            }}
+          >
+            {waveCount}
+          </strong>{' '}
+          {waveCount === 1 ? 'wave' : 'waves'}
         </FlexItem>
         {activeSite && <FlexItem>Active on: {activeSite}</FlexItem>}
       </Flex>

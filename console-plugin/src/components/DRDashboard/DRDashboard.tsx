@@ -231,7 +231,11 @@ export default function DRDashboard() {
   }
 
   if (plansError) {
-    return <Alert variant="danger" isInline title="Failed to load DR plans">{String(plansError)}</Alert>;
+    return (
+      <Alert variant="danger" isInline title="Failed to load DR plans">
+        {String(plansError)}
+      </Alert>
+    );
   }
 
   if (plans.length === 0) {
@@ -272,7 +276,13 @@ export default function DRDashboard() {
                 </Td>
                 <Td dataLabel={COLUMN_NAMES[2]}>{ep.plan.status?.activeSite ?? ''}</Td>
                 <Td dataLabel={COLUMN_NAMES[3]}>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--pf-t--global--spacer--sm, var(--pf-v5-global--spacer--sm))' }}>
+                  <span
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 'var(--pf-t--global--spacer--sm, var(--pf-v5-global--spacer--sm))',
+                    }}
+                  >
                     {!ep.sitesInSync.inSync && (
                       <Tooltip content="Sites do not agree on VM inventory">
                         <ExclamationTriangleIcon
@@ -327,7 +337,13 @@ function LastExecutionCell({ enrichedPlan }: { enrichedPlan: EnrichedPlan }) {
   const result = lastExec.status?.result as DRExecutionResult | undefined;
   const time = lastExec.status?.completionTime ?? lastExec.status?.startTime;
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 'var(--pf-t--global--spacer--sm, var(--pf-v5-global--spacer--sm))' }}>
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: 'var(--pf-t--global--spacer--sm, var(--pf-v5-global--spacer--sm))',
+      }}
+    >
       {time && <span>{formatRelativeTime(time)}</span>}
       {result && <ExecutionResultBadge result={result} />}
     </span>

@@ -417,111 +417,85 @@ func TestDRExecutionValidator_AllowWhenSitesInSync(t *testing.T) {
 	}
 }
 
-func TestDRExecutionValidator_RejectWhenDisksInconsistent(t *testing.T) {
-	reader := &stubReader{
-		plans: map[string]*soteriav1alpha1.DRPlan{
-			"my-plan": {
-				ObjectMeta: metav1.ObjectMeta{Name: "my-plan"},
-				Spec: soteriav1alpha1.DRPlanSpec{
-					PrimarySite:   "dc-west",
-					SecondarySite: "dc-east",
-				},
-				Status: soteriav1alpha1.DRPlanStatus{
-					Phase:      soteriav1alpha1.PhaseSteadyState,
-					ActiveSite: "dc-west",
-					Conditions: []metav1.Condition{
-						{
-							Type:               "SitesInSync",
-							Status:             metav1.ConditionTrue,
-							Reason:             "VMsAgreed",
-							LastTransitionTime: metav1.Now(),
-						},
-						{
-							Type:               "DisksConsistent",
-							Status:             metav1.ConditionFalse,
-							Reason:             "DiskMismatch",
-							Message:            "VM default/web01: count mismatch",
-							LastTransitionTime: metav1.Now(),
-						},
-					},
-				},
-			},
+func TestDRExecutionValidator_DenyWhenDisksInconsistent(t *testing.T) {
+	tests := []struct {
+		name      string
+		reason    string
+		message   string
+		wantInMsg string
+	}{
+		{
+			name:      "DiskMismatch",
+			reason:    "DiskMismatch",
+			message:   "VM default/web01: count mismatch",
+			wantInMsg: "VM default/web01: count mismatch",
+		},
+		{
+			name:   "StorageClassMixed",
+			reason: "StorageClassMixed",
+			message: "Volume group ns-erp-database: " +
+				"mixed storage classes [ceph-rbd, local-path] - " +
+				"all disks must use the same storage class",
+			wantInMsg: "mixed storage classes",
 		},
 	}
 
-	v := &DRExecutionValidator{reader: reader}
-	exec := &soteriav1alpha1.DRExecution{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-exec"},
-		Spec: soteriav1alpha1.DRExecutionSpec{
-			PlanName: "my-plan",
-			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
-		},
-	}
-
-	resp := v.Handle(context.Background(), makeExecRequest(exec, admissionv1.Create))
-	if resp.Allowed {
-		t.Error("expected denied when DisksConsistent is False, got allowed")
-	}
-	msg := ""
-	if resp.Result != nil {
-		msg = resp.Result.Message
-	}
-	if !strings.Contains(msg, "VM default/web01: count mismatch") {
-		t.Errorf("expected condition message passthrough, got %q", msg)
-	}
-}
-
-func TestDRExecutionValidator_DenyWhenStorageClassMixed(t *testing.T) {
-	reader := &stubReader{
-		plans: map[string]*soteriav1alpha1.DRPlan{
-			"my-plan": {
-				ObjectMeta: metav1.ObjectMeta{Name: "my-plan"},
-				Spec: soteriav1alpha1.DRPlanSpec{
-					PrimarySite:   "dc-west",
-					SecondarySite: "dc-east",
-				},
-				Status: soteriav1alpha1.DRPlanStatus{
-					Phase:      soteriav1alpha1.PhaseSteadyState,
-					ActiveSite: "dc-west",
-					Conditions: []metav1.Condition{
-						{
-							Type:               "SitesInSync",
-							Status:             metav1.ConditionTrue,
-							Reason:             "VMsAgreed",
-							LastTransitionTime: metav1.Now(),
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			reader := &stubReader{
+				plans: map[string]*soteriav1alpha1.DRPlan{
+					"my-plan": {
+						ObjectMeta: metav1.ObjectMeta{Name: "my-plan"},
+						Spec: soteriav1alpha1.DRPlanSpec{
+							PrimarySite:   "dc-west",
+							SecondarySite: "dc-east",
 						},
-						{
-							Type:               "DisksConsistent",
-							Status:             metav1.ConditionFalse,
-							Reason:             "StorageClassMixed",
-							Message:            "Volume group ns-erp-database: mixed storage classes [ceph-rbd, local-path] - all disks must use the same storage class",
-							LastTransitionTime: metav1.Now(),
+						Status: soteriav1alpha1.DRPlanStatus{
+							Phase:      soteriav1alpha1.PhaseSteadyState,
+							ActiveSite: "dc-west",
+							Conditions: []metav1.Condition{
+								{
+									Type:               "SitesInSync",
+									Status:             metav1.ConditionTrue,
+									Reason:             "VMsAgreed",
+									LastTransitionTime: metav1.Now(),
+								},
+								{
+									Type:               "DisksConsistent",
+									Status:             metav1.ConditionFalse,
+									Reason:             tc.reason,
+									Message:            tc.message,
+									LastTransitionTime: metav1.Now(),
+								},
+							},
 						},
 					},
 				},
-			},
-		},
-	}
+			}
 
-	v := &DRExecutionValidator{reader: reader}
-	exec := &soteriav1alpha1.DRExecution{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-exec"},
-		Spec: soteriav1alpha1.DRExecutionSpec{
-			PlanName: "my-plan",
-			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
-		},
-	}
+			v := &DRExecutionValidator{reader: reader}
+			exec := &soteriav1alpha1.DRExecution{
+				ObjectMeta: metav1.ObjectMeta{Name: "test-exec"},
+				Spec: soteriav1alpha1.DRExecutionSpec{
+					PlanName: "my-plan",
+					Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+				},
+			}
 
-	resp := v.Handle(context.Background(), makeExecRequest(exec, admissionv1.Create))
-	if resp.Allowed {
-		t.Error("expected denied when DisksConsistent is False, got allowed")
-	}
-	msg := ""
-	if resp.Result != nil {
-		msg = resp.Result.Message
-	}
-	if !strings.Contains(msg, "mixed storage classes") {
-		t.Errorf("expected storage class mixed message, got %q", msg)
+			resp := v.Handle(context.Background(),
+				makeExecRequest(exec, admissionv1.Create))
+			if resp.Allowed {
+				t.Error("expected denied, got allowed")
+			}
+			msg := ""
+			if resp.Result != nil {
+				msg = resp.Result.Message
+			}
+			if !strings.Contains(msg, tc.wantInMsg) {
+				t.Errorf("expected message containing %q, got %q",
+					tc.wantInMsg, msg)
+			}
+		})
 	}
 }
 

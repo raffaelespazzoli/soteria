@@ -16,9 +16,7 @@ export interface UseRetryDRGroupResult {
 
 function getRetryRejectedMessage(conditions: Condition[] | undefined): string | null {
   if (!conditions) return null;
-  const condition = conditions.find(
-    (c) => c.type === 'RetryRejected' && c.status === 'True',
-  );
+  const condition = conditions.find((c) => c.type === 'RetryRejected' && c.status === 'True');
   return condition?.message ?? null;
 }
 
@@ -59,15 +57,9 @@ export function useRetryDRGroup(
     [executionName],
   );
 
-  const retry = useCallback(
-    (groupName: string) => patchAnnotation(groupName),
-    [patchAnnotation],
-  );
+  const retry = useCallback((groupName: string) => patchAnnotation(groupName), [patchAnnotation]);
 
-  const retryAll = useCallback(
-    () => patchAnnotation(RETRY_ALL_FAILED),
-    [patchAnnotation],
-  );
+  const retryAll = useCallback(() => patchAnnotation(RETRY_ALL_FAILED), [patchAnnotation]);
 
   useEffect(() => {
     if (!execution) return;
@@ -76,7 +68,7 @@ export function useRetryDRGroup(
 
     if (rejectedMessage) {
       errorFromConditionRef.current = true;
-      setRetryError(rejectedMessage);
+      setRetryError(rejectedMessage); // eslint-disable-line react-hooks/set-state-in-effect -- sync condition to state
       setIsRetrying(false);
       return;
     }

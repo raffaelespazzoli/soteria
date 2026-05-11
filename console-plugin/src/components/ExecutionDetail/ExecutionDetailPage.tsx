@@ -1,11 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { DocumentTitle } from '@openshift-console/dynamic-plugin-sdk';
-import {
-  PageSection,
-  ProgressStepper,
-  Skeleton,
-  Alert,
-} from '@patternfly/react-core';
+import { PageSection, ProgressStepper, Skeleton, Alert } from '@patternfly/react-core';
 import { Redirect } from 'react-router-dom';
 import DRBreadcrumb from '../shared/DRBreadcrumb';
 import ToastContainer from '../shared/ToastContainer';
@@ -26,10 +21,15 @@ const ExecutionDetailPage: React.FC<ExecutionDetailPageProps> = (props) => {
   const name = useRouteParamName(props.match);
 
   const [allExecutions, execListLoaded, execListError] = useDRExecutions();
-  const execution = execListLoaded ? allExecutions.find(e => e.metadata?.name === name) : undefined;
+  const execution = execListLoaded
+    ? allExecutions.find((e) => e.metadata?.name === name)
+    : undefined;
   const execLoaded = execListLoaded;
   const execError = execListError;
-  const { retry, retryAll, isRetrying, retryError, retriedGroup } = useRetryDRGroup(name ?? '', execution ?? null);
+  const { retry, retryAll, isRetrying, retryError, retriedGroup } = useRetryDRGroup(
+    name ?? '',
+    execution ?? null,
+  );
   useExecutionNotifications();
   const planName = execution?.spec?.planName ?? '';
 
@@ -90,8 +90,20 @@ const ExecutionDetailPage: React.FC<ExecutionDetailPageProps> = (props) => {
         <DocumentTitle>{`DR Execution: ${name}`}</DocumentTitle>
         <PageSection>
           <DRBreadcrumb executionName={name} />
-          <Skeleton screenreaderText="Loading execution details" height="40px" style={{ marginBottom: 'var(--pf-t--global--spacer--md, var(--pf-v5-global--spacer--md))' }} />
-          <Skeleton height="20px" width="60%" style={{ marginBottom: 'var(--pf-t--global--spacer--sm, var(--pf-v5-global--spacer--sm))' }} />
+          <Skeleton
+            screenreaderText="Loading execution details"
+            height="40px"
+            style={{
+              marginBottom: 'var(--pf-t--global--spacer--md, var(--pf-v5-global--spacer--md))',
+            }}
+          />
+          <Skeleton
+            height="20px"
+            width="60%"
+            style={{
+              marginBottom: 'var(--pf-t--global--spacer--sm, var(--pf-v5-global--spacer--sm))',
+            }}
+          />
           <Skeleton height="200px" />
         </PageSection>
       </>
@@ -139,9 +151,7 @@ const ExecutionDetailPage: React.FC<ExecutionDetailPageProps> = (props) => {
             />
           ))}
         </ProgressStepper>
-        {execution.status?.completionTime && (
-          <ExecutionSummary execution={execution} />
-        )}
+        {execution.status?.completionTime && <ExecutionSummary execution={execution} />}
         <div
           ref={ariaRef}
           aria-live="polite"

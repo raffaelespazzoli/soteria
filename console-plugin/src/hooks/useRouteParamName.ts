@@ -7,9 +7,12 @@ import { useParams } from 'react-router-dom';
  * outside a React Router <Route> context, so useParams() returns undefined.
  * We fall back through: match prop -> useParams -> pathname extraction.
  */
-export function useRouteParamName(
-  match?: { params?: { name?: string } },
-): string | undefined {
+export function useRouteParamName(match?: { params?: { name?: string } }): string | undefined {
   const routerParams = useParams<{ name: string }>();
-  return match?.params?.name ?? routerParams?.name ?? window.location.pathname.split('/').pop() ?? undefined;
+  return (
+    match?.params?.name ??
+    routerParams?.name ??
+    window.location.pathname.split('/').pop() ??
+    undefined
+  );
 }

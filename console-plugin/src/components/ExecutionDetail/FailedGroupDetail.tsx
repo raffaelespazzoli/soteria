@@ -1,9 +1,4 @@
-import {
-  ExpandableSection,
-  Button,
-  Tooltip,
-  Alert,
-} from '@patternfly/react-core';
+import { ExpandableSection, Button, Tooltip, Alert } from '@patternfly/react-core';
 import { ExclamationCircleIcon } from '@patternfly/react-icons';
 import { DRGroupExecutionStatus, StepStatus } from '../../models/types';
 
@@ -36,7 +31,8 @@ const FailedGroupDetail: React.FC<FailedGroupDetailProps> = ({
   const hasRetries = (group.retryCount ?? 0) > 0;
 
   const iconStyle: React.CSSProperties = {
-    color: 'var(--pf-t--global--icon--color--status--danger--default, var(--pf-v5-global--danger-color--100))',
+    color:
+      'var(--pf-t--global--icon--color--status--danger--default, var(--pf-v5-global--danger-color--100))',
     marginRight: 'var(--pf-t--global--spacer--xs, var(--pf-v5-global--spacer--xs))',
   };
 
@@ -118,7 +114,9 @@ const FailedGroupDetail: React.FC<FailedGroupDetailProps> = ({
             isInline
             isPlain
             title="Retry rejected"
-            style={{ marginTop: 'var(--pf-t--global--spacer--sm, var(--pf-v5-global--spacer--sm))' }}
+            style={{
+              marginTop: 'var(--pf-t--global--spacer--sm, var(--pf-v5-global--spacer--sm))',
+            }}
           >
             {retryError}
           </Alert>

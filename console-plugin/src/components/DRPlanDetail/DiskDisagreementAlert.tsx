@@ -21,7 +21,9 @@ export const DiskDisagreementAlert: React.FC<DiskDisagreementAlertProps> = ({
 
   if (disksConsistent.consistent) return null;
 
-  const title = TITLES[disksConsistent.reason ?? ''] ?? 'Disk topology inconsistent — DR operations are blocked';
+  const title =
+    TITLES[disksConsistent.reason ?? ''] ??
+    'Disk topology inconsistent — DR operations are blocked';
   const variant = disksConsistent.reason === 'WaitingForDiskDiscovery' ? 'info' : 'danger';
 
   return (
@@ -29,9 +31,7 @@ export const DiskDisagreementAlert: React.FC<DiskDisagreementAlertProps> = ({
       variant={variant}
       isInline
       title={title}
-      actionLinks={
-        <AlertActionLink onClick={onSwitchToConfig}>View disk details</AlertActionLink>
-      }
+      actionLinks={<AlertActionLink onClick={onSwitchToConfig}>View disk details</AlertActionLink>}
     >
       {disksConsistent.message && <p>{disksConsistent.message}</p>}
     </Alert>

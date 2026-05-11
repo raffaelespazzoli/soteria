@@ -1,17 +1,9 @@
-import {
-  EmptyState,
-  EmptyStateBody,
-  Button,
-} from '@patternfly/react-core';
+import { EmptyState, EmptyStateBody, Button } from '@patternfly/react-core';
 import { CubesIcon } from '@patternfly/react-icons';
 
 export function DashboardEmptyState() {
   return (
-    <EmptyState
-      titleText="No DR Plans configured"
-      icon={CubesIcon}
-      headingLevel="h4"
-    >
+    <EmptyState titleText="No DR Plans configured" icon={CubesIcon} headingLevel="h4">
       <EmptyStateBody>
         Create your first DR plan by labeling VMs with{' '}
         <code>app.kubernetes.io/part-of=&lt;app-name&gt;</code> and{' '}

@@ -1448,21 +1448,27 @@ func TestParseRetryAnnotation_AllFailed(t *testing.T) {
 
 func TestParseRetryAnnotation_CommaSeparated(t *testing.T) {
 	result := parseRetryAnnotation("group-1, group-2 ,group-3")
-	if len(result) != 3 {
-		t.Fatalf("expected 3 groups, got %d", len(result))
+	want := []string{"group-1", "group-2", "group-3"}
+	if len(result) != len(want) {
+		t.Fatalf("expected %d groups, got %d", len(want), len(result))
 	}
-	if result[0] != "group-1" || result[1] != "group-2" || result[2] != "group-3" {
-		t.Errorf("unexpected parsed groups: %v", result)
+	for i, g := range want {
+		if result[i] != g {
+			t.Errorf("result[%d] = %q, want %q", i, result[i], g)
+		}
 	}
 }
 
 func TestParseRetryAnnotation_DeduplicatesGroupNames(t *testing.T) {
 	result := parseRetryAnnotation("group-1, group-2, group-1, group-3, group-2")
-	if len(result) != 3 {
-		t.Fatalf("expected 3 deduplicated groups, got %d: %v", len(result), result)
+	want := []string{"group-1", "group-2", "group-3"}
+	if len(result) != len(want) {
+		t.Fatalf("expected %d deduplicated groups, got %d: %v", len(want), len(result), result)
 	}
-	if result[0] != "group-1" || result[1] != "group-2" || result[2] != "group-3" {
-		t.Errorf("unexpected parsed groups (order should preserve first occurrence): %v", result)
+	for i, g := range want {
+		if result[i] != g {
+			t.Errorf("result[%d] = %q, want %q (order should preserve first occurrence)", i, result[i], g)
+		}
 	}
 }
 

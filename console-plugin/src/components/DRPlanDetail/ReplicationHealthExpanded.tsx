@@ -21,7 +21,13 @@ export const ReplicationHealthExpanded: React.FC<ReplicationHealthExpandedProps>
     return (
       <div>
         <ReplicationHealthIndicator health={overallHealth} />
-        <Content component={ContentVariants.small} style={{ color: 'var(--pf-t--global--text--color--subtle)', marginTop: 'var(--pf-t--global--spacer--sm)' }}>
+        <Content
+          component={ContentVariants.small}
+          style={{
+            color: 'var(--pf-t--global--text--color--subtle)',
+            marginTop: 'var(--pf-t--global--spacer--sm)',
+          }}
+        >
           Per-volume-group breakdown not available
         </Content>
       </div>

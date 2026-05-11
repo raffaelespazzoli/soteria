@@ -1,8 +1,5 @@
 import { useMemo } from 'react';
-import {
-  EmptyState,
-  EmptyStateBody,
-} from '@patternfly/react-core';
+import { EmptyState, EmptyStateBody } from '@patternfly/react-core';
 import { CubesIcon } from '@patternfly/react-icons';
 import { Table, Thead, Tr, Th, Tbody, Td } from '@patternfly/react-table';
 import { useHistory } from 'react-router-dom';
@@ -38,9 +35,7 @@ function formatDate(dateStr: string | undefined): string {
 function HistoryEmptyState() {
   return (
     <EmptyState variant="sm" titleText="No executions yet" icon={CubesIcon} headingLevel="h3">
-      <EmptyStateBody>
-        Trigger a planned migration to validate your DR plan
-      </EmptyStateBody>
+      <EmptyStateBody>Trigger a planned migration to validate your DR plan</EmptyStateBody>
     </EmptyState>
   );
 }
@@ -59,8 +54,7 @@ export const ExecutionHistoryTable: React.FC<ExecutionHistoryTableProps> = ({
     const filtered = executions.filter((e) => e.spec?.planName === planName);
     return [...filtered].sort(
       (a, b) =>
-        new Date(b.status?.startTime ?? 0).getTime() -
-        new Date(a.status?.startTime ?? 0).getTime(),
+        new Date(b.status?.startTime ?? 0).getTime() - new Date(a.status?.startTime ?? 0).getTime(),
     );
   }, [executions, planName]);
 
@@ -87,9 +81,7 @@ export const ExecutionHistoryTable: React.FC<ExecutionHistoryTableProps> = ({
               onRowClick={() => history.push(detailPath)}
               style={{ cursor: 'pointer' }}
             >
-              <Td dataLabel="Date">
-                {formatDate(exec.status?.startTime)}
-              </Td>
+              <Td dataLabel="Date">{formatDate(exec.status?.startTime)}</Td>
               <Td dataLabel="Mode">{formatMode(exec.spec?.mode)}</Td>
               <Td dataLabel="Result">
                 {exec.status?.result ? (

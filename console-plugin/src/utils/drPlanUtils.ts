@@ -4,7 +4,13 @@ export type RestPhase = 'SteadyState' | 'FailedOver' | 'DRedSteadyState' | 'Fail
 export type TransientPhase = 'FailingOver' | 'Reprotecting' | 'FailingBack' | 'Restoring';
 export type EffectivePhase = RestPhase | TransientPhase;
 
-export type ReplicationHealthStatus = 'Healthy' | 'Degraded' | 'Syncing' | 'NotReplicating' | 'Error' | 'Unknown';
+export type ReplicationHealthStatus =
+  | 'Healthy'
+  | 'Degraded'
+  | 'Syncing'
+  | 'NotReplicating'
+  | 'Error'
+  | 'Unknown';
 
 export interface ReplicationHealth {
   status: ReplicationHealthStatus;
@@ -152,8 +158,11 @@ export interface SiteDiscoveryDelta {
  *   "VMs on primary but not secondary: [ns/vm-a, ns/vm-b]; VMs on secondary but not primary: [ns/vm-c]"
  * Handles "... and N more" suffixes and malformed messages gracefully.
  */
-export function parseSiteDiscoveryDelta(message: string | undefined): SiteDiscoveryDelta & { primaryMoreCount: number; secondaryMoreCount: number } {
-  if (!message) return { primaryOnly: [], secondaryOnly: [], primaryMoreCount: 0, secondaryMoreCount: 0 };
+export function parseSiteDiscoveryDelta(
+  message: string | undefined,
+): SiteDiscoveryDelta & { primaryMoreCount: number; secondaryMoreCount: number } {
+  if (!message)
+    return { primaryOnly: [], secondaryOnly: [], primaryMoreCount: 0, secondaryMoreCount: 0 };
 
   const primaryOnly: string[] = [];
   const secondaryOnly: string[] = [];

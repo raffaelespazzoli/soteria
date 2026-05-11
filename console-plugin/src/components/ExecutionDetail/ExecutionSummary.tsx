@@ -7,10 +7,7 @@ function getVMCount(execution: DRExecution): number {
   return (execution.status?.waves ?? []).reduce(
     (total, wave) =>
       total +
-      (wave.groups ?? []).reduce(
-        (waveTotal, group) => waveTotal + (group.vmNames?.length ?? 0),
-        0,
-      ),
+      (wave.groups ?? []).reduce((waveTotal, group) => waveTotal + (group.vmNames?.length ?? 0), 0),
     0,
   );
 }
@@ -18,9 +15,7 @@ function getVMCount(execution: DRExecution): number {
 function getFailedGroupCount(execution: DRExecution): number {
   return (execution.status?.waves ?? []).reduce(
     (total, wave) =>
-      total +
-      (wave.groups ?? []).filter((g) => g.result === DRGroupResultValue.Failed)
-        .length,
+      total + (wave.groups ?? []).filter((g) => g.result === DRGroupResultValue.Failed).length,
     0,
   );
 }
@@ -31,17 +26,13 @@ function getSucceededVMCount(execution: DRExecution): number {
       total +
       (wave.groups ?? [])
         .filter((g) => g.result !== DRGroupResultValue.Failed)
-        .reduce(
-          (waveTotal, group) => waveTotal + (group.vmNames?.length ?? 0),
-          0,
-        ),
+        .reduce((waveTotal, group) => waveTotal + (group.vmNames?.length ?? 0), 0),
     0,
   );
 }
 
 const summaryStyle: React.CSSProperties = {
-  fontSize:
-    'var(--pf-t--global--font--size--heading--h3, var(--pf-v5-global--FontSize--xl))',
+  fontSize: 'var(--pf-t--global--font--size--heading--h3, var(--pf-v5-global--FontSize--xl))',
   lineHeight: 1.5,
 };
 
@@ -55,10 +46,7 @@ const ExecutionSummary: React.FC<ExecutionSummaryProps> = ({ execution }) => {
   const vmCount = getVMCount(execution);
   const failedCount = getFailedGroupCount(execution);
   const successCount = getSucceededVMCount(execution);
-  const duration = formatDuration(
-    execution.status.startTime,
-    execution.status.completionTime,
-  );
+  const duration = formatDuration(execution.status.startTime, execution.status.completionTime);
   const result = execution.status.result;
 
   return (

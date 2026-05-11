@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useState } from 'react';
 import {
   K8sGroupVersionKind,
   useK8sWatchResource,
@@ -39,16 +39,18 @@ export function useDRPlan(name: string): [DRPlan | undefined, boolean, unknown] 
     isList: false,
   };
   const [data, loaded, error] = useK8sWatchResource<DRPlan>(resource);
-  const lastValidPlan = useRef<DRPlan | undefined>(undefined);
+  const [cached, setCached] = useState<DRPlan | undefined>(undefined);
 
   const dataHasContent = !!(data && data.metadata?.name);
 
-  if (loaded && !error && dataHasContent) {
-    lastValidPlan.current = data;
-  }
+  useEffect(() => {
+    if (loaded && !error && dataHasContent) {
+      setCached(data); // eslint-disable-line react-hooks/set-state-in-effect -- sync valid data to cache
+    }
+  }, [loaded, error, dataHasContent, data]);
 
-  if (lastValidPlan.current) {
-    return [loaded && !error && dataHasContent ? data : lastValidPlan.current, true, null];
+  if (cached) {
+    return [loaded && !error && dataHasContent ? data : cached, true, null];
   }
 
   return [loaded && !error ? data : undefined, loaded, error];
@@ -68,21 +70,24 @@ export function useDRExecution(name: string): [DRExecution | undefined, boolean,
     ? { groupVersionKind: drExecutionGVK, name, isList: false }
     : null;
   const [data, loaded, error] = useK8sWatchResource<DRExecution>(resource);
-  const lastValidExec = useRef<DRExecution | undefined>(undefined);
-
-  if (!name) {
-    lastValidExec.current = undefined;
-    return [undefined, true, null];
-  }
+  const [cached, setCached] = useState<DRExecution | undefined>(undefined);
 
   const dataHasContent = !!(data && data.metadata?.name);
 
-  if (loaded && !error && dataHasContent) {
-    lastValidExec.current = data;
+  useEffect(() => {
+    if (!name) {
+      setCached(undefined); // eslint-disable-line react-hooks/set-state-in-effect -- clear cache on name change
+    } else if (loaded && !error && dataHasContent) {
+      setCached(data);
+    }
+  }, [name, loaded, error, dataHasContent, data]);
+
+  if (!name) {
+    return [undefined, true, null];
   }
 
-  if (lastValidExec.current) {
-    return [loaded && !error && dataHasContent ? data : lastValidExec.current, true, null];
+  if (cached) {
+    return [loaded && !error && dataHasContent ? data : cached, true, null];
   }
 
   return [loaded && !error ? data : undefined, loaded, error];

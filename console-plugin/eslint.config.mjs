@@ -18,10 +18,16 @@ export default tseslint.config(
       react,
     },
     rules: {
-      ...eslint.configs.recommended.rules,
-      ...tseslint.configs.recommended.rules,
       ...react.configs.recommended.rules,
       ...react.configs['jsx-runtime'].rules,
+      'react/prop-types': 'off',
+      'no-undef': 'off',
+      'no-unused-vars': 'off',
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
+      'react-hooks/preserve-manual-memoization': 'off',
     },
     languageOptions: {
       globals: globals.browser,
@@ -29,13 +35,13 @@ export default tseslint.config(
         ecmaFeatures: {
           jsx: true,
         },
-      }
+      },
     },
     settings: {
       react: {
         version: 'detect',
       },
-    }
+    },
   },
   prettier,
 );

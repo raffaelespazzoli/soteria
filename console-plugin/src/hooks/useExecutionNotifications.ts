@@ -18,10 +18,7 @@ function getVMCount(execution: DRExecution): number {
   return (execution.status?.waves ?? []).reduce(
     (total, wave) =>
       total +
-      (wave.groups ?? []).reduce(
-        (waveTotal, group) => waveTotal + (group.vmNames?.length ?? 0),
-        0,
-      ),
+      (wave.groups ?? []).reduce((waveTotal, group) => waveTotal + (group.vmNames?.length ?? 0), 0),
     0,
   );
 }
@@ -29,9 +26,7 @@ function getVMCount(execution: DRExecution): number {
 function getFailedGroupCount(execution: DRExecution): number {
   return (execution.status?.waves ?? []).reduce(
     (total, wave) =>
-      total +
-      (wave.groups ?? []).filter((g) => g.result === DRGroupResultValue.Failed)
-        .length,
+      total + (wave.groups ?? []).filter((g) => g.result === DRGroupResultValue.Failed).length,
     0,
   );
 }
@@ -42,9 +37,7 @@ function getExecutionLink(execution: DRExecution): string {
 
 function getPlanName(execution: DRExecution): string {
   return (
-    (execution.metadata?.labels as Record<string, string> | undefined)?.[
-      'soteria.io/plan-name'
-    ] ??
+    (execution.metadata?.labels as Record<string, string> | undefined)?.['soteria.io/plan-name'] ??
     execution.spec?.planName ??
     ''
   );

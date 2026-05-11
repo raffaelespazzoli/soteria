@@ -86,6 +86,9 @@ const (
 	reasonDisksOutOfSync          = "DisksOutOfSync"
 	reasonStorageClassMixed       = "StorageClassMixed"
 
+	siteFieldPrimary   = "primary"
+	siteFieldSecondary = "secondary"
+
 	requeueInterval = 10 * time.Minute
 
 	maxDeltaEntriesPerSide = 20
@@ -221,7 +224,7 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		siteField := r.siteDiscoveryField(&plan)
 		if siteField != "" {
 			var currentDiscovery *soteriav1alpha1.SiteDiscovery
-			if siteField == "primary" {
+			if siteField == siteFieldPrimary {
 				currentDiscovery = plan.Status.PrimarySiteDiscovery
 			} else {
 				currentDiscovery = plan.Status.SecondarySiteDiscovery
@@ -457,9 +460,9 @@ func (r *DRPlanReconciler) hasActiveExecution(ctx context.Context, planName stri
 func (r *DRPlanReconciler) siteDiscoveryField(plan *soteriav1alpha1.DRPlan) string {
 	switch r.LocalSite {
 	case plan.Spec.PrimarySite:
-		return "primary"
+		return siteFieldPrimary
 	case plan.Spec.SecondarySite:
-		return "secondary"
+		return siteFieldSecondary
 	default:
 		return ""
 	}
@@ -534,9 +537,9 @@ func (r *DRPlanReconciler) reconcilePassiveSite(
 // setSiteDiscovery sets the SiteDiscovery field on the plan for the given site role.
 func setSiteDiscovery(plan *soteriav1alpha1.DRPlan, siteField string, discovery *soteriav1alpha1.SiteDiscovery) {
 	switch siteField {
-	case "primary":
+	case siteFieldPrimary:
 		plan.Status.PrimarySiteDiscovery = discovery
-	case "secondary":
+	case siteFieldSecondary:
 		plan.Status.SecondarySiteDiscovery = discovery
 	}
 }
@@ -706,7 +709,7 @@ func compareSiteDiscovery(
 	var msg strings.Builder
 	if len(primaryOnly) > 0 {
 		msg.WriteString("VMs on primary but not secondary: [")
-		writeCappedList(&msg, primaryOnly, maxDeltaEntriesPerSide)
+		writeCappedList(&msg, primaryOnly)
 		msg.WriteString("]")
 	}
 	if len(secondaryOnly) > 0 {
@@ -714,7 +717,7 @@ func compareSiteDiscovery(
 			msg.WriteString("; ")
 		}
 		msg.WriteString("VMs on secondary but not primary: [")
-		writeCappedList(&msg, secondaryOnly, maxDeltaEntriesPerSide)
+		writeCappedList(&msg, secondaryOnly)
 		msg.WriteString("]")
 	}
 
@@ -722,18 +725,18 @@ func compareSiteDiscovery(
 	return false, cond
 }
 
-// writeCappedList writes at most max entries from items, comma-separated.
-// If more exist, appends "... and N more".
-func writeCappedList(b *strings.Builder, items []string, max int) {
-	limit := min(len(items), max)
+// writeCappedList writes at most maxDeltaEntriesPerSide entries from items,
+// comma-separated. If more exist, appends "... and N more".
+func writeCappedList(b *strings.Builder, items []string) {
+	limit := min(len(items), maxDeltaEntriesPerSide)
 	for i := range limit {
 		if i > 0 {
 			b.WriteString(", ")
 		}
 		b.WriteString(items[i])
 	}
-	if len(items) > max {
-		fmt.Fprintf(b, "... and %d more", len(items)-max)
+	if len(items) > maxDeltaEntriesPerSide {
+		fmt.Fprintf(b, "... and %d more", len(items)-maxDeltaEntriesPerSide)
 	}
 }
 
@@ -881,7 +884,7 @@ func compareDiskTopology(
 		cond.Reason = reasonWaitingForDiskDiscovery
 		var msg strings.Builder
 		msg.WriteString("Waiting for disk discovery: [")
-		writeCappedList(&msg, waitingVMs, maxDeltaEntriesPerSide)
+		writeCappedList(&msg, waitingVMs)
 		msg.WriteString("]")
 		cond.Message = msg.String()
 		return false, cond
@@ -892,7 +895,7 @@ func compareDiskTopology(
 		cond.Status = metav1.ConditionFalse
 		cond.Reason = reasonDiskMismatch
 		var msg strings.Builder
-		writeCappedList(&msg, mismatchDeltas, maxDeltaEntriesPerSide)
+		writeCappedList(&msg, mismatchDeltas)
 		cond.Message = msg.String()
 		return false, cond
 	}
@@ -1007,7 +1010,7 @@ func buildMixedSCMessage(mixed []MixedVGResult) string {
 			m.VGName, m.Classes))
 	}
 	var b strings.Builder
-	writeCappedList(&b, items, maxDeltaEntriesPerSide)
+	writeCappedList(&b, items)
 	return b.String()
 }
 

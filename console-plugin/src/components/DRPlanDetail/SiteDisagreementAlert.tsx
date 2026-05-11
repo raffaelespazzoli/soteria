@@ -20,10 +20,14 @@ export const SiteDisagreementAlert: React.FC<SiteDisagreementAlertProps> = ({
   const primaryTotal = delta.primaryOnly.length + delta.primaryMoreCount;
   const secondaryTotal = delta.secondaryOnly.length + delta.secondaryMoreCount;
   if (primaryTotal > 0) {
-    parts.push(`${primaryTotal} VM${primaryTotal > 1 ? 's' : ''} on primary not found on secondary`);
+    parts.push(
+      `${primaryTotal} VM${primaryTotal > 1 ? 's' : ''} on primary not found on secondary`,
+    );
   }
   if (secondaryTotal > 0) {
-    parts.push(`${secondaryTotal} VM${secondaryTotal > 1 ? 's' : ''} on secondary not found on primary`);
+    parts.push(
+      `${secondaryTotal} VM${secondaryTotal > 1 ? 's' : ''} on secondary not found on primary`,
+    );
   }
   const summary = parts.length > 0 ? parts.join(', ') : sitesInSync.message;
 

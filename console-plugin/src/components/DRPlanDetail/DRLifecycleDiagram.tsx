@@ -56,10 +56,26 @@ const REST_PHASES: PhaseInfo[] = [
 ];
 
 export const TRANSITIONS = [
-  { from: 'SteadyState' as RestPhase, to: 'FailedOver' as RestPhase, transient: 'FailingOver' as TransientPhase },
-  { from: 'FailedOver' as RestPhase, to: 'DRedSteadyState' as RestPhase, transient: 'Reprotecting' as TransientPhase },
-  { from: 'DRedSteadyState' as RestPhase, to: 'FailedBack' as RestPhase, transient: 'FailingBack' as TransientPhase },
-  { from: 'FailedBack' as RestPhase, to: 'SteadyState' as RestPhase, transient: 'Restoring' as TransientPhase },
+  {
+    from: 'SteadyState' as RestPhase,
+    to: 'FailedOver' as RestPhase,
+    transient: 'FailingOver' as TransientPhase,
+  },
+  {
+    from: 'FailedOver' as RestPhase,
+    to: 'DRedSteadyState' as RestPhase,
+    transient: 'Reprotecting' as TransientPhase,
+  },
+  {
+    from: 'DRedSteadyState' as RestPhase,
+    to: 'FailedBack' as RestPhase,
+    transient: 'FailingBack' as TransientPhase,
+  },
+  {
+    from: 'FailedBack' as RestPhase,
+    to: 'SteadyState' as RestPhase,
+    transient: 'Restoring' as TransientPhase,
+  },
 ] as const;
 
 interface PhaseNodeProps {
@@ -70,20 +86,33 @@ interface PhaseNodeProps {
   isTransitioning: boolean;
 }
 
-function PhaseNode({ phase, primarySite, secondarySite, isActive, isTransitioning }: PhaseNodeProps) {
-  const borderColor = isActive || isTransitioning
-    ? 'var(--pf-t--global--color--brand--default, var(--pf-v5-global--active-color--100))'
-    : 'var(--pf-t--global--border--color--default, var(--pf-v5-global--BorderColor--100))';
+function PhaseNode({
+  phase,
+  primarySite,
+  secondarySite,
+  isActive,
+  isTransitioning,
+}: PhaseNodeProps) {
+  const borderColor =
+    isActive || isTransitioning
+      ? 'var(--pf-t--global--color--brand--default, var(--pf-v5-global--active-color--100))'
+      : 'var(--pf-t--global--border--color--default, var(--pf-v5-global--BorderColor--100))';
 
   const nodeStyle: CSSProperties = {
     borderWidth: '2px',
     borderStyle: isTransitioning ? 'dashed' : 'solid',
     borderColor,
-    borderRadius: 'var(--pf-t--global--border--radius--small, var(--pf-v5-global--BorderRadius--sm))',
-    padding: 'var(--pf-t--global--spacer--xs, var(--pf-v5-global--spacer--xs)) var(--pf-t--global--spacer--sm, var(--pf-v5-global--spacer--sm))',
-    background: isActive ? 'var(--pf-t--global--color--brand--default, var(--pf-v5-global--active-color--100))' : 'transparent',
-    opacity: (isActive || isTransitioning) ? 1 : 0.35,
-    color: isActive ? 'var(--pf-t--global--text--color--inverse, var(--pf-v5-global--Color--light-100))' : 'var(--pf-t--global--text--color--regular, var(--pf-v5-global--Color--100))',
+    borderRadius:
+      'var(--pf-t--global--border--radius--small, var(--pf-v5-global--BorderRadius--sm))',
+    padding:
+      'var(--pf-t--global--spacer--xs, var(--pf-v5-global--spacer--xs)) var(--pf-t--global--spacer--sm, var(--pf-v5-global--spacer--sm))',
+    background: isActive
+      ? 'var(--pf-t--global--color--brand--default, var(--pf-v5-global--active-color--100))'
+      : 'transparent',
+    opacity: isActive || isTransitioning ? 1 : 0.35,
+    color: isActive
+      ? 'var(--pf-t--global--text--color--inverse, var(--pf-v5-global--Color--light-100))'
+      : 'var(--pf-t--global--text--color--regular, var(--pf-v5-global--Color--100))',
     textAlign: 'center' as const,
   };
 
@@ -99,16 +128,36 @@ function PhaseNode({ phase, primarySite, secondarySite, isActive, isTransitionin
       style={nodeStyle}
       data-testid={`phase-node-${phase.id}`}
     >
-      <div style={{ fontWeight: 'var(--pf-t--global--font--weight--body--bold, var(--pf-v5-global--FontWeight--bold))' as unknown as number, fontSize: 'var(--pf-t--global--font--size--body--default, var(--pf-v5-global--FontSize--md))', marginBottom: 'var(--pf-t--global--spacer--xs, var(--pf-v5-global--spacer--xs))' }}>
+      <div
+        style={{
+          fontWeight:
+            'var(--pf-t--global--font--weight--body--bold, var(--pf-v5-global--FontWeight--bold))' as unknown as number,
+          fontSize:
+            'var(--pf-t--global--font--size--body--default, var(--pf-v5-global--FontSize--md))',
+          marginBottom: 'var(--pf-t--global--spacer--xs, var(--pf-v5-global--spacer--xs))',
+        }}
+      >
         {phase.label}
       </div>
-      <div style={{ fontSize: 'var(--pf-t--global--font--size--body--sm, var(--pf-v5-global--FontSize--sm))' }}>
+      <div
+        style={{
+          fontSize: 'var(--pf-t--global--font--size--body--sm, var(--pf-v5-global--FontSize--sm))',
+        }}
+      >
         {activeText}
       </div>
-      <div style={{ fontSize: 'var(--pf-t--global--font--size--body--sm, var(--pf-v5-global--FontSize--sm))' }}>
+      <div
+        style={{
+          fontSize: 'var(--pf-t--global--font--size--body--sm, var(--pf-v5-global--FontSize--sm))',
+        }}
+      >
         {passiveText}
       </div>
-      <div style={{ fontSize: 'var(--pf-t--global--font--size--body--sm, var(--pf-v5-global--FontSize--sm))' }}>
+      <div
+        style={{
+          fontSize: 'var(--pf-t--global--font--size--body--sm, var(--pf-v5-global--FontSize--sm))',
+        }}
+      >
         {replicationText}
       </div>
       {imgSrc && (
@@ -119,7 +168,8 @@ function PhaseNode({ phase, primarySite, secondarySite, isActive, isTransitionin
             marginTop: 'var(--pf-t--global--spacer--sm, var(--pf-v5-global--spacer--sm))',
             maxWidth: '37.5%',
             height: 'auto',
-            borderRadius: 'var(--pf-t--global--border--radius--small, var(--pf-v5-global--BorderRadius--sm))',
+            borderRadius:
+              'var(--pf-t--global--border--radius--small, var(--pf-v5-global--BorderRadius--sm))',
           }}
         />
       )}
@@ -128,7 +178,7 @@ function PhaseNode({ phase, primarySite, secondarySite, isActive, isTransitionin
 }
 
 interface TransitionEdgeProps {
-  transition: typeof TRANSITIONS[number];
+  transition: (typeof TRANSITIONS)[number];
   state: 'idle' | 'available' | 'in-progress';
   actions: DRAction[];
   plan: DRPlan;
@@ -138,7 +188,16 @@ interface TransitionEdgeProps {
   blockedTooltip?: string;
 }
 
-function TransitionEdge({ transition, state, actions, plan, onAction, direction, isBlocked, blockedTooltip }: TransitionEdgeProps) {
+function TransitionEdge({
+  transition,
+  state,
+  actions,
+  plan,
+  onAction,
+  direction,
+  isBlocked,
+  blockedTooltip,
+}: TransitionEdgeProps) {
   const isHorizontal = direction === 'horizontal';
 
   const containerStyle: CSSProperties = {
@@ -184,24 +243,43 @@ function TransitionEdge({ transition, state, actions, plan, onAction, direction,
               btn
             );
           })}
-          <span style={{ fontSize: 'var(--pf-t--global--font--size--body--lg, var(--pf-v5-global--FontSize--lg))', margin: '0 var(--pf-t--global--spacer--xs, var(--pf-v5-global--spacer--xs))' }}>{arrow}</span>
+          <span
+            style={{
+              fontSize:
+                'var(--pf-t--global--font--size--body--lg, var(--pf-v5-global--FontSize--lg))',
+              margin: '0 var(--pf-t--global--spacer--xs, var(--pf-v5-global--spacer--xs))',
+            }}
+          >
+            {arrow}
+          </span>
         </>
       )}
       {state === 'in-progress' && (
         <span
           style={{
-            background: 'var(--pf-t--global--color--status--info--default, var(--pf-v5-global--info-color--100))',
-            color: 'var(--pf-t--global--text--color--inverse, var(--pf-v5-global--Color--light-100))',
-            padding: 'var(--pf-t--global--spacer--xs, var(--pf-v5-global--spacer--xs)) var(--pf-t--global--spacer--sm, var(--pf-v5-global--spacer--sm))',
-            borderRadius: 'var(--pf-t--global--border--radius--large, var(--pf-v5-global--BorderRadius--lg))',
-            fontSize: 'var(--pf-t--global--font--size--body--default, var(--pf-v5-global--FontSize--md))',
+            background:
+              'var(--pf-t--global--color--status--info--default, var(--pf-v5-global--info-color--100))',
+            color:
+              'var(--pf-t--global--text--color--inverse, var(--pf-v5-global--Color--light-100))',
+            padding:
+              'var(--pf-t--global--spacer--xs, var(--pf-v5-global--spacer--xs)) var(--pf-t--global--spacer--sm, var(--pf-v5-global--spacer--sm))',
+            borderRadius:
+              'var(--pf-t--global--border--radius--large, var(--pf-v5-global--BorderRadius--lg))',
+            fontSize:
+              'var(--pf-t--global--font--size--body--default, var(--pf-v5-global--FontSize--md))',
           }}
         >
           In progress...
         </span>
       )}
       {state === 'idle' && (
-        <span style={{ opacity: 0.35, fontSize: 'var(--pf-t--global--font--size--body--default, var(--pf-v5-global--FontSize--md))' }}>
+        <span
+          style={{
+            opacity: 0.35,
+            fontSize:
+              'var(--pf-t--global--font--size--body--default, var(--pf-v5-global--FontSize--md))',
+          }}
+        >
           {transitionLabel} {arrow}
         </span>
       )}
@@ -222,7 +300,13 @@ interface DRLifecycleDiagramProps {
   blockedTooltip?: string;
 }
 
-const DRLifecycleDiagram: React.FC<DRLifecycleDiagramProps> = ({ plan, onAction, waveProgress, isBlocked, blockedTooltip }) => {
+const DRLifecycleDiagram: React.FC<DRLifecycleDiagramProps> = ({
+  plan,
+  onAction,
+  waveProgress,
+  isBlocked,
+  blockedTooltip,
+}) => {
   const restPhase = (plan.status?.phase ?? 'SteadyState') as RestPhase;
   const effectivePhase = getEffectivePhase(plan);
   const inTransition = isTransientPhase(effectivePhase);
@@ -232,18 +316,18 @@ const DRLifecycleDiagram: React.FC<DRLifecycleDiagramProps> = ({ plan, onAction,
   const validActions = useMemo(() => getValidActions(plan), [plan]);
 
   const activeTransition = useMemo(
-    () => inTransition ? TRANSITIONS.find(t => t.transient === effectivePhase) : null,
+    () => (inTransition ? TRANSITIONS.find((t) => t.transient === effectivePhase) : null),
     [effectivePhase, inTransition],
   );
 
-  function getEdgeState(t: typeof TRANSITIONS[number]): 'idle' | 'available' | 'in-progress' {
+  function getEdgeState(t: (typeof TRANSITIONS)[number]): 'idle' | 'available' | 'in-progress' {
     if (inTransition) {
       return t === activeTransition ? 'in-progress' : 'idle';
     }
     return t.from === restPhase ? 'available' : 'idle';
   }
 
-  function getEdgeActions(t: typeof TRANSITIONS[number]): DRAction[] {
+  function getEdgeActions(t: (typeof TRANSITIONS)[number]): DRAction[] {
     if (t.from !== restPhase || inTransition) return [];
     return validActions;
   }
@@ -288,25 +372,91 @@ const DRLifecycleDiagram: React.FC<DRLifecycleDiagramProps> = ({ plan, onAction,
       data-testid="dr-lifecycle-diagram"
     >
       {/* Row 1: SteadyState -> Failover -> FailedOver */}
-      <PhaseNode phase={steadyState} primarySite={primarySite} secondarySite={secondarySite} isActive={isActivePhase('SteadyState')} isTransitioning={isDestination('SteadyState')} />
-      <TransitionEdge transition={failoverT} state={getEdgeState(failoverT)} actions={getEdgeActions(failoverT)} plan={plan} onAction={onAction} direction="horizontal" isBlocked={isBlocked} blockedTooltip={blockedTooltip} />
-      <PhaseNode phase={failedOver} primarySite={primarySite} secondarySite={secondarySite} isActive={isActivePhase('FailedOver')} isTransitioning={isDestination('FailedOver')} />
+      <PhaseNode
+        phase={steadyState}
+        primarySite={primarySite}
+        secondarySite={secondarySite}
+        isActive={isActivePhase('SteadyState')}
+        isTransitioning={isDestination('SteadyState')}
+      />
+      <TransitionEdge
+        transition={failoverT}
+        state={getEdgeState(failoverT)}
+        actions={getEdgeActions(failoverT)}
+        plan={plan}
+        onAction={onAction}
+        direction="horizontal"
+        isBlocked={isBlocked}
+        blockedTooltip={blockedTooltip}
+      />
+      <PhaseNode
+        phase={failedOver}
+        primarySite={primarySite}
+        secondarySite={secondarySite}
+        isActive={isActivePhase('FailedOver')}
+        isTransitioning={isDestination('FailedOver')}
+      />
 
       {/* Row 2: Restore (vertical up) | empty | Reprotect (vertical down) */}
-      <TransitionEdge transition={restoreT} state={getEdgeState(restoreT)} actions={getEdgeActions(restoreT)} plan={plan} onAction={onAction} direction="vertical" isBlocked={isBlocked} blockedTooltip={blockedTooltip} />
+      <TransitionEdge
+        transition={restoreT}
+        state={getEdgeState(restoreT)}
+        actions={getEdgeActions(restoreT)}
+        plan={plan}
+        onAction={onAction}
+        direction="vertical"
+        isBlocked={isBlocked}
+        blockedTooltip={blockedTooltip}
+      />
       <div />
-      <TransitionEdge transition={reprotectT} state={getEdgeState(reprotectT)} actions={getEdgeActions(reprotectT)} plan={plan} onAction={onAction} direction="vertical" isBlocked={isBlocked} blockedTooltip={blockedTooltip} />
+      <TransitionEdge
+        transition={reprotectT}
+        state={getEdgeState(reprotectT)}
+        actions={getEdgeActions(reprotectT)}
+        plan={plan}
+        onAction={onAction}
+        direction="vertical"
+        isBlocked={isBlocked}
+        blockedTooltip={blockedTooltip}
+      />
 
       {/* Row 3: FailedBack <- Failback <- DRedSteadyState */}
-      <PhaseNode phase={failedBack} primarySite={primarySite} secondarySite={secondarySite} isActive={isActivePhase('FailedBack')} isTransitioning={isDestination('FailedBack')} />
-      <TransitionEdge transition={failbackT} state={getEdgeState(failbackT)} actions={getEdgeActions(failbackT)} plan={plan} onAction={onAction} direction="horizontal" isBlocked={isBlocked} blockedTooltip={blockedTooltip} />
-      <PhaseNode phase={dRedSteadyState} primarySite={primarySite} secondarySite={secondarySite} isActive={isActivePhase('DRedSteadyState')} isTransitioning={isDestination('DRedSteadyState')} />
+      <PhaseNode
+        phase={failedBack}
+        primarySite={primarySite}
+        secondarySite={secondarySite}
+        isActive={isActivePhase('FailedBack')}
+        isTransitioning={isDestination('FailedBack')}
+      />
+      <TransitionEdge
+        transition={failbackT}
+        state={getEdgeState(failbackT)}
+        actions={getEdgeActions(failbackT)}
+        plan={plan}
+        onAction={onAction}
+        direction="horizontal"
+        isBlocked={isBlocked}
+        blockedTooltip={blockedTooltip}
+      />
+      <PhaseNode
+        phase={dRedSteadyState}
+        primarySite={primarySite}
+        secondarySite={secondarySite}
+        isActive={isActivePhase('DRedSteadyState')}
+        isTransitioning={isDestination('DRedSteadyState')}
+      />
 
       {/* ARIA live region for transition progress */}
       <div
         aria-live="polite"
         role="status"
-        style={{ position: 'absolute', left: '-9999px', width: '1px', height: '1px', overflow: 'hidden' }}
+        style={{
+          position: 'absolute',
+          left: '-9999px',
+          width: '1px',
+          height: '1px',
+          overflow: 'hidden',
+        }}
       >
         {inTransition && activeTransition
           ? waveProgress

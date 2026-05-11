@@ -142,7 +142,7 @@ func (p *SoteriaAdmissionPlugin) validateDRExecution(ctx context.Context, a admi
 			return err
 		}
 	} else {
-		klog.Warningf("DRExecution admission concurrency gate disabled: storage not injected")
+		klog.V(1).InfoS("DRExecution admission concurrency gate disabled: storage not injected")
 	}
 
 	if _, err := engine.Transition(plan.Status.Phase, exec.Spec.Mode); err != nil {

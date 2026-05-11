@@ -175,7 +175,7 @@ func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Setup phase: validate, set startTime, transition the plan.
 	// Gated on startTime so these steps never repeat on re-reconcile.
 	if exec.Status.StartTime == nil {
-		return r.reconcileSetup(ctx, &exec, &plan, req.NamespacedName)
+		return r.reconcileSetup(ctx, &exec, &plan)
 	}
 
 	// Re-protect dispatch: storage-only, not wave-based.
@@ -1307,7 +1307,6 @@ func (r *DRExecutionReconciler) reconcileSetup(
 	ctx context.Context,
 	exec *soteriav1alpha1.DRExecution,
 	plan *soteriav1alpha1.DRPlan,
-	key client.ObjectKey,
 ) (ctrl.Result, error) {
 	logger := log.FromContext(ctx).WithValues("drexecution", exec.Name)
 

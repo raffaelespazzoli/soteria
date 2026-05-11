@@ -136,13 +136,23 @@ interface SiteColumnProps {
   siteName: string;
   siteKey: string;
   partnerKey: string;
-  discovery: { vms?: DiscoveredVM[]; discoveredVMCount?: number; lastDiscoveryTime?: string } | undefined;
+  discovery:
+    | { vms?: DiscoveredVM[]; discoveredVMCount?: number; lastDiscoveryTime?: string }
+    | undefined;
   mismatchKeys: Set<string>;
   mismatchLabel: string;
   partnerDiskIndex: Map<string, DiscoveredDisk[]>;
 }
 
-function SiteColumn({ siteName, siteKey, partnerKey, discovery, mismatchKeys, mismatchLabel, partnerDiskIndex }: SiteColumnProps) {
+function SiteColumn({
+  siteName,
+  siteKey: _siteKey,
+  partnerKey,
+  discovery,
+  mismatchKeys,
+  mismatchLabel,
+  partnerDiskIndex,
+}: SiteColumnProps) {
   const [expandedVMs, setExpandedVMs] = useState<Set<string>>(new Set());
 
   const toggleExpand = useCallback((key: string) => {
@@ -223,7 +233,12 @@ function SiteColumn({ siteName, siteKey, partnerKey, discovery, mismatchKeys, mi
                           aria-expanded={isExpanded}
                           aria-label={`Show disks for ${vm.name}`}
                           onClick={() => toggleExpand(key)}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            padding: 0,
+                          }}
                         >
                           {isExpanded ? <AngleDownIcon /> : <AngleRightIcon />}
                         </button>
@@ -242,7 +257,12 @@ function SiteColumn({ siteName, siteKey, partnerKey, discovery, mismatchKeys, mi
                         </span>
                       )}
                       {!hasDisks && (
-                        <span style={{ color: 'var(--pf-t--global--text--color--subtle, var(--pf-v5-global--Color--200))' }}>
+                        <span
+                          style={{
+                            color:
+                              'var(--pf-t--global--text--color--subtle, var(--pf-v5-global--Color--200))',
+                          }}
+                        >
                           No PVC disks
                         </span>
                       )}
@@ -250,11 +270,26 @@ function SiteColumn({ siteName, siteKey, partnerKey, discovery, mismatchKeys, mi
                   </Tr>
                   {isExpanded && (
                     <Tr>
-                      <Td colSpan={4} style={{ paddingLeft: 'var(--pf-t--global--spacer--xl, var(--pf-v5-global--spacer--xl))' }}>
+                      <Td
+                        colSpan={4}
+                        style={{
+                          paddingLeft:
+                            'var(--pf-t--global--spacer--xl, var(--pf-v5-global--spacer--xl))',
+                        }}
+                      >
                         {hasDisks && comparison ? (
-                          <DiskDetailTable comparison={comparison} siteName={siteName} vmName={vm.name} />
+                          <DiskDetailTable
+                            comparison={comparison}
+                            siteName={siteName}
+                            vmName={vm.name}
+                          />
                         ) : (
-                          <span style={{ color: 'var(--pf-t--global--text--color--subtle, var(--pf-v5-global--Color--200))' }}>
+                          <span
+                            style={{
+                              color:
+                                'var(--pf-t--global--text--color--subtle, var(--pf-v5-global--Color--200))',
+                            }}
+                          >
                             No PVC disks
                           </span>
                         )}
@@ -285,7 +320,7 @@ function DiskDetailTable({
       name: m.localDisk.name,
       pvcName: m.localDisk.pvcName,
       storageClass: m.localDisk.storageClass,
-      status: m.storageClassDiffers ? 'sc-mismatch' as const : 'match' as const,
+      status: m.storageClassDiffers ? ('sc-mismatch' as const) : ('match' as const),
     })),
     ...comparison.localOnly.map((d) => ({
       name: d.name,
@@ -303,7 +338,11 @@ function DiskDetailTable({
 
   if (allRows.length === 0) {
     return (
-      <span style={{ color: 'var(--pf-t--global--text--color--subtle, var(--pf-v5-global--Color--200))' }}>
+      <span
+        style={{
+          color: 'var(--pf-t--global--text--color--subtle, var(--pf-v5-global--Color--200))',
+        }}
+      >
         No PVC disks
       </span>
     );
@@ -323,9 +362,15 @@ function DiskDetailTable({
         {allRows.map((row) => {
           const bgStyle =
             row.status === 'sc-mismatch'
-              ? { background: 'var(--pf-t--global--color--status--danger--default, var(--pf-v5-global--danger-color--100))' }
+              ? {
+                  background:
+                    'var(--pf-t--global--color--status--danger--default, var(--pf-v5-global--danger-color--100))',
+                }
               : row.status === 'local-only' || row.status === 'partner-only'
-                ? { background: 'var(--pf-t--global--color--status--warning--default, var(--pf-v5-global--warning-color--100))' }
+                ? {
+                    background:
+                      'var(--pf-t--global--color--status--warning--default, var(--pf-v5-global--warning-color--100))',
+                  }
                 : undefined;
           return (
             <Tr key={row.name} style={bgStyle}>

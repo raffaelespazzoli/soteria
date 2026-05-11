@@ -180,12 +180,12 @@ func (c *DRPlanTableConvertor) buildActiveExecIndex(ctx context.Context) activeE
 	}
 	listObj, err := c.drexecutionLister.List(ctx, &metainternalversion.ListOptions{})
 	if err != nil {
-		klog.Warningf("Failed to list DRExecutions for table convertor: %v", err)
+		klog.V(1).InfoS("Failed to list DRExecutions for table convertor", "err", err)
 		return activeExecIndex{}
 	}
 	execList, ok := listObj.(*soteriav1alpha1.DRExecutionList)
 	if !ok {
-		klog.Warning("Unexpected list type from DRExecution lister")
+		klog.V(1).InfoS("Unexpected list type from DRExecution lister")
 		return activeExecIndex{}
 	}
 	index := make(activeExecIndex, len(execList.Items)/2+1)
@@ -193,7 +193,8 @@ func (c *DRPlanTableConvertor) buildActiveExecIndex(ctx context.Context) activeE
 		exec := &execList.Items[i]
 		if exec.Status.Result == "" {
 			if _, dup := index[exec.Spec.PlanName]; dup {
-				klog.Warningf("Multiple non-terminal DRExecutions for plan %s; keeping first seen", exec.Spec.PlanName)
+				klog.V(1).InfoS("Multiple non-terminal DRExecutions for plan; keeping first seen",
+					"plan", exec.Spec.PlanName)
 				continue
 			}
 			index[exec.Spec.PlanName] = exec
