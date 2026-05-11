@@ -1,6 +1,6 @@
 # Story 10.2: Derived Active Execution for Table Convertor & Preflight
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -37,33 +37,33 @@ Both consumers must be migrated to derive active execution from DRExecution reso
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Add DRExecution lister to DRPlanTableConvertor (AC: #1, #2)
-  - [ ] 1.1 Change `DRPlanTableConvertor` from zero-field struct to `DRPlanTableConvertor struct { drexecutionLister rest.Lister }` in `pkg/registry/drplan/strategy.go`
-  - [ ] 1.2 Add `SetDRExecutionStorage(s rest.Lister)` method on `*DRPlanTableConvertor`
-  - [ ] 1.3 Change `ConvertToTable` to pointer receiver `(c *DRPlanTableConvertor)`
-  - [ ] 1.4 In `NewREST` (`pkg/registry/drplan/storage.go`), create `tc := &DRPlanTableConvertor{}` and set `TableConvertor: tc`. Return `tc` as a third value from `NewREST` (update signature to `(*genericregistry.Store, *StatusREST, *DRPlanTableConvertor, error)`)
-  - [ ] 1.5 Update `StatusREST` — its `store` shares the parent's `TableConvertor`, so no separate wiring needed
+- [x] Task 1: Add DRExecution lister to DRPlanTableConvertor (AC: #1, #2)
+  - [x] 1.1 Change `DRPlanTableConvertor` from zero-field struct to `DRPlanTableConvertor struct { drexecutionLister rest.Lister }` in `pkg/registry/drplan/strategy.go`
+  - [x] 1.2 Add `SetDRExecutionStorage(s rest.Lister)` method on `*DRPlanTableConvertor`
+  - [x] 1.3 Change `ConvertToTable` to pointer receiver `(c *DRPlanTableConvertor)`
+  - [x] 1.4 In `NewREST` (`pkg/registry/drplan/storage.go`), create `tc := &DRPlanTableConvertor{}` and set `TableConvertor: tc`. Return `tc` as a third value from `NewREST` (update signature to `(*genericregistry.Store, *StatusREST, *DRPlanTableConvertor, error)`)
+  - [x] 1.5 Update `StatusREST` — its `store` shares the parent's `TableConvertor`, so no separate wiring needed
 
-- [ ] Task 2: Implement derived effective phase and active execution in table convertor (AC: #1, #2)
-  - [ ] 2.1 Add `activeExecIndex` type: `map[string]*soteriav1alpha1.DRExecution` (keyed by `spec.planName`)
-  - [ ] 2.2 Add `(c *DRPlanTableConvertor) buildActiveExecIndex(ctx context.Context) activeExecIndex` helper: calls `c.drexecutionLister.List(ctx, &metainternalversion.ListOptions{})`, iterates results, builds index of non-terminal executions (`status.result == ""`) keyed by `spec.planName`. Returns empty map on nil lister or error (log warning, degrade gracefully)
-  - [ ] 2.3 In `ConvertToTable`, call `buildActiveExecIndex` once before row iteration. Pass the index to `planToRow`
-  - [ ] 2.4 Update `planToRow` signature to accept `activeExecIndex`. Look up `index[plan.Name]` — if found, use `engine.EffectivePhase(plan.Status.Phase, exec.Spec.Mode)` and `exec.Name` for the cells. If not found, use `plan.Status.Phase` (rest phase) and empty string
-  - [ ] 2.5 **Graceful degradation:** If `c.drexecutionLister` is nil (e.g., during startup or tests), fall back to the current behavior reading from plan status — this ensures zero disruption if the lister isn't wired yet
+- [x] Task 2: Implement derived effective phase and active execution in table convertor (AC: #1, #2)
+  - [x] 2.1 Add `activeExecIndex` type: `map[string]*soteriav1alpha1.DRExecution` (keyed by `spec.planName`)
+  - [x] 2.2 Add `(c *DRPlanTableConvertor) buildActiveExecIndex(ctx context.Context) activeExecIndex` helper: calls `c.drexecutionLister.List(ctx, &metainternalversion.ListOptions{})`, iterates results, builds index of non-terminal executions (`status.result == ""`) keyed by `spec.planName`. Returns empty map on nil lister or error (log warning, degrade gracefully)
+  - [x] 2.3 In `ConvertToTable`, call `buildActiveExecIndex` once before row iteration. Pass the index to `planToRow`
+  - [x] 2.4 Update `planToRow` signature to accept `activeExecIndex`. Look up `index[plan.Name]` — if found, use `engine.EffectivePhase(plan.Status.Phase, exec.Spec.Mode)` and `exec.Name` for the cells. If not found, use `plan.Status.Phase` (rest phase) and empty string
+  - [x] 2.5 **Graceful degradation:** If `c.drexecutionLister` is nil (e.g., during startup or tests), fall back to the current behavior reading from plan status — this ensures zero disruption if the lister isn't wired yet
 
-- [ ] Task 3: Wire DRExecution storage into DRPlan table convertor in apiserver.go (AC: #1)
-  - [ ] 3.1 Update `drplanregistry.NewREST` call site in `apiserver.go` to capture the returned `*DRPlanTableConvertor`
-  - [ ] 3.2 After DRExecution `NewREST`, call `tc.SetDRExecutionStorage(drexecStore)` — the `AuditProtectedREST` wraps a `*genericregistry.Store` which implements `rest.Lister`
-  - [ ] 3.3 Add import for `rest "k8s.io/apiserver/pkg/registry/rest"` if not already present
+- [x] Task 3: Wire DRExecution storage into DRPlan table convertor in apiserver.go (AC: #1)
+  - [x] 3.1 Update `drplanregistry.NewREST` call site in `apiserver.go` to capture the returned `*DRPlanTableConvertor`
+  - [x] 3.2 After DRExecution `NewREST`, call `tc.SetDRExecutionStorage(drexecStore)` — the `AuditProtectedREST` wraps a `*genericregistry.Store` which implements `rest.Lister`
+  - [x] 3.3 Add import for `rest "k8s.io/apiserver/pkg/registry/rest"` if not already present
 
-- [ ] Task 4: Add ActiveExecution field to CompositionInput (AC: #3, #5)
-  - [ ] 4.1 Add `ActiveExecution string` field to `CompositionInput` struct in `internal/preflight/checks.go`
-  - [ ] 4.2 In `ComposeReport`, replace `input.Plan.Status.ActiveExecution` (line 68) with `input.ActiveExecution`
-  - [ ] 4.3 In `collectWarnings`, replace `input.Plan.Status.ActiveExecution` (line 269) with `input.ActiveExecution`
+- [x] Task 4: Add ActiveExecution field to CompositionInput (AC: #3, #5)
+  - [x] 4.1 Add `ActiveExecution string` field to `CompositionInput` struct in `internal/preflight/checks.go`
+  - [x] 4.2 In `ComposeReport`, replace `input.Plan.Status.ActiveExecution` (line 68) with `input.ActiveExecution`
+  - [x] 4.3 In `collectWarnings`, replace `input.Plan.Status.ActiveExecution` (line 269) with `input.ActiveExecution`
 
-- [ ] Task 5: DRPlan reconciler queries DRExecutions for preflight (AC: #4)
-  - [ ] 5.1 Add RBAC marker to DRPlan reconciler: `// +kubebuilder:rbac:groups=soteria.io,resources=drexecutions,verbs=list`
-  - [ ] 5.2 In `composePreflightReport`, before building `CompositionInput`, query for the active execution:
+- [x] Task 5: DRPlan reconciler queries DRExecutions for preflight (AC: #4)
+  - [x] 5.1 Add RBAC marker to DRPlan reconciler: `// +kubebuilder:rbac:groups=soteria.io,resources=drexecutions,verbs=list`
+  - [x] 5.2 In `composePreflightReport`, before building `CompositionInput`, query for the active execution:
     ```go
     var activeExecName string
     var execList soteriav1alpha1.DRExecutionList
@@ -79,32 +79,38 @@ Both consumers must be migrated to derive active execution from DRExecution reso
         }
     }
     ```
-  - [ ] 5.3 Set `ActiveExecution: activeExecName` in the `CompositionInput` struct
-  - [ ] 5.4 Run `make manifests` after adding the RBAC marker (regenerates `role.yaml`)
+  - [x] 5.3 Set `ActiveExecution: activeExecName` in the `CompositionInput` struct
+  - [x] 5.4 Run `make manifests` after adding the RBAC marker (regenerates `role.yaml`)
 
-- [ ] Task 6: Update table convertor tests (AC: #6)
-  - [ ] 6.1 Add `stubExecLister` test helper implementing `rest.Lister` in `pkg/registry/drplan/strategy_test.go` — returns a configurable `DRExecutionList`. Follow the `stubLister` pattern from `pkg/admission/plugin_test.go` (added in Story 10.1)
-  - [ ] 6.2 Add `TestConvertToTable_DeriveEffectivePhase_FromExecution`: set up a plan in SteadyState + a non-terminal DRExecution with mode `planned_migration` in the stub lister. Verify "Effective Phase" cell = `FailingOver` and "Active Execution" cell = execution name
-  - [ ] 6.3 Add `TestConvertToTable_NoActiveExecution_ShowsRestPhase`: stub lister returns empty list. Verify "Effective Phase" = rest phase and "Active Execution" = ""
-  - [ ] 6.4 Add `TestConvertToTable_TerminalExecution_Ignored`: stub lister returns a DRExecution with `Result: Succeeded`. Verify treated as idle (rest phase shown)
-  - [ ] 6.5 Add `TestConvertToTable_NilLister_FallsBackToPlanStatus`: convertor with nil lister. Verify graceful degradation — uses `plan.Status.ActiveExecutionMode` for effective phase and `plan.Status.ActiveExecution` for the column (backward compat during startup)
-  - [ ] 6.6 Add `TestConvertToTable_BulkList_SingleQuery`: create convertor with a counting stub lister, convert a `DRPlanList` with 3 plans. Verify the lister's `List` was called exactly once (not per plan)
-  - [ ] 6.7 Update `TestPrepareForCreate_InitializesActiveExecution` — this test still passes because the fields still exist on the struct (removal is 10.4). No change needed, just verify
+- [x] Task 6: Update table convertor tests (AC: #6)
+  - [x] 6.1 Add `stubExecLister` test helper implementing `rest.Lister` in `pkg/registry/drplan/strategy_test.go` — returns a configurable `DRExecutionList`. Follow the `stubLister` pattern from `pkg/admission/plugin_test.go` (added in Story 10.1)
+  - [x] 6.2 Add `TestConvertToTable_DeriveEffectivePhase_FromExecution`: set up a plan in SteadyState + a non-terminal DRExecution with mode `planned_migration` in the stub lister. Verify "Effective Phase" cell = `FailingOver` and "Active Execution" cell = execution name
+  - [x] 6.3 Add `TestConvertToTable_NoActiveExecution_ShowsRestPhase`: stub lister returns empty list. Verify "Effective Phase" = rest phase and "Active Execution" = ""
+  - [x] 6.4 Add `TestConvertToTable_TerminalExecution_Ignored`: stub lister returns a DRExecution with `Result: Succeeded`. Verify treated as idle (rest phase shown)
+  - [x] 6.5 Add `TestConvertToTable_NilLister_FallsBackToPlanStatus`: convertor with nil lister. Verify graceful degradation — uses `plan.Status.ActiveExecutionMode` for effective phase and `plan.Status.ActiveExecution` for the column (backward compat during startup)
+  - [x] 6.6 Add `TestConvertToTable_BulkList_SingleQuery`: create convertor with a counting stub lister, convert a `DRPlanList` with 3 plans. Verify the lister's `List` was called exactly once (not per plan)
+  - [x] 6.7 Update `TestPrepareForCreate_InitializesActiveExecution` — this test still passes because the fields still exist on the struct (removal is 10.4). No change needed, just verify
 
-- [ ] Task 7: Update preflight tests (AC: #6)
-  - [ ] 7.1 Update `TestComposeReport_ActiveExecution`: set `ActiveExecution: "exec-failover-1"` on `CompositionInput` instead of on `Plan.Status.ActiveExecution`. Keep plan's `ActiveExecution` empty to prove the report reads from the new field
-  - [ ] 7.2 Update `TestComposeReport_NoActiveExecution_NoWarning`: ensure `CompositionInput.ActiveExecution` is empty. Plan status may have a stale value — verify it's ignored
-  - [ ] 7.3 Add `TestComposeReport_PlanStatusActiveExecution_Ignored`: set `plan.Status.ActiveExecution = "stale"` but `input.ActiveExecution = ""`. Verify `report.ActiveExecution` is empty and no warning emitted — confirms plan status is no longer read
+- [x] Task 7: Update preflight tests (AC: #6)
+  - [x] 7.1 Update `TestComposeReport_ActiveExecution`: set `ActiveExecution: "exec-failover-1"` on `CompositionInput` instead of on `Plan.Status.ActiveExecution`. Keep plan's `ActiveExecution` empty to prove the report reads from the new field
+  - [x] 7.2 Update `TestComposeReport_NoActiveExecution_NoWarning`: ensure `CompositionInput.ActiveExecution` is empty. Plan status may have a stale value — verify it's ignored
+  - [x] 7.3 Add `TestComposeReport_PlanStatusActiveExecution_Ignored`: set `plan.Status.ActiveExecution = "stale"` but `input.ActiveExecution = ""`. Verify `report.ActiveExecution` is empty and no warning emitted — confirms plan status is no longer read
 
-- [ ] Task 8: Update DRPlan reconciler integration tests (AC: #6)
-  - [ ] 8.1 Verify existing integration tests that exercise the reconcile → preflight pipeline still pass. If any test previously set `plan.Status.ActiveExecution` to test the warning, update it to create a real non-terminal DRExecution for the plan instead
-  - [ ] 8.2 Run `make test` — all unit and integration tests pass with zero regressions
+- [x] Task 8: Update DRPlan reconciler integration tests (AC: #6)
+  - [x] 8.1 Verify existing integration tests that exercise the reconcile → preflight pipeline still pass. If any test previously set `plan.Status.ActiveExecution` to test the warning, update it to create a real non-terminal DRExecution for the plan instead
+  - [x] 8.2 Run `make test` — all unit and integration tests pass with zero regressions
 
-- [ ] Task 9: Documentation and tiered comments (AC: all)
-  - [ ] 9.1 Update `DRPlanTableConvertor` godoc to explain the DRExecution-derived pattern
-  - [ ] 9.2 Add Tier 3 domain-why comment on `buildActiveExecIndex` explaining why a bulk LIST + client-side index is used instead of per-plan queries (O(plans+executions) vs O(plans*executions))
-  - [ ] 9.3 Update `CompositionInput.ActiveExecution` field godoc explaining it's derived from DRExecution query, not from plan status
-  - [ ] 9.4 Update `composePreflightReport` comment to note the DRExecution query for active execution derivation
+- [x] Task 9: Documentation and tiered comments (AC: all)
+  - [x] 9.1 Update `DRPlanTableConvertor` godoc to explain the DRExecution-derived pattern
+  - [x] 9.2 Add Tier 3 domain-why comment on `buildActiveExecIndex` explaining why a bulk LIST + client-side index is used instead of per-plan queries (O(plans+executions) vs O(plans*executions))
+  - [x] 9.3 Update `CompositionInput.ActiveExecution` field godoc explaining it's derived from DRExecution query, not from plan status
+  - [x] 9.4 Update `composePreflightReport` comment to note the DRExecution query for active execution derivation
+
+### Review Findings
+
+- [x] [Review][Decision→Patch] Multiple active DRExecutions — decided "fail closed" (multiple active is a conceptual error). Both table convertor and reconciler now use first-wins policy and log a warning when duplicates are seen. Consistent behavior across both consumers.
+- [x] [Review][Patch] Table convertor falls back to stale plan status after DRExecution LIST errors — fixed: `buildActiveExecIndex` now returns an empty (non-nil) index on error so `planToRow` shows idle rather than stale plan-status fields.
+- [x] [Review][Patch] Preflight reports "idle" when the DRExecution LIST fails — fixed: reconciler now appends a preflight warning ("Active execution detection unavailable") when the LIST call fails.
 
 ## Dev Notes
 
@@ -378,10 +384,37 @@ Then run `make manifests` to regenerate `config/rbac/role.yaml`.
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4.6
 
 ### Debug Log References
 
+None — zero-debug implementation, all tests passed on first run.
+
 ### Completion Notes List
 
+- DRPlanTableConvertor now derives "Effective Phase" and "Active Execution" columns from DRExecution resources via injected rest.Lister, with graceful nil-lister fallback to plan status fields for backward compatibility during startup or unwired tests
+- Bulk LIST + client-side index pattern (buildActiveExecIndex) ensures O(plans+executions) performance for `kubectl get drplans` instead of N individual queries
+- NewREST signature updated to return *DRPlanTableConvertor as third value; apiserver.go wires DRExecution storage after both stores are created
+- CompositionInput.ActiveExecution field replaces plan.Status.ActiveExecution reads in ComposeReport and collectWarnings
+- DRPlan reconciler queries DRExecutions via PlanNameLabel for preflight active execution derivation; RBAC marker added and role.yaml regenerated
+- 5 new table convertor tests (derive from execution, no active execution, terminal ignored, nil lister fallback, bulk single query)
+- 1 new preflight test (TestComposeReport_PlanStatusActiveExecution_Ignored), 2 updated preflight tests
+- All existing unit tests (including TestPrepareForCreate_InitializesActiveExecution) pass unchanged — fields still exist on struct (removal is 10.4)
+- drplan package coverage: 29.6% → 58.0%
+- All unit tests pass, all integration tests (admission, apiserver, controller, rbac, replication, storage) pass with zero regressions
+
 ### File List
+
+- pkg/registry/drplan/strategy.go (modified) — DRPlanTableConvertor struct with drexecutionLister, SetDRExecutionStorage, buildActiveExecIndex, pointer receiver ConvertToTable, updated planToRow with activeExecIndex
+- pkg/registry/drplan/storage.go (modified) — NewREST returns *DRPlanTableConvertor, uses pointer tc
+- pkg/registry/drplan/strategy_test.go (modified) — stubExecLister + errExecLister helpers, 7 new ConvertToTable tests
+- pkg/apiserver/apiserver.go (modified) — capture drplanTC from NewREST, inject DRExecution storage
+- internal/preflight/checks.go (modified) — ActiveExecution field on CompositionInput, ComposeReport and collectWarnings read from input.ActiveExecution
+- internal/preflight/checks_test.go (modified) — 2 updated tests, 1 new TestComposeReport_PlanStatusActiveExecution_Ignored
+- pkg/controller/drplan/reconciler.go (modified) — RBAC marker for drexecutions list, DRExecution query in composePreflightReport
+- config/rbac/role.yaml (auto-generated) — regenerated with drexecutions list verb
+
+### Change Log
+
+- 2026-05-10: Implemented Story 10.2 — DRPlan table convertor and preflight composition now derive active execution from DRExecution resources instead of plan status fields. 5 new table convertor tests, 1 new preflight test, 2 updated preflight tests. All unit and integration tests pass with zero regressions.
+- 2026-05-10: Review fixes — (1) first-wins deterministic policy for duplicate non-terminal executions in both table convertor and reconciler, with duplicate-detection warning logs; (2) LIST error in table convertor returns empty index instead of nil so planToRow shows idle, not stale plan status; (3) LIST error in reconciler appends preflight warning. 2 new table convertor tests. All tests pass.

@@ -94,6 +94,7 @@ const (
 // +kubebuilder:rbac:groups=soteria.io,resources=drplans,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=soteria.io,resources=drplans/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=soteria.io,resources=drplans/finalizers,verbs=update
+// +kubebuilder:rbac:groups=soteria.io,resources=drexecutions,verbs=list
 // +kubebuilder:rbac:groups=kubevirt.io,resources=virtualmachines,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch
@@ -1233,6 +1234,27 @@ func (r *DRPlanReconciler) composePreflightReport(
 		}
 	}
 
+	// Derive active execution from DRExecution resources instead of plan status.
+	var activeExecName string
+	var execListErr bool
+	var execList soteriav1alpha1.DRExecutionList
+	if err := r.List(ctx, &execList,
+		client.MatchingLabels{soteriav1alpha1.PlanNameLabel: plan.Name}); err != nil {
+		logger.Error(err, "Failed to list DRExecutions for preflight")
+		execListErr = true
+	} else {
+		for i := range execList.Items {
+			if execList.Items[i].Status.Result == "" {
+				if activeExecName != "" {
+					logger.Info("Multiple non-terminal DRExecutions detected",
+						"plan", plan.Name, "kept", activeExecName, "extra", execList.Items[i].Name)
+					break
+				}
+				activeExecName = execList.Items[i].Name
+			}
+		}
+	}
+
 	input := preflight.CompositionInput{
 		Plan:                   plan,
 		DiscoveryResult:        discovery,
@@ -1243,10 +1265,15 @@ func (r *DRPlanReconciler) composePreflightReport(
 		LocalSite:              r.LocalSite,
 		PrimarySiteDiscovery:   plan.Status.PrimarySiteDiscovery,
 		SecondarySiteDiscovery: plan.Status.SecondarySiteDiscovery,
+		ActiveExecution:        activeExecName,
 	}
 
 	now := metav1.Now()
 	report := preflight.ComposeReport(input, now)
+	if execListErr {
+		report.Warnings = append(report.Warnings,
+			"Active execution detection unavailable: failed to list DRExecutions")
+	}
 	report.Warnings = append(storageWarnings, report.Warnings...)
 
 	return report

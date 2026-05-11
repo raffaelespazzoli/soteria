@@ -121,7 +121,7 @@ func (c CompletedConfig) New() (*SoteriaServer, error) {
 
 	v1alpha1storage := map[string]rest.Storage{}
 
-	drplanStore, drplanStatusStore, err := drplanregistry.NewREST(soteriainstall.Scheme, optsGetter)
+	drplanStore, drplanStatusStore, drplanTC, err := drplanregistry.NewREST(soteriainstall.Scheme, optsGetter)
 	if err != nil {
 		return nil, fmt.Errorf("creating DRPlan storage: %w", err)
 	}
@@ -146,6 +146,12 @@ func (c CompletedConfig) New() (*SoteriaServer, error) {
 
 	if c.SoteriaPlugin != nil {
 		c.SoteriaPlugin.SetDRExecutionStorage(drexecStore)
+	}
+
+	// Inject DRExecution storage into DRPlan table convertor for derived
+	// effective phase and active execution columns.
+	if drplanTC != nil {
+		drplanTC.SetDRExecutionStorage(drexecStore)
 	}
 
 	drgroupStore, drgroupStatusStore, err := drgroupstatusregistry.NewREST(soteriainstall.Scheme, optsGetter)

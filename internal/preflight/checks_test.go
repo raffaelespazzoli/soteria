@@ -991,10 +991,10 @@ func TestComposeReport_ActiveExecution(t *testing.T) {
 				SecondarySite: "dc-east",
 			},
 			Status: soteriav1alpha1.DRPlanStatus{
-				ActiveSite:      "dc-west",
-				ActiveExecution: "exec-failover-1",
+				ActiveSite: "dc-west",
 			},
 		},
+		ActiveExecution: "exec-failover-1",
 	}
 
 	report := ComposeReport(input, now)
@@ -1021,6 +1021,7 @@ func TestComposeReport_NoActiveExecution_NoWarning(t *testing.T) {
 				ActiveSite: "dc-west",
 			},
 		},
+		ActiveExecution: "",
 	}
 
 	report := ComposeReport(input, now)
@@ -1032,6 +1033,35 @@ func TestComposeReport_NoActiveExecution_NoWarning(t *testing.T) {
 	for _, w := range report.Warnings {
 		if w == "execution  is active; new execution blocked" {
 			t.Error("should not emit active execution warning when no active execution")
+		}
+	}
+}
+
+func TestComposeReport_PlanStatusActiveExecution_Ignored(t *testing.T) {
+	now := metav1.Now()
+	input := CompositionInput{
+		Plan: &soteriav1alpha1.DRPlan{
+			Spec: soteriav1alpha1.DRPlanSpec{
+				PrimarySite:   "dc-west",
+				SecondarySite: "dc-east",
+			},
+			Status: soteriav1alpha1.DRPlanStatus{
+				ActiveSite:      "dc-west",
+				ActiveExecution: "stale-exec",
+			},
+		},
+		ActiveExecution: "",
+	}
+
+	report := ComposeReport(input, now)
+
+	if report.ActiveExecution != "" {
+		t.Errorf("ActiveExecution = %q, want empty (plan status should be ignored)", report.ActiveExecution)
+	}
+
+	for _, w := range report.Warnings {
+		if w == "execution stale-exec is active; new execution blocked" {
+			t.Error("should not emit warning from stale plan.Status.ActiveExecution")
 		}
 	}
 }

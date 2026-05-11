@@ -19,14 +19,17 @@ package drplan
 import (
 	"context"
 
+	metainternalversion "k8s.io/apimachinery/pkg/apis/meta/internalversion"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/duration"
 	"k8s.io/apimachinery/pkg/util/validation/field"
+	"k8s.io/apiserver/pkg/registry/rest"
 	"k8s.io/apiserver/pkg/storage"
 	"k8s.io/apiserver/pkg/storage/names"
+	"k8s.io/klog/v2"
 
 	soteriainstall "github.com/soteria-project/soteria/pkg/apis/soteria.io/install"
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
@@ -117,9 +120,27 @@ func (drplanStatusStrategy) ValidateUpdate(_ context.Context, _, _ runtime.Objec
 
 // ---------- Custom table convertor ----------
 
+// activeExecIndex maps plan name → active (non-terminal) DRExecution. Built
+// once per ConvertToTable call via a single bulk LIST from the DRExecution
+// cacher, giving O(plans+executions) cost instead of O(plans*executions).
+type activeExecIndex map[string]*soteriav1alpha1.DRExecution
+
 // DRPlanTableConvertor converts DRPlan objects to table rows with custom
 // columns: PHASE, EFFECTIVE PHASE, ACTIVE SITE, VMs, ACTIVE EXECUTION.
-type DRPlanTableConvertor struct{}
+// The "Effective Phase" and "Active Execution" columns are derived from
+// DRExecution resources via drexecutionLister (injected by apiserver.go after
+// both DRPlan and DRExecution storage are created). When the lister is nil
+// (startup race or tests), the convertor falls back to plan status fields.
+type DRPlanTableConvertor struct {
+	drexecutionLister rest.Lister
+}
+
+// SetDRExecutionStorage injects the DRExecution REST storage so the table
+// convertor can derive effective phase and active execution from DRExecution
+// resources instead of plan status fields.
+func (c *DRPlanTableConvertor) SetDRExecutionStorage(s rest.Lister) {
+	c.drexecutionLister = s
+}
 
 var tableColumns = []metav1.TableColumnDefinition{
 	{Name: "Name", Type: "string", Format: "name"},
@@ -131,25 +152,70 @@ var tableColumns = []metav1.TableColumnDefinition{
 	{Name: "Age", Type: "string"},
 }
 
-func (DRPlanTableConvertor) ConvertToTable(
+func (c *DRPlanTableConvertor) ConvertToTable(
 	ctx context.Context, object runtime.Object, tableOptions runtime.Object,
 ) (*metav1.Table, error) {
 	table := &metav1.Table{ColumnDefinitions: tableColumns}
+	index := c.buildActiveExecIndex(ctx)
 
 	switch obj := object.(type) {
 	case *soteriav1alpha1.DRPlan:
-		table.Rows = append(table.Rows, planToRow(obj))
+		table.Rows = append(table.Rows, planToRow(obj, index))
 	case *soteriav1alpha1.DRPlanList:
 		for i := range obj.Items {
-			table.Rows = append(table.Rows, planToRow(&obj.Items[i]))
+			table.Rows = append(table.Rows, planToRow(&obj.Items[i], index))
 		}
 	}
 
 	return table, nil
 }
 
-func planToRow(plan *soteriav1alpha1.DRPlan) metav1.TableRow {
-	effectivePhase := engine.EffectivePhase(plan.Status.Phase, plan.Status.ActiveExecutionMode)
+// buildActiveExecIndex performs a single bulk LIST of all DRExecutions from the
+// cacher and returns a map keyed by spec.planName containing only non-terminal
+// executions (status.result == ""). This avoids N per-plan queries for kubectl
+// get drplans. On LIST error the index is empty (not nil) so planToRow treats
+// every plan as idle rather than falling back to stale plan-status fields.
+func (c *DRPlanTableConvertor) buildActiveExecIndex(ctx context.Context) activeExecIndex {
+	if c == nil || c.drexecutionLister == nil {
+		return nil
+	}
+	listObj, err := c.drexecutionLister.List(ctx, &metainternalversion.ListOptions{})
+	if err != nil {
+		klog.Warningf("Failed to list DRExecutions for table convertor: %v", err)
+		return activeExecIndex{}
+	}
+	execList, ok := listObj.(*soteriav1alpha1.DRExecutionList)
+	if !ok {
+		klog.Warning("Unexpected list type from DRExecution lister")
+		return activeExecIndex{}
+	}
+	index := make(activeExecIndex, len(execList.Items)/2+1)
+	for i := range execList.Items {
+		exec := &execList.Items[i]
+		if exec.Status.Result == "" {
+			if _, dup := index[exec.Spec.PlanName]; dup {
+				klog.Warningf("Multiple non-terminal DRExecutions for plan %s; keeping first seen", exec.Spec.PlanName)
+				continue
+			}
+			index[exec.Spec.PlanName] = exec
+		}
+	}
+	return index
+}
+
+func planToRow(plan *soteriav1alpha1.DRPlan, index activeExecIndex) metav1.TableRow {
+	var effectivePhase string
+	var activeExecName string
+	if exec, ok := index[plan.Name]; ok {
+		effectivePhase = engine.EffectivePhase(plan.Status.Phase, exec.Spec.Mode)
+		activeExecName = exec.Name
+	} else if index == nil {
+		// Fallback: lister not wired, read from plan status
+		effectivePhase = engine.EffectivePhase(plan.Status.Phase, plan.Status.ActiveExecutionMode)
+		activeExecName = plan.Status.ActiveExecution
+	} else {
+		effectivePhase = plan.Status.Phase
+	}
 	return metav1.TableRow{
 		Object: runtime.RawExtension{Object: plan},
 		Cells: []any{
@@ -158,7 +224,7 @@ func planToRow(plan *soteriav1alpha1.DRPlan) metav1.TableRow {
 			effectivePhase,
 			plan.Status.ActiveSite,
 			plan.Status.DiscoveredVMCount,
-			plan.Status.ActiveExecution,
+			activeExecName,
 			translateTimestampSince(plan.CreationTimestamp),
 		},
 	}

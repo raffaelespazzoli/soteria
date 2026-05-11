@@ -29,10 +29,13 @@ import (
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
 )
 
-// NewREST creates the REST storage for DRPlan.
+// NewREST creates the REST storage for DRPlan. The returned
+// *DRPlanTableConvertor must be wired to DRExecution storage via
+// SetDRExecutionStorage after DRExecution NewREST completes (see apiserver.go).
 func NewREST(
 	scheme *runtime.Scheme, optsGetter generic.RESTOptionsGetter,
-) (*genericregistry.Store, *StatusREST, error) {
+) (*genericregistry.Store, *StatusREST, *DRPlanTableConvertor, error) {
+	tc := &DRPlanTableConvertor{}
 	store := &genericregistry.Store{
 		NewFunc:                   func() runtime.Object { return &soteriav1alpha1.DRPlan{} },
 		NewListFunc:               func() runtime.Object { return &soteriav1alpha1.DRPlanList{} },
@@ -42,7 +45,7 @@ func NewREST(
 		CreateStrategy: Strategy,
 		UpdateStrategy: Strategy,
 		DeleteStrategy: Strategy,
-		TableConvertor: DRPlanTableConvertor{},
+		TableConvertor: tc,
 	}
 
 	options := &generic.StoreOptions{
@@ -50,13 +53,13 @@ func NewREST(
 		AttrFunc:    GetAttrs,
 	}
 	if err := store.CompleteWithOptions(options); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	statusStore := *store
 	statusStore.UpdateStrategy = StatusStrategy
 
-	return store, &StatusREST{store: &statusStore}, nil
+	return store, &StatusREST{store: &statusStore}, tc, nil
 }
 
 // StatusREST implements the REST endpoint for the DRPlan status subresource.

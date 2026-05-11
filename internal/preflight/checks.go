@@ -51,6 +51,9 @@ type CompositionInput struct {
 	LocalSite              string
 	PrimarySiteDiscovery   *soteriav1alpha1.SiteDiscovery
 	SecondarySiteDiscovery *soteriav1alpha1.SiteDiscovery
+	// ActiveExecution is the name of the currently running DRExecution for
+	// this plan, derived from a DRExecution list query. Empty when idle.
+	ActiveExecution string
 }
 
 // ComposeReport builds a PreflightReport from the combined pipeline outputs.
@@ -65,8 +68,8 @@ func ComposeReport(input CompositionInput, now metav1.Time) *soteriav1alpha1.Pre
 		report.PrimarySite = input.Plan.Spec.PrimarySite
 		report.SecondarySite = input.Plan.Spec.SecondarySite
 		report.ActiveSite = input.Plan.Status.ActiveSite
-		report.ActiveExecution = input.Plan.Status.ActiveExecution
 	}
+	report.ActiveExecution = input.ActiveExecution
 
 	if input.DiscoveryResult != nil {
 		report.TotalVMs = input.DiscoveryResult.TotalVMs
@@ -266,9 +269,9 @@ func buildChunkIndex(cr *engine.ChunkResult) map[string][]engine.DRGroupChunk {
 func collectWarnings(input CompositionInput) []string {
 	var warnings []string
 
-	if input.Plan != nil && input.Plan.Status.ActiveExecution != "" {
+	if input.ActiveExecution != "" {
 		warnings = append(warnings, fmt.Sprintf(
-			"execution %s is active; new execution blocked", input.Plan.Status.ActiveExecution))
+			"execution %s is active; new execution blocked", input.ActiveExecution))
 	}
 
 	for key, backend := range input.StorageBackends {
