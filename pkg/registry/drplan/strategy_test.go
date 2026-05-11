@@ -144,25 +144,6 @@ func TestPrepareForCreate_SetsActiveSiteToPrimarySite(t *testing.T) {
 	}
 }
 
-func TestPrepareForCreate_InitializesActiveExecution(t *testing.T) {
-	plan := &soteriav1alpha1.DRPlan{
-		Spec: soteriav1alpha1.DRPlanSpec{
-			MaxConcurrentFailovers: 4,
-			PrimarySite:            "dc-west",
-			SecondarySite:          "dc-east",
-		},
-	}
-
-	Strategy.PrepareForCreate(context.Background(), plan)
-
-	if plan.Status.ActiveExecution != "" {
-		t.Errorf("expected ActiveExecution = \"\", got %q", plan.Status.ActiveExecution)
-	}
-	if plan.Status.ActiveExecutionMode != "" {
-		t.Errorf("expected ActiveExecutionMode = \"\", got %q", plan.Status.ActiveExecutionMode)
-	}
-}
-
 func TestPrepareForUpdate_PreservesStatus(t *testing.T) {
 	oldPlan := &soteriav1alpha1.DRPlan{
 		Spec: soteriav1alpha1.DRPlanSpec{
@@ -277,15 +258,13 @@ func TestConvertToTable_TerminalExecution_Ignored(t *testing.T) {
 	}
 }
 
-func TestConvertToTable_NilLister_FallsBackToPlanStatus(t *testing.T) {
+func TestConvertToTable_NilLister_FallsBackToRestPhase(t *testing.T) {
 	tc := &DRPlanTableConvertor{drexecutionLister: nil}
 
 	plan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "legacy-plan"},
 		Status: soteriav1alpha1.DRPlanStatus{
-			Phase:               soteriav1alpha1.PhaseSteadyState,
-			ActiveExecutionMode: soteriav1alpha1.ExecutionModePlannedMigration,
-			ActiveExecution:     "legacy-exec-1",
+			Phase: soteriav1alpha1.PhaseSteadyState,
 		},
 	}
 
@@ -294,11 +273,11 @@ func TestConvertToTable_NilLister_FallsBackToPlanStatus(t *testing.T) {
 		t.Fatalf("ConvertToTable returned error: %v", err)
 	}
 	cells := table.Rows[0].Cells
-	if cells[2] != soteriav1alpha1.PhaseFailingOver {
-		t.Errorf("Effective Phase = %q, want %q (fallback to plan status)", cells[2], soteriav1alpha1.PhaseFailingOver)
+	if cells[2] != soteriav1alpha1.PhaseSteadyState {
+		t.Errorf("Effective Phase = %q, want %q (fallback to rest phase)", cells[2], soteriav1alpha1.PhaseSteadyState)
 	}
-	if cells[5] != "legacy-exec-1" {
-		t.Errorf("Active Execution = %q, want %q (fallback to plan status)", cells[5], "legacy-exec-1")
+	if cells[5] != "" {
+		t.Errorf("Active Execution = %q, want empty (nil lister cannot derive active execution)", cells[5])
 	}
 }
 
@@ -355,9 +334,7 @@ func TestConvertToTable_ListError_ShowsIdleNotFallback(t *testing.T) {
 	plan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "plan-err"},
 		Status: soteriav1alpha1.DRPlanStatus{
-			Phase:               soteriav1alpha1.PhaseSteadyState,
-			ActiveExecutionMode: soteriav1alpha1.ExecutionModePlannedMigration,
-			ActiveExecution:     "stale-exec",
+			Phase: soteriav1alpha1.PhaseSteadyState,
 		},
 	}
 

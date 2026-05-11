@@ -34,8 +34,8 @@ limitations under the License.
 //     DRExecutions with ScyllaRetry backoff; self-fails if a competing
 //     non-terminal execution is found.
 //
-// This replaces the former plan.Status.ActiveExecution pointer that coupled
-// DRPlan status to execution lifecycle.
+// This three-layer model replaced the former plan-status concurrency pointer,
+// decoupling DRPlan status from execution lifecycle.
 //
 // The VirtualMachine webhook remains on the controller-runtime webhook server
 // path (ValidatingWebhookConfiguration vvm.kb.io) because VMs are standard

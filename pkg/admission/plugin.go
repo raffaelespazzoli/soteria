@@ -135,9 +135,8 @@ func (p *SoteriaAdmissionPlugin) validateDRExecution(ctx context.Context, a admi
 	}
 
 	// Concurrency gate: list DRExecutions for this plan and reject if any
-	// non-terminal execution exists. This replaces the old
-	// plan.Status.ActiveExecution check with a derived query so that the
-	// DRPlan status no longer needs a concurrency pointer.
+	// non-terminal execution exists. The DRPlan status does not carry a
+	// concurrency pointer; this derived query is the sole admission check.
 	if p.drexecutionStorage != nil {
 		if err := p.checkNoConcurrentExecution(ctx, a, exec.Spec.PlanName); err != nil {
 			return err

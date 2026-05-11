@@ -151,10 +151,8 @@ func newTestPlan(name string) *soteriav1alpha1.DRPlan {
 			SecondarySite:          "dc-east",
 		},
 		Status: soteriav1alpha1.DRPlanStatus{
-			Phase:               soteriav1alpha1.PhaseSteadyState,
-			ActiveSite:          "dc-west",
-			ActiveExecution:     "test-exec",
-			ActiveExecutionMode: soteriav1alpha1.ExecutionModePlannedMigration,
+			Phase:      soteriav1alpha1.PhaseSteadyState,
+			ActiveSite: "dc-west",
 		},
 	}
 }
@@ -740,8 +738,7 @@ func TestWaveExecutor_AllGroupsFail_ResultFailed(t *testing.T) {
 		t.Errorf("expected result %q, got %q", soteriav1alpha1.ExecutionResultFailed, exec.Status.Result)
 	}
 
-	// Verify plan stays at rest state on failure; ActiveExecution is no
-	// longer written or cleared (concurrency guard moved to DRExecution layer).
+	// Verify plan stays at rest state on failure (phase unchanged on Failed).
 	var updatedPlan soteriav1alpha1.DRPlan
 	if err := cl.Get(context.Background(), client.ObjectKey{Name: "plan-allfail"}, &updatedPlan); err != nil {
 		t.Fatalf("getting plan: %v", err)
@@ -1140,7 +1137,6 @@ func TestWaveExecutor_ActiveSiteFlip(t *testing.T) {
 			plan := newTestPlan("plan-as")
 			plan.Status.Phase = tt.startPhase
 			plan.Status.ActiveSite = tt.startSite
-			plan.Status.ActiveExecutionMode = tt.execMode
 			exec := newTestExecution("exec-as", "plan-as")
 			exec.Spec.Mode = tt.execMode
 			vms := makeVMs([]string{"vm-1"}, "alpha")

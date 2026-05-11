@@ -86,9 +86,8 @@ func TestDRExecutionReconciler_ResumeInProgress_EmitsEvent(t *testing.T) {
 			SecondarySite:          "dc-east",
 		},
 		Status: soteriav1alpha1.DRPlanStatus{
-			Phase:           soteriav1alpha1.PhaseSteadyState,
-			ActiveSite:      "dc-west",
-			ActiveExecution: "exec-resume",
+			Phase:      soteriav1alpha1.PhaseSteadyState,
+			ActiveSite: "dc-west",
 		},
 	}
 
@@ -207,20 +206,12 @@ func TestDRExecutionReconciler_NewExecution_NormalPath(t *testing.T) {
 		t.Error("expected StartTime to be set for new execution")
 	}
 
-	// Verify plan phase stays at rest state; ActiveExecution is no longer set
-	// (concurrency guard moved to DRExecution-derived query in Story 10.1).
 	var updatedPlan soteriav1alpha1.DRPlan
 	if err := cl.Get(context.Background(), client.ObjectKey{Name: "plan-1"}, &updatedPlan); err != nil {
 		t.Fatalf("fetching plan: %v", err)
 	}
 	if updatedPlan.Status.Phase != soteriav1alpha1.PhaseSteadyState {
 		t.Errorf("expected plan phase SteadyState (rest), got %q", updatedPlan.Status.Phase)
-	}
-	if updatedPlan.Status.ActiveExecution != "" {
-		t.Errorf("expected ActiveExecution to remain empty, got %q", updatedPlan.Status.ActiveExecution)
-	}
-	if updatedPlan.Status.ActiveExecutionMode != "" {
-		t.Errorf("expected ActiveExecutionMode to remain empty, got %q", updatedPlan.Status.ActiveExecutionMode)
 	}
 }
 
@@ -516,8 +507,6 @@ func TestDRExecutionReconciler_RoleStep0_PlannedMigration(t *testing.T) {
 		},
 	}
 	plan := newSiteAwarePlan("plan-1", "east", "west", soteriav1alpha1.PhaseSteadyState)
-	plan.Status.ActiveExecution = "exec-step0"
-	plan.Status.ActiveExecutionMode = soteriav1alpha1.ExecutionModePlannedMigration
 	cl := newTestClient(exec, plan)
 
 	r := &DRExecutionReconciler{
@@ -566,8 +555,6 @@ func TestDRExecutionReconciler_RoleStep0_Idempotent(t *testing.T) {
 		},
 	}
 	plan := newSiteAwarePlan("plan-1", "east", "west", soteriav1alpha1.PhaseSteadyState)
-	plan.Status.ActiveExecution = "exec-step0-idem"
-	plan.Status.ActiveExecutionMode = soteriav1alpha1.ExecutionModePlannedMigration
 	cl := newTestClient(exec, plan)
 
 	r := &DRExecutionReconciler{
@@ -682,8 +669,6 @@ func TestDRExecutionReconciler_PlannedMigration_OwnerProceedsAfterStep0(t *testi
 		},
 	}
 	plan := newSiteAwarePlan("plan-1", "east", "west", soteriav1alpha1.PhaseSteadyState)
-	plan.Status.ActiveExecution = "exec-proceed"
-	plan.Status.ActiveExecutionMode = soteriav1alpha1.ExecutionModePlannedMigration
 	cl := newTestClient(exec, plan)
 
 	r := &DRExecutionReconciler{
@@ -732,8 +717,6 @@ func TestDRExecutionReconciler_ResumePath_WaitsForStep0Complete(t *testing.T) {
 		},
 	}
 	plan := newSiteAwarePlan("plan-r", "east", "west", soteriav1alpha1.PhaseSteadyState)
-	plan.Status.ActiveExecution = "exec-resume-step0"
-	plan.Status.ActiveExecutionMode = soteriav1alpha1.ExecutionModePlannedMigration
 	cl := newTestClient(exec, plan)
 
 	r := &DRExecutionReconciler{
@@ -781,8 +764,6 @@ func TestDRExecutionReconciler_ResumePath_ProceedsAfterStep0Complete(t *testing.
 		},
 	}
 	plan := newSiteAwarePlan("plan-rok", "east", "west", soteriav1alpha1.PhaseSteadyState)
-	plan.Status.ActiveExecution = "exec-resume-ok"
-	plan.Status.ActiveExecutionMode = soteriav1alpha1.ExecutionModePlannedMigration
 	cl := newTestClient(exec, plan)
 
 	r := &DRExecutionReconciler{
@@ -818,8 +799,6 @@ func TestDRExecutionReconciler_DisasterMode_SourceExitsImmediately(t *testing.T)
 		},
 	}
 	plan := newSiteAwarePlan("plan-1", "east", "west", soteriav1alpha1.PhaseSteadyState)
-	plan.Status.ActiveExecution = "exec-disaster-source"
-	plan.Status.ActiveExecutionMode = soteriav1alpha1.ExecutionModeDisaster
 	cl := newTestClient(exec, plan)
 
 	r := &DRExecutionReconciler{
@@ -946,7 +925,6 @@ func TestReconcileWaveProgress_AllVMsReady_GroupsCompleted(t *testing.T) {
 	})
 
 	plan := newWaveGatePlan("plan-1")
-	plan.Status.ActiveExecution = "exec-ready"
 	cl := newTestClient(exec, plan)
 
 	r := &DRExecutionReconciler{
@@ -1009,7 +987,6 @@ func TestReconcileWaveProgress_VMsNotReady_Requeues(t *testing.T) {
 	})
 
 	plan := newWaveGatePlan("plan-1")
-	plan.Status.ActiveExecution = "exec-waiting"
 	cl := newTestClient(exec, plan)
 
 	r := &DRExecutionReconciler{
@@ -1065,7 +1042,6 @@ func TestReconcileWaveProgress_Timeout_DisasterFailForward(t *testing.T) {
 		})
 
 	plan := newWaveGatePlan("plan-1")
-	plan.Status.ActiveExecution = "exec-timeout-disaster"
 	cl := newTestClient(exec, plan)
 
 	r := &DRExecutionReconciler{
@@ -1132,8 +1108,6 @@ func TestReconcileWaveProgress_Timeout_PlannedMigrationFailFast(t *testing.T) {
 	}
 
 	plan := newWaveGatePlan("plan-1")
-	plan.Status.ActiveExecution = "exec-timeout-pm"
-	plan.Status.ActiveExecutionMode = soteriav1alpha1.ExecutionModePlannedMigration
 	cl := newTestClient(exec, plan)
 
 	r := &DRExecutionReconciler{
@@ -1180,7 +1154,6 @@ func TestReconcileWaveProgress_DefaultTimeout(t *testing.T) {
 		})
 
 	plan := newWaveGatePlan("plan-1")
-	plan.Status.ActiveExecution = "exec-default-to"
 	// VMReadyTimeout is nil — should use default 5m.
 	cl := newTestClient(exec, plan)
 
@@ -1230,7 +1203,6 @@ func TestReconcileWaveProgress_NoVMManager_AutoCompletes(t *testing.T) {
 	})
 
 	plan := newWaveGatePlan("plan-1")
-	plan.Status.ActiveExecution = "exec-no-mgr"
 	cl := newTestClient(exec, plan)
 
 	r := &DRExecutionReconciler{
@@ -1420,7 +1392,6 @@ func TestReconcileWaveProgress_CustomTimeout(t *testing.T) {
 	twoMin := metav1.Duration{Duration: 2 * time.Minute}
 	plan := newWaveGatePlan("plan-custom")
 	plan.Spec.VMReadyTimeout = &twoMin
-	plan.Status.ActiveExecution = "exec-custom-to"
 	cl := newTestClient(exec, plan)
 
 	r := &DRExecutionReconciler{
@@ -1485,7 +1456,6 @@ func TestMultiWaveGate_FullSequence(t *testing.T) {
 		})
 
 	plan := newWaveGatePlan("plan-1")
-	plan.Status.ActiveExecution = "exec-multi-gate"
 	cl := newTestClient(exec, plan)
 
 	vmMgr := &testVMManager{ready: map[string]bool{}}

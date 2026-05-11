@@ -52,8 +52,6 @@ func (drplanStrategy) PrepareForCreate(_ context.Context, obj runtime.Object) {
 	plan.Status = soteriav1alpha1.DRPlanStatus{}
 	plan.Status.Phase = soteriav1alpha1.PhaseSteadyState
 	plan.Status.ActiveSite = plan.Spec.PrimarySite
-	plan.Status.ActiveExecution = ""
-	plan.Status.ActiveExecutionMode = ""
 	plan.Generation = 1
 }
 
@@ -130,7 +128,8 @@ type activeExecIndex map[string]*soteriav1alpha1.DRExecution
 // The "Effective Phase" and "Active Execution" columns are derived from
 // DRExecution resources via drexecutionLister (injected by apiserver.go after
 // both DRPlan and DRExecution storage are created). When the lister is nil
-// (startup race or tests), the convertor falls back to plan status fields.
+// (startup race or tests), the convertor falls back to the persisted rest
+// phase and leaves the Active Execution column empty.
 type DRPlanTableConvertor struct {
 	drexecutionLister rest.Lister
 }
@@ -210,9 +209,7 @@ func planToRow(plan *soteriav1alpha1.DRPlan, index activeExecIndex) metav1.Table
 		effectivePhase = engine.EffectivePhase(plan.Status.Phase, exec.Spec.Mode)
 		activeExecName = exec.Name
 	} else if index == nil {
-		// Fallback: lister not wired, read from plan status
-		effectivePhase = engine.EffectivePhase(plan.Status.Phase, plan.Status.ActiveExecutionMode)
-		activeExecName = plan.Status.ActiveExecution
+		effectivePhase = plan.Status.Phase
 	} else {
 		effectivePhase = plan.Status.Phase
 	}

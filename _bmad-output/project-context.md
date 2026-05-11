@@ -99,7 +99,7 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 - Labels/annotations: `soteria.io/<key>` kebab-case — `soteria.io/drplan`, `soteria.io/wave`
 - Event reasons: PascalCase past-tense — `FailoverStarted`, `WaveCompleted`, `GroupFailed`
 - RBAC: Kubernetes-native only — no custom authorization logic
-- DRPlan 8-phase lifecycle: `DRPlan.Status.Phase` holds **only** rest states (`SteadyState`, `FailedOver`, `DRedSteadyState`, `FailedBack`). Transient phases (`FailingOver`, `Reprotecting`, `FailingBack`, `ReprotectingBack`) are derived via `EffectivePhase(restPhase, activeExecMode)`. `DRPlan.Status.ActiveExecution` references the in-progress DRExecution by name (empty when idle). Phase advances to next rest state on successful completion; stays unchanged on failure (self-healing)
+- DRPlan 8-phase lifecycle: `DRPlan.Status.Phase` holds **only** rest states (`SteadyState`, `FailedOver`, `DRedSteadyState`, `FailedBack`). Transient phases (`FailingOver`, `Reprotecting`, `FailingBack`, `ReprotectingBack`) are derived via `EffectivePhase(restPhase, activeExecMode)`. Active execution state is derived at runtime by querying DRExecution resources filtered by `soteria.io/plan-name` label. Phase advances to next rest state on successful completion; stays unchanged on failure (self-healing)
 - Unified handler model: `FailoverHandler` (config: `GracefulShutdown bool`) implements both failover and failback. Per-group path is always `StopReplication → StartVM`. `ReprotectHandler` implements both reprotect and restore. Direction is encoded in state machine phases, not handler logic
 
 **ScyllaDB Storage Layer:**

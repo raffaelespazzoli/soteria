@@ -41,7 +41,7 @@ func newDynamicClientForAdmission(t *testing.T) dynamic.Interface {
 	return client
 }
 
-func createDRPlan(t *testing.T, ctx context.Context, client dynamic.Interface, name, phase, activeExec string, conditions []map[string]any) {
+func createDRPlan(t *testing.T, ctx context.Context, client dynamic.Interface, name, phase string, conditions []map[string]any) {
 	t.Helper()
 
 	plan := &unstructured.Unstructured{
@@ -62,13 +62,10 @@ func createDRPlan(t *testing.T, ctx context.Context, client dynamic.Interface, n
 		t.Fatalf("Create DRPlan %s failed: %v", name, err)
 	}
 
-	if phase != "" || activeExec != "" || len(conditions) > 0 {
+	if phase != "" || len(conditions) > 0 {
 		status := map[string]any{}
 		if phase != "" {
 			status["phase"] = phase
-		}
-		if activeExec != "" {
-			status["activeExecution"] = activeExec
 		}
 		if len(conditions) > 0 {
 			status["conditions"] = conditions
@@ -90,7 +87,7 @@ func TestAdmission_DRExecution_ValidCreate_Allowed(t *testing.T) {
 	ctx := context.Background()
 
 	planName := "admission-valid-plan"
-	createDRPlan(t, ctx, client, planName, soteriav1alpha1.PhaseSteadyState, "", nil)
+	createDRPlan(t, ctx, client, planName, soteriav1alpha1.PhaseSteadyState, nil)
 	defer deleteDRPlan(t, ctx, client, planName)
 
 	exec := &unstructured.Unstructured{
@@ -147,7 +144,7 @@ func TestAdmission_DRExecution_ConcurrencyGate_Rejected(t *testing.T) {
 	ctx := context.Background()
 
 	planName := "admission-concurrency-plan"
-	createDRPlan(t, ctx, client, planName, soteriav1alpha1.PhaseSteadyState, "", nil)
+	createDRPlan(t, ctx, client, planName, soteriav1alpha1.PhaseSteadyState, nil)
 	defer deleteDRPlan(t, ctx, client, planName)
 
 	// Create a first non-terminal DRExecution for this plan.
@@ -200,7 +197,7 @@ func TestAdmission_DRExecution_ConcurrencyGate_AllowedAfterCompletion(t *testing
 	ctx := context.Background()
 
 	planName := "admission-concurrency-done-plan"
-	createDRPlan(t, ctx, client, planName, soteriav1alpha1.PhaseSteadyState, "", nil)
+	createDRPlan(t, ctx, client, planName, soteriav1alpha1.PhaseSteadyState, nil)
 	defer deleteDRPlan(t, ctx, client, planName)
 
 	// Create and complete a DRExecution.
@@ -258,7 +255,7 @@ func TestAdmission_DRExecution_InvalidPhase_Rejected(t *testing.T) {
 	ctx := context.Background()
 
 	planName := "admission-phase-plan"
-	createDRPlan(t, ctx, client, planName, soteriav1alpha1.PhaseFailedOver, "", nil)
+	createDRPlan(t, ctx, client, planName, soteriav1alpha1.PhaseFailedOver, nil)
 	defer deleteDRPlan(t, ctx, client, planName)
 
 	exec := &unstructured.Unstructured{
@@ -297,7 +294,7 @@ func TestAdmission_DRExecution_SitesOutOfSync_Rejected(t *testing.T) {
 		"message":            "VMs differ between sites",
 		"lastTransitionTime": "2026-01-01T00:00:00Z",
 	}}
-	createDRPlan(t, ctx, client, planName, soteriav1alpha1.PhaseSteadyState, "", conditions)
+	createDRPlan(t, ctx, client, planName, soteriav1alpha1.PhaseSteadyState, conditions)
 	defer deleteDRPlan(t, ctx, client, planName)
 
 	exec := &unstructured.Unstructured{
@@ -357,7 +354,7 @@ func TestAdmission_DRPlan_ImmutableSiteUpdate_Rejected(t *testing.T) {
 
 	planName := "admission-immut-site"
 	createDRPlan(t, ctx, client, planName,
-		soteriav1alpha1.PhaseSteadyState, "", nil)
+		soteriav1alpha1.PhaseSteadyState, nil)
 	defer deleteDRPlan(t, ctx, client, planName)
 
 	got, err := client.Resource(drplanGVR()).Get(

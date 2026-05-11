@@ -234,7 +234,7 @@ func TestAPIServer_DRExecution_CRUD(t *testing.T) {
 	ctx := context.Background()
 
 	createDRPlan(t, ctx, client, "my-plan",
-		soteriav1alpha1.PhaseSteadyState, "", nil)
+		soteriav1alpha1.PhaseSteadyState, nil)
 	defer deleteDRPlan(t, ctx, client, "my-plan")
 
 	exec := &unstructured.Unstructured{
@@ -284,7 +284,7 @@ func TestAPIServer_DRExecution_AppendOnly(t *testing.T) {
 	ctx := context.Background()
 
 	createDRPlan(t, ctx, client, "appendonly-plan",
-		soteriav1alpha1.PhaseSteadyState, "", nil)
+		soteriav1alpha1.PhaseSteadyState, nil)
 	defer deleteDRPlan(t, ctx, client, "appendonly-plan")
 
 	exec := &unstructured.Unstructured{

@@ -245,43 +245,10 @@ func TestDRExecutionValidator_PlanInWrongPhase_Denied(t *testing.T) {
 	}
 }
 
-// TestDRExecutionValidator_ActiveExecution_NoLongerChecked verifies the legacy
-// webhook no longer rejects based on plan.Status.ActiveExecution. The
-// concurrency guard has moved to the in-process SoteriaAdmissionPlugin.
-func TestDRExecutionValidator_ActiveExecution_NoLongerChecked(t *testing.T) {
-	reader := &stubReader{
-		plans: map[string]*soteriav1alpha1.DRPlan{
-			"my-plan": {
-				ObjectMeta: metav1.ObjectMeta{Name: "my-plan"},
-				Spec: soteriav1alpha1.DRPlanSpec{
-					PrimarySite:   "dc-west",
-					SecondarySite: "dc-east",
-				},
-				Status: soteriav1alpha1.DRPlanStatus{
-					Phase:           soteriav1alpha1.PhaseSteadyState,
-					ActiveSite:      "dc-west",
-					ActiveExecution: "existing-exec",
-				},
-			},
-		},
-	}
-
-	v := &DRExecutionValidator{reader: reader}
-	exec := &soteriav1alpha1.DRExecution{
-		ObjectMeta: metav1.ObjectMeta{Name: "new-exec"},
-		Spec: soteriav1alpha1.DRExecutionSpec{
-			PlanName: "my-plan",
-			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
-		},
-	}
-
-	resp := v.Handle(context.Background(), makeExecRequest(exec, admissionv1.Create))
-	if !resp.Allowed {
-		t.Errorf("expected allowed (concurrency guard moved to plugin), got denied: %v", resp.Result)
-	}
-}
-
-func TestDRExecutionValidator_EmptyActiveExecution_Allowed(t *testing.T) {
+// TestDRExecutionValidator_ConcurrencyDelegatedToPlugin verifies the legacy
+// webhook does not enforce concurrency — the guard has moved to the
+// in-process SoteriaAdmissionPlugin.
+func TestDRExecutionValidator_ConcurrencyDelegatedToPlugin(t *testing.T) {
 	reader := &stubReader{
 		plans: map[string]*soteriav1alpha1.DRPlan{
 			"my-plan": {
@@ -309,7 +276,39 @@ func TestDRExecutionValidator_EmptyActiveExecution_Allowed(t *testing.T) {
 
 	resp := v.Handle(context.Background(), makeExecRequest(exec, admissionv1.Create))
 	if !resp.Allowed {
-		t.Errorf("expected allowed when ActiveExecution is empty, got denied: %v", resp.Result)
+		t.Errorf("expected allowed (concurrency guard moved to plugin), got denied: %v", resp.Result)
+	}
+}
+
+func TestDRExecutionValidator_NoConcurrencyCheck_Allowed(t *testing.T) {
+	reader := &stubReader{
+		plans: map[string]*soteriav1alpha1.DRPlan{
+			"my-plan": {
+				ObjectMeta: metav1.ObjectMeta{Name: "my-plan"},
+				Spec: soteriav1alpha1.DRPlanSpec{
+					PrimarySite:   "dc-west",
+					SecondarySite: "dc-east",
+				},
+				Status: soteriav1alpha1.DRPlanStatus{
+					Phase:      soteriav1alpha1.PhaseSteadyState,
+					ActiveSite: "dc-west",
+				},
+			},
+		},
+	}
+
+	v := &DRExecutionValidator{reader: reader}
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "new-exec"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "my-plan",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+	}
+
+	resp := v.Handle(context.Background(), makeExecRequest(exec, admissionv1.Create))
+	if !resp.Allowed {
+		t.Errorf("expected allowed (no concurrency check in legacy webhook), got denied: %v", resp.Result)
 	}
 }
 

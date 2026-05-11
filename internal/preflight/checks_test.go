@@ -1046,8 +1046,7 @@ func TestComposeReport_PlanStatusActiveExecution_Ignored(t *testing.T) {
 				SecondarySite: "dc-east",
 			},
 			Status: soteriav1alpha1.DRPlanStatus{
-				ActiveSite:      "dc-west",
-				ActiveExecution: "stale-exec",
+				ActiveSite: "dc-west",
 			},
 		},
 		ActiveExecution: "",
@@ -1061,7 +1060,7 @@ func TestComposeReport_PlanStatusActiveExecution_Ignored(t *testing.T) {
 
 	for _, w := range report.Warnings {
 		if w == "execution stale-exec is active; new execution blocked" {
-			t.Error("should not emit warning from stale plan.Status.ActiveExecution")
+			t.Error("should not emit warning from stale plan status")
 		}
 	}
 }

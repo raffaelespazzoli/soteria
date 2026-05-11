@@ -1,6 +1,6 @@
 # Story 10.4: Remove ActiveExecution Fields from DRPlanStatus
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -40,44 +40,44 @@ Stories 10.1–10.3 systematically migrated every Go production code consumer of
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Remove ActiveExecution and ActiveExecutionMode from DRPlanStatus (AC: #1)
-  - [ ] 1.1 In `pkg/apis/soteria.io/v1alpha1/types.go`, remove the `ActiveExecution string` field and its doc comment (lines 103–107)
-  - [ ] 1.2 Remove the `ActiveExecutionMode ExecutionMode` field and its doc comment (lines 108–112)
-  - [ ] 1.3 Update the `Phase` field doc comment (line 99): change `engine.EffectivePhase(Phase, ActiveExecution mode)` to `engine.EffectivePhase(Phase, executionMode)` where `executionMode` is derived from the active DRExecution resource
+- [x] Task 1: Remove ActiveExecution and ActiveExecutionMode from DRPlanStatus (AC: #1)
+  - [x] 1.1 In `pkg/apis/soteria.io/v1alpha1/types.go`, remove the `ActiveExecution string` field and its doc comment (lines 103–107)
+  - [x] 1.2 Remove the `ActiveExecutionMode ExecutionMode` field and its doc comment (lines 108–112)
+  - [x] 1.3 Update the `Phase` field doc comment (line 99): change `engine.EffectivePhase(Phase, ActiveExecution mode)` to `engine.EffectivePhase(Phase, executionMode)` where `executionMode` is derived from the active DRExecution resource
 
-- [ ] Task 2: Remove PrepareForCreate zeroing (AC: #3)
-  - [ ] 2.1 In `pkg/registry/drplan/strategy.go`, remove `plan.Status.ActiveExecution = ""` and `plan.Status.ActiveExecutionMode = ""` from `PrepareForCreate` (lines 52–53)
+- [x] Task 2: Remove PrepareForCreate zeroing (AC: #3)
+  - [x] 2.1 In `pkg/registry/drplan/strategy.go`, remove `plan.Status.ActiveExecution = ""` and `plan.Status.ActiveExecutionMode = ""` from `PrepareForCreate` (lines 52–53)
 
-- [ ] Task 3: Remove legacy webhook ActiveExecution check (AC: #4)
-  - [ ] 3.1 In `pkg/admission/drexecution_validator.go`, remove the concurrency gate block (lines 93–98) that reads `plan.Status.ActiveExecution`. Add a comment: "Concurrency gate is enforced by SoteriaAdmissionPlugin via DRExecution storage query (Story 10.1)"
-  - [ ] 3.2 Update the function's doc comment if it mentions ActiveExecution
+- [x] Task 3: Remove legacy webhook ActiveExecution check (AC: #4)
+  - [x] 3.1 In `pkg/admission/drexecution_validator.go`, remove the concurrency gate block (lines 93–98) that reads `plan.Status.ActiveExecution`. Add a comment: "Concurrency gate is enforced by SoteriaAdmissionPlugin via DRExecution storage query (Story 10.1)"
+  - [x] 3.2 Update the function's doc comment if it mentions ActiveExecution
 
-- [ ] Task 4: Regenerate codegen (AC: #2)
-  - [ ] 4.1 Run `make manifests generate`
-  - [ ] 4.2 Verify `zz_generated.deepcopy.go` no longer contains `ActiveExecution` or `ActiveExecutionMode` field-level handling (the struct-level `*out = *in` copy still copies remaining fields)
-  - [ ] 4.3 Verify `zz_generated.openapi.go` no longer defines `activeExecution` or `activeExecutionMode` properties on `DRPlanStatus`
+- [x] Task 4: Regenerate codegen (AC: #2)
+  - [x] 4.1 Run `make manifests generate`
+  - [x] 4.2 Verify `zz_generated.deepcopy.go` no longer contains `ActiveExecution` or `ActiveExecutionMode` field-level handling (the struct-level `*out = *in` copy still copies remaining fields)
+  - [x] 4.3 Verify `zz_generated.openapi.go` no longer defines `activeExecution` or `activeExecutionMode` properties on `DRPlanStatus`
 
-- [ ] Task 5: Sweep and fix test compilation errors (AC: #5)
-  - [ ] 5.1 Run `rg 'ActiveExecution|ActiveExecutionMode' --type go` across the entire repo and identify every remaining reference. Categorize each as: (a) auto-generated (will be fixed by codegen), (b) test fixture assignment on DRPlan status, (c) test assertion on DRPlan status, (d) `PreflightReport.ActiveExecution` (KEEP — different struct)
-  - [ ] 5.2 In `pkg/registry/drplan/strategy_test.go`, remove `TestPrepareForCreate_InitializesActiveExecution` entirely (the fields no longer exist; nothing to test)
-  - [ ] 5.3 In `pkg/admission/drexecution_validator_test.go`, remove or update any test fixtures that set `plan.Status.ActiveExecution` on DRPlan objects. If the test exercised the concurrency gate that was removed in Task 3, remove the test case entirely. If the test exercises other validation (phase transition, SitesInSync), keep it but remove the `ActiveExecution` field assignment
-  - [ ] 5.4 In `pkg/admission/plugin_test.go`, sweep for any remaining `plan.Status.ActiveExecution` assignments in test fixtures and remove them. After 10.1, these should already be migrated — verify no stale fixtures remain
-  - [ ] 5.5 In `pkg/controller/drexecution/reconciler_test.go`, sweep for any `plan.Status.ActiveExecution` or `plan.Status.ActiveExecutionMode` assignments in DRPlan fixtures. Remove them — after 10.1, tests should use DRExecution fixtures for concurrency/ownership semantics
-  - [ ] 5.6 In `pkg/engine/executor_test.go`, sweep for `plan.Status.ActiveExecution` or `plan.Status.ActiveExecutionMode` assignments. Remove them — after 10.1, finishExecution no longer touches these fields
-  - [ ] 5.7 In `pkg/engine/reprotect_test.go`, sweep for `plan.Status.ActiveExecution` assignments. Remove them
-  - [ ] 5.8 In `pkg/controller/drplan/health_test.go`, sweep for `plan.Status.ActiveExecution` assignments. Remove them — after 10.3, health tests use DRExecution fixtures
-  - [ ] 5.9 In `pkg/apiserver/critical_fields_test.go`, sweep for test cases that set `ActiveExecution` on old/new DRPlan status. Remove the field from test fixtures — after 10.1 the detector ignores ActiveExecution changes
-  - [ ] 5.10 In `test/integration/apiserver/admission_test.go`, sweep for `status["activeExecution"]` or `ActiveExecution` references. After 10.1, the integration test creates real DRExecutions for the concurrency gate — verify no stale plan status references remain
-  - [ ] 5.11 In `internal/preflight/checks_test.go`, sweep for `plan.Status.ActiveExecution` assignments. After 10.2, these read from `CompositionInput.ActiveExecution` — verify no stale plan status references
+- [x] Task 5: Sweep and fix test compilation errors (AC: #5)
+  - [x] 5.1 Run `rg 'ActiveExecution|ActiveExecutionMode' --type go` across the entire repo and identify every remaining reference. Categorize each as: (a) auto-generated (will be fixed by codegen), (b) test fixture assignment on DRPlan status, (c) test assertion on DRPlan status, (d) `PreflightReport.ActiveExecution` (KEEP — different struct)
+  - [x] 5.2 In `pkg/registry/drplan/strategy_test.go`, remove `TestPrepareForCreate_InitializesActiveExecution` entirely (the fields no longer exist; nothing to test)
+  - [x] 5.3 In `pkg/admission/drexecution_validator_test.go`, remove or update any test fixtures that set `plan.Status.ActiveExecution` on DRPlan objects. If the test exercised the concurrency gate that was removed in Task 3, remove the test case entirely. If the test exercises other validation (phase transition, SitesInSync), keep it but remove the `ActiveExecution` field assignment
+  - [x] 5.4 In `pkg/admission/plugin_test.go`, sweep for any remaining `plan.Status.ActiveExecution` assignments in test fixtures and remove them. After 10.1, these should already be migrated — verify no stale fixtures remain
+  - [x] 5.5 In `pkg/controller/drexecution/reconciler_test.go`, sweep for any `plan.Status.ActiveExecution` or `plan.Status.ActiveExecutionMode` assignments in DRPlan fixtures. Remove them — after 10.1, tests should use DRExecution fixtures for concurrency/ownership semantics
+  - [x] 5.6 In `pkg/engine/executor_test.go`, sweep for `plan.Status.ActiveExecution` or `plan.Status.ActiveExecutionMode` assignments. Remove them — after 10.1, finishExecution no longer touches these fields
+  - [x] 5.7 In `pkg/engine/reprotect_test.go`, sweep for `plan.Status.ActiveExecution` assignments. Remove them
+  - [x] 5.8 In `pkg/controller/drplan/health_test.go`, sweep for `plan.Status.ActiveExecution` assignments. Remove them — after 10.3, health tests use DRExecution fixtures
+  - [x] 5.9 In `pkg/apiserver/critical_fields_test.go`, sweep for test cases that set `ActiveExecution` on old/new DRPlan status. Remove the field from test fixtures — after 10.1 the detector ignores ActiveExecution changes
+  - [x] 5.10 In `test/integration/apiserver/admission_test.go`, sweep for `status["activeExecution"]` or `ActiveExecution` references. After 10.1, the integration test creates real DRExecutions for the concurrency gate — verify no stale plan status references remain
+  - [x] 5.11 In `internal/preflight/checks_test.go`, sweep for `plan.Status.ActiveExecution` assignments. After 10.2, these read from `CompositionInput.ActiveExecution` — verify no stale plan status references
 
-- [ ] Task 6: Update documentation (AC: #6)
-  - [ ] 6.1 In `_bmad-output/project-context.md`, update the DRPlan 8-phase lifecycle bullet (line 102): remove the sentence "`DRPlan.Status.ActiveExecution` references the in-progress DRExecution by name (empty when idle)" and replace with "Active execution state is derived at runtime by querying DRExecution resources filtered by `soteria.io/plan-name` label"
-  - [ ] 6.2 Verify no other project-context.md references to `ActiveExecution` on DRPlan status
+- [x] Task 6: Update documentation (AC: #6)
+  - [x] 6.1 In `_bmad-output/project-context.md`, update the DRPlan 8-phase lifecycle bullet (line 102): remove the sentence "`DRPlan.Status.ActiveExecution` references the in-progress DRExecution by name (empty when idle)" and replace with "Active execution state is derived at runtime by querying DRExecution resources filtered by `soteria.io/plan-name` label"
+  - [x] 6.2 Verify no other project-context.md references to `ActiveExecution` on DRPlan status
 
-- [ ] Task 7: Final verification sweep (AC: #5, #7)
-  - [ ] 7.1 Run `rg 'ActiveExecution|ActiveExecutionMode' --type go` — verify every remaining reference is either: (a) `PreflightReport.ActiveExecution` (keep), (b) `CompositionInput.ActiveExecution` (keep, Story 10.2 addition), (c) `EffectivePhase` function parameters (keep, parameterized), (d) auto-generated files just regenerated, (e) `PlanNameLabel` or DRExecution-side code (keep)
-  - [ ] 7.2 Run `make test` — all unit and integration tests pass with zero regressions
-  - [ ] 7.3 Run `make lint` — zero lint errors
+- [x] Task 7: Final verification sweep (AC: #5, #7)
+  - [x] 7.1 Run `rg 'ActiveExecution|ActiveExecutionMode' --type go` — verify every remaining reference is either: (a) `PreflightReport.ActiveExecution` (keep), (b) `CompositionInput.ActiveExecution` (keep, Story 10.2 addition), (c) `EffectivePhase` function parameters (keep, parameterized), (d) auto-generated files just regenerated, (e) `PlanNameLabel` or DRExecution-side code (keep)
+  - [x] 7.2 Run `make test` — all unit and integration tests pass with zero regressions
+  - [x] 7.3 Run `make lint` — pre-existing lint warnings only (dupl, lll, goconst, logcheck, unparam); zero new lint errors introduced
 
 ## Dev Notes
 
@@ -279,10 +279,63 @@ Recent commits follow a single-commit-per-story pattern with the story number as
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4.6
 
 ### Debug Log References
 
 ### Completion Notes List
 
+- Removed `ActiveExecution` and `ActiveExecutionMode` fields from `DRPlanStatus` struct, updated `Phase` doc comment to reference derived execution mode
+- Removed `PrepareForCreate` explicit zeroing of the deleted fields
+- Updated legacy webhook validator comment (actual code block was already removed in Story 10.1; updated stale "Story 10.4" forward reference)
+- Regenerated codegen — verified `DRPlanStatus` OpenAPI no longer includes `activeExecution`/`activeExecutionMode`; `PreflightReport.ActiveExecution` correctly retained
+- Removed `TestPrepareForCreate_InitializesActiveExecution` test entirely
+- Removed `TestDetectDRPlanCriticalFields_ActiveExecutionChange_NotCritical` test entirely (field no longer exists)
+- Swept 15+ `ActiveExecution`/`ActiveExecutionMode` references across 9 test files — removed struct literal field assignments, updated assertions
+- Fixed table convertor nil-lister fallback (`planToRow`): removed stale `plan.Status.ActiveExecutionMode`/`plan.Status.ActiveExecution` reads, now returns rest phase only when lister is nil
+- Updated `TestConvertToTable_NilLister_FallsBackToPlanStatus` → `TestConvertToTable_NilLister_FallsBackToRestPhase` to reflect the simplified fallback
+- Removed `activeExec` parameter from integration test `createDRPlan` helper and all 8 call sites across `admission_test.go` and `apiserver_test.go`
+- Updated `project-context.md` lifecycle description to reference derived execution state
+- All unit tests pass (20 packages, zero regressions), all integration tests pass (6 suites), pre-existing lint warnings only
+
+### Review Findings (2026-05-10)
+
+**Reviewer:** Claude Opus 4 (BMAD code review — Blind Hunter + Edge Case Hunter + Acceptance Auditor)
+
+**Finding 1 (patch, medium) — Stale `ActiveExecution` references in comments and test names:**
+AC5 requires zero references to the removed fields in Go source. The `rg` sweep caught struct-level field accesses but missed 6 comment/test-name/assertion-message references that still mentioned `plan.Status.ActiveExecution` or `ActiveExecution` as a concept on `DRPlanStatus`. Fixed in 6 files:
+- `pkg/admission/doc.go` — rewrote historical reference
+- `pkg/admission/plugin.go` — rewrote concurrency gate comment
+- `pkg/admission/drexecution_validator_test.go` — renamed 2 test functions, updated assertion message
+- `internal/preflight/checks_test.go` — updated assertion message
+- `pkg/engine/executor_test.go` — simplified comment
+
+**Finding 2 (patch, low) — Stale `DRPlanTableConvertor` doc comment:**
+`pkg/registry/drplan/strategy.go` type comment claimed nil-lister fallback uses "plan status fields", but the implementation now falls back to the persisted rest phase only (no execution data). Updated to accurately describe the behavior.
+
+**Dismissed findings:** 8 dismissed (Blind Hunter noise about breaking API changes, story-number comments aging, etcd backward compat — all addressed by story design or out of scope).
+
+### Change Log
+
+- 2026-05-10: Story 10.4 implementation complete — removed `ActiveExecution` and `ActiveExecutionMode` from `DRPlanStatus`, regenerated codegen, swept all Go test fixtures, updated documentation, fixed nil-lister fallback. All unit/integration tests pass with zero regressions (~14 files modified).
+- 2026-05-10: Code review complete — fixed 2 findings (stale comment references, inaccurate doc comment). 6 files patched. Story marked done.
+
 ### File List
+
+- `pkg/apis/soteria.io/v1alpha1/types.go` — removed 2 fields + doc comments, updated Phase doc comment
+- `pkg/apis/soteria.io/v1alpha1/zz_generated.deepcopy.go` — auto-regenerated
+- `pkg/apis/soteria.io/v1alpha1/zz_generated.openapi.go` — auto-regenerated
+- `pkg/registry/drplan/strategy.go` — removed PrepareForCreate zeroing, simplified nil-lister fallback in planToRow
+- `pkg/registry/drplan/strategy_test.go` — removed TestPrepareForCreate_InitializesActiveExecution, updated nil-lister test
+- `pkg/admission/drexecution_validator.go` — updated concurrency gate comment
+- `pkg/admission/drexecution_validator_test.go` — removed ActiveExecution from fixture
+- `pkg/controller/drexecution/reconciler_test.go` — removed 15 ActiveExecution/ActiveExecutionMode fixture assignments + assertions
+- `pkg/engine/executor_test.go` — removed ActiveExecution/ActiveExecutionMode from newTestPlan fixture + test body
+- `pkg/engine/reprotect_test.go` — removed ActiveExecution/ActiveExecutionMode from plan fixture
+- `pkg/apiserver/critical_fields_test.go` — removed TestDetectDRPlanCriticalFields_ActiveExecutionChange_NotCritical
+- `internal/preflight/checks_test.go` — removed stale ActiveExecution from DRPlanStatus fixture
+- `test/integration/apiserver/admission_test.go` — removed activeExec parameter from createDRPlan helper + all call sites
+- `test/integration/apiserver/apiserver_test.go` — updated createDRPlan call sites
+- `_bmad-output/project-context.md` — updated lifecycle description
+- `pkg/admission/doc.go` — removed stale ActiveExecution reference from package doc (review fix)
+- `pkg/admission/plugin.go` — updated concurrency gate comment (review fix)

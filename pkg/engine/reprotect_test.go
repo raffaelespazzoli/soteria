@@ -45,10 +45,8 @@ func newReprotectInput(vgs []VolumeGroupEntry) ReprotectInput {
 				SecondarySite: "dc-east",
 			},
 			Status: soteriav1alpha1.DRPlanStatus{
-				Phase:               soteriav1alpha1.PhaseFailedOver,
-				ActiveSite:          "dc-east",
-				ActiveExecution:     "exec-reprotect",
-				ActiveExecutionMode: soteriav1alpha1.ExecutionModeReprotect,
+				Phase:      soteriav1alpha1.PhaseFailedOver,
+				ActiveSite: "dc-east",
 			},
 		},
 		VolumeGroups: vgs,
