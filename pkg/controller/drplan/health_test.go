@@ -428,14 +428,64 @@ func TestReconcile_RegistryNil_NoHealthFields(t *testing.T) {
 	}
 }
 
-func TestReconcile_ActiveExecution_SkipsPolling(t *testing.T) {
+func TestReconcile_ActiveDRExecution_SkipsPolling(t *testing.T) {
 	registry := drivers.NewRegistry()
 	registry.RegisterDriver(noop.ProvisionerName, func() drivers.StorageProvider { return noop.New() })
 	registry.SetFallbackDriver(func() drivers.StorageProvider { return noop.New() })
 
 	plan := newTestPlan()
-	plan.Status.ActiveExecution = "exec-1"
-	plan.Status.ActiveExecutionMode = soteriav1alpha1.ExecutionModePlannedMigration
+
+	activeExec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "exec-1",
+			Labels: map[string]string{soteriav1alpha1.PlanNameLabel: "plan-1"},
+		},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-1",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+	}
+
+	vms := []engine.VMReference{
+		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+	}
+
+	r, c := newHealthTestReconciler([]client.Object{plan, activeExec}, &mockVMDiscoverer{vms: vms}, registry)
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "plan-1"},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	var updated soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &updated); err != nil {
+		t.Fatalf("Failed to get plan: %v", err)
+	}
+
+	if len(updated.Status.ReplicationHealth) != 0 {
+		t.Errorf("ReplicationHealth should be empty during active execution, got %d entries",
+			len(updated.Status.ReplicationHealth))
+	}
+}
+
+func TestReconcile_NoDRExecution_PollsHealth(t *testing.T) {
+	fakeDriver := fakedrv.New()
+	fakeDriver.OnCreateVolumeGroup().ReturnResult(fakedrv.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1-id", Name: "vm-default-vm-1"},
+	})
+	fakeDriver.OnGetReplicationStatus("vg-1-id").ReturnResult(fakedrv.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleSource,
+			Health: drivers.HealthHealthy,
+		},
+	})
+
+	registry := drivers.NewRegistry()
+	registry.SetFallbackDriver(func() drivers.StorageProvider { return fakeDriver })
+
+	plan := newTestPlan()
 
 	vms := []engine.VMReference{
 		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
@@ -455,8 +505,63 @@ func TestReconcile_ActiveExecution_SkipsPolling(t *testing.T) {
 		t.Fatalf("Failed to get plan: %v", err)
 	}
 
-	if len(updated.Status.ReplicationHealth) != 0 {
-		t.Errorf("ReplicationHealth should be empty during active execution, got %d entries",
+	if len(updated.Status.ReplicationHealth) != 1 {
+		t.Fatalf("ReplicationHealth entries = %d, want 1 (polling should proceed with no DRExecutions)",
+			len(updated.Status.ReplicationHealth))
+	}
+}
+
+func TestReconcile_TerminalDRExecution_PollsHealth(t *testing.T) {
+	fakeDriver := fakedrv.New()
+	fakeDriver.OnCreateVolumeGroup().ReturnResult(fakedrv.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1-id", Name: "vm-default-vm-1"},
+	})
+	fakeDriver.OnGetReplicationStatus("vg-1-id").ReturnResult(fakedrv.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleSource,
+			Health: drivers.HealthHealthy,
+		},
+	})
+
+	registry := drivers.NewRegistry()
+	registry.SetFallbackDriver(func() drivers.StorageProvider { return fakeDriver })
+
+	plan := newTestPlan()
+
+	terminalExec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "exec-done",
+			Labels: map[string]string{soteriav1alpha1.PlanNameLabel: "plan-1"},
+		},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-1",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+		Status: soteriav1alpha1.DRExecutionStatus{
+			Result: soteriav1alpha1.ExecutionResultSucceeded,
+		},
+	}
+
+	vms := []engine.VMReference{
+		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+	}
+
+	r, c := newHealthTestReconciler([]client.Object{plan, terminalExec}, &mockVMDiscoverer{vms: vms}, registry)
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "plan-1"},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	var updated soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &updated); err != nil {
+		t.Fatalf("Failed to get plan: %v", err)
+	}
+
+	if len(updated.Status.ReplicationHealth) != 1 {
+		t.Fatalf("ReplicationHealth entries = %d, want 1 (polling should proceed with terminal DRExecution)",
 			len(updated.Status.ReplicationHealth))
 	}
 }

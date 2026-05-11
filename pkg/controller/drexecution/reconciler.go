@@ -1518,7 +1518,8 @@ func (r *DRExecutionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 	// Watch VirtualMachines for printableStatus changes so the wave gate can
 	// detect when VMs reach Running. The mapper routes VM events to the
-	// active DRExecution via the soteria.io/drplan label → DRPlan.ActiveExecution.
+	// active DRExecution by querying DRExecutions with the soteria.io/plan-name
+	// label (derived from DRExecution resources, not DRPlan status).
 	if r.VMManager != nil {
 		bld = bld.Watches(
 			&kubevirtv1.VirtualMachine{},
@@ -1549,9 +1550,8 @@ func vmPrintableStatusChanged() predicate.Predicate {
 	}
 }
 
-// mapVMToDRExecution maps a VirtualMachine event to any non-terminal
-// DRExecution for its plan by reading the soteria.io/drplan label, then
-// listing DRExecutions with the matching plan-name label.
+// mapVMToDRExecution maps a VirtualMachine event to the active DRExecution
+// (if any) by querying DRExecutions with the soteria.io/plan-name label.
 func (r *DRExecutionReconciler) mapVMToDRExecution(
 	ctx context.Context, obj client.Object,
 ) []reconcile.Request {
@@ -1567,13 +1567,12 @@ func (r *DRExecutionReconciler) mapVMToDRExecution(
 		return nil
 	}
 
-	var requests []reconcile.Request
 	for i := range execList.Items {
 		if execList.Items[i].Status.Result == "" {
-			requests = append(requests, reconcile.Request{
+			return []reconcile.Request{{
 				NamespacedName: types.NamespacedName{Name: execList.Items[i].Name},
-			})
+			}}
 		}
 	}
-	return requests
+	return nil
 }

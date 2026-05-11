@@ -386,9 +386,10 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		"totalVMs", report.TotalVMs, "warnings", len(report.Warnings))
 
 	// Poll replication health when the driver infrastructure is wired and no
-	// execution is active (the engine owns driver interactions during execution).
+	// execution is active (derived from DRExecution resources — the engine owns
+	// driver interactions during execution).
 	var replicationHealth []soteriav1alpha1.VolumeGroupHealth
-	if r.Registry != nil && plan.Status.ActiveExecution == "" {
+	if r.Registry != nil && !r.hasActiveExecution(ctx, plan.Name) {
 		replicationHealth = r.pollReplicationHealth(ctx, &plan, waves)
 		logger.V(1).Info("Replication health polled",
 			"totalVGs", len(replicationHealth))
@@ -430,6 +431,24 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		extraConds = append(extraConds, *disksConsistentCond)
 	}
 	return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, report, readyCond, replicationHealth, extraConds...)
+}
+
+// hasActiveExecution checks whether any non-terminal DRExecution exists for
+// the given plan by querying DRExecutions with the soteria.io/plan-name label.
+// On error, returns false (degrade to polling — safe direction).
+func (r *DRPlanReconciler) hasActiveExecution(ctx context.Context, planName string) bool {
+	var execList soteriav1alpha1.DRExecutionList
+	if err := r.List(ctx, &execList,
+		client.MatchingLabels{soteriav1alpha1.PlanNameLabel: planName}); err != nil {
+		log.FromContext(ctx).Error(err, "Failed to list DRExecutions for health gate")
+		return false
+	}
+	for i := range execList.Items {
+		if execList.Items[i].Status.Result == "" {
+			return true
+		}
+	}
+	return false
 }
 
 // siteDiscoveryField returns "primary" if LocalSite matches the plan's
