@@ -1,6 +1,6 @@
 # Story 10.9: Merge persistStatus and Checkpoint Into Single Write
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -75,41 +75,41 @@ executeGroup:
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create `persistStatusAndCheckpoint` method on WaveExecutor (AC: #1, #2, #3, #4, #8)
-  - [ ] 1.1 New method `persistStatusAndCheckpoint(ctx, exec, groupName)` that:
+- [x] Task 1: Create `persistStatusAndCheckpoint` method on WaveExecutor (AC: #1, #2, #3, #4, #8)
+  - [x] 1.1 New method `persistStatusAndCheckpoint(ctx, exec, groupName)` that:
     - Takes `statusMu` lock to snapshot the in-memory status
     - Uses `ExponentialBackoffWithContext` with ScyllaRetry-derived backoff
     - Inside retry loop: `Get` → `mergeConditions` → `Status().Update`
     - Records checkpoint Prometheus metrics (writes total, duration, retries)
     - On success: returns nil
     - On exhaustion: returns `ErrCheckpointFailed`
-  - [ ] 1.2 Use the same `ScyllaRetry`-derived backoff config that `KubeCheckpointer` uses (200ms base, 2x factor, 0.3 jitter, 10s cap, 8 steps)
+  - [x] 1.2 Use the same `ScyllaRetry`-derived backoff config that `KubeCheckpointer` uses (200ms base, 2x factor, 0.3 jitter, 10s cap, 8 steps)
 
-- [ ] Task 2: Refactor `executeGroup` success path (AC: #1, #3, #6)
-  - [ ] 2.1 Replace the `setGroupStatus` + `writeCheckpoint` pair at `executor.go:545-565` with a single call: update in-memory status under `statusMu`, then call `persistStatusAndCheckpoint`
-  - [ ] 2.2 On `ErrCheckpointFailed`, mark group Failed (same as current behavior)
-  - [ ] 2.3 Keep the initial `setGroupStatus` call (InProgress) unchanged — it uses `persistStatus` only
+- [x] Task 2: Refactor `executeGroup` success path (AC: #1, #3, #6)
+  - [x] 2.1 Replace the `setGroupStatus` + `writeCheckpoint` pair at `executor.go:545-565` with a single call: update in-memory status under `statusMu`, then call `persistStatusAndCheckpoint`
+  - [x] 2.2 On `ErrCheckpointFailed`, mark group Failed (same as current behavior)
+  - [x] 2.3 Keep the initial `setGroupStatus` call (InProgress) unchanged — it uses `persistStatus` only
 
-- [ ] Task 3: Refactor `executeGroup` failure paths (AC: #5)
-  - [ ] 3.1 Replace the `setGroupStatus` + `writeCheckpoint` pair for handler-error path (`executor.go:529-539`) with merged write
-  - [ ] 3.2 Replace the `setGroupStatus` + `writeCheckpoint` pair for driver-resolution-error path (`executor.go:488-497`) with merged write
-  - [ ] 3.3 On failure paths, checkpoint exhaustion does not change the already-Failed result
+- [x] Task 3: Refactor `executeGroup` failure paths (AC: #5)
+  - [x] 3.1 Replace the `setGroupStatus` + `writeCheckpoint` pair for handler-error path (`executor.go:529-539`) with merged write
+  - [x] 3.2 Replace the `setGroupStatus` + `writeCheckpoint` pair for driver-resolution-error path (`executor.go:488-497`) with merged write
+  - [x] 3.3 On failure paths, checkpoint exhaustion does not change the already-Failed result
 
-- [ ] Task 4: Verify wave-level checkpoint is unchanged (AC: #7)
-  - [ ] 4.1 Confirm `writeCheckpoint` call at `executor.go:453` (wave completion) still calls `Checkpointer.WriteCheckpoint`
-  - [ ] 4.2 Confirm `executeRetryWave` wave-level checkpoint is unchanged
+- [x] Task 4: Verify wave-level checkpoint is unchanged (AC: #7)
+  - [x] 4.1 Confirm `writeCheckpoint` call at `executor.go:453` (wave completion) still calls `Checkpointer.WriteCheckpoint`
+  - [x] 4.2 Confirm `executeRetryWave` wave-level checkpoint is unchanged
 
-- [ ] Task 5: Update doc.go (AC: #11)
-  - [ ] 5.1 Update "Per-DRGroup checkpointing" paragraph to describe merged write
-  - [ ] 5.2 Update "Checkpoint timing guarantee" paragraph — the race window between two writes is eliminated
+- [x] Task 5: Update doc.go (AC: #11)
+  - [x] 5.1 Update "Per-DRGroup checkpointing" paragraph to describe merged write
+  - [x] 5.2 Update "Checkpoint timing guarantee" paragraph — the race window between two writes is eliminated
 
-- [ ] Task 6: Update tests (AC: #10)
-  - [ ] 6.1 Update `TestWaveExecutor_SequentialChunks_CheckpointOrdering` — adjust checkpoint call expectations (per-group completions no longer call `Checkpointer.WriteCheckpoint`; only wave-level calls remain)
-  - [ ] 6.2 Add `TestWaveExecutor_MergedWriteConditionMerge` — inject a condition on the DRExecution between `Get` and `Update` to verify `mergeConditions` preserves it
-  - [ ] 6.3 Add `TestWaveExecutor_MergedWriteExhaustion` — configure a client that always returns conflict, verify group is marked Failed and execution continues
-  - [ ] 6.4 Update any checkpoint-count assertions in existing tests
-  - [ ] 6.5 Run `make test` — all unit tests pass
-  - [ ] 6.6 Run `make lint` — zero lint issues
+- [x] Task 6: Update tests (AC: #10)
+  - [x] 6.1 Update `TestWaveExecutor_SequentialChunks_CheckpointOrdering` — adjust checkpoint call expectations (per-group completions no longer call `Checkpointer.WriteCheckpoint`; only wave-level calls remain)
+  - [x] 6.2 Add `TestWaveExecutor_MergedWriteConditionMerge` — inject a condition on the DRExecution between `Get` and `Update` to verify `mergeConditions` preserves it
+  - [x] 6.3 Add `TestWaveExecutor_MergedWriteExhaustion` — configure a client that always returns conflict, verify group is marked Failed and execution continues
+  - [x] 6.4 Update any checkpoint-count assertions in existing tests
+  - [x] 6.5 Run `make test` — all unit tests pass
+  - [x] 6.6 Run `make lint` — zero lint issues
 
 ## Dev Notes
 
@@ -172,8 +172,41 @@ Check `executeRetryGroup` for the same two-write pattern. If it also calls `setG
 
 ### Agent Model Used
 
+Cursor Agent (Opus 4.6)
+
 ### Debug Log References
+
+- `TestWaveExecutor_MergedWriteExhaustion` initially failed due to `conflictStatusClient` blocking `InitializeWaves` (which uses `persistStatus` / `retry.RetryOnConflict` internally). Refactored to test `persistStatusAndCheckpoint` in isolation with a short context timeout, avoiding interaction with the context-unaware `retry.RetryOnConflict` backoff.
 
 ### Completion Notes List
 
+- Created `persistStatusAndCheckpoint` method combining `persistStatus` condition-merge logic with `KubeCheckpointer`-style exponential backoff and Prometheus metrics into a single atomic Get → merge → Status().Update
+- Refactored all three `executeGroup` call sites (success, handler-error, driver-resolution-error) to use merged write
+- Wave-level `writeCheckpoint` calls left unchanged (no cache-staleness issue at wave boundaries)
+- Updated `doc.go` to reflect the new merged write architecture
+- Updated existing checkpoint-count test assertions; added two new tests for condition merging and retry exhaustion
+- All tests pass (`make test`), zero lint issues (`make lint`)
+
 ### File List
+
+| File | Action | Description |
+|------|--------|-------------|
+| `pkg/engine/executor.go` | Modified | Added `persistStatusAndCheckpoint` method; refactored 3 `executeGroup` call sites to use merged write instead of `setGroupStatus` + `writeCheckpoint`; added `metrics` import |
+| `pkg/engine/doc.go` | Modified | Updated "Per-DRGroup checkpointing" and "Checkpoint timing guarantee" paragraphs to describe merged write |
+| `pkg/engine/executor_test.go` | Modified | Updated checkpoint-count assertions in `TestWaveExecutor_SequentialChunks_CheckpointOrdering` and `TestWaveExecutor_CheckpointAfterEachGroup`; added `TestWaveExecutor_MergedWriteConditionMerge` and `TestWaveExecutor_MergedWriteExhaustion` |
+
+### Change Log
+
+| Date | Change | Reason |
+|------|--------|--------|
+| 2026-05-12 | Created `persistStatusAndCheckpoint` on `WaveExecutor` | AC #1, #2, #3, #4, #8 — single atomic write replacing two-write pattern |
+| 2026-05-12 | Refactored `executeGroup` success path | AC #1, #3, #6 — uses merged write for terminal group status |
+| 2026-05-12 | Refactored `executeGroup` failure paths | AC #5 — driver-resolution-error and handler-error use merged write |
+| 2026-05-12 | Verified wave-level checkpoints unchanged | AC #7 — `writeCheckpoint` still used for wave boundaries |
+| 2026-05-12 | Updated `doc.go` | AC #11 — documentation reflects merged write architecture |
+| 2026-05-12 | Updated and added tests | AC #10 — existing tests adjusted, two new tests added |
+
+### Review Findings
+
+- [x] [Review][Patch] Exhaustion test does not verify AC3 end-to-end behavior [`pkg/engine/executor_test.go:2345`] — added `TestWaveExecutor_MergedWriteExhaustion_MarksGroupFailed` driving through `Execute()` with counting conflict client
+- [x] [Review][Patch] `checkpoint.go` architecture comment still describes per-group checkpoint writes [`pkg/engine/checkpoint.go:17`] — updated Tier 2 comment to describe wave-only role

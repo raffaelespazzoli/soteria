@@ -25,8 +25,10 @@ import (
 	"testing"
 	"time"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/wait"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -425,24 +427,21 @@ func TestWaveExecutor_SequentialChunks_CheckpointOrdering(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// 3 group checkpoints + 1 wave checkpoint = 4 total.
+	// Per-group completions now use persistStatusAndCheckpoint (merged write)
+	// and no longer call Checkpointer.WriteCheckpoint. Only the wave-level
+	// checkpoint remains: 1 total.
 	calls := cp.GetCalls()
-	if len(calls) != 4 {
-		t.Errorf("expected 4 checkpoint calls (3 groups + 1 wave), got %d: %v", len(calls), calls)
+	if len(calls) != 1 {
+		t.Errorf("expected 1 checkpoint call (wave only; per-group uses merged write), got %d: %v", len(calls), calls)
 	}
 
-	// Verify checkpoint ordering via terminal group counts: each successive
-	// checkpoint must have >= the previous count of terminal groups.
+	// The single wave checkpoint sees all 3 groups terminal.
 	tc := cp.GetTerminalCounts()
-	if len(tc) != 4 {
-		t.Fatalf("expected 4 terminal counts, got %d: %v", len(tc), tc)
+	if len(tc) != 1 {
+		t.Fatalf("expected 1 terminal count, got %d: %v", len(tc), tc)
 	}
-	expectedCounts := []int{1, 2, 3, 3}
-	for i, count := range tc {
-		if count != expectedCounts[i] {
-			t.Errorf("terminalCounts[%d]: expected %d, got %d (full: %v)",
-				i, expectedCounts[i], count, tc)
-		}
+	if tc[0] != 3 {
+		t.Errorf("terminalCounts[0]: expected 3, got %d", tc[0])
 	}
 
 	// Verify handler-level sequential ordering.
@@ -2174,10 +2173,12 @@ func TestWaveExecutor_CheckpointAfterEachGroup(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// With 2 groups + 1 wave completion = 3 checkpoint calls at minimum.
+	// Per-group completions now use persistStatusAndCheckpoint (merged write)
+	// and no longer call Checkpointer.WriteCheckpoint. Only the wave-level
+	// checkpoint remains: 1 call.
 	calls := cp.GetCalls()
-	if len(calls) < 3 {
-		t.Errorf("expected at least 3 checkpoint calls (2 groups + 1 wave), got %d", len(calls))
+	if len(calls) != 1 {
+		t.Errorf("expected 1 checkpoint call (wave only; per-group uses merged write), got %d", len(calls))
 	}
 }
 
@@ -2278,5 +2279,226 @@ func TestPersistStatus_PreservesExternalConditions(t *testing.T) {
 	}
 	if !found {
 		t.Error("Step0Complete condition was lost by persistStatus; expected it to be preserved")
+	}
+}
+
+// --- Merged write tests (Story 10.9) ---
+
+func TestWaveExecutor_MergedWriteConditionMerge(t *testing.T) {
+	plan := newTestPlan("plan-mw-cond")
+	plan.Spec.MaxConcurrentFailovers = 1
+	exec := newTestExecution("exec-mw-cond", "plan-mw-cond")
+	vms := makeVMs([]string{"vm-1"}, "alpha")
+	cl := newFakeClient(vms, plan, exec)
+
+	executor := newTestExecutor(cl, &mockVMDiscoverer{vms: vms},
+		&mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{
+			"ns-1": soteriav1alpha1.ConsistencyLevelVM,
+		}})
+
+	// Run execution to populate initial wave status.
+	if err := executor.InitializeWaves(context.Background(), exec, plan); err != nil {
+		t.Fatalf("InitializeWaves: %v", err)
+	}
+
+	// Inject a condition from "another controller" directly on the persisted
+	// object, outside the executor's in-memory copy.
+	var fetched soteriav1alpha1.DRExecution
+	if err := cl.Get(context.Background(), client.ObjectKeyFromObject(exec), &fetched); err != nil {
+		t.Fatalf("fetching exec: %v", err)
+	}
+	fetched.Status.Conditions = append(fetched.Status.Conditions, metav1.Condition{
+		Type:   "Step0Complete",
+		Status: metav1.ConditionTrue,
+		Reason: "SourceSiteStep0Completed",
+	})
+	if err := cl.Status().Update(context.Background(), &fetched); err != nil {
+		t.Fatalf("injecting Step0Complete: %v", err)
+	}
+
+	// Now run the handler — persistStatusAndCheckpoint should preserve
+	// the Step0Complete condition via mergeConditions.
+	if err := executor.Execute(context.Background(), ExecuteInput{
+		Execution: exec,
+		Plan:      plan,
+		Handler:   &NoOpHandler{},
+	}); err != nil {
+		t.Fatalf("Execute: %v", err)
+	}
+
+	// Verify Step0Complete survived the merged status+checkpoint write.
+	var after soteriav1alpha1.DRExecution
+	if err := cl.Get(context.Background(), client.ObjectKeyFromObject(exec), &after); err != nil {
+		t.Fatalf("final fetch: %v", err)
+	}
+	found := false
+	for _, c := range after.Status.Conditions {
+		if c.Type == "Step0Complete" && c.Status == metav1.ConditionTrue {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("Step0Complete condition was lost by persistStatusAndCheckpoint; expected it to be preserved")
+	}
+}
+
+func TestWaveExecutor_MergedWriteExhaustion(t *testing.T) {
+	exec := newTestExecution("exec-mw-exhaust", "plan-mw-exhaust")
+	plan := newTestPlan("plan-mw-exhaust")
+	vms := makeVMs([]string{"vm-1"}, "alpha")
+	cl := newFakeClient(vms, plan, exec)
+
+	executor := newTestExecutor(cl, &mockVMDiscoverer{vms: vms},
+		&mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{
+			"ns-1": soteriav1alpha1.ConsistencyLevelVM,
+		}})
+
+	// Populate initial wave status so the exec has waves.
+	if err := executor.InitializeWaves(context.Background(), exec, plan); err != nil {
+		t.Fatalf("InitializeWaves: %v", err)
+	}
+
+	// Mark the first group Completed in-memory to simulate handler success.
+	executor.statusMu.Lock()
+	exec.Status.Waves[0].Groups[0].Result = soteriav1alpha1.DRGroupResultCompleted
+	executor.statusMu.Unlock()
+
+	// Swap to a conflict-only client so persistStatusAndCheckpoint always fails.
+	conflictClient := &conflictStatusClient{Client: cl}
+	executor.Client = conflictClient
+
+	// Use a short-lived context so ExponentialBackoffWithContext exits quickly.
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	err := executor.persistStatusAndCheckpoint(ctx, exec, "wave-alpha-group-0")
+	if err == nil {
+		t.Fatal("expected ErrCheckpointFailed, got nil")
+	}
+	if !errors.Is(err, ErrCheckpointFailed) {
+		t.Errorf("expected ErrCheckpointFailed, got: %v", err)
+	}
+
+	// Verify the in-memory status still shows Completed (the caller is
+	// responsible for marking Failed on exhaustion).
+	group := exec.Status.Waves[0].Groups[0]
+	if group.Result != soteriav1alpha1.DRGroupResultCompleted {
+		t.Errorf("in-memory status should still be Completed (caller marks Failed), got %q", group.Result)
+	}
+}
+
+// conflictStatusClient wraps a controller-runtime client and always
+// returns conflict errors on Status().Update calls.
+type conflictStatusClient struct {
+	client.Client
+}
+
+func (c *conflictStatusClient) Status() client.SubResourceWriter {
+	return &conflictSubResourceWriter{SubResourceWriter: c.Client.Status()}
+}
+
+type conflictSubResourceWriter struct {
+	client.SubResourceWriter
+}
+
+func (w *conflictSubResourceWriter) Update(
+	ctx context.Context, obj client.Object, opts ...client.SubResourceUpdateOption,
+) error {
+	return apierrors.NewConflict(
+		soteriav1alpha1.Resource("drexecutions"), obj.GetName(),
+		fmt.Errorf("simulated conflict"))
+}
+
+// drExecConflictAfterNClient wraps a controller-runtime client and returns
+// conflict errors on DRExecution Status().Update calls after the first
+// allowFirst calls, for the next conflictFor calls. All other operations
+// (including non-DRExecution Status().Update) pass through unchanged.
+type drExecConflictAfterNClient struct {
+	client.Client
+	mu          sync.Mutex
+	allowFirst  int
+	conflictFor int
+	count       int
+}
+
+func (c *drExecConflictAfterNClient) Status() client.SubResourceWriter {
+	return &drExecConflictAfterNWriter{
+		SubResourceWriter: c.Client.Status(),
+		parent:            c,
+	}
+}
+
+type drExecConflictAfterNWriter struct {
+	client.SubResourceWriter
+	parent *drExecConflictAfterNClient
+}
+
+func (w *drExecConflictAfterNWriter) Update(
+	ctx context.Context, obj client.Object, opts ...client.SubResourceUpdateOption,
+) error {
+	if _, ok := obj.(*soteriav1alpha1.DRExecution); ok {
+		w.parent.mu.Lock()
+		n := w.parent.count
+		w.parent.count++
+		w.parent.mu.Unlock()
+
+		if n >= w.parent.allowFirst && n < w.parent.allowFirst+w.parent.conflictFor {
+			return apierrors.NewConflict(
+				soteriav1alpha1.Resource("drexecutions"), obj.GetName(),
+				fmt.Errorf("simulated conflict"))
+		}
+	}
+	return w.SubResourceWriter.Update(ctx, obj, opts...)
+}
+
+// TestWaveExecutor_MergedWriteExhaustion_MarksGroupFailed exercises the full
+// Execute → executeGroup path when persistStatusAndCheckpoint exhausts retries.
+// Verifies AC3: the group is marked Failed with "checkpoint write failed after
+// retries" and execution completes via fail-forward.
+func TestWaveExecutor_MergedWriteExhaustion_MarksGroupFailed(t *testing.T) {
+	origRetry := ScyllaRetry
+	ScyllaRetry = wait.Backoff{Duration: time.Millisecond, Factor: 1.0, Jitter: 0, Steps: 2}
+	defer func() { ScyllaRetry = origRetry }()
+
+	plan := newTestPlan("plan-mw-e2e")
+	plan.Spec.MaxConcurrentFailovers = 1
+	exec := newTestExecution("exec-mw-e2e", "plan-mw-e2e")
+	vms := makeVMs([]string{"vm-1"}, "alpha")
+	cl := newFakeClient(vms, plan, exec)
+
+	executor := newTestExecutor(cl, &mockVMDiscoverer{vms: vms},
+		&mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{
+			"ns-1": soteriav1alpha1.ConsistencyLevelVM,
+		}})
+
+	// Allow the first 2 DRExecution Status().Update calls (initial wave
+	// persist + InProgress persist), then conflict for the next 4 calls
+	// (persistStatusAndCheckpoint retries + setGroupStatus(Failed) retries).
+	// Calls after the window succeed (finishExecution persist).
+	executor.Client = &drExecConflictAfterNClient{
+		Client:      cl,
+		allowFirst:  2,
+		conflictFor: 4,
+	}
+
+	err := executor.Execute(context.Background(), ExecuteInput{
+		Execution: exec,
+		Plan:      plan,
+		Handler:   &NoOpHandler{},
+	})
+	if err != nil {
+		t.Logf("Execute returned error: %v", err)
+	}
+
+	if len(exec.Status.Waves) == 0 || len(exec.Status.Waves[0].Groups) == 0 {
+		t.Fatal("expected at least one wave with one group")
+	}
+	group := exec.Status.Waves[0].Groups[0]
+	if group.Result != soteriav1alpha1.DRGroupResultFailed {
+		t.Errorf("expected group Failed after checkpoint exhaustion, got %q", group.Result)
+	}
+	if group.Error != "checkpoint write failed after retries" {
+		t.Errorf("expected error %q, got %q", "checkpoint write failed after retries", group.Error)
 	}
 }

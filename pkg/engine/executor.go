@@ -52,6 +52,7 @@ import (
 
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
 	"github.com/soteria-project/soteria/pkg/drivers"
+	"github.com/soteria-project/soteria/pkg/metrics"
 )
 
 // ScyllaRetry is a retry backoff tuned for ScyllaDB's eventual consistency
@@ -485,15 +486,22 @@ func (e *WaveExecutor) executeGroup(
 		e.finishDRGroupStatus(ctx, recorder, soteriav1alpha1.DRGroupResultFailed, &completionTime)
 		e.emitGroupEvent(exec, waveIdx, chunk.Name,
 			&GroupError{StepName: "DriverResolution", Target: chunk.Name, Err: err})
-		e.setGroupStatus(ctx, exec, waveIdx, groupIdx, soteriav1alpha1.DRGroupExecutionStatus{
+
+		failedStatus := soteriav1alpha1.DRGroupExecutionStatus{
 			Name:           chunk.Name,
 			Result:         soteriav1alpha1.DRGroupResultFailed,
 			VMNames:        vmNames,
 			Error:          fmt.Sprintf("step DriverResolution failed for %s: %v", chunk.Name, err),
 			StartTime:      &startTime,
 			CompletionTime: &completionTime,
-		})
-		e.writeCheckpoint(ctx, exec, chunk.Name)
+		}
+		e.statusMu.Lock()
+		exec.Status.Waves[waveIdx].Groups[groupIdx] = failedStatus
+		e.statusMu.Unlock()
+		if cpErr := e.persistStatusAndCheckpoint(ctx, exec, chunk.Name); cpErr != nil {
+			logger.V(1).Info("Checkpoint exhausted on already-Failed group",
+				"wave", waveIdx, "group", chunk.Name, "error", cpErr)
+		}
 		return
 	}
 
@@ -526,7 +534,8 @@ func (e *WaveExecutor) executeGroup(
 		}
 		e.finishDRGroupStatus(ctx, recorder, soteriav1alpha1.DRGroupResultFailed, &completionTime)
 		e.emitGroupEvent(exec, waveIdx, chunk.Name, err)
-		e.setGroupStatus(ctx, exec, waveIdx, groupIdx, soteriav1alpha1.DRGroupExecutionStatus{
+
+		failedStatus := soteriav1alpha1.DRGroupExecutionStatus{
 			Name:           chunk.Name,
 			Result:         soteriav1alpha1.DRGroupResultFailed,
 			VMNames:        vmNames,
@@ -534,23 +543,33 @@ func (e *WaveExecutor) executeGroup(
 			Steps:          steps,
 			StartTime:      &startTime,
 			CompletionTime: &completionTime,
-		})
-		e.writeCheckpoint(ctx, exec, chunk.Name)
+		}
+		e.statusMu.Lock()
+		exec.Status.Waves[waveIdx].Groups[groupIdx] = failedStatus
+		e.statusMu.Unlock()
+		if cpErr := e.persistStatusAndCheckpoint(ctx, exec, chunk.Name); cpErr != nil {
+			logger.V(1).Info("Checkpoint exhausted on already-Failed group",
+				"wave", waveIdx, "group", chunk.Name, "error", cpErr)
+		}
 		return
 	}
 
 	e.finishDRGroupStatus(ctx, recorder, soteriav1alpha1.DRGroupResultCompleted, &completionTime)
 	e.emitGroupCompletedEvent(exec, waveIdx, chunk.Name)
 	logger.Info("DRGroup completed", "wave", waveIdx, "group", chunk.Name, "result", "Completed")
-	e.setGroupStatus(ctx, exec, waveIdx, groupIdx, soteriav1alpha1.DRGroupExecutionStatus{
+
+	e.statusMu.Lock()
+	exec.Status.Waves[waveIdx].Groups[groupIdx] = soteriav1alpha1.DRGroupExecutionStatus{
 		Name:           chunk.Name,
 		Result:         soteriav1alpha1.DRGroupResultCompleted,
 		VMNames:        vmNames,
 		Steps:          steps,
 		StartTime:      &startTime,
 		CompletionTime: &completionTime,
-	})
-	if !e.writeCheckpoint(ctx, exec, chunk.Name) {
+	}
+	e.statusMu.Unlock()
+
+	if err := e.persistStatusAndCheckpoint(ctx, exec, chunk.Name); err != nil {
 		logger.Info("Marking group Failed due to checkpoint exhaustion",
 			"wave", waveIdx, "group", chunk.Name)
 		e.setGroupStatus(ctx, exec, waveIdx, groupIdx, soteriav1alpha1.DRGroupExecutionStatus{
@@ -565,12 +584,88 @@ func (e *WaveExecutor) executeGroup(
 	}
 }
 
+// persistStatusAndCheckpoint atomically writes the in-memory DRExecution
+// status as a single Get → mergeConditions → Status().Update, combining
+// what was previously two back-to-back writes (persistStatus + writeCheckpoint).
+// This eliminates the informer-cache-staleness retry window between writes.
+//
+// Uses ExponentialBackoffWithContext with ScyllaRetry-derived backoff because
+// ScyllaDB's CDC propagation delay requires longer inter-retry gaps than
+// standard etcd (see ScyllaRetry).
+//
+// Returns nil on success, ErrCheckpointFailed on retry exhaustion.
+func (e *WaveExecutor) persistStatusAndCheckpoint(
+	ctx context.Context, exec *soteriav1alpha1.DRExecution, groupName string,
+) error {
+	logger := log.FromContext(ctx)
+	start := time.Now()
+
+	backoff := wait.Backoff{
+		Duration: ScyllaRetry.Duration,
+		Factor:   ScyllaRetry.Factor,
+		Jitter:   ScyllaRetry.Jitter,
+		Cap:      10 * time.Second,
+		Steps:    ScyllaRetry.Steps,
+	}
+
+	e.statusMu.Lock()
+	statusCopy := exec.Status.DeepCopy()
+	e.statusMu.Unlock()
+
+	var lastErr error
+	attempt := 0
+
+	err := wait.ExponentialBackoffWithContext(ctx, backoff, func(ctx context.Context) (bool, error) {
+		attempt++
+
+		if err := e.Client.Get(ctx, client.ObjectKeyFromObject(exec), exec); err != nil {
+			lastErr = err
+			metrics.CheckpointRetriesTotal.Inc()
+			logger.V(1).Info("Merged status+checkpoint re-fetch failed, retrying",
+				"execution", exec.Name, "group", groupName, "attempt", attempt, "error", err)
+			return false, nil
+		}
+
+		fetchedConditions := exec.Status.Conditions
+		exec.Status = *statusCopy
+		mergeConditions(&exec.Status.Conditions, fetchedConditions)
+
+		if err := e.Client.Status().Update(ctx, exec); err != nil {
+			lastErr = err
+			metrics.CheckpointRetriesTotal.Inc()
+			logger.V(1).Info("Merged status+checkpoint write failed, retrying",
+				"execution", exec.Name, "group", groupName, "attempt", attempt, "error", err)
+			return false, nil
+		}
+
+		return true, nil
+	})
+
+	duration := time.Since(start)
+	metrics.CheckpointWriteDuration.Observe(duration.Seconds())
+
+	if err != nil {
+		metrics.CheckpointWritesTotal.WithLabelValues(exec.Name, "failure").Inc()
+		logger.Info("Merged status+checkpoint write exhausted retries",
+			"execution", exec.Name, "group", groupName, "attempts", attempt, "lastError", lastErr)
+		return fmt.Errorf("%w: %v", ErrCheckpointFailed, lastErr)
+	}
+
+	metrics.CheckpointWritesTotal.WithLabelValues(exec.Name, "success").Inc()
+	logger.V(1).Info("Merged status+checkpoint written",
+		"execution", exec.Name, "group", groupName, "duration", duration)
+	return nil
+}
+
 // writeCheckpoint persists the current DRExecution status as a checkpoint.
 // Returns true on success (or nil Checkpointer), false on failure. On
 // ErrCheckpointFailed the success-path caller must mark the group Failed
 // per AC3; failure-path callers can ignore the return since the group is
 // already Failed. The snapshot is taken under statusMu to prevent concurrent
 // group completions from overwriting each other's checkpoint data.
+//
+// Used only for wave-level checkpoints. Per-group completions use
+// persistStatusAndCheckpoint instead.
 func (e *WaveExecutor) writeCheckpoint(ctx context.Context, exec *soteriav1alpha1.DRExecution, groupName string) bool {
 	if e.Checkpointer == nil {
 		return true

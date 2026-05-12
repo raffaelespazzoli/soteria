@@ -314,6 +314,6 @@ development_status:
   10-6-drexecution-phase-isactive-fields: done
   10-7-console-ui-derived-active-execution-state: done
   10-8-sequential-chunk-execution-within-waves: done
-  10-9-merge-persist-status-and-checkpoint-into-single-write: ready-for-dev
+  10-9-merge-persist-status-and-checkpoint-into-single-write: done
   10-10-remove-drgroupstatus-resource: ready-for-dev
   epic-10-retrospective: optional

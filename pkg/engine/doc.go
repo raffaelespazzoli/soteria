@@ -123,23 +123,31 @@ limitations under the License.
 //     VM exists, is not migrating/provisioning, and is not paused.
 //     NoOpVMHealthValidator always returns nil for dev/CI environments.
 //
-//   - Per-DRGroup checkpointing (checkpoint.go): After each DRGroup completes
-//     (success or failure), the executor writes the updated DRExecution.Status to
-//     the Kubernetes API server via the status subresource. The checkpoint write
-//     path: controller → kube-apiserver → aggregated API server → ScyllaDB. The
-//     controller never bypasses the Kubernetes API chain. KubeCheckpointer retries
-//     with exponential backoff (100ms initial, 2x factor, 5s cap, 6 attempts). On
-//     retry exhaustion, the group is marked Failed and execution continues
-//     fail-forward. NoOpCheckpointer records calls for unit testing.
+//   - Per-DRGroup checkpointing (executor.go, checkpoint.go): For each DRGroup
+//     completion (success or failure), the executor writes the group status and
+//     checkpoint as a single atomic Status().Update via persistStatusAndCheckpoint.
+//     This merged write path performs Get → mergeConditions → Status().Update in
+//     one retry loop, eliminating the informer-cache-staleness retry window that
+//     existed when persistStatus and writeCheckpoint were separate back-to-back
+//     writes. The write path: controller → kube-apiserver → aggregated API server
+//     → ScyllaDB. The controller never bypasses the Kubernetes API chain. The
+//     merged write retries with ExponentialBackoffWithContext using ScyllaRetry-
+//     derived backoff (200ms initial, 2x factor, 0.3 jitter, 10s cap, 8 steps).
+//     On retry exhaustion, the group is marked Failed and execution continues
+//     fail-forward. Wave-level checkpoints (end-of-wave completion timestamps)
+//     still use the separate KubeCheckpointer.WriteCheckpoint path since they
+//     don't produce cache-staleness issues. NoOpCheckpointer records calls for
+//     unit testing.
 //
 //     Checkpoint timing guarantee: with sequential chunk execution, only one
 //     chunk writes to the DRExecution at any given time. At most one in-flight
-//     DRGroup can be lost on crash — the last group whose checkpoint write
-//     completed is the recovery point. The statusMu mutex serializes in-memory
-//     status updates from the handler's internal goroutines; the checkpoint
-//     write happens immediately after each group status update. Separate
-//     DRPlan executions use separate DRExecution resources and independent
-//     checkpoint write paths.
+//     DRGroup can be lost on crash — the last group whose merged status+checkpoint
+//     write completed is the recovery point. The statusMu mutex serializes
+//     in-memory status updates from the handler's internal goroutines; the single
+//     merged write replaces the previous two-write sequence (persistStatus then
+//     writeCheckpoint), eliminating the race window where a second Get could read
+//     a stale resourceVersion from the informer cache. Separate DRPlan executions
+//     use separate DRExecution resources and independent checkpoint write paths.
 //
 //   - Execution state reconstruction and resume (resume.go): On startup,
 //     controller-runtime syncs informer caches and queues a reconcile for every

@@ -15,12 +15,16 @@ limitations under the License.
 */
 
 // Tier 2 – Architecture:
-// checkpoint.go implements per-DRGroup checkpointing for crash recovery. After
-// each DRGroup completes (success or failure), the executor writes the updated
-// DRExecution.Status to the Kubernetes API server via the status subresource.
-// This ensures that on pod restart, the new leader can reconstruct execution
-// state from the persisted status and resume from the last checkpoint — losing
-// at most one in-flight DRGroup.
+// checkpoint.go provides the Checkpointer interface and KubeCheckpointer
+// implementation for wave-level checkpoint writes. Per-DRGroup completion
+// checkpoints are handled by WaveExecutor.persistStatusAndCheckpoint in
+// executor.go, which merges status and checkpoint into a single atomic
+// Status().Update. KubeCheckpointer is used only at wave boundaries to
+// persist wave-level completion timestamps.
+//
+// Together, these checkpoints enable crash recovery: on pod restart, the new
+// leader reconstructs execution state from the persisted DRExecution status
+// and resumes from the last checkpoint — losing at most one in-flight DRGroup.
 //
 // The checkpoint write path: controller → kube-apiserver → aggregated API
 // server → ScyllaDB. The controller never bypasses the Kubernetes API chain.
