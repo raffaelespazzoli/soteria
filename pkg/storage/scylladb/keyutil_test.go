@@ -42,14 +42,6 @@ func TestKeyToComponents_NamespaceScoped(t *testing.T) {
 				Namespace: "production", Name: "exec-001",
 			},
 		},
-		{
-			name: "DRGroupStatus",
-			key:  "/soteria.io/drgroupstatuses/default/exec-001-wave0-group0",
-			expected: KeyComponents{
-				APIGroup: "soteria.io", ResourceType: "drgroupstatuses",
-				Namespace: "default", Name: "exec-001-wave0-group0",
-			},
-		},
 	}
 
 	for _, tt := range tests {

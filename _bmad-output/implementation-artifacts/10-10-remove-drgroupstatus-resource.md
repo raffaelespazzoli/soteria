@@ -1,6 +1,6 @@
 # Story 10.10: Remove DRGroupStatus Resource
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -78,60 +78,60 @@ so that the codebase is simplified by eliminating a write-only resource that add
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Remove Go types and scheme registration (AC: #1, #9)
-  - [ ] 1.1 Remove `DRGroupStatus`, `DRGroupStatusSpec`, `DRGroupStatusState`, `DRGroupStatusList` from `pkg/apis/soteria.io/v1alpha1/types.go`
-  - [ ] 1.2 Remove `&DRGroupStatus{}`, `&DRGroupStatusList{}` from `register.go` `addKnownTypes`
-  - [ ] 1.3 Update `pkg/apis/soteria.io/v1alpha1/doc.go` comment
-  - [ ] 1.4 Run `make generate` to regenerate deepcopy (removes DRGroupStatus methods from `zz_generated.deepcopy.go`)
+- [x] Task 1: Remove Go types and scheme registration (AC: #1, #9)
+  - [x] 1.1 Remove `DRGroupStatus`, `DRGroupStatusSpec`, `DRGroupStatusState`, `DRGroupStatusList` from `pkg/apis/soteria.io/v1alpha1/types.go`
+  - [x] 1.2 Remove `&DRGroupStatus{}`, `&DRGroupStatusList{}` from `register.go` `addKnownTypes`
+  - [x] 1.3 Update `pkg/apis/soteria.io/v1alpha1/doc.go` comment
+  - [x] 1.4 Run `make generate` to regenerate deepcopy (removes DRGroupStatus methods from `zz_generated.deepcopy.go`)
 
-- [ ] Task 2: Delete registry package (AC: #2)
-  - [ ] 2.1 Delete `pkg/registry/drgroupstatus/` directory entirely
+- [x] Task 2: Delete registry package (AC: #2)
+  - [x] 2.1 Delete `pkg/registry/drgroupstatus/` directory entirely
 
-- [ ] Task 3: Remove apiserver registration (AC: #3)
-  - [ ] 3.1 Remove `drgroupstatusregistry` import from `pkg/apiserver/apiserver.go`
-  - [ ] 3.2 Remove `NewREST` call and `drgroupstatuses`/`drgroupstatuses/status` map entries
-  - [ ] 3.3 Remove GVK mapping in `pkg/apiserver/options.go`
-  - [ ] 3.4 Update `pkg/apiserver/doc.go` resource list
+- [x] Task 3: Remove apiserver registration (AC: #3)
+  - [x] 3.1 Remove `drgroupstatusregistry` import from `pkg/apiserver/apiserver.go`
+  - [x] 3.2 Remove `NewREST` call and `drgroupstatuses`/`drgroupstatuses/status` map entries
+  - [x] 3.3 Remove GVK mapping in `pkg/apiserver/options.go`
+  - [x] 3.4 Update `pkg/apiserver/doc.go` resource list
 
-- [ ] Task 4: Simplify executor (AC: #4, #5)
-  - [ ] 4.1 Remove `drgroupStatusRecorder` type and its `RecordStep` method
-  - [ ] 4.2 Remove `createDRGroupStatus`, `finishDRGroupStatus`, `resetDRGroupStatus`, `getDRGroupStatusRecorder` functions
-  - [ ] 4.3 In `executeGroup`: remove `createDRGroupStatus` call and `finishDRGroupStatus` calls. Set recorder to `noopStepRecorder{}`
-  - [ ] 4.4 In retry path (`executeRetryGroup`): remove `resetDRGroupStatus` and `getDRGroupStatusRecorder` calls. Set recorder to `noopStepRecorder{}`
-  - [ ] 4.5 Keep `StepRecorder` interface, `noopStepRecorder`, `ExecutionGroup.StepRecorder` field
+- [x] Task 4: Simplify executor (AC: #4, #5)
+  - [x] 4.1 Remove `drgroupStatusRecorder` type and its `RecordStep` method
+  - [x] 4.2 Remove `createDRGroupStatus`, `finishDRGroupStatus`, `resetDRGroupStatus`, `getDRGroupStatusRecorder` functions
+  - [x] 4.3 In `executeGroup`: remove `createDRGroupStatus` call and `finishDRGroupStatus` calls. Set recorder to `noopStepRecorder{}`
+  - [x] 4.4 In retry path (`executeRetryGroup`): remove `resetDRGroupStatus` and `getDRGroupStatusRecorder` calls. Set recorder to `noopStepRecorder{}`
+  - [x] 4.5 Keep `StepRecorder` interface, `noopStepRecorder`, `ExecutionGroup.StepRecorder` field
 
-- [ ] Task 5: Remove RBAC markers (AC: #6)
-  - [ ] 5.1 Remove `+kubebuilder:rbac` markers for `drgroupstatuses` from `pkg/controller/drexecution/reconciler.go`
-  - [ ] 5.2 Remove duplicate markers from `pkg/controller/drexecution/doc.go`
-  - [ ] 5.3 Run `make manifests` to regenerate `config/rbac/role.yaml`
+- [x] Task 5: Remove RBAC markers (AC: #6)
+  - [x] 5.1 Remove `+kubebuilder:rbac` markers for `drgroupstatuses` from `pkg/controller/drexecution/reconciler.go`
+  - [x] 5.2 Remove duplicate markers from `pkg/controller/drexecution/doc.go`
+  - [x] 5.3 Run `make manifests` to regenerate `config/rbac/role.yaml`
 
-- [ ] Task 6: Clean console plugin (AC: #7)
-  - [ ] 6.1 Remove `DRGroupStatus`, `DRGroupStatusSpec`, `DRGroupStatusState` from `console-plugin/src/models/types.ts`
-  - [ ] 6.2 Remove `drGroupStatusGVK` and `useDRGroupStatuses` from `console-plugin/src/hooks/useDRResources.ts`
-  - [ ] 6.3 Remove `useDRGroupStatuses` mock from `console-plugin/tests/components/ExecutionDetailPage.test.tsx`
+- [x] Task 6: Clean console plugin (AC: #7)
+  - [x] 6.1 Remove `DRGroupStatus`, `DRGroupStatusSpec`, `DRGroupStatusState` from `console-plugin/src/models/types.ts`
+  - [x] 6.2 Remove `drGroupStatusGVK` and `useDRGroupStatuses` from `console-plugin/src/hooks/useDRResources.ts`
+  - [x] 6.3 Remove `useDRGroupStatuses` mock from `console-plugin/tests/components/ExecutionDetailPage.test.tsx`
 
-- [ ] Task 7: Update doc.go (AC: #11)
-  - [ ] 7.1 Remove "DRGroupStatus lifecycle" paragraph from `pkg/engine/doc.go`
-  - [ ] 7.2 Update audit trail comment in `pkg/registry/drexecution/strategy.go` (remove DRGroupStatus mention)
-  - [ ] 7.3 Update `pkg/engine/failover.go` comments referencing DRGroupStatus
+- [x] Task 7: Update doc.go (AC: #11)
+  - [x] 7.1 Remove "DRGroupStatus lifecycle" paragraph from `pkg/engine/doc.go`
+  - [x] 7.2 Update audit trail comment in `pkg/registry/drexecution/strategy.go` (remove DRGroupStatus mention)
+  - [x] 7.3 Update `pkg/engine/failover.go` comments referencing DRGroupStatus
 
-- [ ] Task 8: Update tests (AC: #10)
-  - [ ] 8.1 `pkg/engine/executor_test.go`: remove DRGroupStatus tests, update fake client setup
-  - [ ] 8.2 `pkg/controller/drexecution/reconciler_test.go`: remove `&DRGroupStatus{}` from scheme
-  - [ ] 8.3 `test/integration/apiserver/apiserver_test.go`: remove CRUD/immutability/discovery tests
-  - [ ] 8.4 `test/integration/storage/store_test.go`: remove CRUD and label index tests
-  - [ ] 8.5 `test/integration/storage/watch_test.go`: remove watch test
-  - [ ] 8.6 `test/integration/rbac/suite_test.go`: remove envtest CRD stub
-  - [ ] 8.7 `pkg/storage/scylladb/keyutil_test.go`: remove key example
-  - [ ] 8.8 `hack/api-violations.list`: remove DRGroupStatus entries
+- [x] Task 8: Update tests (AC: #10)
+  - [x] 8.1 `pkg/engine/executor_test.go`: remove DRGroupStatus tests, update fake client setup, rewrite StepRecorder test to verify noop behavior
+  - [x] 8.2 `pkg/controller/drexecution/reconciler_test.go`: remove `&DRGroupStatus{}` from scheme
+  - [x] 8.3 `test/integration/apiserver/apiserver_test.go`: remove CRUD/immutability/discovery tests
+  - [x] 8.4 `test/integration/storage/store_test.go`: remove CRUD and label index tests
+  - [x] 8.5 `test/integration/storage/watch_test.go`: remove watch test
+  - [x] 8.6 `test/integration/rbac/suite_test.go`: remove envtest CRD stub
+  - [x] 8.7 `pkg/storage/scylladb/keyutil_test.go`: remove key example
+  - [x] 8.8 `hack/api-violations.list`: no DRGroupStatus entries found (only DRGroupExecutionStatus which is a different type)
 
-- [ ] Task 9: Regenerate and verify (AC: #8, #12, #13, #14)
-  - [ ] 9.1 `make manifests generate` — regenerate RBAC, deepcopy, OpenAPI
-  - [ ] 9.2 Verify `config/rbac/role.yaml` no longer lists `drgroupstatuses`
-  - [ ] 9.3 Update `bundle/manifests/soteria.clusterserviceversion.yaml` (remove DRGroupStatus owned API)
-  - [ ] 9.4 `make test` — all unit tests pass
-  - [ ] 9.5 `make lint` — zero lint issues
-  - [ ] 9.6 Console: `npm test` — all tests pass
+- [x] Task 9: Regenerate and verify (AC: #8, #12, #13, #14)
+  - [x] 9.1 `make manifests generate` — regenerate RBAC, deepcopy, OpenAPI
+  - [x] 9.2 Verify `config/rbac/role.yaml` no longer lists `drgroupstatuses`
+  - [x] 9.3 Update `bundle/manifests/soteria.clusterserviceversion.yaml` (remove DRGroupStatus owned API)
+  - [x] 9.4 `make test` — all unit tests pass
+  - [x] 9.5 `make lint` — zero lint issues
+  - [x] 9.6 Console: `npm test` — 601 tests pass
 
 ## Dev Notes
 
@@ -200,9 +200,65 @@ This order ensures each step compiles independently. Types must be removed befor
 ## Dev Agent Record
 
 ### Agent Model Used
+Claude Opus 4
 
 ### Debug Log References
+None — zero-debug implementation (all changes compiled and passed tests on first try)
 
 ### Completion Notes List
+- Removed DRGroupStatus, DRGroupStatusSpec, DRGroupStatusState, DRGroupStatusList types from types.go; StepStatus retained
+- Deleted pkg/registry/drgroupstatus/ package entirely (strategy.go, storage.go, doc.go, strategy_test.go)
+- Removed apiserver registration (import, NewREST call, storage map entries, GVK extensions)
+- Removed drgroupStatusRecorder type + 4 executor functions (createDRGroupStatus, finishDRGroupStatus, resetDRGroupStatus, getDRGroupStatusRecorder)
+- executeGroup and executeRetryGroup now use noopStepRecorder{} directly
+- StepRecorder interface, noopStepRecorder, ExecutionGroup.StepRecorder field retained per AC5
+- Removed RBAC markers from reconciler.go and doc.go; regenerated role.yaml
+- Cleaned console plugin: removed TS types, GVK, hook, and test mock
+- Updated doc.go files: removed DRGroupStatus lifecycle paragraph, updated stale comments
+- Removed DRGroupStatus tests from executor_test.go, reconciler_test.go, apiserver_test.go, store_test.go, watch_test.go, rbac/suite_test.go, keyutil_test.go
+- Rewrote TestWaveExecutor_StepRecorder_PassedToHandler → TestWaveExecutor_StepRecorder_NoopBehavior (verifies steps recorded in DRGroupExecutionStatus via StepHandler)
+- Updated config/rbac/soteria_{operator,editor,viewer}_role.yaml — removed drgroupstatuses entries
+- Updated bundle/manifests/soteria.clusterserviceversion.yaml — removed DRGroupStatus owned API
+- Updated project-context.md — removed drgroupstatuses from API resource list
+- hack/api-violations.list had no DRGroupStatus entries (only DRGroupExecutionStatus)
+- Engine coverage improved from 82.6% to 83.4% (removed dead code paths)
+- All tests pass: make test (0 failures), make lint (0 issues), npm test (601 tests pass)
+
+### Change Log
+- 2026-05-12: Removed DRGroupStatus CRD entirely — types, registry, apiserver, executor, RBAC, console, tests, OLM bundle, docs updated
 
 ### File List
+- DELETED: pkg/registry/drgroupstatus/doc.go
+- DELETED: pkg/registry/drgroupstatus/storage.go
+- DELETED: pkg/registry/drgroupstatus/strategy.go
+- DELETED: pkg/registry/drgroupstatus/strategy_test.go
+- MODIFIED: pkg/apis/soteria.io/v1alpha1/types.go
+- MODIFIED: pkg/apis/soteria.io/v1alpha1/register.go
+- MODIFIED: pkg/apis/soteria.io/v1alpha1/doc.go
+- MODIFIED: pkg/apis/soteria.io/v1alpha1/zz_generated.deepcopy.go (auto-generated)
+- MODIFIED: pkg/apis/soteria.io/v1alpha1/zz_generated.openapi.go (auto-generated)
+- MODIFIED: pkg/apiserver/apiserver.go
+- MODIFIED: pkg/apiserver/options.go
+- MODIFIED: pkg/apiserver/doc.go
+- MODIFIED: pkg/engine/executor.go
+- MODIFIED: pkg/engine/doc.go
+- MODIFIED: pkg/engine/failover.go
+- MODIFIED: pkg/controller/drexecution/reconciler.go
+- MODIFIED: pkg/controller/drexecution/doc.go
+- MODIFIED: pkg/registry/drexecution/strategy.go
+- MODIFIED: pkg/engine/executor_test.go
+- MODIFIED: pkg/controller/drexecution/reconciler_test.go
+- MODIFIED: pkg/storage/scylladb/keyutil_test.go
+- MODIFIED: test/integration/apiserver/apiserver_test.go
+- MODIFIED: test/integration/storage/store_test.go
+- MODIFIED: test/integration/storage/watch_test.go
+- MODIFIED: test/integration/rbac/suite_test.go
+- MODIFIED: config/rbac/role.yaml (auto-generated)
+- MODIFIED: config/rbac/soteria_operator_role.yaml
+- MODIFIED: config/rbac/soteria_editor_role.yaml
+- MODIFIED: config/rbac/soteria_viewer_role.yaml
+- MODIFIED: bundle/manifests/soteria.clusterserviceversion.yaml
+- MODIFIED: console-plugin/src/models/types.ts
+- MODIFIED: console-plugin/src/hooks/useDRResources.ts
+- MODIFIED: console-plugin/tests/components/ExecutionDetailPage.test.tsx
+- MODIFIED: _bmad-output/project-context.md

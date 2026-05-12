@@ -82,14 +82,6 @@ spec:
         containerPort: 6443
         displayName: DR Execution
         description: Records an immutable execution of a DRPlan
-      - group: soteria.io
-        version: v1alpha1
-        kind: DRGroupStatus
-        name: drgroupstatuses
-        deploymentName: soteria-controller-manager
-        containerPort: 6443
-        displayName: DR Group Status
-        description: Tracks real-time state of a DRGroup during execution
 
   # ScyllaDB and cert-manager are CRDs, not APIServices.
   customresourcedefinitions:

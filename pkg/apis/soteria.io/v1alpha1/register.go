@@ -47,8 +47,6 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&DRPlanList{},
 		&DRExecution{},
 		&DRExecutionList{},
-		&DRGroupStatus{},
-		&DRGroupStatusList{},
 	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil

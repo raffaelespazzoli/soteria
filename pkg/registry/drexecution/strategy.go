@@ -160,8 +160,7 @@ func (drexecutionStatusStrategy) PrepareForUpdate(_ context.Context, obj, old ru
 // Succeeded and Failed are fully immutable. PartiallySucceeded is re-openable
 // to support retry of failed DRGroups (FR14): the operator annotates the
 // execution, and the controller updates group statuses and recomputes the
-// overall result. Individual retry attempts are auditable via RetryCount and
-// DRGroupStatus resources.
+// overall result. Individual retry attempts are auditable via RetryCount.
 func (drexecutionStatusStrategy) ValidateUpdate(_ context.Context, obj, old runtime.Object) field.ErrorList {
 	oldExec := old.(*soteriav1alpha1.DRExecution)
 	allErrs := field.ErrorList{}

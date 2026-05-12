@@ -77,7 +77,7 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 
 **Kubernetes Operator / API Server:**
 
-- API group: `soteria.io/v1alpha1` — resources: `drplans`, `drexecutions`, `drgroupstatuses`
+- API group: `soteria.io/v1alpha1` — resources: `drplans`, `drexecutions`
 - Single binary: API server + controller in one process. Leader election (`ctrl.Options{LeaderElection: true}`) controls workflow engine only — all replicas serve API
 - Controller communicates via standard client-go through kube-apiserver proxy — never touches ScyllaDB directly
 - **Aggregated API Server admission flow:** kube-apiserver owns webhook admission — it reads the VWC, calls the Soteria webhook service (port 443 → pod 9443), and only proxies to the aggregated API server (port 6443) if validation passes. The aggregated API server stores to ScyllaDB without further validation. Disable `ValidatingAdmissionWebhook` and `MutatingAdmissionWebhook` on the aggregated API server (`--disable-admission-plugins`) to prevent it from re-invoking external webhooks. The in-process controller-runtime webhook handler serves both the VWC calls from kube-apiserver and the aggregated API server's own admission chain
@@ -261,7 +261,7 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 **Implementation Sequence (architecture-driven):**
 
 1. ScyllaDB `storage.Interface` prototype (CDC Watch + generic KV) — gates everything
-2. Aggregated API Server with DRPlan/DRExecution/DRGroupStatus types
+2. Aggregated API Server with DRPlan/DRExecution types
 3. Controller skeleton with leader election + client-go informers
 4. StorageProvider interface + no-op driver
 5. Workflow engine (wave executor, DRGroup chunking, checkpointing)

@@ -51,24 +51,11 @@ rules:
   - soteria.io
   resources:
   - drexecutions/status
-  - drgroupstatuses/status
   - drplans/status
   verbs:
   - get
   - patch
   - update
-- apiGroups:
-  - soteria.io
-  resources:
-  - drgroupstatuses
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
 - apiGroups:
   - soteria.io
   resources:

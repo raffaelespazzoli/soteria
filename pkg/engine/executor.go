@@ -37,7 +37,6 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -47,7 +46,6 @@ import (
 	"k8s.io/client-go/util/retry"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
@@ -111,36 +109,16 @@ type StepHandler interface {
 	) ([]soteriav1alpha1.StepStatus, error)
 }
 
-// StepRecorder enables real-time DRGroupStatus updates without the handler
-// knowing about Kubernetes resources. The executor's implementation writes
-// to the DRGroupStatus status subresource; tests can inject a no-op or
-// recording mock.
+// StepRecorder enables per-step recording during group execution. The default
+// implementation is noopStepRecorder; tests can inject a recording mock.
 type StepRecorder interface {
 	RecordStep(ctx context.Context, step soteriav1alpha1.StepStatus) error
 }
 
-// noopStepRecorder discards step recordings (used when DRGroupStatus is not configured).
+// noopStepRecorder discards step recordings.
 type noopStepRecorder struct{}
 
 func (noopStepRecorder) RecordStep(context.Context, soteriav1alpha1.StepStatus) error { return nil }
-
-// drgroupStatusRecorder writes step updates to a DRGroupStatus resource.
-type drgroupStatusRecorder struct {
-	client    client.Client
-	statusKey client.ObjectKey
-	mu        sync.Mutex
-}
-
-func (r *drgroupStatusRecorder) RecordStep(ctx context.Context, step soteriav1alpha1.StepStatus) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	var dgs soteriav1alpha1.DRGroupStatus
-	if err := r.client.Get(ctx, r.statusKey, &dgs); err != nil {
-		return fmt.Errorf("re-fetching DRGroupStatus %s: %w", r.statusKey.Name, err)
-	}
-	dgs.Status.Steps = append(dgs.Status.Steps, step)
-	return r.client.Status().Update(ctx, &dgs)
-}
 
 // ExecutionGroup bundles a DRGroupChunk with its resolved StorageProvider
 // driver(s) so the handler does not need to resolve drivers itself.
@@ -322,8 +300,8 @@ func (e *WaveExecutor) InitializeWaves(
 	return e.persistStatus(ctx, exec)
 }
 
-// ExecuteWaveHandler runs handler operations for a single wave: creates
-// DRGroupStatus resources, resolves drivers, and executes groups sequentially.
+// ExecuteWaveHandler runs handler operations for a single wave: resolves
+// drivers and executes groups sequentially.
 // Unlike executeWave, this is exported for the reconciler to drive wave-by-wave
 // execution with VM readiness gates.
 func (e *WaveExecutor) ExecuteWaveHandler(
@@ -456,9 +434,8 @@ func (e *WaveExecutor) executeWave(
 	}
 }
 
-// executeGroup processes a single DRGroup chunk: creates DRGroupStatus,
-// resolves the driver, calls the handler with a StepRecorder, records the
-// result, and emits events.
+// executeGroup processes a single DRGroup chunk: resolves the driver, calls
+// the handler, records the result, and emits events.
 func (e *WaveExecutor) executeGroup(
 	ctx context.Context, waveIdx, groupIdx int, chunk DRGroupChunk,
 	handler DRGroupHandler, exec *soteriav1alpha1.DRExecution,
@@ -475,15 +452,11 @@ func (e *WaveExecutor) executeGroup(
 		StartTime: &startTime,
 	})
 
-	// Create DRGroupStatus resource for real-time tracking.
-	recorder := e.createDRGroupStatus(ctx, exec, waveIdx, chunk, vmNames)
-
 	// Resolve storage drivers per volume group.
 	driverMap, fallbackDriver, err := e.resolveDrivers(ctx, chunk)
 	if err != nil {
 		logger.Error(err, "Driver resolution failed", "wave", waveIdx, "group", chunk.Name)
 		completionTime := metav1.Now()
-		e.finishDRGroupStatus(ctx, recorder, soteriav1alpha1.DRGroupResultFailed, &completionTime)
 		e.emitGroupEvent(exec, waveIdx, chunk.Name,
 			&GroupError{StepName: "DriverResolution", Target: chunk.Name, Err: err})
 
@@ -510,7 +483,7 @@ func (e *WaveExecutor) executeGroup(
 		Driver:       fallbackDriver,
 		Drivers:      driverMap,
 		WaveIndex:    waveIdx,
-		StepRecorder: recorder,
+		StepRecorder: noopStepRecorder{},
 		PVCResolver:  e.PVCResolver,
 	}
 
@@ -532,7 +505,6 @@ func (e *WaveExecutor) executeGroup(
 		} else {
 			logger.Error(err, "DRGroup failed", "wave", waveIdx, "group", chunk.Name)
 		}
-		e.finishDRGroupStatus(ctx, recorder, soteriav1alpha1.DRGroupResultFailed, &completionTime)
 		e.emitGroupEvent(exec, waveIdx, chunk.Name, err)
 
 		failedStatus := soteriav1alpha1.DRGroupExecutionStatus{
@@ -554,7 +526,6 @@ func (e *WaveExecutor) executeGroup(
 		return
 	}
 
-	e.finishDRGroupStatus(ctx, recorder, soteriav1alpha1.DRGroupResultCompleted, &completionTime)
 	e.emitGroupCompletedEvent(exec, waveIdx, chunk.Name)
 	logger.Info("DRGroup completed", "wave", waveIdx, "group", chunk.Name, "result", "Completed")
 
@@ -685,83 +656,6 @@ func (e *WaveExecutor) writeCheckpoint(ctx context.Context, exec *soteriav1alpha
 		return false
 	}
 	return true
-}
-
-// createDRGroupStatus creates a DRGroupStatus resource for real-time tracking
-// and returns the StepRecorder for it. On AlreadyExists (requeue), it reuses
-// the existing resource. Returns noopStepRecorder only for unexpected errors.
-func (e *WaveExecutor) createDRGroupStatus(
-	ctx context.Context, exec *soteriav1alpha1.DRExecution,
-	waveIdx int, chunk DRGroupChunk, vmNames []string,
-) StepRecorder {
-	logger := log.FromContext(ctx)
-	dgsName := fmt.Sprintf("%s-%s", exec.Name, chunk.Name)
-	dgs := &soteriav1alpha1.DRGroupStatus{
-		ObjectMeta: metav1.ObjectMeta{
-			Name: dgsName,
-		},
-		Spec: soteriav1alpha1.DRGroupStatusSpec{
-			ExecutionName: exec.Name,
-			WaveIndex:     waveIdx,
-			GroupName:     chunk.Name,
-			VMNames:       vmNames,
-		},
-	}
-
-	if err := controllerutil.SetOwnerReference(exec, dgs, e.Client.Scheme()); err != nil {
-		logger.V(1).Info("Could not set owner reference on DRGroupStatus", "name", dgsName, "error", err)
-	}
-
-	if err := e.Client.Create(ctx, dgs); err != nil {
-		if !apierrors.IsAlreadyExists(err) {
-			logger.V(1).Info("Could not create DRGroupStatus", "name", dgsName, "error", err)
-			return noopStepRecorder{}
-		}
-		// Reuse existing resource on retry/requeue.
-		if getErr := e.Client.Get(ctx, client.ObjectKey{Name: dgsName}, dgs); getErr != nil {
-			logger.V(1).Info("Could not fetch existing DRGroupStatus", "name", dgsName, "error", getErr)
-			return noopStepRecorder{}
-		}
-		logger.V(1).Info("Reusing existing DRGroupStatus", "name", dgsName)
-	}
-
-	// PrepareForCreate zeroes Status, so set InProgress via the status
-	// subresource to ensure the phase is persisted.
-	dgs.Status.Phase = soteriav1alpha1.DRGroupResultInProgress
-	if err := e.Client.Status().Update(ctx, dgs); err != nil {
-		logger.V(1).Info("Could not set initial InProgress status on DRGroupStatus", "name", dgsName, "error", err)
-	}
-
-	logger.V(1).Info("Created DRGroupStatus", "name", dgsName, "execution", exec.Name)
-	return &drgroupStatusRecorder{
-		client:    e.Client,
-		statusKey: client.ObjectKey{Name: dgsName},
-	}
-}
-
-// finishDRGroupStatus sets the terminal phase and lastTransitionTime on a DRGroupStatus.
-func (e *WaveExecutor) finishDRGroupStatus(
-	ctx context.Context, recorder StepRecorder,
-	phase soteriav1alpha1.DRGroupResult, completionTime *metav1.Time,
-) {
-	r, ok := recorder.(*drgroupStatusRecorder)
-	if !ok {
-		return
-	}
-	logger := log.FromContext(ctx)
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	var dgs soteriav1alpha1.DRGroupStatus
-	if err := r.client.Get(ctx, r.statusKey, &dgs); err != nil {
-		logger.V(1).Info("Could not fetch DRGroupStatus for finalization", "name", r.statusKey.Name, "error", err)
-		return
-	}
-	dgs.Status.Phase = phase
-	dgs.Status.LastTransitionTime = completionTime
-	if err := r.client.Status().Update(ctx, &dgs); err != nil {
-		logger.V(1).Info("Could not finalize DRGroupStatus", "name", r.statusKey.Name, "error", err)
-	}
 }
 
 // emitGroupEvent emits a GroupFailed event on the DRExecution.
@@ -1481,8 +1375,7 @@ func (e *WaveExecutor) executeRetryWave(
 }
 
 // executeRetryGroup re-executes a single failed DRGroup: increments RetryCount,
-// resets status to InProgress, clears DRGroupStatus steps, calls the handler,
-// and records the result.
+// resets status to InProgress, calls the handler, and records the result.
 func (e *WaveExecutor) executeRetryGroup(
 	ctx context.Context, target RetryTarget,
 	handler DRGroupHandler, exec *soteriav1alpha1.DRExecution,
@@ -1508,9 +1401,6 @@ func (e *WaveExecutor) executeRetryGroup(
 		logger.Error(err, "Failed to persist retry InProgress status", "group", target.GroupName)
 	}
 
-	// Reset DRGroupStatus resource for the retry.
-	e.resetDRGroupStatus(ctx, exec, target)
-
 	// Reconstruct the chunk from execution status and plan.
 	chunk := e.reconstructChunk(target, exec, plan)
 
@@ -1531,14 +1421,12 @@ func (e *WaveExecutor) executeRetryGroup(
 		return
 	}
 
-	recorder := e.getDRGroupStatusRecorder(ctx, exec, target)
-
 	execGroup := ExecutionGroup{
 		Chunk:        chunk,
 		Driver:       fallbackDriver,
 		Drivers:      driverMap,
 		WaveIndex:    target.WaveIndex,
-		StepRecorder: recorder,
+		StepRecorder: noopStepRecorder{},
 		PVCResolver:  e.PVCResolver,
 	}
 
@@ -1560,7 +1448,6 @@ func (e *WaveExecutor) executeRetryGroup(
 		} else {
 			logger.Error(err, "DRGroup retry failed", "group", target.GroupName, "retryCount", retryCount)
 		}
-		e.finishDRGroupStatus(ctx, recorder, soteriav1alpha1.DRGroupResultFailed, &completionTime)
 		e.setGroupStatus(ctx, exec, target.WaveIndex, target.GroupIndex, soteriav1alpha1.DRGroupExecutionStatus{
 			Name:           target.GroupName,
 			Result:         soteriav1alpha1.DRGroupResultFailed,
@@ -1574,7 +1461,6 @@ func (e *WaveExecutor) executeRetryGroup(
 		return
 	}
 
-	e.finishDRGroupStatus(ctx, recorder, soteriav1alpha1.DRGroupResultCompleted, &completionTime)
 	logger.Info("DRGroup retry completed", "group", target.GroupName,
 		"result", "Completed", "retryCount", retryCount)
 	e.setGroupStatus(ctx, exec, target.WaveIndex, target.GroupIndex, soteriav1alpha1.DRGroupExecutionStatus{
@@ -1586,48 +1472,6 @@ func (e *WaveExecutor) executeRetryGroup(
 		StartTime:      &startTime,
 		CompletionTime: &completionTime,
 	})
-}
-
-// resetDRGroupStatus resets an existing DRGroupStatus resource for retry:
-// clears steps, sets phase to InProgress.
-func (e *WaveExecutor) resetDRGroupStatus(
-	ctx context.Context, exec *soteriav1alpha1.DRExecution, target RetryTarget,
-) {
-	logger := log.FromContext(ctx)
-	dgsName := fmt.Sprintf("%s-%s", exec.Name, target.GroupName)
-
-	var dgs soteriav1alpha1.DRGroupStatus
-	if err := e.Client.Get(ctx, client.ObjectKey{Name: dgsName}, &dgs); err != nil {
-		logger.V(1).Info("Could not fetch DRGroupStatus for retry reset", "name", dgsName, "error", err)
-		return
-	}
-
-	dgs.Status.Phase = soteriav1alpha1.DRGroupResultInProgress
-	dgs.Status.Steps = nil
-	now := metav1.Now()
-	dgs.Status.LastTransitionTime = &now
-	if err := e.Client.Status().Update(ctx, &dgs); err != nil {
-		logger.V(1).Info("Could not reset DRGroupStatus for retry", "name", dgsName, "error", err)
-	}
-}
-
-// getDRGroupStatusRecorder returns a StepRecorder for an existing DRGroupStatus.
-func (e *WaveExecutor) getDRGroupStatusRecorder(
-	ctx context.Context, exec *soteriav1alpha1.DRExecution, target RetryTarget,
-) StepRecorder {
-	logger := log.FromContext(ctx)
-	dgsName := fmt.Sprintf("%s-%s", exec.Name, target.GroupName)
-
-	var dgs soteriav1alpha1.DRGroupStatus
-	if err := e.Client.Get(ctx, client.ObjectKey{Name: dgsName}, &dgs); err != nil {
-		logger.V(1).Info("Could not fetch DRGroupStatus for retry recorder", "name", dgsName, "error", err)
-		return noopStepRecorder{}
-	}
-
-	return &drgroupStatusRecorder{
-		client:    e.Client,
-		statusKey: client.ObjectKey{Name: dgsName},
-	}
 }
 
 // reconstructChunk builds a DRGroupChunk from execution status and plan data

@@ -16,8 +16,6 @@ limitations under the License.
 
 // +kubebuilder:rbac:groups=soteria.io,resources=drexecutions,verbs=get;list;watch
 // +kubebuilder:rbac:groups=soteria.io,resources=drexecutions/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=soteria.io,resources=drgroupstatuses,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups=soteria.io,resources=drgroupstatuses/status,verbs=get;update;patch
 
 // Package drexecution implements the DRExecution controller for workflow orchestration.
 package drexecution

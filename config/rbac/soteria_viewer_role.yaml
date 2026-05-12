@@ -13,7 +13,6 @@ rules:
   resources:
   - drplans
   - drexecutions
-  - drgroupstatuses
   verbs:
   - get
   - list
@@ -23,6 +22,5 @@ rules:
   resources:
   - drplans/status
   - drexecutions/status
-  - drgroupstatuses/status
   verbs:
   - get

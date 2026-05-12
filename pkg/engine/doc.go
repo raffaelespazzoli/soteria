@@ -85,14 +85,6 @@ limitations under the License.
 //     Succeeded or PartiallySucceeded — Failed leaves the plan in its in-progress
 //     phase for manual intervention.
 //
-//   - DRGroupStatus lifecycle (executor.go): For each DRGroup chunk, the executor
-//     creates a cluster-scoped DRGroupStatus resource (named
-//     "<executionName>-<groupName>") at the start of group execution with Phase=
-//     InProgress. Handlers call StepRecorder.RecordStep() after each operation to
-//     append StepStatus entries in real-time. On completion, the executor sets
-//     Phase=Completed or Phase=Failed. Owner references on DRGroupStatus point to
-//     the parent DRExecution for automatic garbage collection.
-//
 //   - PVC name resolution (pvc_resolver.go): KubeVirtPVCResolver reads a VM's
 //     Spec.Template.Spec.Volumes and extracts PersistentVolumeClaim.ClaimName
 //     references. Non-PVC volumes (containerDisk, cloudInitNoCloud) are silently

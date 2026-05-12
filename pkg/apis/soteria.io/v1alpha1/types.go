@@ -509,38 +509,6 @@ type DRExecutionList struct {
 	Items           []DRExecution `json:"items"`
 }
 
-// DRGroupStatus tracks the real-time state of a DRGroup during execution.
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-type DRGroupStatus struct {
-	metav1.TypeMeta   `json:",inline"`
-	metav1.ObjectMeta `json:"metadata,omitempty"`
-	Spec              DRGroupStatusSpec  `json:"spec"`
-	Status            DRGroupStatusState `json:"status,omitempty"`
-}
-
-type DRGroupStatusSpec struct {
-	// ExecutionName references the parent DRExecution.
-	ExecutionName string `json:"executionName"`
-	// WaveIndex is the wave this group belongs to.
-	WaveIndex int `json:"waveIndex"`
-	// GroupName is the name of this DRGroup within the wave.
-	GroupName string `json:"groupName"`
-	// VMNames lists VMs in this group.
-	VMNames []string `json:"vmNames,omitempty"`
-}
-
-type DRGroupStatusState struct {
-	// Phase is the current processing state.
-	// +kubebuilder:validation:Enum=Pending;InProgress;Completed;Failed;WaitingForVMReady
-	Phase DRGroupResult `json:"phase,omitempty"`
-	// Conditions represent the latest observations.
-	Conditions []metav1.Condition `json:"conditions,omitempty"`
-	// Steps records per-step execution details.
-	Steps []StepStatus `json:"steps,omitempty"`
-	// LastTransitionTime is when the phase last changed.
-	LastTransitionTime *metav1.Time `json:"lastTransitionTime,omitempty"`
-}
-
 type StepStatus struct {
 	// Name describes this step (e.g., "PromoteVolume", "StartVM").
 	Name string `json:"name"`
@@ -550,12 +518,4 @@ type StepStatus struct {
 	Message string `json:"message,omitempty"`
 	// Timestamp is when this step completed.
 	Timestamp *metav1.Time `json:"timestamp,omitempty"`
-}
-
-// DRGroupStatusList contains a list of DRGroupStatuses.
-// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
-type DRGroupStatusList struct {
-	metav1.TypeMeta `json:",inline"`
-	metav1.ListMeta `json:"metadata,omitempty"`
-	Items           []DRGroupStatus `json:"items"`
 }

@@ -240,23 +240,3 @@ export interface StepStatus {
   timestamp?: string;
 }
 
-// --- DRGroupStatus ---
-
-export interface DRGroupStatus extends K8sResourceCommon {
-  spec: DRGroupStatusSpec;
-  status?: DRGroupStatusState;
-}
-
-export interface DRGroupStatusSpec {
-  executionName: string;
-  waveIndex: number;
-  groupName: string;
-  vmNames?: string[];
-}
-
-export interface DRGroupStatusState {
-  phase?: DRGroupResult;
-  conditions?: Condition[];
-  steps?: StepStatus[];
-  lastTransitionTime?: string;
-}

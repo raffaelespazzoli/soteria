@@ -35,16 +35,7 @@ rules:
 - apiGroups:
   - soteria.io
   resources:
-  - drgroupstatuses
-  verbs:
-  - get
-  - list
-  - watch
-- apiGroups:
-  - soteria.io
-  resources:
   - drplans/status
   - drexecutions/status
-  - drgroupstatuses/status
   verbs:
   - get

@@ -54,14 +54,6 @@ func drexecutionGVR() schema.GroupVersionResource {
 	}
 }
 
-func drgroupstatusGVR() schema.GroupVersionResource {
-	return schema.GroupVersionResource{
-		Group:    soteriav1alpha1.GroupName,
-		Version:  "v1alpha1",
-		Resource: "drgroupstatuses",
-	}
-}
-
 func newDynamicClient(t *testing.T) dynamic.Interface {
 	t.Helper()
 	cfg := rest.CopyConfig(restConfig)
@@ -85,9 +77,8 @@ func TestAPIServer_Discovery_SoteriaGroupRegistered(t *testing.T) {
 	}
 
 	wantResources := map[string]bool{
-		"drplans":        false,
-		"drexecutions":   false,
-		"drgroupstatuses": false,
+		"drplans":      false,
+		"drexecutions": false,
 	}
 	for _, r := range resources.APIResources {
 		if _, ok := wantResources[r.Name]; ok {
@@ -349,98 +340,6 @@ func TestAPIServer_DRExecution_Validation_InvalidMode(t *testing.T) {
 	}
 }
 
-func TestAPIServer_DRGroupStatus_CRUD(t *testing.T) {
-	client := newDynamicClient(t)
-	ctx := context.Background()
-
-	gs := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": "soteria.io/v1alpha1",
-			"kind":       "DRGroupStatus",
-			"metadata": map[string]any{
-				"name": "test-gs",
-			},
-			"spec": map[string]any{
-				"executionName": "my-exec",
-				"waveIndex":     int64(0),
-				"groupName":     "group-1",
-				"vmNames":       []any{"vm-1", "vm-2"},
-			},
-		},
-	}
-
-	created, err := client.Resource(drgroupstatusGVR()).Create(ctx, gs, metav1.CreateOptions{})
-	if err != nil {
-		t.Fatalf("Create DRGroupStatus failed: %v", err)
-	}
-	if created.GetName() != "test-gs" {
-		t.Errorf("expected name test-gs, got %s", created.GetName())
-	}
-
-	// Get
-	got, err := client.Resource(drgroupstatusGVR()).Get(ctx, "test-gs", metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("Get DRGroupStatus failed: %v", err)
-	}
-
-	// Status subresource update
-	got.Object["status"] = map[string]any{
-		"phase": string(soteriav1alpha1.DRGroupResultInProgress),
-	}
-	statusUpdated, err := client.Resource(drgroupstatusGVR()).UpdateStatus(ctx, got, metav1.UpdateOptions{})
-	if err != nil {
-		t.Fatalf("UpdateStatus DRGroupStatus failed: %v", err)
-	}
-	phase, _, _ := unstructured.NestedString(statusUpdated.Object, "status", "phase")
-	if phase != string(soteriav1alpha1.DRGroupResultInProgress) {
-		t.Errorf("expected phase %s, got %s", soteriav1alpha1.DRGroupResultInProgress, phase)
-	}
-
-	// Delete
-	err = client.Resource(drgroupstatusGVR()).Delete(ctx, "test-gs", metav1.DeleteOptions{})
-	if err != nil {
-		t.Fatalf("Delete DRGroupStatus failed: %v", err)
-	}
-}
-
-func TestAPIServer_DRGroupStatus_SpecImmutable(t *testing.T) {
-	client := newDynamicClient(t)
-	ctx := context.Background()
-
-	gs := &unstructured.Unstructured{
-		Object: map[string]any{
-			"apiVersion": "soteria.io/v1alpha1",
-			"kind":       "DRGroupStatus",
-			"metadata": map[string]any{
-				"name": "immutable-gs",
-			},
-			"spec": map[string]any{
-				"executionName": "my-exec",
-				"waveIndex":     int64(0),
-				"groupName":     "group-1",
-				"vmNames":       []any{"vm-1"},
-			},
-		},
-	}
-
-	_, err := client.Resource(drgroupstatusGVR()).Create(ctx, gs, metav1.CreateOptions{})
-	if err != nil {
-		t.Fatalf("Create DRGroupStatus failed: %v", err)
-	}
-
-	got, err := client.Resource(drgroupstatusGVR()).Get(ctx, "immutable-gs", metav1.GetOptions{})
-	if err != nil {
-		t.Fatalf("Get DRGroupStatus failed: %v", err)
-	}
-
-	// Attempt to change spec.groupName — should be rejected
-	got.Object["spec"].(map[string]any)["groupName"] = "changed-group"
-	_, err = client.Resource(drgroupstatusGVR()).Update(ctx, got, metav1.UpdateOptions{})
-	if err == nil {
-		t.Fatal("expected error when changing immutable DRGroupStatus spec")
-	}
-}
-
 func TestAPIServer_OpenAPI_SoteriaTypesPresent(t *testing.T) {
 	httpClient, err := rest.HTTPClientFor(restConfig)
 	if err != nil {
@@ -473,7 +372,7 @@ func TestAPIServer_OpenAPI_SoteriaTypesPresent(t *testing.T) {
 		t.Fatal("OpenAPI doc missing components.schemas")
 	}
 
-	for _, kind := range []string{"DRPlan", "DRExecution", "DRGroupStatus"} {
+	for _, kind := range []string{"DRPlan", "DRExecution"} {
 		found := false
 		for key := range schemas {
 			if len(key) >= len(kind) && key[len(key)-len(kind):] == kind {

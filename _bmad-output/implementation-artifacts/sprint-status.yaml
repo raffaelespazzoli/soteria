@@ -58,7 +58,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-06
-last_updated: 2026-05-11
+last_updated: 2026-05-12
 # 10.2 done: Derived Active Execution for Table Convertor & Preflight — DRPlanTableConvertor gains drexecutionLister field, SetDRExecutionStorage injection, buildActiveExecIndex bulk LIST + client-side map (O(plans+executions)), planToRow derives EffectivePhase from exec.Spec.Mode and Active Execution from exec.Name, graceful nil-lister fallback to plan status, NewREST returns *DRPlanTableConvertor for apiserver wiring, CompositionInput.ActiveExecution replaces plan.Status.ActiveExecution reads in ComposeReport and collectWarnings, DRPlan reconciler LIST DRExecutions via PlanNameLabel for preflight, RBAC marker for drexecutions list, stubExecLister test helper, 5 new table convertor tests + 3 preflight tests, all unit/integration tests pass with zero regressions (~7 modified Go files, ~1 auto-generated file)
 # 10.2 created: Derived Active Execution for Table Convertor & Preflight — DRPlanTableConvertor gains drexecutionLister field, SetDRExecutionStorage injection, buildActiveExecIndex bulk LIST + client-side map (O(plans+executions)), planToRow derives EffectivePhase from exec.Spec.Mode and Active Execution from exec.Name, graceful nil-lister fallback to plan status, NewREST returns *DRPlanTableConvertor for apiserver wiring, CompositionInput.ActiveExecution replaces plan.Status.ActiveExecution reads in ComposeReport and collectWarnings, DRPlan reconciler LIST DRExecutions via PlanNameLabel for preflight, RBAC marker for drexecutions list, stubExecLister test helper, 5 new table convertor tests + 3 preflight tests (~8 modified Go files, ~2 test files)
 # 10.1 created: DRExecution Concurrency Guard Without ActiveExecution — admission plugin queries DRExecution storage (rest.Lister) for non-terminal executions instead of plan.Status.ActiveExecution, SERIAL consistency on DRExecution INSERT IF NOT EXISTS via new SerialCreate store config, reconcileSetup/finishExecution/failExecution/reprotect no longer write ActiveExecution/ActiveExecutionMode on DRPlan, fetchPlanWithActiveExecCheck replaced by verifyExclusiveExecution (label-filtered LIST with ScyllaRetry), detectDRPlanCriticalFields drops ActiveExecution comparison, DRExecution PrepareForCreate stamps soteria.io/plan-name label server-side, legacy webhook documented as unused (~8 modified Go files, ~2 modified test files)
@@ -315,5 +315,5 @@ development_status:
   10-7-console-ui-derived-active-execution-state: done
   10-8-sequential-chunk-execution-within-waves: done
   10-9-merge-persist-status-and-checkpoint-into-single-write: done
-  10-10-remove-drgroupstatus-resource: ready-for-dev
+  10-10-remove-drgroupstatus-resource: done
   epic-10-retrospective: optional

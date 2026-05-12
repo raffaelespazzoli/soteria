@@ -200,8 +200,8 @@ func (h *FailoverHandler) ExecuteGroup(ctx context.Context, group ExecutionGroup
 }
 
 // ExecuteGroupWithSteps executes a single DRGroup and returns step statuses
-// for per-step recording in DRGroupStatus. Returns *GroupError for step failures.
-// Also forwards steps to group.StepRecorder for real-time DRGroupStatus updates.
+// for per-step recording in DRGroupExecutionStatus. Returns *GroupError for
+// step failures. Also forwards steps to group.StepRecorder.
 func (h *FailoverHandler) ExecuteGroupWithSteps(
 	ctx context.Context, group ExecutionGroup,
 ) ([]soteriav1alpha1.StepStatus, error) {

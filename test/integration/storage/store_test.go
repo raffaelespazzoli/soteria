@@ -752,48 +752,6 @@ func TestStore_DRExecution_CRUD(t *testing.T) {
 	}
 }
 
-func TestStore_DRGroupStatus_CRUD(t *testing.T) {
-	store := setupStoreForResource(t, "drgroupstatuses",
-		func() runtime.Object { return &v1alpha1.DRGroupStatus{} },
-		func() runtime.Object { return &v1alpha1.DRGroupStatusList{} },
-	)
-	ctx := context.Background()
-	key := "/soteria.io/drgroupstatuses/exec-001-wave0-group0"
-	t.Cleanup(func() { cleanupKey(t, key) })
-
-	gs := &v1alpha1.DRGroupStatus{
-		TypeMeta: metav1.TypeMeta{APIVersion: "soteria.io/v1alpha1", Kind: "DRGroupStatus"},
-		ObjectMeta: metav1.ObjectMeta{
-			Name: "exec-001-wave0-group0",
-			UID:  types.UID(gocql.TimeUUID().String()),
-		},
-		Spec: v1alpha1.DRGroupStatusSpec{
-			ExecutionName: "exec-001",
-			WaveIndex:     0,
-			GroupName:     "group0",
-			VMNames:       []string{"vm-1", "vm-2"},
-		},
-	}
-
-	out := &v1alpha1.DRGroupStatus{}
-	if err := store.Create(ctx, key, gs, out, 0); err != nil {
-		t.Fatalf("Create DRGroupStatus failed: %v", err)
-	}
-	if len(out.Spec.VMNames) != 2 {
-		t.Fatalf("expected 2 VMNames, got %d", len(out.Spec.VMNames))
-	}
-
-	got := &v1alpha1.DRGroupStatus{}
-	if err := store.Get(ctx, key, storage.GetOptions{}, got); err != nil {
-		t.Fatalf("Get DRGroupStatus failed: %v", err)
-	}
-
-	deleted := &v1alpha1.DRGroupStatus{}
-	if err := store.Delete(ctx, key, deleted, nil, storage.ValidateAllObjectFunc, nil, storage.DeleteOptions{}); err != nil {
-		t.Fatalf("Delete DRGroupStatus failed: %v", err)
-	}
-}
-
 // Watch is no longer a stub — see watch_test.go for Watch integration tests.
 
 // ---- Pagination resourceVersion stability (issue 2 regression) ----
@@ -1508,63 +1466,6 @@ func TestStore_LabelIndex_DRExecution(t *testing.T) {
 	}
 	if !found {
 		t.Fatal("expected exec-label-test in mode=planned results")
-	}
-}
-
-func TestStore_LabelIndex_DRGroupStatus(t *testing.T) {
-	store := setupStoreForResource(t, "drgroupstatuses",
-		func() runtime.Object { return &v1alpha1.DRGroupStatus{} },
-		func() runtime.Object { return &v1alpha1.DRGroupStatusList{} },
-	)
-	ctx := context.Background()
-
-	gs := &v1alpha1.DRGroupStatus{
-		TypeMeta: metav1.TypeMeta{APIVersion: "soteria.io/v1alpha1", Kind: "DRGroupStatus"},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   "gs-label-test",
-			UID:    types.UID(gocql.TimeUUID().String()),
-			Labels: map[string]string{"wave": "0"},
-		},
-		Spec: v1alpha1.DRGroupStatusSpec{
-			ExecutionName: "exec-001",
-			WaveIndex:     0,
-			GroupName:     "group0",
-			VMNames:       []string{"vm-1"},
-		},
-	}
-
-	key := "/soteria.io/drgroupstatuses/gs-label-test"
-	t.Cleanup(func() {
-		cleanupKey(t, key)
-		cleanupObjectLabels(t, key, map[string]string{"wave": "0"})
-	})
-
-	if err := store.Create(ctx, key, gs, &v1alpha1.DRGroupStatus{}, 0); err != nil {
-		t.Fatalf("Create DRGroupStatus failed: %v", err)
-	}
-
-	selector, _ := labels.Parse("wave=0")
-	list := &v1alpha1.DRGroupStatusList{}
-	err := store.GetList(ctx, "/soteria.io/drgroupstatuses", storage.ListOptions{
-		Recursive: true,
-		Predicate: storage.SelectionPredicate{
-			Label:    selector,
-			Field:    fields.Everything(),
-			GetAttrs: storage.DefaultClusterScopedAttr,
-		},
-	}, list)
-	if err != nil {
-		t.Fatalf("GetList DRGroupStatus with label failed: %v", err)
-	}
-
-	found := false
-	for _, item := range list.Items {
-		if item.Name == "gs-label-test" {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatal("expected gs-label-test in wave=0 results")
 	}
 }
 

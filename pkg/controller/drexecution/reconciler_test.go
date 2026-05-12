@@ -50,7 +50,6 @@ func newTestClient(objs ...client.Object) client.Client {
 		WithStatusSubresource(
 			&soteriav1alpha1.DRExecution{},
 			&soteriav1alpha1.DRPlan{},
-			&soteriav1alpha1.DRGroupStatus{},
 		).
 		Build()
 }

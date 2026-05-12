@@ -99,12 +99,10 @@ func soteriaGVK(kind string) []any {
 // x-kubernetes-group-version-kind extensions. Sub-types (Spec, Status, etc.)
 // don't need GVK extensions — only runtime.Object root types do.
 var soteriaGVKExtensions = map[string][]any{
-	"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DRPlan":            soteriaGVK("DRPlan"),
-	"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DRPlanList":        soteriaGVK("DRPlanList"),
-	"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DRExecution":       soteriaGVK("DRExecution"),
-	"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DRExecutionList":   soteriaGVK("DRExecutionList"),
-	"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DRGroupStatus":     soteriaGVK("DRGroupStatus"),
-	"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DRGroupStatusList": soteriaGVK("DRGroupStatusList"),
+	"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DRPlan":          soteriaGVK("DRPlan"),
+	"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DRPlanList":      soteriaGVK("DRPlanList"),
+	"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DRExecution":     soteriaGVK("DRExecution"),
+	"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.DRExecutionList": soteriaGVK("DRExecutionList"),
 }
 
 // soteriaGetDefinitionName converts all definition names from raw Go package

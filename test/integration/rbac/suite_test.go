@@ -65,7 +65,6 @@ func TestMain(m *testing.M) {
 			CRDs: []*apiextensionsv1.CustomResourceDefinition{
 				drplanCRD(),
 				drexecutionCRD(),
-				drgroupstatusCRD(),
 			},
 		},
 		BinaryAssetsDirectory: os.Getenv("KUBEBUILDER_ASSETS"),
@@ -199,35 +198,6 @@ func drexecutionCRD() *apiextensionsv1.CustomResourceDefinition {
 			Names: apiextensionsv1.CustomResourceDefinitionNames{
 				Plural: "drexecutions", Singular: "drexecution",
 				Kind: "DRExecution", ListKind: "DRExecutionList",
-			},
-			Scope: apiextensionsv1.ClusterScoped,
-			Versions: []apiextensionsv1.CustomResourceDefinitionVersion{{
-				Name: "v1alpha1", Served: true, Storage: true,
-				Subresources: &apiextensionsv1.CustomResourceSubresources{
-					Status: &apiextensionsv1.CustomResourceSubresourceStatus{},
-				},
-				Schema: &apiextensionsv1.CustomResourceValidation{
-					OpenAPIV3Schema: &apiextensionsv1.JSONSchemaProps{
-						Type: "object",
-						Properties: map[string]apiextensionsv1.JSONSchemaProps{
-							"spec":   {Type: "object", XPreserveUnknownFields: boolPtr(true)},
-							"status": {Type: "object", XPreserveUnknownFields: boolPtr(true)},
-						},
-					},
-				},
-			}},
-		},
-	}
-}
-
-func drgroupstatusCRD() *apiextensionsv1.CustomResourceDefinition {
-	return &apiextensionsv1.CustomResourceDefinition{
-		ObjectMeta: metav1.ObjectMeta{Name: "drgroupstatuses.soteria.io"},
-		Spec: apiextensionsv1.CustomResourceDefinitionSpec{
-			Group: "soteria.io",
-			Names: apiextensionsv1.CustomResourceDefinitionNames{
-				Plural: "drgroupstatuses", Singular: "drgroupstatus",
-				Kind: "DRGroupStatus", ListKind: "DRGroupStatusList",
 			},
 			Scope: apiextensionsv1.ClusterScoped,
 			Versions: []apiextensionsv1.CustomResourceDefinitionVersion{{

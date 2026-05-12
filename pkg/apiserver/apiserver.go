@@ -37,7 +37,6 @@ import (
 	scylladb "github.com/soteria-project/soteria/pkg/storage/scylladb"
 
 	drexecutionregistry "github.com/soteria-project/soteria/pkg/registry/drexecution"
-	drgroupstatusregistry "github.com/soteria-project/soteria/pkg/registry/drgroupstatus"
 	drplanregistry "github.com/soteria-project/soteria/pkg/registry/drplan"
 
 	cacherstorage "k8s.io/apiserver/pkg/storage/cacher"
@@ -153,13 +152,6 @@ func (c CompletedConfig) New() (*SoteriaServer, error) {
 	if drplanTC != nil {
 		drplanTC.SetDRExecutionStorage(drexecStore)
 	}
-
-	drgroupStore, drgroupStatusStore, err := drgroupstatusregistry.NewREST(soteriainstall.Scheme, optsGetter)
-	if err != nil {
-		return nil, fmt.Errorf("creating DRGroupStatus storage: %w", err)
-	}
-	v1alpha1storage["drgroupstatuses"] = drgroupStore
-	v1alpha1storage["drgroupstatuses/status"] = drgroupStatusStore
 
 	apiGroupInfo.VersionedResourcesStorageMap["v1alpha1"] = v1alpha1storage
 
