@@ -252,6 +252,8 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 
 **Container Images:**
 
+- **Container tool: `podman`** — use `podman` for all build/push/run operations (not docker). Makefile override: `make docker-build docker-push CONTAINER_TOOL=podman`
+- **Image pull-specs:** `quay.io/raffaelespazzoli/soteria:latest` (controller), `quay.io/raffaelespazzoli/soteria-console-plugin:latest` (console plugin) — see `hack/stretched-local-test.sh` for canonical `IMG` / `CONSOLE_PLUGIN_IMG` defaults
 - Single Go binary (API server + controller) — multi-stage Dockerfile
 - Separate Console plugin image (nginx) — `console-plugin/Dockerfile`
 - OLM bundle image — `bundle.Dockerfile`
