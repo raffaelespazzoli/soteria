@@ -56,7 +56,7 @@ const DRPlanActions: React.FC<DRPlanActionsProps> = ({
       <Tooltip content={disabledTooltip}>
         <span style={{ display: 'inline-block' }}>
           <Dropdown isOpen={false} onOpenChange={() => {}} toggle={toggle}>
-            <DropdownList />
+            <DropdownList>{null}</DropdownList>
           </Dropdown>
         </span>
       </Tooltip>

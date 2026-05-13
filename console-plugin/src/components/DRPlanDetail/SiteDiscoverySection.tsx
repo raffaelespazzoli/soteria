@@ -1,4 +1,5 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import * as React from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { Alert, Content, ContentVariants } from '@patternfly/react-core';
 import { ExclamationTriangleIcon, AngleDownIcon, AngleRightIcon } from '@patternfly/react-icons';
 import { Table, Thead, Tr, Th, Tbody, Td } from '@patternfly/react-table';
