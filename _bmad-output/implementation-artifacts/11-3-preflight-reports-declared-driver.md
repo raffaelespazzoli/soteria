@@ -1,6 +1,6 @@
 # Story 11.3: Preflight Reports Declared Driver
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -80,6 +80,11 @@ This story changes `CompositionInput`, `ComposeReport`, `collectWarnings`, and t
   - [ ] 6.4 Add test: `TestComposeReport_StampsDeclaredDriver` — verify all VMs get the declared driver as StorageBackend
   - [ ] 6.5 Run `make test` — all tests pass
   - [ ] 6.6 Run `make lint-fix && make lint` — zero lint issues
+
+### Review Findings
+
+- [x] [Review][Patch] Update `PreflightVM.StorageBackend` godoc to match the new declared-driver behavior [`pkg/apis/soteria.io/v1alpha1/types.go:203`]
+- [x] [Review][Patch] Narrow the integration assertion so `TestDRPlanReconciler_Preflight_NoStorageWarnings` only rejects storage-specific warnings rather than any future preflight warning [`test/integration/controller/drplan_preflight_test.go:282`]
 
 ## Dev Notes
 

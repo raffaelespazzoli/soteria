@@ -22,17 +22,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
-	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
-	"github.com/soteria-project/soteria/pkg/drivers/noop"
 )
 
 func createPVC(t *testing.T, ctx context.Context, name, namespace, storageClass string) {
@@ -112,9 +110,10 @@ func TestDRPlanReconciler_Preflight_BasicComposition(t *testing.T) {
 	if pf.Waves[0].VMCount != 2 {
 		t.Errorf("Wave VMCount = %d, want 2", pf.Waves[0].VMCount)
 	}
+	declaredDriver := plan.Spec.VolumeReplicationDriver
 	for _, vm := range pf.Waves[0].VMs {
-		if vm.StorageBackend != noop.ProvisionerName {
-			t.Errorf("VM %s StorageBackend = %q, want %s", vm.Name, vm.StorageBackend, noop.ProvisionerName)
+		if vm.StorageBackend != declaredDriver {
+			t.Errorf("VM %s StorageBackend = %q, want %q (declared driver)", vm.Name, vm.StorageBackend, declaredDriver)
 		}
 	}
 	if len(pf.Waves[0].Chunks) == 0 {
@@ -159,7 +158,7 @@ func TestDRPlanReconciler_Preflight_NamespaceConsistency(t *testing.T) {
 	}
 }
 
-func TestDRPlanReconciler_Preflight_StorageBackendUnknown(t *testing.T) {
+func TestDRPlanReconciler_Preflight_DeclaredDriverStamped(t *testing.T) {
 	ctx := context.Background()
 	ns := "test-pf-unknown-sc"
 	createNamespace(t, ctx, ns)
@@ -178,11 +177,9 @@ func TestDRPlanReconciler_Preflight_StorageBackendUnknown(t *testing.T) {
 	if len(pf.Waves[0].VMs) != 1 {
 		t.Fatalf("Expected 1 VM, got %d", len(pf.Waves[0].VMs))
 	}
-	if pf.Waves[0].VMs[0].StorageBackend != "unknown" {
-		t.Errorf("StorageBackend = %q, want unknown", pf.Waves[0].VMs[0].StorageBackend)
-	}
-	if len(pf.Warnings) == 0 {
-		t.Error("Expected warnings for unknown storage class")
+	declaredDriver := plan.Spec.VolumeReplicationDriver
+	if pf.Waves[0].VMs[0].StorageBackend != declaredDriver {
+		t.Errorf("StorageBackend = %q, want %q (declared driver)", pf.Waves[0].VMs[0].StorageBackend, declaredDriver)
 	}
 }
 
@@ -267,26 +264,34 @@ func TestDRPlanReconciler_Preflight_MultiWaveChunking(t *testing.T) {
 	}
 }
 
-func TestDRPlanReconciler_Preflight_WarningsPopulated(t *testing.T) {
+func TestDRPlanReconciler_Preflight_NoStorageWarnings(t *testing.T) {
 	ctx := context.Background()
 	ns := "test-pf-warnings"
 	createNamespace(t, ctx, ns)
 
-	// VM with unlisted storage class — should generate warning
 	createPVC(t, ctx, "vm-pfw-root", ns, "mystery-class")
 	createVMWithPVC(t, ctx, "vm-pfw-1", ns, map[string]string{soteriav1alpha1.DRPlanLabel: "plan-pf-warnings", "soteria.io/wave": "1"}, "vm-pfw-root")
 
 	createDRPlan(t, ctx, "plan-pf-warnings")
 
-	deadline := time.Now().Add(testTimeout)
-	for time.Now().Before(deadline) {
-		var plan soteriav1alpha1.DRPlan
-		if err := testClient.Get(ctx, client.ObjectKey{Name: "plan-pf-warnings"}, &plan); err == nil {
-			if plan.Status.Preflight != nil && len(plan.Status.Preflight.Warnings) > 0 {
-				return
+	plan, err := waitForPreflight(ctx, "plan-pf-warnings", "", testTimeout)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pf := plan.Status.Preflight
+	for _, w := range pf.Warnings {
+		if strings.Contains(w, "storage") || strings.Contains(w, "backend") || strings.Contains(w, "PVC") {
+			t.Errorf("Unexpected storage-related warning (declared driver should suppress these): %q", w)
+		}
+	}
+
+	declaredDriver := plan.Spec.VolumeReplicationDriver
+	if len(pf.Waves) > 0 {
+		for _, vm := range pf.Waves[0].VMs {
+			if vm.StorageBackend != declaredDriver {
+				t.Errorf("VM %s StorageBackend = %q, want %q", vm.Name, vm.StorageBackend, declaredDriver)
 			}
 		}
-		time.Sleep(200 * time.Millisecond)
 	}
-	t.Fatal("Timed out waiting for preflight warnings to be populated")
 }

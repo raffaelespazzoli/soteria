@@ -113,7 +113,6 @@ type DRPlanReconciler struct {
 	Scheme          *runtime.Scheme
 	VMDiscoverer    engine.VMDiscoverer
 	NamespaceLookup engine.NamespaceLookup
-	StorageResolver preflight.StorageBackendResolver
 	Recorder        events.EventRecorder
 	// Registry resolves CSI provisioner → StorageProvider for health polling.
 	// When nil, replication health monitoring is skipped (backward compat).
@@ -172,7 +171,7 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	if err != nil {
 		logger.Error(err, "Failed to discover VMs")
 		r.event(&plan, "Warning", "DiscoveryFailed", err.Error())
-		report := r.composePreflightReport(ctx, &plan, nil, nil, nil, nil, nil)
+		report := r.composePreflightReport(ctx, &plan, nil, nil, nil, nil)
 		report.Warnings = append(report.Warnings,
 			fmt.Sprintf("VM discovery failed: %v", err))
 		_, statusErr := r.updateStatus(ctx, req, &plan, nil, 0, report, metav1.Condition{
@@ -265,7 +264,7 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 
 	if result.TotalVMs == 0 {
-		report := r.composePreflightReport(ctx, &plan, &result, nil, nil, vms, waves)
+		report := r.composePreflightReport(ctx, &plan, &result, nil, nil, waves)
 		return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, report, metav1.Condition{
 			Type:               conditionTypeReady,
 			Status:             metav1.ConditionFalse,
@@ -279,7 +278,7 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	consistency, err := engine.ResolveVolumeGroups(ctx, vms, r.NamespaceLookup)
 	if err != nil {
 		logger.Error(err, "Failed to resolve volume groups")
-		report := r.composePreflightReport(ctx, &plan, &result, nil, nil, vms, waves)
+		report := r.composePreflightReport(ctx, &plan, &result, nil, nil, waves)
 		report.Warnings = append(report.Warnings,
 			fmt.Sprintf("Volume group resolution failed: %v", err))
 		return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, report, metav1.Condition{
@@ -317,7 +316,7 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			ObservedGeneration: plan.Generation,
 		}
 
-		report := r.composePreflightReport(ctx, &plan, &result, consistency, nil, vms, waves)
+		report := r.composePreflightReport(ctx, &plan, &result, consistency, nil, waves)
 		report.DisksConsistent = false
 		report.DiskDiscoveryDelta = msg
 
@@ -333,7 +332,7 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		msg := formatWaveConflicts(consistency.WaveConflicts)
 		logger.Info("Detected wave conflict", "conflicts", len(consistency.WaveConflicts))
 		r.event(&plan, "Warning", "WaveConflictDetected", msg)
-		report := r.composePreflightReport(ctx, &plan, &result, consistency, nil, vms, waves)
+		report := r.composePreflightReport(ctx, &plan, &result, consistency, nil, waves)
 		return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, report, metav1.Condition{
 			Type:               conditionTypeReady,
 			Status:             metav1.ConditionFalse,
@@ -369,7 +368,7 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		logger.Info("Chunking failed", "errors", len(chunkResult.Errors))
 		r.event(&plan, "Warning", "ChunkingFailed", msg)
 		report := r.composePreflightReport(
-			ctx, &plan, &result, consistency, &chunkResult, vms, waves)
+			ctx, &plan, &result, consistency, &chunkResult, waves)
 		return r.updateStatus(ctx, req, &plan, waves, result.TotalVMs, report, metav1.Condition{
 			Type:               conditionTypeReady,
 			Status:             metav1.ConditionFalse,
@@ -383,8 +382,8 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		fmt.Sprintf("Resolved %d volume groups (%d namespace-level, %d VM-level)",
 			len(consistency.VolumeGroups), nsLevelCount, vmLevelCount))
 
-	// Resolve storage backends and compose the preflight report.
-	report := r.composePreflightReport(ctx, &plan, &result, consistency, &chunkResult, vms, waves)
+	// Compose the preflight report using the plan's declared driver.
+	report := r.composePreflightReport(ctx, &plan, &result, consistency, &chunkResult, waves)
 	logger.Info("Preflight report generated",
 		"totalVMs", report.TotalVMs, "warnings", len(report.Warnings))
 
@@ -1238,23 +1237,9 @@ func (r *DRPlanReconciler) composePreflightReport(
 	discovery *engine.DiscoveryResult,
 	consistency *engine.ConsistencyResult,
 	chunks *engine.ChunkResult,
-	vms []engine.VMReference,
 	waves []soteriav1alpha1.WaveInfo,
 ) *soteriav1alpha1.PreflightReport {
 	logger := log.FromContext(ctx)
-
-	storageBackends := make(map[string]string)
-	var storageWarnings []string
-
-	if r.StorageResolver != nil && len(vms) > 0 {
-		var err error
-		storageBackends, storageWarnings, err = r.StorageResolver.ResolveBackends(ctx, vms)
-		if err != nil {
-			logger.Error(err, "Storage backend resolution failed")
-			storageWarnings = append(storageWarnings,
-				fmt.Sprintf("Storage backend resolution failed: %v", err))
-		}
-	}
 
 	// Derive active execution from DRExecution resources instead of plan status.
 	var activeExecName string
@@ -1278,16 +1263,16 @@ func (r *DRPlanReconciler) composePreflightReport(
 	}
 
 	input := preflight.CompositionInput{
-		Plan:                   plan,
-		DiscoveryResult:        discovery,
-		ConsistencyResult:      consistency,
-		ChunkResult:            chunks,
-		StorageBackends:        storageBackends,
-		Waves:                  waves,
-		LocalSite:              r.LocalSite,
-		PrimarySiteDiscovery:   plan.Status.PrimarySiteDiscovery,
-		SecondarySiteDiscovery: plan.Status.SecondarySiteDiscovery,
-		ActiveExecution:        activeExecName,
+		Plan:                    plan,
+		DiscoveryResult:         discovery,
+		ConsistencyResult:       consistency,
+		ChunkResult:             chunks,
+		VolumeReplicationDriver: plan.Spec.VolumeReplicationDriver,
+		Waves:                   waves,
+		LocalSite:               r.LocalSite,
+		PrimarySiteDiscovery:    plan.Status.PrimarySiteDiscovery,
+		SecondarySiteDiscovery:  plan.Status.SecondarySiteDiscovery,
+		ActiveExecution:         activeExecName,
 	}
 
 	now := metav1.Now()
@@ -1296,7 +1281,6 @@ func (r *DRPlanReconciler) composePreflightReport(
 		report.Warnings = append(report.Warnings,
 			"Active execution detection unavailable: failed to list DRExecutions")
 	}
-	report.Warnings = append(storageWarnings, report.Warnings...)
 
 	return report
 }

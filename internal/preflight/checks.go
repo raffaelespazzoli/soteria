@@ -15,11 +15,11 @@ limitations under the License.
 */
 
 // checks.go assembles a preflight composition report from discovery,
-// consistency, chunking, and storage backend data. The DRPlan reconciler calls
-// ComposeReport on every reconcile to populate .status.preflight. The report
-// gives platform engineers full visibility into plan structure — wave
-// membership, VM details, storage backends, and DRGroup chunking preview —
-// before any execution is triggered.
+// consistency, and chunking data combined with the plan's declared
+// VolumeReplicationDriver. The DRPlan reconciler calls ComposeReport on every
+// reconcile to populate .status.preflight. The report gives platform engineers
+// full visibility into plan structure — wave membership, VM details, storage
+// driver, and DRGroup chunking preview — before any execution is triggered.
 
 package preflight
 
@@ -34,23 +34,18 @@ import (
 	"github.com/soteria-project/soteria/pkg/engine"
 )
 
-const (
-	backendUnknown = "unknown"
-	backendNone    = "none"
-)
-
 // CompositionInput aggregates outputs from earlier pipeline stages into a single
 // struct for preflight report assembly.
 type CompositionInput struct {
-	Plan                   *soteriav1alpha1.DRPlan
-	DiscoveryResult        *engine.DiscoveryResult
-	ConsistencyResult      *engine.ConsistencyResult
-	ChunkResult            *engine.ChunkResult
-	StorageBackends        map[string]string
-	Waves                  []soteriav1alpha1.WaveInfo
-	LocalSite              string
-	PrimarySiteDiscovery   *soteriav1alpha1.SiteDiscovery
-	SecondarySiteDiscovery *soteriav1alpha1.SiteDiscovery
+	Plan                    *soteriav1alpha1.DRPlan
+	DiscoveryResult         *engine.DiscoveryResult
+	ConsistencyResult       *engine.ConsistencyResult
+	ChunkResult             *engine.ChunkResult
+	VolumeReplicationDriver string
+	Waves                   []soteriav1alpha1.WaveInfo
+	LocalSite               string
+	PrimarySiteDiscovery    *soteriav1alpha1.SiteDiscovery
+	SecondarySiteDiscovery  *soteriav1alpha1.SiteDiscovery
 	// ActiveExecution is the name of the currently running DRExecution for
 	// this plan, derived from a DRExecution list query. Empty when idle.
 	ActiveExecution string
@@ -93,16 +88,11 @@ func ComposeReport(input CompositionInput, now metav1.Time) *soteriav1alpha1.Pre
 
 			for _, vm := range wg.VMs {
 				key := vm.Namespace + "/" + vm.Name
-				backend := input.StorageBackends[key]
-				if backend == "" {
-					backend = backendUnknown
-				}
-
 				gi := vmGroupIndex[key]
 				pw.VMs = append(pw.VMs, soteriav1alpha1.PreflightVM{
 					Name:             vm.Name,
 					Namespace:        vm.Namespace,
-					StorageBackend:   backend,
+					StorageBackend:   input.VolumeReplicationDriver,
 					ConsistencyLevel: gi.consistencyLevel,
 					VolumeGroupName:  gi.groupName,
 				})
@@ -272,17 +262,6 @@ func collectWarnings(input CompositionInput) []string {
 	if input.ActiveExecution != "" {
 		warnings = append(warnings, fmt.Sprintf(
 			"execution %s is active; new execution blocked", input.ActiveExecution))
-	}
-
-	for key, backend := range input.StorageBackends {
-		switch backend {
-		case backendUnknown:
-			warnings = append(warnings, fmt.Sprintf(
-				"VM %s: could not determine storage backend from PVC storage class", key))
-		case backendNone:
-			warnings = append(warnings, fmt.Sprintf(
-				"VM %s: no PVC volumes found", key))
-		}
 	}
 
 	if input.ChunkResult != nil {

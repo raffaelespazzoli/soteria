@@ -73,7 +73,7 @@ func TestComposeReport(t *testing.T) {
 						}},
 					}},
 				},
-				StorageBackends: map[string]string{"ns1/vm-1": "odf", "ns1/vm-2": "odf"},
+				VolumeReplicationDriver: "odf",
 			},
 			wantTotalVMs:  2,
 			wantWaveCount: 1,
@@ -119,8 +119,8 @@ func TestComposeReport(t *testing.T) {
 						{Name: "vm-ns1-vm-3", Namespace: "ns1", ConsistencyLevel: soteriav1alpha1.ConsistencyLevelVM, VMNames: []string{"vm-3"}},
 					},
 				},
-				ChunkResult:     &engine.ChunkResult{},
-				StorageBackends: map[string]string{"ns1/vm-1": "odf", "ns1/vm-2": "odf", "ns1/vm-3": "odf"},
+				ChunkResult:             &engine.ChunkResult{},
+				VolumeReplicationDriver: "odf",
 			},
 			wantTotalVMs:  3,
 			wantWaveCount: 2,
@@ -169,7 +169,7 @@ func TestComposeReport(t *testing.T) {
 						}},
 					}},
 				},
-				StorageBackends: map[string]string{"ns1/vm-1": "odf", "ns1/vm-2": "odf"},
+				VolumeReplicationDriver: "odf",
 			},
 			wantTotalVMs:  2,
 			wantWaveCount: 1,
@@ -189,52 +189,6 @@ func TestComposeReport(t *testing.T) {
 					t.Errorf("Chunk VolumeGroups[0].Name = %v, want ns-ns1", chunk.VolumeGroups)
 				}
 			},
-		},
-		{
-			name: "Unknown storage backend generates warning",
-			input: CompositionInput{
-				Plan: &soteriav1alpha1.DRPlan{},
-				DiscoveryResult: &engine.DiscoveryResult{
-					TotalVMs: 1,
-					Waves: []engine.WaveGroup{{
-						WaveKey: "1",
-						VMs:     []engine.VMReference{{Name: "vm-1", Namespace: "ns1"}},
-					}},
-				},
-				ConsistencyResult: &engine.ConsistencyResult{
-					VolumeGroups: []soteriav1alpha1.VolumeGroupInfo{
-						{Name: "vm-ns1-vm-1", Namespace: "ns1", ConsistencyLevel: soteriav1alpha1.ConsistencyLevelVM, VMNames: []string{"vm-1"}},
-					},
-				},
-				ChunkResult:     &engine.ChunkResult{},
-				StorageBackends: map[string]string{"ns1/vm-1": "unknown"},
-			},
-			wantTotalVMs:  1,
-			wantWaveCount: 1,
-			wantWarnings:  1,
-		},
-		{
-			name: "No-volume VMs generate warning",
-			input: CompositionInput{
-				Plan: &soteriav1alpha1.DRPlan{},
-				DiscoveryResult: &engine.DiscoveryResult{
-					TotalVMs: 1,
-					Waves: []engine.WaveGroup{{
-						WaveKey: "1",
-						VMs:     []engine.VMReference{{Name: "vm-1", Namespace: "ns1"}},
-					}},
-				},
-				ConsistencyResult: &engine.ConsistencyResult{
-					VolumeGroups: []soteriav1alpha1.VolumeGroupInfo{
-						{Name: "vm-ns1-vm-1", Namespace: "ns1", ConsistencyLevel: soteriav1alpha1.ConsistencyLevelVM, VMNames: []string{"vm-1"}},
-					},
-				},
-				ChunkResult:     &engine.ChunkResult{},
-				StorageBackends: map[string]string{"ns1/vm-1": "none"},
-			},
-			wantTotalVMs:  1,
-			wantWaveCount: 1,
-			wantWarnings:  1,
 		},
 		{
 			name: "Chunk errors in report produce warnings",
@@ -264,7 +218,7 @@ func TestComposeReport(t *testing.T) {
 						MaxConcurrent: 2,
 					}},
 				},
-				StorageBackends: map[string]string{"ns1/vm-1": "odf", "ns1/vm-2": "odf", "ns1/vm-3": "odf"},
+				VolumeReplicationDriver: "odf",
 			},
 			wantTotalVMs:  3,
 			wantWaveCount: 1,
@@ -288,8 +242,8 @@ func TestComposeReport(t *testing.T) {
 						WaveKeys:  []string{"1", "2"},
 					}},
 				},
-				ChunkResult:     &engine.ChunkResult{},
-				StorageBackends: map[string]string{"ns1/vm-1": "odf", "ns1/vm-2": "odf"},
+				ChunkResult:             &engine.ChunkResult{},
+				VolumeReplicationDriver: "odf",
 			},
 			wantTotalVMs:  2,
 			wantWaveCount: 2,
@@ -303,9 +257,9 @@ func TestComposeReport(t *testing.T) {
 					TotalVMs: 0,
 					Waves:    nil,
 				},
-				ConsistencyResult: &engine.ConsistencyResult{},
-				ChunkResult:       &engine.ChunkResult{},
-				StorageBackends:   map[string]string{},
+				ConsistencyResult:       &engine.ConsistencyResult{},
+				ChunkResult:             &engine.ChunkResult{},
+				VolumeReplicationDriver: "noop",
 			},
 			wantTotalVMs:  0,
 			wantWaveCount: 0,
@@ -314,11 +268,11 @@ func TestComposeReport(t *testing.T) {
 		{
 			name: "Nil DiscoveryResult - graceful degradation",
 			input: CompositionInput{
-				Plan:              &soteriav1alpha1.DRPlan{},
-				DiscoveryResult:   nil,
-				ConsistencyResult: nil,
-				ChunkResult:       nil,
-				StorageBackends:   map[string]string{},
+				Plan:                    &soteriav1alpha1.DRPlan{},
+				DiscoveryResult:         nil,
+				ConsistencyResult:       nil,
+				ChunkResult:             nil,
+				VolumeReplicationDriver: "noop",
 			},
 			wantTotalVMs:  0,
 			wantWaveCount: 0,
@@ -364,27 +318,8 @@ func TestCollectWarnings(t *testing.T) {
 		wantWarnings int
 	}{
 		{
-			name: "Unknown storage backend",
-			input: CompositionInput{
-				StorageBackends:   map[string]string{"ns1/vm-1": "unknown"},
-				ChunkResult:       &engine.ChunkResult{},
-				ConsistencyResult: &engine.ConsistencyResult{},
-			},
-			wantWarnings: 1,
-		},
-		{
-			name: "No PVC volumes",
-			input: CompositionInput{
-				StorageBackends:   map[string]string{"ns1/vm-1": "none"},
-				ChunkResult:       &engine.ChunkResult{},
-				ConsistencyResult: &engine.ConsistencyResult{},
-			},
-			wantWarnings: 1,
-		},
-		{
 			name: "Chunk error",
 			input: CompositionInput{
-				StorageBackends: map[string]string{},
 				ChunkResult: &engine.ChunkResult{
 					Errors: []engine.ChunkError{{
 						WaveKey: "1", Namespace: "ns1", GroupSize: 5, MaxConcurrent: 3,
@@ -397,8 +332,7 @@ func TestCollectWarnings(t *testing.T) {
 		{
 			name: "Wave conflict",
 			input: CompositionInput{
-				StorageBackends: map[string]string{},
-				ChunkResult:     &engine.ChunkResult{},
+				ChunkResult: &engine.ChunkResult{},
 				ConsistencyResult: &engine.ConsistencyResult{
 					WaveConflicts: []engine.WaveConflict{{
 						Namespace: "ns1", VMNames: []string{"vm-1"}, WaveKeys: []string{"1", "2"},
@@ -410,16 +344,15 @@ func TestCollectWarnings(t *testing.T) {
 		{
 			name: "No issues - no warnings",
 			input: CompositionInput{
-				StorageBackends:   map[string]string{"ns1/vm-1": "odf"},
-				ChunkResult:       &engine.ChunkResult{},
-				ConsistencyResult: &engine.ConsistencyResult{},
+				VolumeReplicationDriver: "odf",
+				ChunkResult:             &engine.ChunkResult{},
+				ConsistencyResult:       &engine.ConsistencyResult{},
 			},
 			wantWarnings: 0,
 		},
 		{
 			name: "Multiple issues combined",
 			input: CompositionInput{
-				StorageBackends: map[string]string{"ns1/vm-1": "unknown", "ns1/vm-2": "none"},
 				ChunkResult: &engine.ChunkResult{
 					Errors: []engine.ChunkError{{WaveKey: "1", Namespace: "ns1", GroupSize: 5, MaxConcurrent: 3}},
 				},
@@ -427,7 +360,7 @@ func TestCollectWarnings(t *testing.T) {
 					WaveConflicts: []engine.WaveConflict{{Namespace: "ns1"}},
 				},
 			},
-			wantWarnings: 4,
+			wantWarnings: 2,
 		},
 	}
 
@@ -472,7 +405,7 @@ func TestComposeReport_VGDiskEnrichment_VMLevel(t *testing.T) {
 				}},
 			}},
 		},
-		StorageBackends: map[string]string{"default/web01": "odf"},
+		VolumeReplicationDriver: "odf",
 		PrimarySiteDiscovery: &soteriav1alpha1.SiteDiscovery{
 			VMs: []soteriav1alpha1.DiscoveredVM{{
 				Name: "web01", Namespace: "default",
@@ -531,7 +464,7 @@ func TestComposeReport_VGDiskEnrichment_NamespaceLevel(t *testing.T) {
 				}},
 			}},
 		},
-		StorageBackends: map[string]string{"erp/db01": "odf", "erp/app01": "odf", "erp/cache01": "odf"},
+		VolumeReplicationDriver: "odf",
 		PrimarySiteDiscovery: &soteriav1alpha1.SiteDiscovery{
 			VMs: []soteriav1alpha1.DiscoveredVM{
 				{Name: "db01", Namespace: "erp", Disks: []soteriav1alpha1.DiscoveredDisk{
@@ -591,7 +524,7 @@ func TestComposeReport_VGDiskEnrichment_StatelessVM(t *testing.T) {
 				}},
 			}},
 		},
-		StorageBackends: map[string]string{"default/stateless": "none"},
+		VolumeReplicationDriver: "noop",
 		PrimarySiteDiscovery: &soteriav1alpha1.SiteDiscovery{
 			VMs: []soteriav1alpha1.DiscoveredVM{{Name: "stateless", Namespace: "default", Disks: nil}},
 		},
@@ -640,7 +573,7 @@ func TestComposeReport_VGDiskEnrichment_MultipleVGs(t *testing.T) {
 				}},
 			}},
 		},
-		StorageBackends: map[string]string{"default/web01": "odf", "default/web02": "odf"},
+		VolumeReplicationDriver: "odf",
 		PrimarySiteDiscovery: &soteriav1alpha1.SiteDiscovery{
 			VMs: []soteriav1alpha1.DiscoveredVM{
 				{Name: "web01", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{
@@ -699,7 +632,7 @@ func TestComposeReport_VGDiskEnrichment_MissingPVC(t *testing.T) {
 				}},
 			}},
 		},
-		StorageBackends: map[string]string{"default/pending": "odf"},
+		VolumeReplicationDriver: "odf",
 		PrimarySiteDiscovery: &soteriav1alpha1.SiteDiscovery{
 			VMs: []soteriav1alpha1.DiscoveredVM{{
 				Name: "pending", Namespace: "default",
@@ -745,8 +678,8 @@ func TestComposeReport_VGDiskEnrichment_NilSiteDiscovery(t *testing.T) {
 				}},
 			}},
 		},
-		StorageBackends:      map[string]string{"ns1/vm1": "odf"},
-		PrimarySiteDiscovery: nil,
+		VolumeReplicationDriver: "odf",
+		PrimarySiteDiscovery:    nil,
 	}
 
 	report := ComposeReport(input, now)
@@ -817,7 +750,7 @@ func TestComposeReport_VGDiskEnrichment_CrossSite(t *testing.T) {
 				}},
 			}},
 		},
-		StorageBackends: map[string]string{"default/web01": "odf"},
+		VolumeReplicationDriver: "odf",
 		PrimarySiteDiscovery: &soteriav1alpha1.SiteDiscovery{
 			VMs: []soteriav1alpha1.DiscoveredVM{{
 				Name: "web01", Namespace: "default",
@@ -874,7 +807,7 @@ func TestComposeReport_VGDiskEnrichment_SingleSiteOnly(t *testing.T) {
 				}},
 			}},
 		},
-		StorageBackends: map[string]string{"default/web01": "odf"},
+		VolumeReplicationDriver: "odf",
 		PrimarySiteDiscovery: &soteriav1alpha1.SiteDiscovery{
 			VMs: []soteriav1alpha1.DiscoveredVM{{
 				Name: "web01", Namespace: "default",
@@ -923,7 +856,7 @@ func TestComposeReport_VGDiskEnrichment_DiskOnOneSiteOnly(t *testing.T) {
 				}},
 			}},
 		},
-		StorageBackends: map[string]string{"default/web01": "odf"},
+		VolumeReplicationDriver: "odf",
 		PrimarySiteDiscovery: &soteriav1alpha1.SiteDiscovery{
 			VMs: []soteriav1alpha1.DiscoveredVM{{
 				Name: "web01", Namespace: "default",
@@ -1066,5 +999,69 @@ func TestComposeReport_PlanStatusActiveExecution_Ignored(t *testing.T) {
 		if w == "execution stale-exec is active; new execution blocked" {
 			t.Error("should not emit warning from stale plan status")
 		}
+	}
+}
+
+func TestComposeReport_StampsDeclaredDriver(t *testing.T) {
+	now := metav1.Now()
+	declaredDriver := "csi-ext.example.com"
+
+	input := CompositionInput{
+		Plan: &soteriav1alpha1.DRPlan{
+			Spec: soteriav1alpha1.DRPlanSpec{
+				VolumeReplicationDriver: declaredDriver,
+				PrimarySite:             "dc1",
+				SecondarySite:           "dc2",
+			},
+		},
+		DiscoveryResult: &engine.DiscoveryResult{
+			TotalVMs: 3,
+			Waves: []engine.WaveGroup{
+				{
+					WaveKey: "1",
+					VMs: []engine.VMReference{
+						{Name: "vm-1", Namespace: "ns-a"},
+						{Name: "vm-2", Namespace: "ns-b"},
+					},
+				},
+				{
+					WaveKey: "2",
+					VMs: []engine.VMReference{
+						{Name: "vm-3", Namespace: "ns-a"},
+					},
+				},
+			},
+		},
+		ConsistencyResult: &engine.ConsistencyResult{
+			VolumeGroups: []soteriav1alpha1.VolumeGroupInfo{
+				{Name: "vm-ns-a-vm-1", Namespace: "ns-a", ConsistencyLevel: soteriav1alpha1.ConsistencyLevelVM, VMNames: []string{"vm-1"}},
+				{Name: "vm-ns-b-vm-2", Namespace: "ns-b", ConsistencyLevel: soteriav1alpha1.ConsistencyLevelVM, VMNames: []string{"vm-2"}},
+				{Name: "vm-ns-a-vm-3", Namespace: "ns-a", ConsistencyLevel: soteriav1alpha1.ConsistencyLevelVM, VMNames: []string{"vm-3"}},
+			},
+		},
+		ChunkResult:             &engine.ChunkResult{},
+		VolumeReplicationDriver: declaredDriver,
+	}
+
+	report := ComposeReport(input, now)
+
+	if report.TotalVMs != 3 {
+		t.Fatalf("TotalVMs = %d, want 3", report.TotalVMs)
+	}
+	if len(report.Waves) != 2 {
+		t.Fatalf("len(Waves) = %d, want 2", len(report.Waves))
+	}
+
+	for _, wave := range report.Waves {
+		for _, vm := range wave.VMs {
+			if vm.StorageBackend != declaredDriver {
+				t.Errorf("VM %s/%s StorageBackend = %q, want %q",
+					vm.Namespace, vm.Name, vm.StorageBackend, declaredDriver)
+			}
+		}
+	}
+
+	if len(report.Warnings) != 0 {
+		t.Errorf("expected 0 warnings, got %d: %v", len(report.Warnings), report.Warnings)
 	}
 }

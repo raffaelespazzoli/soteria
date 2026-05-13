@@ -255,12 +255,6 @@ func main() {
 	vmDiscoverer := engine.NewTypedVMDiscoverer(mgr.GetClient())
 	nsLookup := &engine.DefaultNamespaceLookup{Client: clientset.CoreV1()}
 	scLister := &preflight.KubeStorageClassLister{Client: clientset.StorageV1()}
-	storageResolver := &preflight.TypedStorageBackendResolver{
-		Client:     mgr.GetClient(),
-		CoreClient: clientset.CoreV1(),
-		Registry:   drivers.DefaultRegistry,
-		SCLister:   scLister,
-	}
 
 	var pvcResolver engine.PVCResolver
 	var diskEnricher engine.DiskEnricher
@@ -283,7 +277,6 @@ func main() {
 		Scheme:          mgr.GetScheme(),
 		VMDiscoverer:    vmDiscoverer,
 		NamespaceLookup: nsLookup,
-		StorageResolver: storageResolver,
 		Recorder:        eventRecorder,
 		Registry:        drivers.DefaultRegistry,
 		SCLister:        scLister,

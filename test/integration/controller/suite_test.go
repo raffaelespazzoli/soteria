@@ -111,12 +111,6 @@ func TestMain(m *testing.M) {
 	testReg := newNoopRegistry()
 	testRegistry := testReg
 	scLister := &preflight.KubeStorageClassLister{Client: clientset.StorageV1()}
-	storageResolver := &preflight.TypedStorageBackendResolver{
-		Client:     mgr.GetClient(),
-		CoreClient: clientset.CoreV1(),
-		Registry:   testRegistry,
-		SCLister:   scLister,
-	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -127,16 +121,15 @@ func TestMain(m *testing.M) {
 	testPVCResolver := engine.NoOpPVCResolver{}
 	testDiskEnricher := &engine.KubeVirtDiskEnricher{Reader: mgr.GetClient()}
 	if err := (&drplan.DRPlanReconciler{
-		Client:                  mgr.GetClient(),
-		Scheme:                  mgr.GetScheme(),
-		VMDiscoverer:            vmDiscoverer,
-		NamespaceLookup:         nsLookup,
-		StorageResolver:         storageResolver,
-		Recorder:                eventRecorder,
-		Registry:                testRegistry,
-		SCLister:                scLister,
-		PVCResolver:             testPVCResolver,
-		DiskEnricher:            testDiskEnricher,
+		Client:          mgr.GetClient(),
+		Scheme:          mgr.GetScheme(),
+		VMDiscoverer:    vmDiscoverer,
+		NamespaceLookup: nsLookup,
+		Recorder:        eventRecorder,
+		Registry:        testRegistry,
+		SCLister:        scLister,
+		PVCResolver:     testPVCResolver,
+		DiskEnricher:    testDiskEnricher,
 	}).SetupWithManager(mgr); err != nil {
 		panic(fmt.Sprintf("setting up DRPlan controller: %v", err))
 	}

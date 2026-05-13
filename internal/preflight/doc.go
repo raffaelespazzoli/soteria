@@ -15,14 +15,13 @@ limitations under the License.
 */
 
 // Package preflight assembles pre-flight composition reports for DRPlans.
-// It consumes outputs from the discovery, consistency, chunking, and storage
-// backend resolution pipeline stages and formats them into a user-facing
-// PreflightReport struct. The DRPlan reconciler calls into this package on
-// every reconcile cycle to populate .status.preflight, giving platform
-// engineers full visibility into plan structure before execution.
+// It consumes outputs from the discovery, consistency, and chunking pipeline
+// stages together with the plan's declared VolumeReplicationDriver and formats
+// them into a user-facing PreflightReport struct. The DRPlan reconciler calls
+// into this package on every reconcile cycle to populate .status.preflight,
+// giving platform engineers full visibility into plan structure before
+// execution.
 //
-// Storage backend resolution uses the driver registry (pkg/drivers) and a
-// StorageClassLister to map PVC storage classes to CSI provisioners and then
-// verify a driver is available. KubeStorageClassLister provides the production
-// implementation backed by the Kubernetes StorageClass API.
+// KubeStorageClassLister provides a production implementation backed by the
+// Kubernetes StorageClass API for storage class introspection.
 package preflight

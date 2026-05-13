@@ -200,7 +200,7 @@ type PreflightVM struct {
 	Name string `json:"name"`
 	// Namespace is the VM's namespace.
 	Namespace string `json:"namespace"`
-	// StorageBackend is the driver name resolved from PVC storage class (or "unknown").
+	// StorageBackend is the plan's declared VolumeReplicationDriver stamped on every VM.
 	StorageBackend string `json:"storageBackend"`
 	// ConsistencyLevel is "namespace" or "vm".
 	ConsistencyLevel string `json:"consistencyLevel"`
