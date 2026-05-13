@@ -29,6 +29,7 @@ const mockPlan: DRPlan = {
     maxConcurrentFailovers: 4,
     primarySite: 'dc1-prod',
     secondarySite: 'dc2-prod',
+    volumeReplicationDriver: 'noop',
   },
   status: {
     phase: 'SteadyState',
@@ -67,6 +68,7 @@ const mockPlanMinimal: DRPlan = {
     maxConcurrentFailovers: 1,
     primarySite: 'site-a',
     secondarySite: 'site-b',
+    volumeReplicationDriver: 'noop',
   },
   status: { phase: 'SteadyState' },
 };
@@ -90,6 +92,12 @@ describe('PlanConfiguration', () => {
       render(<PlanConfiguration plan={mockPlan} />);
       expect(screen.getByText('Max Concurrent Failovers')).toBeInTheDocument();
       expect(screen.getByText('4')).toBeInTheDocument();
+    });
+
+    it('renders volume replication driver', () => {
+      render(<PlanConfiguration plan={mockPlan} />);
+      expect(screen.getByText('Volume Replication Driver')).toBeInTheDocument();
+      expect(screen.getByText('noop')).toBeInTheDocument();
     });
 
     it('renders primary and secondary sites', () => {

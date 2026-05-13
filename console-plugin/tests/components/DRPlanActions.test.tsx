@@ -11,7 +11,7 @@ function makePlan(phase: string): DRPlan {
     apiVersion: 'soteria.io/v1alpha1',
     kind: 'DRPlan',
     metadata: { name: 'test-plan', uid: '1', creationTimestamp: '' },
-    spec: { maxConcurrentFailovers: 1, primarySite: 'a', secondarySite: 'b' },
+    spec: { maxConcurrentFailovers: 1, primarySite: 'a', secondarySite: 'b', volumeReplicationDriver: 'noop' },
     status: { phase },
   };
 }

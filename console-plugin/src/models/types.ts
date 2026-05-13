@@ -75,6 +75,7 @@ export interface DRPlanSpec {
   maxConcurrentFailovers: number;
   primarySite: string;
   secondarySite: string;
+  volumeReplicationDriver: string;
   vmReadyTimeout?: string;
 }
 
@@ -192,7 +193,12 @@ export interface PreflightChunk {
 
 // --- DRExecution ---
 
-export type DRExecutionPhase = 'Pending' | 'Executing' | 'Succeeded' | 'PartiallySucceeded' | 'Failed';
+export type DRExecutionPhase =
+  | 'Pending'
+  | 'Executing'
+  | 'Succeeded'
+  | 'PartiallySucceeded'
+  | 'Failed';
 
 export interface DRExecution extends K8sResourceCommon {
   spec: DRExecutionSpec;
@@ -239,4 +245,3 @@ export interface StepStatus {
   message?: string;
   timestamp?: string;
 }
-

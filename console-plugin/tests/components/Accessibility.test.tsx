@@ -41,6 +41,7 @@ const mockSteadyStatePlan: DRPlan = {
     maxConcurrentFailovers: 4,
     primarySite: 'dc1-prod',
     secondarySite: 'dc2-dr',
+    volumeReplicationDriver: 'noop',
   },
   status: {
     phase: 'SteadyState',

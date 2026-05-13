@@ -97,6 +97,12 @@ export const PlanConfiguration: React.FC<PlanConfigurationProps> = ({ plan }) =>
               <DescriptionListDescription>{plan.spec?.secondarySite}</DescriptionListDescription>
             </DescriptionListGroup>
             <DescriptionListGroup>
+              <DescriptionListTerm>Volume Replication Driver</DescriptionListTerm>
+              <DescriptionListDescription>
+                {plan.spec?.volumeReplicationDriver}
+              </DescriptionListDescription>
+            </DescriptionListGroup>
+            <DescriptionListGroup>
               <DescriptionListTerm>Created</DescriptionListTerm>
               <DescriptionListDescription>
                 {formatCreationDate(plan.metadata?.creationTimestamp)}

@@ -25,6 +25,7 @@ const mockPlans: DRPlan[] = [
       maxConcurrentFailovers: 1,
       primarySite: 'site-a',
       secondarySite: 'site-b',
+      volumeReplicationDriver: 'noop',
     },
     status: {
       phase: 'SteadyState',
@@ -46,6 +47,7 @@ const mockPlans: DRPlan[] = [
       maxConcurrentFailovers: 1,
       primarySite: 'site-a',
       secondarySite: 'site-b',
+      volumeReplicationDriver: 'noop',
     },
     status: {
       phase: 'FailedOver',
@@ -160,7 +162,7 @@ describe('DRDashboard', () => {
         apiVersion: 'soteria.io/v1alpha1',
         kind: 'DRPlan',
         metadata: { name: 'plan-mismatch', uid: '3', creationTimestamp: '' },
-        spec: { maxConcurrentFailovers: 1, primarySite: 'site-a', secondarySite: 'site-b' },
+        spec: { maxConcurrentFailovers: 1, primarySite: 'site-a', secondarySite: 'site-b', volumeReplicationDriver: 'noop' },
         status: {
           phase: 'SteadyState',
           activeSite: 'site-a',
@@ -217,7 +219,7 @@ describe('DRDashboard', () => {
         apiVersion: 'soteria.io/v1alpha1',
         kind: 'DRPlan',
         metadata: { name: 'plan-disk-bad', uid: '4', creationTimestamp: '' },
-        spec: { maxConcurrentFailovers: 1, primarySite: 'site-a', secondarySite: 'site-b' },
+        spec: { maxConcurrentFailovers: 1, primarySite: 'site-a', secondarySite: 'site-b', volumeReplicationDriver: 'noop' },
         status: {
           phase: 'SteadyState',
           activeSite: 'site-a',
