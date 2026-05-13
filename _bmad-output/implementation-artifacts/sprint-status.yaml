@@ -1,5 +1,7 @@
 # generated: 2026-04-06
-# last_updated: 2026-05-12
+# last_updated: 2026-05-13
+# epic-12 created: CSI Extension Storage Driver — 6 stories (12.1 CSI Extension Driver Skeleton & Registration, 12.2 VolumeReplication/VolumeGroupReplication CRD Types & Client, 12.3 CreateVolumeGroup/DeleteVolumeGroup/GetVolumeGroup, 12.4 StopReplication & SetSource State Transitions, 12.5 GetReplicationStatus Health Monitoring, 12.6 Conformance Suite & Integration Testing). Implements StorageProvider driver (csi-extension) that manages volume replication through CSI Addons VolumeReplication/VolumeGroupReplication Kubernetes CRDs. Single-VM VGs rendered as VolumeReplication CRs per PVC; multi-VM VGs rendered as VolumeGroupReplication CRs. Driver translates Soteria lifecycle transitions into declarative spec.replicationState updates (primary/secondary/resync) reconciled by csi-addons sidecar. StopReplication flips current role (primary→secondary, secondary→primary); SetSource sets primary; GetReplicationStatus maps CSI health to Soteria ReplicationHealth. Depends on Epic 11.
+# epic-11 created: Explicit Volume Replication Driver on DRPlan — 5 stories (11.1 Add VolumeReplicationDriver to DRPlanSpec, 11.2 Executor Resolves Driver from Plan Spec, 11.3 Preflight Reports Declared Driver, 11.4 Health Monitoring Resolves Driver from Plan Spec, 11.5 Console UI Displays Volume Replication Driver). Adds required volumeReplicationDriver field to DRPlanSpec (enum: noop), eliminating implicit PVC→StorageClass→provisioner→driver derivation. Executor, health monitoring, and preflight all resolve the driver from this explicit field. StorageClassLister dependency removed from executor and health paths. Preflight simplified to stamp declared driver for all VMs. Console displays the field in plan configuration.
 # 10.10 created: Remove DRGroupStatus Resource — delete DRGroupStatus/DRGroupStatusSpec/DRGroupStatusState/DRGroupStatusList types, delete pkg/registry/drgroupstatus/ package, remove apiserver registration (drgroupstatuses + status subresource), remove executor functions (createDRGroupStatus/finishDRGroupStatus/resetDRGroupStatus/getDRGroupStatusRecorder/drgroupStatusRecorder), keep StepRecorder interface + noopStepRecorder, remove console-plugin TS types + useDRGroupStatuses hook, remove RBAC markers, remove all DRGroupStatus tests (unit/integration/apiserver), update doc.go + OLM bundle, eliminates UAT-10.004 and ~18 extra ScyllaDB round-trips per execution (~1 deleted package, ~5 modified prod files, ~1 modified console-plugin, ~8 modified test files)
 # 10.9 created: Merge persistStatus and Checkpoint Into Single Write — replace back-to-back setGroupStatus+writeCheckpoint with single persistStatusAndCheckpoint method using ExponentialBackoffWithContext with ScyllaRetry-tuned backoff and condition merging, eliminates informer-cache-staleness retry window (UAT-10.003). Wave-level checkpoints unchanged, Checkpointer interface unchanged, InProgress writes unchanged. (~1 modified prod file, ~1 modified doc file, ~1 modified test file)
 # 10.8 done: Sequential Chunk Execution Within Waves — executeWave/executeRetryWave replaced WaitGroup+goroutine fan-out with sequential for-loop, ctx.Err() check between chunks, fail-forward preserved, VM-level parallelism within chunks preserved, statusMu retained for handler internal goroutines, doc.go updated (Wave executor paragraph + Checkpoint timing guarantee), TestWaveExecutor_ConcurrentDRGroups renamed to TestWaveExecutor_SequentialChunks with timestamp ordering assertion, TestWaveExecutor_SequentialChunks_CheckpointOrdering added (3 chunks + 1 wave = 4 checkpoints in order with TerminalCounts monotonic assertion), TestWaveExecutor_RetryWaveOrdering expanded (intra-wave sequential ordering with 2 groups in same wave), all unit/integration tests pass, 0 lint issues; review patches: cancelled-wave completion guard (executeWave+executeRetryWave), stale concurrency comments (ExecuteWaveHandler+ExecuteRetry), NoOpCheckpointer TerminalCounts for real checkpoint ordering verification (~2 modified prod files, ~1 modified doc file, ~1 modified test file, ~1 modified checkpoint file)
@@ -58,7 +60,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-06
-last_updated: 2026-05-12
+last_updated: 2026-05-13
 # 10.2 done: Derived Active Execution for Table Convertor & Preflight — DRPlanTableConvertor gains drexecutionLister field, SetDRExecutionStorage injection, buildActiveExecIndex bulk LIST + client-side map (O(plans+executions)), planToRow derives EffectivePhase from exec.Spec.Mode and Active Execution from exec.Name, graceful nil-lister fallback to plan status, NewREST returns *DRPlanTableConvertor for apiserver wiring, CompositionInput.ActiveExecution replaces plan.Status.ActiveExecution reads in ComposeReport and collectWarnings, DRPlan reconciler LIST DRExecutions via PlanNameLabel for preflight, RBAC marker for drexecutions list, stubExecLister test helper, 5 new table convertor tests + 3 preflight tests, all unit/integration tests pass with zero regressions (~7 modified Go files, ~1 auto-generated file)
 # 10.2 created: Derived Active Execution for Table Convertor & Preflight — DRPlanTableConvertor gains drexecutionLister field, SetDRExecutionStorage injection, buildActiveExecIndex bulk LIST + client-side map (O(plans+executions)), planToRow derives EffectivePhase from exec.Spec.Mode and Active Execution from exec.Name, graceful nil-lister fallback to plan status, NewREST returns *DRPlanTableConvertor for apiserver wiring, CompositionInput.ActiveExecution replaces plan.Status.ActiveExecution reads in ComposeReport and collectWarnings, DRPlan reconciler LIST DRExecutions via PlanNameLabel for preflight, RBAC marker for drexecutions list, stubExecLister test helper, 5 new table convertor tests + 3 preflight tests (~8 modified Go files, ~2 test files)
 # 10.1 created: DRExecution Concurrency Guard Without ActiveExecution — admission plugin queries DRExecution storage (rest.Lister) for non-terminal executions instead of plan.Status.ActiveExecution, SERIAL consistency on DRExecution INSERT IF NOT EXISTS via new SerialCreate store config, reconcileSetup/finishExecution/failExecution/reprotect no longer write ActiveExecution/ActiveExecutionMode on DRPlan, fetchPlanWithActiveExecCheck replaced by verifyExclusiveExecution (label-filtered LIST with ScyllaRetry), detectDRPlanCriticalFields drops ActiveExecution comparison, DRExecution PrepareForCreate stamps soteria.io/plan-name label server-side, legacy webhook documented as unused (~8 modified Go files, ~2 modified test files)
@@ -317,3 +319,22 @@ development_status:
   10-9-merge-persist-status-and-checkpoint-into-single-write: done
   10-10-remove-drgroupstatus-resource: done
   epic-10-retrospective: optional
+
+  # Epic 11: Explicit Volume Replication Driver on DRPlan
+  epic-11: backlog
+  11-1-add-volumereplicationdriver-to-drplanspec: ready-for-dev
+  11-2-executor-resolves-driver-from-plan-spec: ready-for-dev
+  11-3-preflight-reports-declared-driver: ready-for-dev
+  11-4-health-monitoring-resolves-driver-from-plan-spec: ready-for-dev
+  11-5-console-ui-displays-volume-replication-driver: ready-for-dev
+  epic-11-retrospective: optional
+
+  # Epic 12: CSI Extension Storage Driver
+  epic-12: backlog
+  12-1-csi-extension-driver-skeleton-registration: ready-for-dev
+  12-2-volumereplication-volumegroupreplication-crd-types-client: ready-for-dev
+  12-3-createvolumegroup-deletevolumegroup-getvolumegroup: ready-for-dev
+  12-4-stopreplication-setsource-state-transitions: ready-for-dev
+  12-5-getreplicationstatus-health-monitoring: ready-for-dev
+  12-6-conformance-suite-integration-testing: ready-for-dev
+  epic-12-retrospective: optional

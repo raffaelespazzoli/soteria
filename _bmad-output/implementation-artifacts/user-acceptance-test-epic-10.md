@@ -280,27 +280,43 @@ Zero `Cache consistency check failed` errors across all 4 transitions on both cl
 
 ## Anomaly Deep-Dive Analysis (2026-05-12)
 
-### UAT-10.003 Root Cause Analysis
+### UAT-10.003 Analysis — Checkpoint Conflict Retries
 
-**Definitive root cause:** The checkpoint retries are caused by **two back-to-back status writes** within `executeGroup` on the **owner site**, not by cross-site contention.
+**Observation:** On the owner site, every group/wave completion triggers "object has been modified" conflict retries (up to 4-5 attempts) before the write eventually succeeds. This occurs on both the per-group "Merged status+checkpoint write" and the per-wave "Checkpoint write" paths.
 
-Each group completion produces two consecutive `Status().Update` calls:
-1. `setGroupStatus` → `persistStatus` → `Get(cache:rv=5)` → `Status().Update(rv=5→6)` — succeeds
-2. `writeCheckpoint` → `KubeCheckpointer.WriteCheckpoint` → `Get(cache:rv=5 STALE)` → `Status().Update(rv=5)` — **CONFLICT**
+**Working hypothesis (not confirmed):** The retries may be caused by back-to-back status writes creating a cache-staleness window. The controller-runtime cached client reads a stale `resourceVersion` from the informer cache (which lags behind ScyllaDB due to CDC propagation delay: `ConfidenceWindowSize`=2s + `PostNonEmptyQueryDelay`=500ms). However, Run 4 showed that even after partially merging the per-group writes (Story 10.9), the wave-level checkpoint still conflicts — suggesting additional contention sources we haven't identified.
 
-Both `Get` calls use the controller-runtime cached client (`mgr.GetClient()`). After write #1 advances the resourceVersion in ScyllaDB, write #2's `Get` reads from the informer cache, which hasn't received the CDC update yet (ScyllaDB CDC has a `ConfidenceWindowSize` of 2s + `PostNonEmptyQueryDelay` of 500ms). Write #2 reads a stale resourceVersion and is rejected. Retries succeed once the cache converges.
+**What we know:**
+- Retries always succeed (self-healing, no data loss)
+- Only occurs on the owner site (non-owner doesn't write status)
+- Present in every single execution across all 4 runs (16/16 executions)
+- Does not affect overall execution outcome or duration significantly
 
-**Code path:** `pkg/engine/executor.go` — `executeGroup` calls `setGroupStatus` (line 545) then `writeCheckpoint` (line 553). `persistStatus` (line 1084) uses `RetryOnConflict` with condition merging. `KubeCheckpointer.WriteCheckpoint` (checkpoint.go:76) uses `ExponentialBackoffWithContext` with full status replacement. The two methods have different retry strategies and condition-handling semantics.
+**What we don't know:**
+- Whether the non-owner site's reconcile activity (reacting to CDC events) contributes to contention
+- Whether the ScyllaDB CDC watch itself advances the `resourceVersion` without user-initiated writes
+- Why the merged per-group write still conflicts (if it's truly a single write, what is the competing writer?)
 
-**Resolution:** Story 10.9 — Merge `persistStatus` and `writeCheckpoint` into a single atomic `Status().Update` per group completion, eliminating the cache-staleness window between the two writes.
+**Status:** Root cause not definitively established. Story 10.9 created as a potential fix but may not fully resolve the issue without deeper investigation into the ScyllaDB-backed apiserver's concurrency behavior.
 
-### UAT-10.002 Deep-Dive Analysis
+### UAT-10.002 Analysis — Immutable Execution Write After Completion
 
-**Observation:** The error appears on the **owner site** for each planned migration (etl7 for T9, etl6 for T11), not on the non-owner site as originally reported. The error message `"writing final execution status"` originates from `WaveExecutor.finishExecution` → `persistStatus` → `Status().Update`, which is rejected by `drexecutionStatusStrategy.ValidateUpdate` when the stored object already has `Result=Succeeded`.
+**Observation:** Sporadically, the owner site logs `ERROR Reconciler error ... Forbidden: DRExecution is immutable after completion`. This means the reconciler attempted a `Status().Update` on an execution that was already sealed with `Result=Succeeded`. The error is logged at ERROR level but is self-healing — the subsequent reconcile sees the terminal state and exits cleanly.
 
-**Investigated hypothesis:** The CDC confidence window (2s) creates a gap where intermediate status writes (per-group completions during wave execution) trigger informer watch events that enqueue reconciles. These reconciles are deferred while the current reconcile (Run A) is still executing. When Run A completes (having written `Result=Succeeded`), the deferred reconcile (Run B) starts. If Run B was triggered by an intermediate CDC event and the `Result=Succeeded` CDC event hasn't arrived yet, Run B sees all groups terminal but `Result=""`, calls `finishWaveExecution` again, and the write is rejected by the immutability guard.
+**Working hypothesis (not confirmed):** A stale reconcile event (enqueued from an intermediate CDC watch update during execution) fires after the execution is already complete. The reconciler's initial terminal check passes because the cache hasn't converged to the final `Result=Succeeded` state yet, so it proceeds to finalize the execution again. However, this explanation was challenged — controller-runtime should update the cache from the watch event that triggered the reconcile, meaning the cache should already reflect the state that caused the enqueue.
 
-**Decision:** Deferred — the error is self-healing (next reconcile exits cleanly) and low severity. Will monitor in future UAT runs to gather more data before committing to a fix.
+**What we know:**
+- Appears only on the owner site, only for planned migrations (not reprotects)
+- Frequency: ~1 occurrence per full cycle (1 out of 4 transitions in Run 4, similar in Run 3)
+- Self-healing: next reconcile exits at the terminal check
+- No user-visible impact (execution already succeeded)
+
+**What we don't know:**
+- The exact mechanism by which a reconcile starts with a stale view of an already-completed execution
+- Whether the informer cache update from a watch event is guaranteed to be visible at the start of the reconcile it triggered (controller-runtime internals vs. ScyllaDB CDC event ordering)
+- Whether this is specific to the ScyllaDB-backed apiserver's watch semantics or a general controller-runtime behavior
+
+**Status:** Root cause not definitively established. Deferred — monitoring across runs. Low severity, self-healing, no user impact.
 
 ### UAT-10.004 Root Cause Analysis
 
@@ -316,11 +332,95 @@ Both `Get` calls use the controller-runtime cached client (`mgr.GetClient()`). A
 
 ### Spawned Stories Summary
 
-| Story | Addresses | Status |
-|-------|-----------|--------|
-| 10.9 — Merge persistStatus and Checkpoint Into Single Write | UAT-10.003 | ready-for-dev |
-| 10.10 — Remove DRGroupStatus Resource | UAT-10.004 | ready-for-dev |
-| UAT-10.002 — Immutable Execution Write | Deferred | monitoring |
+| Story | Addresses | Status | Notes |
+|-------|-----------|--------|-------|
+| 10.9 — Merge persistStatus and Checkpoint Into Single Write | UAT-10.003 | ready-for-dev | May reduce but not fully eliminate retries — root cause not definitively understood |
+| 10.10 — Remove DRGroupStatus Resource | UAT-10.004 | **validated in Run 4** | CRD removed, no errors, issue eliminated |
+| UAT-10.002 — Immutable Execution Write | Deferred | monitoring | Root cause not definitively understood; self-healing, low severity |
+
+---
+
+---
+
+## Post-Story-10.10 Re-Test — Full DR Cycle (Run 4)
+
+**Date:** 2026-05-12 18:05–18:12 ET
+**Build:** Story 10.10 implemented (DRGroupStatus CRD removed), Story 10.9 partially implemented (merged status+checkpoint log messages present, but separate checkpoint write path still active).
+
+### Pre-deployment
+
+| Action | Result |
+|--------|--------|
+| Delete all DRGroupStatus objects on etl6 | 16 objects deleted |
+| Delete all DRGroupStatus objects on etl7 | 8 objects deleted |
+| Build + push soteria controller image | OK — quay.io/raffaelespazzoli/soteria:latest (~69s) |
+| Build + push console plugin image | OK — quay.io/raffaelespazzoli/soteria-console-plugin:latest (~139s build + ~81s push) |
+| Rollout restart on both clusters | All 4 deployments rolled out (~26s) |
+
+### State: SteadyState (pre-T13)
+
+- DRPlan: `fedora-app`, Phase=SteadyState, ActiveSite=etl6, 6 VMs
+- All replication VGs healthy
+- No DRGroupStatus resource type registered (CRD removed — Story 10.10 validated)
+
+### T13: Planned Migration — SteadyState → FailedOver
+
+| Field | Value |
+|-------|-------|
+| Execution | fedora-app-pm-07 |
+| Start | 2026-05-12T22:05:50Z |
+| End | 2026-05-12T22:06:55Z |
+| Duration | ~65s |
+| Result | **Succeeded** |
+| Owner Site | etl7 |
+
+### T14: Reprotect — FailedOver → DRedSteadyState
+
+| Field | Value |
+|-------|-------|
+| Execution | fedora-app-rp-07 |
+| Start | 2026-05-12T22:08:04Z |
+| End | 2026-05-12T22:08:44Z |
+| Duration | ~40s |
+| Result | **Succeeded** |
+| Owner Site | etl7 |
+
+### T15: Planned Migration — DRedSteadyState → FailedBack
+
+| Field | Value |
+|-------|-------|
+| Execution | fedora-app-pm-08 |
+| Start | 2026-05-12T22:09:11Z |
+| End | 2026-05-12T22:10:24Z |
+| Duration | ~73s |
+| Result | **Succeeded** |
+| Owner Site | etl6 |
+
+### T16: Reprotect — FailedBack → SteadyState
+
+| Field | Value |
+|-------|-------|
+| Execution | fedora-app-rp-08 |
+| Start | 2026-05-12T22:11:03Z |
+| End | 2026-05-12T22:11:45Z |
+| Duration | ~42s |
+| Result | **Succeeded** |
+| Owner Site | etl6 |
+
+### Anomalies (Run 4)
+
+| ID | Category | Severity | Observation | Seen In |
+|----|----------|----------|-------------|---------|
+| UAT-10.003 (Continued) | Checkpoint conflict retries | Low | "Merged status+checkpoint write failed, retrying" (up to 4 attempts per group) AND "Checkpoint write failed, retrying" (up to 5 attempts per wave). Both always recover. Owner site only. | T13, T14, T15, T16 |
+| UAT-10.002 (Continued) | Immutable execution write | Low | `Forbidden: DRExecution is immutable after completion` on owner site after execution sealed. Self-healing — next reconcile exits cleanly. | T13 (etl7) |
+| UAT-10.004 | **RESOLVED** | — | DRGroupStatus CRD removed. No "Not Found" debug messages. No DRGroupStatus objects created. | All transitions clean |
+
+### Key Observations (Run 4)
+
+1. **Story 10.10 validated:** DRGroupStatus resource type is gone from both clusters. No errors related to missing resource. All executions succeed without it. UAT-10.004 is closed.
+2. **UAT-10.003 persists:** Both "Merged status+checkpoint write" and standalone "Checkpoint write" paths hit conflict retries on every execution. Root cause remains unclear — further investigation needed into ScyllaDB-backed apiserver concurrency behavior before Story 10.9 can be confidently expected to fix this.
+3. **UAT-10.002 persists:** Appeared once in 4 transitions (T13 only), consistent with previous runs. Root cause remains unclear — the mechanism by which a reconcile sees stale state after an execution is sealed is not definitively explained.
+4. **Performance:** Planned migrations ~65-73s, reprotects ~40-42s — consistent with Run 3 timings. The retries add latency but don't prevent success.
 
 ---
 
@@ -333,6 +433,7 @@ Both `Get` calls use the controller-runtime cached client (`mgr.GetClient()`). A
 | DRPlan conditions | All True | Ready/SitesInSync/DisksConsistent/Replicating/ReplicationHealthy all True | PASS |
 | VMs on etl6 | 6 Running | 6 Running, Ready=True | PASS |
 | VMs on etl7 | 6 Stopped | 6 Stopped, Ready=False | PASS |
-| Execution history | 12 records (Run 1: 4, Run 2: 4, Run 3: 4) | pm-01 (PartiallySucceeded), all others Succeeded | PASS |
-| Story 10.8 fix validated | All post-fix planned migrations Succeeded | 5/5 post-fix PMs Succeeded (pm-03 through pm-06) | PASS |
-| Phase cycle complete | SteadyState→FailedOver→DRedSteadyState→FailedBack→SteadyState | Exact progression observed across 3 full cycles | PASS |
+| Execution history | 16 records (Run 1: 4, Run 2: 4, Run 3: 4, Run 4: 4) | pm-01 (PartiallySucceeded), all others Succeeded | PASS |
+| Story 10.8 fix validated | All post-fix planned migrations Succeeded | 7/7 post-fix PMs Succeeded (pm-03 through pm-08) | PASS |
+| Story 10.10 fix validated | DRGroupStatus CRD removed, no errors | No resource type registered, no debug "Not Found" messages | PASS |
+| Phase cycle complete | SteadyState→FailedOver→DRedSteadyState→FailedBack→SteadyState | Exact progression observed across 4 full cycles | PASS |
