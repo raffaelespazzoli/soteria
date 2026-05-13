@@ -22,12 +22,22 @@ import (
 	"github.com/soteria-project/soteria/pkg/drivers"
 )
 
-func TestNoopDriver_Registration(t *testing.T) {
-	provider, err := drivers.GetDriver(ProvisionerName)
+func TestGetDriver_PlanLevelName(t *testing.T) {
+	drv, err := drivers.GetDriver(PlanDriverName)
 	if err != nil {
-		t.Fatalf("GetDriver(%q): unexpected error: %v", ProvisionerName, err)
+		t.Fatalf("GetDriver(%q) returned error: %v", PlanDriverName, err)
 	}
-	if provider == nil {
+	if drv == nil {
+		t.Fatalf("GetDriver(%q) returned nil provider", PlanDriverName)
+	}
+}
+
+func TestGetDriver_ProvisionerName(t *testing.T) {
+	drv, err := drivers.GetDriver(ProvisionerName)
+	if err != nil {
+		t.Fatalf("GetDriver(%q) returned error: %v", ProvisionerName, err)
+	}
+	if drv == nil {
 		t.Fatalf("GetDriver(%q) returned nil provider", ProvisionerName)
 	}
 }

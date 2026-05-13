@@ -399,9 +399,10 @@ func newTestDRPlan(name, primarySite, secondarySite string) *soteriav1alpha1.DRP
 	return &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			PrimarySite:            primarySite,
-			SecondarySite:          secondarySite,
-			MaxConcurrentFailovers: 5,
+			VolumeReplicationDriver: "noop",
+			PrimarySite:             primarySite,
+			SecondarySite:           secondarySite,
+			MaxConcurrentFailovers:  5,
 		},
 	}
 }

@@ -80,9 +80,10 @@ func TestDRExecutionReconciler_ResumeInProgress_EmitsEvent(t *testing.T) {
 	plan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "plan-1"},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			MaxConcurrentFailovers: 4,
-			PrimarySite:            "dc-west",
-			SecondarySite:          "dc-east",
+			VolumeReplicationDriver: "noop",
+			MaxConcurrentFailovers:  4,
+			PrimarySite:             "dc-west",
+			SecondarySite:           "dc-east",
 		},
 		Status: soteriav1alpha1.DRPlanStatus{
 			Phase:      soteriav1alpha1.PhaseSteadyState,
@@ -167,9 +168,10 @@ func TestDRExecutionReconciler_NewExecution_NormalPath(t *testing.T) {
 	plan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "plan-1"},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			MaxConcurrentFailovers: 4,
-			PrimarySite:            "dc-west",
-			SecondarySite:          "dc-east",
+			VolumeReplicationDriver: "noop",
+			MaxConcurrentFailovers:  4,
+			PrimarySite:             "dc-west",
+			SecondarySite:           "dc-east",
 		},
 		Status: soteriav1alpha1.DRPlanStatus{
 			Phase:      soteriav1alpha1.PhaseSteadyState,
@@ -294,9 +296,10 @@ func TestDRExecutionReconciler_PlanNameLabel_SetOnFirstReconcile(t *testing.T) {
 	plan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "erp-full-stack"},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			MaxConcurrentFailovers: 4,
-			PrimarySite:            "dc-west",
-			SecondarySite:          "dc-east",
+			VolumeReplicationDriver: "noop",
+			MaxConcurrentFailovers:  4,
+			PrimarySite:             "dc-west",
+			SecondarySite:           "dc-east",
 		},
 		Status: soteriav1alpha1.DRPlanStatus{
 			Phase:      soteriav1alpha1.PhaseSteadyState,
@@ -357,9 +360,10 @@ func TestDRExecutionReconciler_PlanNameLabel_Idempotent(t *testing.T) {
 	plan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "erp-full-stack"},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			MaxConcurrentFailovers: 4,
-			PrimarySite:            "dc-west",
-			SecondarySite:          "dc-east",
+			VolumeReplicationDriver: "noop",
+			MaxConcurrentFailovers:  4,
+			PrimarySite:             "dc-west",
+			SecondarySite:           "dc-east",
 		},
 		Status: soteriav1alpha1.DRPlanStatus{
 			Phase:      soteriav1alpha1.PhaseSteadyState,
@@ -404,9 +408,10 @@ func newSiteAwarePlan(name, primary, secondary, phase string) *soteriav1alpha1.D
 	return &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			MaxConcurrentFailovers: 4,
-			PrimarySite:            primary,
-			SecondarySite:          secondary,
+			VolumeReplicationDriver: "noop",
+			MaxConcurrentFailovers:  4,
+			PrimarySite:             primary,
+			SecondarySite:           secondary,
 		},
 		Status: soteriav1alpha1.DRPlanStatus{
 			Phase:      phase,
@@ -884,9 +889,10 @@ func newWaveGatePlan(name string) *soteriav1alpha1.DRPlan {
 	return &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			MaxConcurrentFailovers: 4,
-			PrimarySite:            "dc-west",
-			SecondarySite:          "dc-east",
+			VolumeReplicationDriver: "noop",
+			MaxConcurrentFailovers:  4,
+			PrimarySite:             "dc-west",
+			SecondarySite:           "dc-east",
 		},
 		Status: soteriav1alpha1.DRPlanStatus{
 			Phase:      soteriav1alpha1.PhaseSteadyState,

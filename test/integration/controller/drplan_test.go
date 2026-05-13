@@ -72,9 +72,10 @@ func createDRPlan(t *testing.T, ctx context.Context, name string) *soteriav1alph
 			Name: name,
 		},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			PrimarySite:            "dc-west",
-			SecondarySite:          "dc-east",
-			MaxConcurrentFailovers: 5,
+			VolumeReplicationDriver: "noop",
+			PrimarySite:             "dc-west",
+			SecondarySite:           "dc-east",
+			MaxConcurrentFailovers:  5,
 		},
 	}
 	if err := testClient.Create(ctx, plan); err != nil {

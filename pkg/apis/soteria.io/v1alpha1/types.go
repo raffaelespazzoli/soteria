@@ -82,6 +82,11 @@ type DRPlan struct {
 }
 
 type DRPlanSpec struct {
+	// VolumeReplicationDriver is the registered driver that handles volume
+	// replication operations for this plan's volumes. Immutable after creation.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Enum=noop
+	VolumeReplicationDriver string `json:"volumeReplicationDriver"`
 	// MaxConcurrentFailovers limits concurrent VM failovers per wave chunk.
 	// +kubebuilder:validation:Minimum=1
 	MaxConcurrentFailovers int `json:"maxConcurrentFailovers"`

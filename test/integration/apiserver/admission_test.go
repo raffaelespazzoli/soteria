@@ -50,9 +50,10 @@ func createDRPlan(t *testing.T, ctx context.Context, client dynamic.Interface, n
 			"kind":       "DRPlan",
 			"metadata":   map[string]any{"name": name},
 			"spec": map[string]any{
-				"maxConcurrentFailovers": int64(2),
-				"primarySite":           "dc-west",
-				"secondarySite":         "dc-east",
+				"volumeReplicationDriver": "noop",
+				"maxConcurrentFailovers":  int64(2),
+				"primarySite":             "dc-west",
+				"secondarySite":           "dc-east",
 			},
 		},
 	}
@@ -331,9 +332,10 @@ func TestAdmission_DRPlan_InvalidCreate_Rejected(t *testing.T) {
 			"kind":       "DRPlan",
 			"metadata":   map[string]any{"name": "admission-invalid-plan"},
 			"spec": map[string]any{
-				"maxConcurrentFailovers": int64(0),
-				"primarySite":           "dc-west",
-				"secondarySite":         "dc-east",
+				"volumeReplicationDriver": "noop",
+				"maxConcurrentFailovers":  int64(0),
+				"primarySite":             "dc-west",
+				"secondarySite":           "dc-east",
 			},
 		},
 	}

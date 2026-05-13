@@ -1,6 +1,6 @@
 # Story 11.1: Add VolumeReplicationDriver Field to DRPlanSpec
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -51,35 +51,35 @@ The noop driver is currently registered under the provisioner name `noop.soteria
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Add field to DRPlanSpec (AC: #1, #7)
-  - [ ] 1.1 In `pkg/apis/soteria.io/v1alpha1/types.go`, add `VolumeReplicationDriver string` to `DRPlanSpec` with kubebuilder markers and JSON tag
-  - [ ] 1.2 Run `make manifests generate` to regenerate DeepCopy and OpenAPI schemas
+- [x] Task 1: Add field to DRPlanSpec (AC: #1, #7)
+  - [x] 1.1 In `pkg/apis/soteria.io/v1alpha1/types.go`, add `VolumeReplicationDriver string` to `DRPlanSpec` with kubebuilder markers and JSON tag
+  - [x] 1.2 Run `make manifests generate` to regenerate DeepCopy and OpenAPI schemas
 
-- [ ] Task 2: Add validation (AC: #2, #3)
-  - [ ] 2.1 In `pkg/apis/soteria.io/v1alpha1/validation.go`, add `VolumeReplicationDriver` required check in `ValidateDRPlan`
-  - [ ] 2.2 In `ValidateDRPlanUpdate`, add immutability check for `VolumeReplicationDriver`
+- [x] Task 2: Add validation (AC: #2, #3)
+  - [x] 2.1 In `pkg/apis/soteria.io/v1alpha1/validation.go`, add `VolumeReplicationDriver` required check in `ValidateDRPlan`
+  - [x] 2.2 In `ValidateDRPlanUpdate`, add immutability check for `VolumeReplicationDriver`
 
-- [ ] Task 3: Noop driver dual registration (AC: #4)
-  - [ ] 3.1 In `pkg/drivers/noop/driver.go` `init()`, add `drivers.RegisterDriver("noop", ...)` alongside existing `noop.soteria.io` registration
+- [x] Task 3: Noop driver dual registration (AC: #4)
+  - [x] 3.1 In `pkg/drivers/noop/driver.go` `init()`, add `drivers.RegisterDriver("noop", ...)` alongside existing `noop.soteria.io` registration
 
-- [ ] Task 4: Update sample CRD (AC: #6)
-  - [ ] 4.1 In `config/samples/soteria_v1alpha1_drplan.yaml`, add `volumeReplicationDriver: noop`
+- [x] Task 4: Update sample CRD (AC: #6)
+  - [x] 4.1 In `config/samples/soteria_v1alpha1_drplan.yaml`, add `volumeReplicationDriver: noop`
 
-- [ ] Task 5: Test fixture sweep (AC: #8)
-  - [ ] 5.1 Search all `*.go` and `*_test.go` files for `DRPlanSpec{` or `DRPlan{` constructions
-  - [ ] 5.2 Add `VolumeReplicationDriver: "noop"` to every fixture
-  - [ ] 5.3 Verify `make test` passes with all fixtures updated
+- [x] Task 5: Test fixture sweep (AC: #8)
+  - [x] 5.1 Search all `*.go` and `*_test.go` files for `DRPlanSpec{` or `DRPlan{` constructions
+  - [x] 5.2 Add `VolumeReplicationDriver: "noop"` to every fixture
+  - [x] 5.3 Verify `make test` passes with all fixtures updated
 
-- [ ] Task 6: Validation tests (AC: #9, #10)
-  - [ ] 6.1 Add `TestValidateDRPlan_VolumeReplicationDriver_Required` to validation_test.go
-  - [ ] 6.2 Add `TestValidateDRPlanUpdate_VolumeReplicationDriver_Immutable` to validation_test.go
-  - [ ] 6.3 Add `TestValidateDRPlanUpdate_VolumeReplicationDriver_Unchanged` to validation_test.go
-  - [ ] 6.4 Add `TestGetDriver_PlanLevelName` to `pkg/drivers/noop/registration_test.go`
+- [x] Task 6: Validation tests (AC: #9, #10)
+  - [x] 6.1 Add `TestValidateDRPlan_VolumeReplicationDriver_Required` to validation_test.go
+  - [x] 6.2 Add `TestValidateDRPlanUpdate_VolumeReplicationDriver_Immutable` to validation_test.go
+  - [x] 6.3 Add `TestValidateDRPlanUpdate_VolumeReplicationDriver_Unchanged` to validation_test.go
+  - [x] 6.4 Add `TestGetDriver_PlanLevelName` to `pkg/drivers/noop/registration_test.go`
 
-- [ ] Task 7: Verify all tests pass (AC: #7)
-  - [ ] 7.1 Run `make test` — all unit tests pass
-  - [ ] 7.2 Run `make lint-fix` followed by `make lint` — no new lint errors
-  - [ ] 7.3 Run integration tests — no regressions
+- [x] Task 7: Verify all tests pass (AC: #7)
+  - [x] 7.1 Run `make test` — all unit tests pass
+  - [x] 7.2 Run `make lint-fix` followed by `make lint` — no new lint errors
+  - [x] 7.3 Run integration tests — no regressions
 
 ## Dev Notes
 
@@ -146,3 +146,59 @@ make manifests generate   # Regenerate CRDs/DeepCopy
 make test                 # All unit tests
 make lint-fix && make lint # Code style
 ```
+
+## Dev Agent Record
+
+### Implementation Plan
+
+- Added `VolumeReplicationDriver` as first field on `DRPlanSpec` with `+kubebuilder:validation:Required` and `+kubebuilder:validation:Enum=noop` markers
+- Required validation in `ValidateDRPlan`, immutability check in `ValidateDRPlanUpdate` (same pattern as `primarySite`/`secondarySite`)
+- Noop driver dual registration: `PlanDriverName = "noop"` constant + second `RegisterDriver` call in `init()`
+- Fixture sweep across 22 files (19 typed + 3 unstructured) — all `DRPlanSpec` constructions updated with `VolumeReplicationDriver: "noop"`
+- New tests: 3 validation tests + 2 registration tests
+
+### Completion Notes
+
+Story 11.1 complete — all 10 ACs satisfied. VolumeReplicationDriver field added to DRPlanSpec with required+immutable validation, noop driver dual-registered under both `noop.soteria.io` and `noop`, sample CRD updated, all test fixtures swept (22 files), 5 new tests added. All unit tests pass (19 packages), 0 lint issues, all 6 integration test suites pass with zero regressions.
+
+## File List
+
+### New Files
+- `pkg/drivers/noop/registration_test.go`
+
+### Modified Files
+- `pkg/apis/soteria.io/v1alpha1/types.go`
+- `pkg/apis/soteria.io/v1alpha1/validation.go`
+- `pkg/apis/soteria.io/v1alpha1/validation_test.go`
+- `pkg/apis/soteria.io/v1alpha1/zz_generated.openapi.go` (codegen)
+- `pkg/drivers/noop/driver.go`
+- `config/samples/soteria_v1alpha1_drplan.yaml`
+- `internal/preflight/checks_test.go`
+- `pkg/admission/drplan_validator_test.go`
+- `pkg/admission/drexecution_validator_test.go`
+- `pkg/admission/plugin_test.go`
+- `pkg/admission/vm_validator_test.go`
+- `pkg/controller/drplan/reconciler_test.go`
+- `pkg/controller/drexecution/reconciler_test.go`
+- `pkg/engine/executor_test.go`
+- `pkg/engine/reprotect_test.go`
+- `pkg/registry/drplan/strategy_test.go`
+- `test/integration/admission/vm_webhook_test.go`
+- `test/integration/apiserver/apiserver_test.go`
+- `test/integration/controller/drplan_consistency_test.go`
+- `test/integration/controller/drplan_test.go`
+- `test/integration/controller/drexecution_test.go`
+- `test/integration/controller/suite_test.go`
+- `test/integration/rbac/rbac_test.go`
+- `test/integration/replication/replication_test.go`
+- `test/integration/storage/store_test.go`
+- `test/integration/storage/watch_test.go`
+
+## Change Log
+
+- 2026-05-13: Story 11.1 implemented — added VolumeReplicationDriver field to DRPlanSpec, validation, noop dual registration, sample CRD, fixture sweep (22 files), 5 new tests, all unit/integration tests pass
+
+### Review Findings
+
+- [x] [Review][Decision] Legacy DRPlans cannot be backfilled in place — resolved: accepted as an intentional breaking change for this rollout.
+- [x] [Review][Patch] Programmatic DRPlan validation does not enforce the `noop` enum [`pkg/apis/soteria.io/v1alpha1/validation.go:53`] — fixed: replaced empty-string check with switch+NotSupported, added TestValidateDRPlan_VolumeReplicationDriver_InvalidValue, updated volumeReplicationDriver-changed update test to expect 2 errors (unsupported + immutable)

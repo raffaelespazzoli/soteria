@@ -147,9 +147,10 @@ func newTestPlan(name string) *soteriav1alpha1.DRPlan {
 	return &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			MaxConcurrentFailovers: 4,
-			PrimarySite:            "dc-west",
-			SecondarySite:          "dc-east",
+			VolumeReplicationDriver: "noop",
+			MaxConcurrentFailovers:  4,
+			PrimarySite:             "dc-west",
+			SecondarySite:           "dc-east",
 		},
 		Status: soteriav1alpha1.DRPlanStatus{
 			Phase:      soteriav1alpha1.PhaseSteadyState,

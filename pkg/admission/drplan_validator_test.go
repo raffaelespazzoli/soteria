@@ -93,9 +93,10 @@ func TestDRPlanValidator_FieldValidation(t *testing.T) {
 			plan: &soteriav1alpha1.DRPlan{
 				ObjectMeta: metav1.ObjectMeta{Name: "plan-ok"},
 				Spec: soteriav1alpha1.DRPlanSpec{
-					MaxConcurrentFailovers: 4,
-					PrimarySite:            "dc-west",
-					SecondarySite:          "dc-east",
+					VolumeReplicationDriver: "noop",
+					MaxConcurrentFailovers:  4,
+					PrimarySite:             "dc-west",
+					SecondarySite:           "dc-east",
 				},
 			},
 			op:          admissionv1.Create,
@@ -106,9 +107,10 @@ func TestDRPlanValidator_FieldValidation(t *testing.T) {
 			plan: &soteriav1alpha1.DRPlan{
 				ObjectMeta: metav1.ObjectMeta{Name: "plan-bad-max"},
 				Spec: soteriav1alpha1.DRPlanSpec{
-					MaxConcurrentFailovers: 0,
-					PrimarySite:            "dc-west",
-					SecondarySite:          "dc-east",
+					VolumeReplicationDriver: "noop",
+					MaxConcurrentFailovers:  0,
+					PrimarySite:             "dc-west",
+					SecondarySite:           "dc-east",
 				},
 			},
 			op:          admissionv1.Create,
@@ -120,9 +122,10 @@ func TestDRPlanValidator_FieldValidation(t *testing.T) {
 			plan: &soteriav1alpha1.DRPlan{
 				ObjectMeta: metav1.ObjectMeta{Name: "plan-no-primary"},
 				Spec: soteriav1alpha1.DRPlanSpec{
-					MaxConcurrentFailovers: 4,
-					PrimarySite:            "",
-					SecondarySite:          "dc-east",
+					VolumeReplicationDriver: "noop",
+					MaxConcurrentFailovers:  4,
+					PrimarySite:             "",
+					SecondarySite:           "dc-east",
 				},
 			},
 			op:          admissionv1.Create,
@@ -134,9 +137,10 @@ func TestDRPlanValidator_FieldValidation(t *testing.T) {
 			plan: &soteriav1alpha1.DRPlan{
 				ObjectMeta: metav1.ObjectMeta{Name: "plan-no-secondary"},
 				Spec: soteriav1alpha1.DRPlanSpec{
-					MaxConcurrentFailovers: 4,
-					PrimarySite:            "dc-west",
-					SecondarySite:          "",
+					VolumeReplicationDriver: "noop",
+					MaxConcurrentFailovers:  4,
+					PrimarySite:             "dc-west",
+					SecondarySite:           "",
 				},
 			},
 			op:          admissionv1.Create,
@@ -148,9 +152,10 @@ func TestDRPlanValidator_FieldValidation(t *testing.T) {
 			plan: &soteriav1alpha1.DRPlan{
 				ObjectMeta: metav1.ObjectMeta{Name: "plan-same-site"},
 				Spec: soteriav1alpha1.DRPlanSpec{
-					MaxConcurrentFailovers: 4,
-					PrimarySite:            "dc-west",
-					SecondarySite:          "dc-west",
+					VolumeReplicationDriver: "noop",
+					MaxConcurrentFailovers:  4,
+					PrimarySite:             "dc-west",
+					SecondarySite:           "dc-west",
 				},
 			},
 			op:          admissionv1.Create,
@@ -162,9 +167,10 @@ func TestDRPlanValidator_FieldValidation(t *testing.T) {
 			plan: &soteriav1alpha1.DRPlan{
 				ObjectMeta: metav1.ObjectMeta{Name: "plan-update"},
 				Spec: soteriav1alpha1.DRPlanSpec{
-					MaxConcurrentFailovers: 8,
-					PrimarySite:            "dc-west",
-					SecondarySite:          "dc-east",
+					VolumeReplicationDriver: "noop",
+					MaxConcurrentFailovers:  8,
+					PrimarySite:             "dc-west",
+					SecondarySite:           "dc-east",
 				},
 			},
 			op:          admissionv1.Update,
@@ -175,9 +181,10 @@ func TestDRPlanValidator_FieldValidation(t *testing.T) {
 			plan: &soteriav1alpha1.DRPlan{
 				ObjectMeta: metav1.ObjectMeta{Name: "plan-bad-update"},
 				Spec: soteriav1alpha1.DRPlanSpec{
-					MaxConcurrentFailovers: -1,
-					PrimarySite:            "dc-west",
-					SecondarySite:          "dc-east",
+					VolumeReplicationDriver: "noop",
+					MaxConcurrentFailovers:  -1,
+					PrimarySite:             "dc-west",
+					SecondarySite:           "dc-east",
 				},
 			},
 			op:          admissionv1.Update,
@@ -189,9 +196,10 @@ func TestDRPlanValidator_FieldValidation(t *testing.T) {
 			plan: &soteriav1alpha1.DRPlan{
 				ObjectMeta: metav1.ObjectMeta{Name: "plan-del"},
 				Spec: soteriav1alpha1.DRPlanSpec{
-					MaxConcurrentFailovers: 4,
-					PrimarySite:            "dc-west",
-					SecondarySite:          "dc-east",
+					VolumeReplicationDriver: "noop",
+					MaxConcurrentFailovers:  4,
+					PrimarySite:             "dc-west",
+					SecondarySite:           "dc-east",
 				},
 			},
 			op:          admissionv1.Delete,
@@ -228,17 +236,19 @@ func TestDRPlanValidator_SiteImmutability(t *testing.T) {
 	oldPlan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "plan-immutable"},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			MaxConcurrentFailovers: 4,
-			PrimarySite:            "dc-west",
-			SecondarySite:          "dc-east",
+			VolumeReplicationDriver: "noop",
+			MaxConcurrentFailovers:  4,
+			PrimarySite:             "dc-west",
+			SecondarySite:           "dc-east",
 		},
 	}
 	newPlan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "plan-immutable"},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			MaxConcurrentFailovers: 4,
-			PrimarySite:            "dc-north",
-			SecondarySite:          "dc-east",
+			VolumeReplicationDriver: "noop",
+			MaxConcurrentFailovers:  4,
+			PrimarySite:             "dc-north",
+			SecondarySite:           "dc-east",
 		},
 	}
 

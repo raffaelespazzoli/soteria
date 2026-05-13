@@ -105,8 +105,9 @@ func TestDRExecutionValidator_ValidCREATE_Accepted(t *testing.T) {
 					"my-plan": {
 						ObjectMeta: metav1.ObjectMeta{Name: "my-plan"},
 						Spec: soteriav1alpha1.DRPlanSpec{
-							PrimarySite:   "dc-west",
-							SecondarySite: "dc-east",
+							VolumeReplicationDriver: "noop",
+							PrimarySite:             "dc-west",
+							SecondarySite:           "dc-east",
 						},
 						Status: soteriav1alpha1.DRPlanStatus{
 							Phase:      tt.planPhase,
@@ -208,8 +209,9 @@ func TestDRExecutionValidator_PlanInWrongPhase_Denied(t *testing.T) {
 			"my-plan": {
 				ObjectMeta: metav1.ObjectMeta{Name: "my-plan"},
 				Spec: soteriav1alpha1.DRPlanSpec{
-					PrimarySite:   "dc-west",
-					SecondarySite: "dc-east",
+					VolumeReplicationDriver: "noop",
+					PrimarySite:             "dc-west",
+					SecondarySite:           "dc-east",
 				},
 				Status: soteriav1alpha1.DRPlanStatus{
 					Phase:      soteriav1alpha1.PhaseFailedOver,
@@ -254,8 +256,9 @@ func TestDRExecutionValidator_ConcurrencyDelegatedToPlugin(t *testing.T) {
 			"my-plan": {
 				ObjectMeta: metav1.ObjectMeta{Name: "my-plan"},
 				Spec: soteriav1alpha1.DRPlanSpec{
-					PrimarySite:   "dc-west",
-					SecondarySite: "dc-east",
+					VolumeReplicationDriver: "noop",
+					PrimarySite:             "dc-west",
+					SecondarySite:           "dc-east",
 				},
 				Status: soteriav1alpha1.DRPlanStatus{
 					Phase:      soteriav1alpha1.PhaseSteadyState,
@@ -286,8 +289,9 @@ func TestDRExecutionValidator_NoConcurrencyCheck_Allowed(t *testing.T) {
 			"my-plan": {
 				ObjectMeta: metav1.ObjectMeta{Name: "my-plan"},
 				Spec: soteriav1alpha1.DRPlanSpec{
-					PrimarySite:   "dc-west",
-					SecondarySite: "dc-east",
+					VolumeReplicationDriver: "noop",
+					PrimarySite:             "dc-west",
+					SecondarySite:           "dc-east",
 				},
 				Status: soteriav1alpha1.DRPlanStatus{
 					Phase:      soteriav1alpha1.PhaseSteadyState,
@@ -334,8 +338,9 @@ func TestDRExecutionValidator_RejectWhenSitesOutOfSync(t *testing.T) {
 			"my-plan": {
 				ObjectMeta: metav1.ObjectMeta{Name: "my-plan"},
 				Spec: soteriav1alpha1.DRPlanSpec{
-					PrimarySite:   "dc-west",
-					SecondarySite: "dc-east",
+					VolumeReplicationDriver: "noop",
+					PrimarySite:             "dc-west",
+					SecondarySite:           "dc-east",
 				},
 				Status: soteriav1alpha1.DRPlanStatus{
 					Phase:      soteriav1alpha1.PhaseSteadyState,
@@ -382,8 +387,9 @@ func TestDRExecutionValidator_AllowWhenSitesInSync(t *testing.T) {
 			"my-plan": {
 				ObjectMeta: metav1.ObjectMeta{Name: "my-plan"},
 				Spec: soteriav1alpha1.DRPlanSpec{
-					PrimarySite:   "dc-west",
-					SecondarySite: "dc-east",
+					VolumeReplicationDriver: "noop",
+					PrimarySite:             "dc-west",
+					SecondarySite:           "dc-east",
 				},
 				Status: soteriav1alpha1.DRPlanStatus{
 					Phase:      soteriav1alpha1.PhaseSteadyState,
@@ -447,8 +453,9 @@ func TestDRExecutionValidator_DenyWhenDisksInconsistent(t *testing.T) {
 					"my-plan": {
 						ObjectMeta: metav1.ObjectMeta{Name: "my-plan"},
 						Spec: soteriav1alpha1.DRPlanSpec{
-							PrimarySite:   "dc-west",
-							SecondarySite: "dc-east",
+							VolumeReplicationDriver: "noop",
+							PrimarySite:             "dc-west",
+							SecondarySite:           "dc-east",
 						},
 						Status: soteriav1alpha1.DRPlanStatus{
 							Phase:      soteriav1alpha1.PhaseSteadyState,
@@ -505,8 +512,9 @@ func TestDRExecutionValidator_AllowWhenDisksConsistent(t *testing.T) {
 			"my-plan": {
 				ObjectMeta: metav1.ObjectMeta{Name: "my-plan"},
 				Spec: soteriav1alpha1.DRPlanSpec{
-					PrimarySite:   "dc-west",
-					SecondarySite: "dc-east",
+					VolumeReplicationDriver: "noop",
+					PrimarySite:             "dc-west",
+					SecondarySite:           "dc-east",
 				},
 				Status: soteriav1alpha1.DRPlanStatus{
 					Phase:      soteriav1alpha1.PhaseSteadyState,
@@ -551,8 +559,9 @@ func TestDRExecutionValidator_RequiresBothSitesInSyncAndDisksConsistent(t *testi
 			"my-plan": {
 				ObjectMeta: metav1.ObjectMeta{Name: "my-plan"},
 				Spec: soteriav1alpha1.DRPlanSpec{
-					PrimarySite:   "dc-west",
-					SecondarySite: "dc-east",
+					VolumeReplicationDriver: "noop",
+					PrimarySite:             "dc-west",
+					SecondarySite:           "dc-east",
 				},
 				Status: soteriav1alpha1.DRPlanStatus{
 					Phase:      soteriav1alpha1.PhaseSteadyState,

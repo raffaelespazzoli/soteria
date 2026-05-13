@@ -86,9 +86,10 @@ func newTestPlan() *soteriav1alpha1.DRPlan {
 			Generation: 1,
 		},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			MaxConcurrentFailovers: 5,
-			PrimarySite:            testPrimarySite,
-			SecondarySite:          testSecondarySite,
+			VolumeReplicationDriver: "noop",
+			MaxConcurrentFailovers:  5,
+			PrimarySite:             testPrimarySite,
+			SecondarySite:           testSecondarySite,
 		},
 		Status: soteriav1alpha1.DRPlanStatus{
 			Phase:      soteriav1alpha1.PhaseSteadyState,

@@ -29,6 +29,10 @@ import (
 
 const ProvisionerName = "noop.soteria.io"
 
+// PlanDriverName is the plan-level name used in DRPlanSpec.VolumeReplicationDriver.
+// Distinct from ProvisionerName which follows CSI provisioner naming conventions.
+const PlanDriverName = "noop"
+
 var _ drivers.StorageProvider = (*Driver)(nil)
 
 type volumeGroupState struct {
@@ -218,6 +222,9 @@ func copyInfo(src drivers.VolumeGroupInfo) drivers.VolumeGroupInfo {
 
 func init() {
 	drivers.RegisterDriver(ProvisionerName, func() drivers.StorageProvider {
+		return New()
+	})
+	drivers.RegisterDriver(PlanDriverName, func() drivers.StorageProvider {
 		return New()
 	})
 	// The noop driver is the catch-all: any CSI provisioner not claimed by a

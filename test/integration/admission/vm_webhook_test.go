@@ -87,9 +87,10 @@ func TestVMWebhook_PlanExists_Allowed(t *testing.T) {
 	plan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: planName},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			PrimarySite:            "dc-west",
-			SecondarySite:          "dc-east",
-			MaxConcurrentFailovers: 10,
+			VolumeReplicationDriver: "noop",
+			PrimarySite:             "dc-west",
+			SecondarySite:           "dc-east",
+			MaxConcurrentFailovers:  10,
 		},
 	}
 	if err := testClient.Create(ctx, plan); err != nil {
@@ -178,9 +179,10 @@ func TestVMWebhook_WaveConflict_Rejected(t *testing.T) {
 	plan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: planName},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			PrimarySite:            "dc-west",
-			SecondarySite:          "dc-east",
-			MaxConcurrentFailovers: 10,
+			VolumeReplicationDriver: "noop",
+			PrimarySite:             "dc-west",
+			SecondarySite:           "dc-east",
+			MaxConcurrentFailovers:  10,
 		},
 	}
 	if err := testClient.Create(ctx, plan); err != nil {
@@ -234,9 +236,10 @@ func TestVMWebhook_WaveConflict_SameWave_Allowed(t *testing.T) {
 	plan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: planName},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			PrimarySite:            "dc-west",
-			SecondarySite:          "dc-east",
-			MaxConcurrentFailovers: 10,
+			VolumeReplicationDriver: "noop",
+			PrimarySite:             "dc-west",
+			SecondarySite:           "dc-east",
+			MaxConcurrentFailovers:  10,
 		},
 	}
 	if err := testClient.Create(ctx, plan); err != nil {
@@ -284,9 +287,10 @@ func TestVMWebhook_DELETE_Allowed(t *testing.T) {
 	plan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: planName},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			PrimarySite:            "dc-west",
-			SecondarySite:          "dc-east",
-			MaxConcurrentFailovers: 10,
+			VolumeReplicationDriver: "noop",
+			PrimarySite:             "dc-west",
+			SecondarySite:           "dc-east",
+			MaxConcurrentFailovers:  10,
 		},
 	}
 	if err := testClient.Create(ctx, plan); err != nil {

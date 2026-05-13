@@ -50,6 +50,19 @@ func ValidateDRPlan(plan *DRPlan) field.ErrorList {
 		))
 	}
 
+	switch plan.Spec.VolumeReplicationDriver {
+	case "":
+		allErrs = append(allErrs, field.Required(specPath.Child("volumeReplicationDriver"), ""))
+	case "noop":
+		// valid
+	default:
+		allErrs = append(allErrs, field.NotSupported(
+			specPath.Child("volumeReplicationDriver"),
+			plan.Spec.VolumeReplicationDriver,
+			[]string{"noop"},
+		))
+	}
+
 	if plan.Spec.VMReadyTimeout != nil && plan.Spec.VMReadyTimeout.Duration <= 0 {
 		allErrs = append(allErrs, field.Invalid(
 			specPath.Child("vmReadyTimeout"),
@@ -72,6 +85,9 @@ func ValidateDRPlanUpdate(newPlan, oldPlan *DRPlan) field.ErrorList {
 	}
 	if newPlan.Spec.SecondarySite != oldPlan.Spec.SecondarySite {
 		allErrs = append(allErrs, field.Forbidden(specPath.Child("secondarySite"), "field is immutable"))
+	}
+	if newPlan.Spec.VolumeReplicationDriver != oldPlan.Spec.VolumeReplicationDriver {
+		allErrs = append(allErrs, field.Forbidden(specPath.Child("volumeReplicationDriver"), "field is immutable"))
 	}
 
 	return allErrs

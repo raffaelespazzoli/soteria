@@ -508,6 +508,14 @@ func schema_pkg_apis_soteriaio_v1alpha1_DRPlanSpec(ref common.ReferenceCallback)
 			SchemaProps: spec.SchemaProps{
 				Type: []string{"object"},
 				Properties: map[string]spec.Schema{
+					"volumeReplicationDriver": {
+						SchemaProps: spec.SchemaProps{
+							Description: "VolumeReplicationDriver is the registered driver that handles volume replication operations for this plan's volumes. Immutable after creation.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 					"maxConcurrentFailovers": {
 						SchemaProps: spec.SchemaProps{
 							Description: "MaxConcurrentFailovers limits concurrent VM failovers per wave chunk.",
@@ -539,7 +547,7 @@ func schema_pkg_apis_soteriaio_v1alpha1_DRPlanSpec(ref common.ReferenceCallback)
 						},
 					},
 				},
-				Required: []string{"maxConcurrentFailovers", "primarySite", "secondarySite"},
+				Required: []string{"volumeReplicationDriver", "maxConcurrentFailovers", "primarySite", "secondarySite"},
 			},
 		},
 		Dependencies: []string{

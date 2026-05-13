@@ -145,9 +145,10 @@ func newDRPlan(name string) *v1alpha1.DRPlan {
 			UID:  types.UID(gocql.TimeUUID().String()),
 		},
 		Spec: v1alpha1.DRPlanSpec{
-			PrimarySite:            "dc-west",
-			SecondarySite:          "dc-east",
-			MaxConcurrentFailovers: 2,
+			VolumeReplicationDriver: "noop",
+			PrimarySite:             "dc-west",
+			SecondarySite:           "dc-east",
+			MaxConcurrentFailovers:  2,
 		},
 	}
 }

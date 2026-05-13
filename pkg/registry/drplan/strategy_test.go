@@ -128,9 +128,10 @@ func TestMatchDRPlan_UsesGetAttrs(t *testing.T) {
 func TestPrepareForCreate_SetsActiveSiteToPrimarySite(t *testing.T) {
 	plan := &soteriav1alpha1.DRPlan{
 		Spec: soteriav1alpha1.DRPlanSpec{
-			MaxConcurrentFailovers: 4,
-			PrimarySite:            "dc-west",
-			SecondarySite:          "dc-east",
+			VolumeReplicationDriver: "noop",
+			MaxConcurrentFailovers:  4,
+			PrimarySite:             "dc-west",
+			SecondarySite:           "dc-east",
 		},
 	}
 
@@ -147,9 +148,10 @@ func TestPrepareForCreate_SetsActiveSiteToPrimarySite(t *testing.T) {
 func TestPrepareForUpdate_PreservesStatus(t *testing.T) {
 	oldPlan := &soteriav1alpha1.DRPlan{
 		Spec: soteriav1alpha1.DRPlanSpec{
-			MaxConcurrentFailovers: 4,
-			PrimarySite:            "dc-west",
-			SecondarySite:          "dc-east",
+			VolumeReplicationDriver: "noop",
+			MaxConcurrentFailovers:  4,
+			PrimarySite:             "dc-west",
+			SecondarySite:           "dc-east",
 		},
 		Status: soteriav1alpha1.DRPlanStatus{
 			Phase:      soteriav1alpha1.PhaseFailedOver,
@@ -158,9 +160,10 @@ func TestPrepareForUpdate_PreservesStatus(t *testing.T) {
 	}
 	newPlan := &soteriav1alpha1.DRPlan{
 		Spec: soteriav1alpha1.DRPlanSpec{
-			MaxConcurrentFailovers: 8,
-			PrimarySite:            "dc-west",
-			SecondarySite:          "dc-east",
+			VolumeReplicationDriver: "noop",
+			MaxConcurrentFailovers:  8,
+			PrimarySite:             "dc-west",
+			SecondarySite:           "dc-east",
 		},
 	}
 

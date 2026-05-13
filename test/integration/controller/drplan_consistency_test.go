@@ -50,9 +50,10 @@ func createDRPlanWithThrottle(t *testing.T, ctx context.Context, name string, ma
 			Name: name,
 		},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			PrimarySite:            "dc-west",
-			SecondarySite:          "dc-east",
-			MaxConcurrentFailovers: maxConcurrent,
+			VolumeReplicationDriver: "noop",
+			PrimarySite:             "dc-west",
+			SecondarySite:           "dc-east",
+			MaxConcurrentFailovers:  maxConcurrent,
 		},
 	}
 	if err := testClient.Create(ctx, plan); err != nil {

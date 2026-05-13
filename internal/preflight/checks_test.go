@@ -446,7 +446,7 @@ func TestComposeReport_VGDiskEnrichment_VMLevel(t *testing.T) {
 	now := metav1.Now()
 	input := CompositionInput{
 		Plan: &soteriav1alpha1.DRPlan{
-			Spec: soteriav1alpha1.DRPlanSpec{PrimarySite: "dc1", SecondarySite: "dc2"},
+			Spec: soteriav1alpha1.DRPlanSpec{VolumeReplicationDriver: "noop", PrimarySite: "dc1", SecondarySite: "dc2"},
 		},
 		DiscoveryResult: &engine.DiscoveryResult{
 			TotalVMs: 1,
@@ -497,7 +497,7 @@ func TestComposeReport_VGDiskEnrichment_NamespaceLevel(t *testing.T) {
 	now := metav1.Now()
 	input := CompositionInput{
 		Plan: &soteriav1alpha1.DRPlan{
-			Spec: soteriav1alpha1.DRPlanSpec{PrimarySite: "dc2", SecondarySite: "dc1"},
+			Spec: soteriav1alpha1.DRPlanSpec{VolumeReplicationDriver: "noop", PrimarySite: "dc2", SecondarySite: "dc1"},
 		},
 		DiscoveryResult: &engine.DiscoveryResult{
 			TotalVMs: 3,
@@ -565,7 +565,7 @@ func TestComposeReport_VGDiskEnrichment_StatelessVM(t *testing.T) {
 	now := metav1.Now()
 	input := CompositionInput{
 		Plan: &soteriav1alpha1.DRPlan{
-			Spec: soteriav1alpha1.DRPlanSpec{PrimarySite: "dc1", SecondarySite: "dc2"},
+			Spec: soteriav1alpha1.DRPlanSpec{VolumeReplicationDriver: "noop", PrimarySite: "dc1", SecondarySite: "dc2"},
 		},
 		DiscoveryResult: &engine.DiscoveryResult{
 			TotalVMs: 1,
@@ -606,7 +606,7 @@ func TestComposeReport_VGDiskEnrichment_MultipleVGs(t *testing.T) {
 	now := metav1.Now()
 	input := CompositionInput{
 		Plan: &soteriav1alpha1.DRPlan{
-			Spec: soteriav1alpha1.DRPlanSpec{PrimarySite: "dc1", SecondarySite: "dc2"},
+			Spec: soteriav1alpha1.DRPlanSpec{VolumeReplicationDriver: "noop", PrimarySite: "dc1", SecondarySite: "dc2"},
 		},
 		DiscoveryResult: &engine.DiscoveryResult{
 			TotalVMs: 2,
@@ -673,7 +673,7 @@ func TestComposeReport_VGDiskEnrichment_MissingPVC(t *testing.T) {
 	now := metav1.Now()
 	input := CompositionInput{
 		Plan: &soteriav1alpha1.DRPlan{
-			Spec: soteriav1alpha1.DRPlanSpec{PrimarySite: "dc1", SecondarySite: "dc2"},
+			Spec: soteriav1alpha1.DRPlanSpec{VolumeReplicationDriver: "noop", PrimarySite: "dc1", SecondarySite: "dc2"},
 		},
 		DiscoveryResult: &engine.DiscoveryResult{
 			TotalVMs: 1,
@@ -791,7 +791,7 @@ func TestComposeReport_VGDiskEnrichment_CrossSite(t *testing.T) {
 	now := metav1.Now()
 	input := CompositionInput{
 		Plan: &soteriav1alpha1.DRPlan{
-			Spec: soteriav1alpha1.DRPlanSpec{PrimarySite: "dc1", SecondarySite: "dc2"},
+			Spec: soteriav1alpha1.DRPlanSpec{VolumeReplicationDriver: "noop", PrimarySite: "dc1", SecondarySite: "dc2"},
 		},
 		DiscoveryResult: &engine.DiscoveryResult{
 			TotalVMs: 1,
@@ -848,7 +848,7 @@ func TestComposeReport_VGDiskEnrichment_SingleSiteOnly(t *testing.T) {
 	now := metav1.Now()
 	input := CompositionInput{
 		Plan: &soteriav1alpha1.DRPlan{
-			Spec: soteriav1alpha1.DRPlanSpec{PrimarySite: "dc1", SecondarySite: "dc2"},
+			Spec: soteriav1alpha1.DRPlanSpec{VolumeReplicationDriver: "noop", PrimarySite: "dc1", SecondarySite: "dc2"},
 		},
 		DiscoveryResult: &engine.DiscoveryResult{
 			TotalVMs: 1,
@@ -897,7 +897,7 @@ func TestComposeReport_VGDiskEnrichment_DiskOnOneSiteOnly(t *testing.T) {
 	now := metav1.Now()
 	input := CompositionInput{
 		Plan: &soteriav1alpha1.DRPlan{
-			Spec: soteriav1alpha1.DRPlanSpec{PrimarySite: "dc1", SecondarySite: "dc2"},
+			Spec: soteriav1alpha1.DRPlanSpec{VolumeReplicationDriver: "noop", PrimarySite: "dc1", SecondarySite: "dc2"},
 		},
 		DiscoveryResult: &engine.DiscoveryResult{
 			TotalVMs: 1,
@@ -960,8 +960,9 @@ func TestComposeReport_SiteTopologyFields(t *testing.T) {
 	input := CompositionInput{
 		Plan: &soteriav1alpha1.DRPlan{
 			Spec: soteriav1alpha1.DRPlanSpec{
-				PrimarySite:   "dc-west",
-				SecondarySite: "dc-east",
+				VolumeReplicationDriver: "noop",
+				PrimarySite:             "dc-west",
+				SecondarySite:           "dc-east",
 			},
 			Status: soteriav1alpha1.DRPlanStatus{
 				ActiveSite: "dc-west",
@@ -987,8 +988,9 @@ func TestComposeReport_ActiveExecution(t *testing.T) {
 	input := CompositionInput{
 		Plan: &soteriav1alpha1.DRPlan{
 			Spec: soteriav1alpha1.DRPlanSpec{
-				PrimarySite:   "dc-west",
-				SecondarySite: "dc-east",
+				VolumeReplicationDriver: "noop",
+				PrimarySite:             "dc-west",
+				SecondarySite:           "dc-east",
 			},
 			Status: soteriav1alpha1.DRPlanStatus{
 				ActiveSite: "dc-west",
@@ -1014,8 +1016,9 @@ func TestComposeReport_NoActiveExecution_NoWarning(t *testing.T) {
 	input := CompositionInput{
 		Plan: &soteriav1alpha1.DRPlan{
 			Spec: soteriav1alpha1.DRPlanSpec{
-				PrimarySite:   "dc-west",
-				SecondarySite: "dc-east",
+				VolumeReplicationDriver: "noop",
+				PrimarySite:             "dc-west",
+				SecondarySite:           "dc-east",
 			},
 			Status: soteriav1alpha1.DRPlanStatus{
 				ActiveSite: "dc-west",
@@ -1042,8 +1045,9 @@ func TestComposeReport_PlanStatusActiveExecution_Ignored(t *testing.T) {
 	input := CompositionInput{
 		Plan: &soteriav1alpha1.DRPlan{
 			Spec: soteriav1alpha1.DRPlanSpec{
-				PrimarySite:   "dc-west",
-				SecondarySite: "dc-east",
+				VolumeReplicationDriver: "noop",
+				PrimarySite:             "dc-west",
+				SecondarySite:           "dc-east",
 			},
 			Status: soteriav1alpha1.DRPlanStatus{
 				ActiveSite: "dc-west",
