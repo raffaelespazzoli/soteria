@@ -148,7 +148,6 @@ func TestMain(m *testing.M) {
 		VMDiscoverer:    vmDiscoverer,
 		NamespaceLookup: nsLookup,
 		Registry:        testRegistry,
-		SCLister:        scLister,
 	}
 	if err := (&drexecution.DRExecutionReconciler{
 		Client:          mgr.GetClient(),

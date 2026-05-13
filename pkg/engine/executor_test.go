@@ -182,9 +182,8 @@ func makeMultiWaveVMs(waveDefs map[string][]string) []VMReference {
 	return vms
 }
 
-// makeKubevirtVMs creates kubevirt VM objects (without PVC volumes) so the
-// fake client can serve Get() calls during resolveChunkStorageClass. VMs
-// without PVC volumes fall through to the fallback driver.
+// makeKubevirtVMs creates kubevirt VM objects so the fake client can serve
+// Get() calls during chunk reconstruction from status.
 func makeKubevirtVMs(vms []VMReference) []client.Object {
 	objs := make([]client.Object, len(vms))
 	for i, ref := range vms {
@@ -259,6 +258,73 @@ func TestWaveExecutor_SingleWave_SingleChunk_Succeeds(t *testing.T) {
 	}
 	if updatedPlan.Status.Phase != soteriav1alpha1.PhaseFailedOver {
 		t.Errorf("expected plan phase %q, got %q", soteriav1alpha1.PhaseFailedOver, updatedPlan.Status.Phase)
+	}
+}
+
+func TestWaveExecutor_Execute_ResolvesNamedDriver(t *testing.T) {
+	reg := drivers.NewRegistry()
+	reg.RegisterDriver("custom-repl", func() drivers.StorageProvider { return noop.New() })
+
+	plan := newTestPlan("plan-drv")
+	plan.Spec.VolumeReplicationDriver = "custom-repl"
+	exec := newTestExecution("exec-drv", "plan-drv")
+	vms := makeVMs([]string{"vm-1"}, "alpha")
+	cl := newFakeClient(vms, plan, exec)
+
+	executor := &WaveExecutor{
+		Client:          cl,
+		VMDiscoverer:    &mockVMDiscoverer{vms: vms},
+		NamespaceLookup: &mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{"ns-1": soteriav1alpha1.ConsistencyLevelVM}},
+		Registry:        reg,
+	}
+	handler := &mockHandler{}
+
+	err := executor.Execute(context.Background(), ExecuteInput{
+		Execution: exec,
+		Plan:      plan,
+		Handler:   handler,
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if exec.Status.Result != soteriav1alpha1.ExecutionResultSucceeded {
+		t.Errorf("expected result %q, got %q", soteriav1alpha1.ExecutionResultSucceeded, exec.Status.Result)
+	}
+	if len(handler.getCalls()) == 0 {
+		t.Error("expected handler to be called")
+	}
+}
+
+func TestWaveExecutor_Execute_FailsForUnregisteredDriver(t *testing.T) {
+	reg := drivers.NewRegistry()
+
+	plan := newTestPlan("plan-bad")
+	plan.Spec.VolumeReplicationDriver = "nonexistent-driver"
+	exec := newTestExecution("exec-bad", "plan-bad")
+	vms := makeVMs([]string{"vm-1"}, "alpha")
+	cl := newFakeClient(vms, plan, exec)
+
+	executor := &WaveExecutor{
+		Client:          cl,
+		VMDiscoverer:    &mockVMDiscoverer{vms: vms},
+		NamespaceLookup: &mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{"ns-1": soteriav1alpha1.ConsistencyLevelVM}},
+		Registry:        reg,
+	}
+
+	_ = executor.Execute(context.Background(), ExecuteInput{
+		Execution: exec,
+		Plan:      plan,
+		Handler:   &mockHandler{},
+	})
+	if len(exec.Status.Waves) == 0 || len(exec.Status.Waves[0].Groups) == 0 {
+		t.Fatal("expected at least one wave with one group in status")
+	}
+	group := exec.Status.Waves[0].Groups[0]
+	if group.Result != soteriav1alpha1.DRGroupResultFailed {
+		t.Errorf("expected group result %q, got %q", soteriav1alpha1.DRGroupResultFailed, group.Result)
+	}
+	if !strings.Contains(group.Error, "DriverResolution") {
+		t.Errorf("expected error to mention DriverResolution, got %q", group.Error)
 	}
 }
 

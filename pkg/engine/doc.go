@@ -55,6 +55,12 @@ limitations under the License.
 //     serialized via mutex and written to the DRExecution status subresource
 //     after each group completes.
 //
+//     Driver resolution: the executor resolves the StorageProvider via
+//     Registry.GetDriver(plan.Spec.VolumeReplicationDriver), reading the
+//     plan-level declared driver name rather than deriving it at runtime from
+//     PVC → StorageClass → provisioner lookups. This eliminates the SCLister
+//     dependency and all runtime Kubernetes API calls for driver resolution.
+//
 //   - Unified FailoverHandler (failover.go): implements both planned migration and
 //     disaster failover through a single DRGroupHandler driven by FailoverConfig
 //     — not the execution mode string. The controller maps mode → config:

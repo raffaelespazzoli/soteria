@@ -313,7 +313,6 @@ func main() {
 		VMDiscoverer:      vmDiscoverer,
 		NamespaceLookup:   nsLookup,
 		Registry:          drivers.DefaultRegistry,
-		SCLister:          scLister,
 		Recorder:          drexecRecorder,
 		PVCResolver:       pvcResolver,
 		VMHealthValidator: vmHealthValidator,

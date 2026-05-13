@@ -39,12 +39,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/wait"
 	corev1client "k8s.io/client-go/kubernetes/typed/core/v1"
 	"k8s.io/client-go/tools/events"
 	"k8s.io/client-go/util/retry"
-	kubevirtv1 "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -161,7 +159,6 @@ type WaveExecutor struct {
 	VMDiscoverer      VMDiscoverer
 	NamespaceLookup   NamespaceLookup
 	Registry          *drivers.Registry
-	SCLister          drivers.StorageClassLister
 	Recorder          events.EventRecorder
 	PVCResolver       PVCResolver
 	VMHealthValidator VMHealthValidator
@@ -233,12 +230,13 @@ func (e *WaveExecutor) Execute(ctx context.Context, input ExecuteInput) error {
 		return fmt.Errorf("writing initial wave status: %w", err)
 	}
 
+	driverName := plan.Spec.VolumeReplicationDriver
 	for i, wc := range chunkResult.Waves {
 		if ctx.Err() != nil {
 			logger.Info("Context cancelled, stopping execution")
 			return e.finishExecution(ctx, exec, plan, e.computeResult(exec), "Context cancelled")
 		}
-		e.executeWave(ctx, i, wc.Chunks, input.Handler, exec)
+		e.executeWave(ctx, i, wc.Chunks, input.Handler, exec, driverName)
 	}
 
 	result := e.computeResult(exec)
@@ -316,7 +314,7 @@ func (e *WaveExecutor) ExecuteWaveHandler(
 		}
 	}
 	if len(chunks) > 0 {
-		e.executeWave(ctx, waveIdx, chunks, handler, exec)
+		e.executeWave(ctx, waveIdx, chunks, handler, exec, plan.Spec.VolumeReplicationDriver)
 	}
 }
 
@@ -332,6 +330,7 @@ func (e *WaveExecutor) ExecuteFromWave(
 	exec := input.Execution
 	plan := input.Plan
 
+	driverName := plan.Spec.VolumeReplicationDriver
 	for i := startWaveIndex; i < len(exec.Status.Waves); i++ {
 		if ctx.Err() != nil {
 			logger.Info("Context cancelled, stopping execution")
@@ -351,7 +350,7 @@ func (e *WaveExecutor) ExecuteFromWave(
 		}
 
 		if len(chunks) > 0 {
-			e.executeWave(ctx, i, chunks, input.Handler, exec)
+			e.executeWave(ctx, i, chunks, input.Handler, exec, driverName)
 		}
 	}
 
@@ -410,6 +409,7 @@ func (e *WaveExecutor) reconstructChunkFromStatus(
 func (e *WaveExecutor) executeWave(
 	ctx context.Context, waveIdx int, chunks []DRGroupChunk,
 	handler DRGroupHandler, exec *soteriav1alpha1.DRExecution,
+	driverName string,
 ) {
 	logger := log.FromContext(ctx)
 	logger.Info("Starting wave execution", "wave", waveIdx, "chunks", len(chunks))
@@ -423,7 +423,7 @@ func (e *WaveExecutor) executeWave(
 				"wave", waveIdx, "skippedFrom", i)
 			break
 		}
-		e.executeGroup(ctx, waveIdx, i, chunk, handler, exec)
+		e.executeGroup(ctx, waveIdx, i, chunk, handler, exec, driverName)
 	}
 
 	if ctx.Err() == nil {
@@ -439,6 +439,7 @@ func (e *WaveExecutor) executeWave(
 func (e *WaveExecutor) executeGroup(
 	ctx context.Context, waveIdx, groupIdx int, chunk DRGroupChunk,
 	handler DRGroupHandler, exec *soteriav1alpha1.DRExecution,
+	driverName string,
 ) {
 	logger := log.FromContext(ctx)
 
@@ -452,8 +453,7 @@ func (e *WaveExecutor) executeGroup(
 		StartTime: &startTime,
 	})
 
-	// Resolve storage drivers per volume group.
-	driverMap, fallbackDriver, err := e.resolveDrivers(ctx, chunk)
+	driverMap, fallbackDriver, err := e.resolveDrivers(ctx, chunk, driverName)
 	if err != nil {
 		logger.Error(err, "Driver resolution failed", "wave", waveIdx, "group", chunk.Name)
 		completionTime := metav1.Now()
@@ -711,214 +711,42 @@ func (e *WaveExecutor) emitResultEvent(
 	}
 }
 
-// resolveDriver resolves the StorageProvider for a DRGroup chunk by reading
-// the first VM's PVC storage class and mapping it through the driver registry:
-// VM → kubevirt volumes → PVC → storageClassName → SCLister → provisioner → Registry.
-// All volumes within the chunk must use the same storage class — homogeneous
-// storage is an architectural invariant (Dell-to-Dell, ODF-to-ODF).
-func (e *WaveExecutor) resolveDriver(ctx context.Context, chunk DRGroupChunk) (drivers.StorageProvider, error) {
-	if e.Registry == nil {
-		return nil, fmt.Errorf("driver registry not configured")
-	}
-	if len(chunk.VMs) == 0 {
-		return nil, fmt.Errorf("chunk %q has no VMs", chunk.Name)
-	}
-
-	logger := log.FromContext(ctx)
-
-	storageClass, err := e.resolveChunkStorageClass(ctx, chunk)
-	if err != nil {
-		return nil, err
-	}
-	if storageClass == "" {
-		logger.V(1).Info("No PVC storage class found, using fallback driver", "chunk", chunk.Name)
-		return e.Registry.GetDriver("")
-	}
-
-	return e.Registry.GetDriverForPVC(ctx, storageClass, e.SCLister)
-}
-
-// resolveChunkStorageClass reads the kubevirt VMs in a chunk, extracts PVC
-// claim names, reads the PVCs, and returns the common storage class name.
-// Returns an error if volumes in the chunk use different storage classes
-// (heterogeneous storage is not supported).
-func (e *WaveExecutor) resolveChunkStorageClass(
-	ctx context.Context, chunk DRGroupChunk,
-) (string, error) {
-	var commonSC string
-
-	for _, vmRef := range chunk.VMs {
-		var vm kubevirtv1.VirtualMachine
-		if err := e.Client.Get(ctx, types.NamespacedName{
-			Name: vmRef.Name, Namespace: vmRef.Namespace,
-		}, &vm); err != nil {
-			return "", fmt.Errorf("fetching VM %s/%s: %w",
-				vmRef.Namespace, vmRef.Name, err)
-		}
-
-		if vm.Spec.Template == nil {
-			continue
-		}
-
-		for _, vol := range vm.Spec.Template.Spec.Volumes {
-			claimName := ""
-			if vol.PersistentVolumeClaim != nil {
-				claimName = vol.PersistentVolumeClaim.ClaimName
-			} else if vol.DataVolume != nil {
-				claimName = vol.DataVolume.Name
-			}
-			if claimName == "" {
-				continue
-			}
-
-			if e.CoreClient == nil {
-				return "", fmt.Errorf(
-					"nil CoreClient, cannot read PVC %s/%s",
-					vmRef.Namespace, claimName)
-			}
-			pvc, err := e.CoreClient.PersistentVolumeClaims(
-				vmRef.Namespace,
-			).Get(ctx, claimName, metav1.GetOptions{})
-			if err != nil {
-				return "", fmt.Errorf(
-					"fetching PVC %s/%s for VM %s: %w",
-					vmRef.Namespace, claimName, vmRef.Name, err)
-			}
-
-			scName := ""
-			if pvc.Spec.StorageClassName != nil {
-				scName = *pvc.Spec.StorageClassName
-			}
-			if scName == "" {
-				continue
-			}
-
-			if commonSC == "" {
-				commonSC = scName
-			} else if scName != commonSC {
-				return "", fmt.Errorf(
-					"heterogeneous storage classes in chunk %q: "+
-						"found %q on PVC %s/%s but expected %q",
-					chunk.Name, scName, vmRef.Namespace,
-					claimName, commonSC)
-			}
-		}
-	}
-
-	return commonSC, nil
-}
-
-// resolveDrivers resolves one StorageProvider per VolumeGroup within the chunk.
-// Each VolumeGroup must have homogeneous storage classes (same driver), but
-// different VolumeGroups in the same chunk may use different drivers.
-// When no VolumeGroups exist it falls back to the chunk-level resolveDriver.
+// resolveDrivers resolves the StorageProvider for all VolumeGroups in a chunk
+// using the plan's declared volumeReplicationDriver field. All VGs get the
+// same driver — the plan-level declaration replaces runtime PVC→SC→provisioner
+// derivation. When no VolumeGroups exist, the driver is returned as fallback.
 func (e *WaveExecutor) resolveDrivers(
-	ctx context.Context, chunk DRGroupChunk,
+	_ context.Context, chunk DRGroupChunk, driverName string,
 ) (driverMap map[string]drivers.StorageProvider, fallback drivers.StorageProvider, err error) {
 	if e.Registry == nil {
 		return nil, nil, fmt.Errorf("driver registry not configured")
 	}
+
+	drv, err := e.Registry.GetDriver(driverName)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	if len(chunk.VolumeGroups) == 0 {
-		drv, err := e.resolveDriver(ctx, chunk)
-		return nil, drv, err
+		return nil, drv, nil
 	}
 
 	driverMap = make(map[string]drivers.StorageProvider, len(chunk.VolumeGroups))
 	for _, vg := range chunk.VolumeGroups {
-		drv, err := e.ResolveVGDriver(ctx, vg)
-		if err != nil {
-			return nil, nil, fmt.Errorf("volume group %s: %w", vg.Name, err)
-		}
 		driverMap[vg.Name] = drv
-		if fallback == nil {
-			fallback = drv
-		}
 	}
-	return driverMap, fallback, nil
+	return driverMap, drv, nil
 }
 
-// ResolveVGDriver resolves the StorageProvider for a single VolumeGroup.
+// ResolveVGDriver resolves the StorageProvider for a single VolumeGroup using
+// the plan's declared driver name.
 func (e *WaveExecutor) ResolveVGDriver(
-	ctx context.Context, vg soteriav1alpha1.VolumeGroupInfo,
+	ctx context.Context, driverName string,
 ) (drivers.StorageProvider, error) {
-	logger := log.FromContext(ctx)
-	sc, err := e.resolveVGStorageClass(ctx, vg)
-	if err != nil {
-		return nil, err
+	if e.Registry == nil {
+		return nil, fmt.Errorf("driver registry not configured")
 	}
-	if sc == "" {
-		logger.V(1).Info("No PVC storage class found for volume group, using fallback driver", "vg", vg.Name)
-		return e.Registry.GetDriver("")
-	}
-	return e.Registry.GetDriverForPVC(ctx, sc, e.SCLister)
-}
-
-// resolveVGStorageClass extracts the common storage class for a single
-// VolumeGroup by reading the PVCs attached to its VMs. Returns an error if
-// PVCs within the VolumeGroup use different storage classes.
-func (e *WaveExecutor) resolveVGStorageClass(
-	ctx context.Context, vg soteriav1alpha1.VolumeGroupInfo,
-) (string, error) {
-	var commonSC string
-
-	for _, vmName := range vg.VMNames {
-		var vm kubevirtv1.VirtualMachine
-		if err := e.Client.Get(ctx, types.NamespacedName{
-			Name: vmName, Namespace: vg.Namespace,
-		}, &vm); err != nil {
-			return "", fmt.Errorf("fetching VM %s/%s: %w", vg.Namespace, vmName, err)
-		}
-
-		if vm.Spec.Template == nil {
-			continue
-		}
-
-		for _, vol := range vm.Spec.Template.Spec.Volumes {
-			claimName := ""
-			if vol.PersistentVolumeClaim != nil {
-				claimName = vol.PersistentVolumeClaim.ClaimName
-			} else if vol.DataVolume != nil {
-				claimName = vol.DataVolume.Name
-			}
-			if claimName == "" {
-				continue
-			}
-
-			if e.CoreClient == nil {
-				return "", fmt.Errorf(
-					"nil CoreClient, cannot read PVC %s/%s",
-					vg.Namespace, claimName)
-			}
-			pvc, err := e.CoreClient.PersistentVolumeClaims(
-				vg.Namespace,
-			).Get(ctx, claimName, metav1.GetOptions{})
-			if err != nil {
-				return "", fmt.Errorf(
-					"fetching PVC %s/%s for VM %s: %w",
-					vg.Namespace, claimName, vmName, err)
-			}
-
-			scName := ""
-			if pvc.Spec.StorageClassName != nil {
-				scName = *pvc.Spec.StorageClassName
-			}
-			if scName == "" {
-				continue
-			}
-
-			if commonSC == "" {
-				commonSC = scName
-			} else if scName != commonSC {
-				return "", fmt.Errorf(
-					"heterogeneous storage classes in volume group %q: "+
-						"found %q on PVC %s/%s but expected %q",
-					vg.Name, scName, vg.Namespace,
-					claimName, commonSC)
-			}
-		}
-	}
-
-	return commonSC, nil
+	return e.Registry.GetDriver(driverName)
 }
 
 // computeResult scans all groups across all waves and determines the overall
@@ -1170,10 +998,11 @@ func (e *WaveExecutor) BuildExecutionGroups(
 	chunkInput := buildChunkInput(discovery, consistency, vms)
 	chunkResult := ChunkWaves(chunkInput, plan.Spec.MaxConcurrentFailovers)
 
+	driverName := plan.Spec.VolumeReplicationDriver
 	var groups []ExecutionGroup
 	for waveIdx, wc := range chunkResult.Waves {
 		for _, chunk := range wc.Chunks {
-			driverMap, fallbackDriver, err := e.resolveDrivers(ctx, chunk)
+			driverMap, fallbackDriver, err := e.resolveDrivers(ctx, chunk, driverName)
 			if err != nil {
 				return nil, fmt.Errorf("resolving drivers for chunk %s: %w", chunk.Name, err)
 			}
@@ -1325,13 +1154,13 @@ func (e *WaveExecutor) ExecuteRetry(ctx context.Context, input RetryInput) error
 	}
 	sort.Ints(waveIndices)
 
-	// Execute waves sequentially.
+	driverName := input.Plan.Spec.VolumeReplicationDriver
 	for _, wi := range waveIndices {
 		if ctx.Err() != nil {
 			logger.Info("Context cancelled during retry, stopping")
 			break
 		}
-		e.executeRetryWave(ctx, wi, waveGroups[wi], input.Handler, exec, input.Plan)
+		e.executeRetryWave(ctx, wi, waveGroups[wi], input.Handler, exec, input.Plan, driverName)
 	}
 
 	// Recompute overall result.
@@ -1355,7 +1184,7 @@ func (e *WaveExecutor) ExecuteRetry(ctx context.Context, input RetryInput) error
 func (e *WaveExecutor) executeRetryWave(
 	ctx context.Context, waveIdx int, targets []RetryTarget,
 	handler DRGroupHandler, exec *soteriav1alpha1.DRExecution,
-	plan *soteriav1alpha1.DRPlan,
+	plan *soteriav1alpha1.DRPlan, driverName string,
 ) {
 	logger := log.FromContext(ctx)
 	logger.Info("Starting retry wave", "wave", waveIdx, "groups", len(targets))
@@ -1366,7 +1195,7 @@ func (e *WaveExecutor) executeRetryWave(
 				"wave", waveIdx, "skippedFrom", i)
 			break
 		}
-		e.executeRetryGroup(ctx, target, handler, exec, plan)
+		e.executeRetryGroup(ctx, target, handler, exec, plan, driverName)
 	}
 
 	if ctx.Err() == nil {
@@ -1379,7 +1208,7 @@ func (e *WaveExecutor) executeRetryWave(
 func (e *WaveExecutor) executeRetryGroup(
 	ctx context.Context, target RetryTarget,
 	handler DRGroupHandler, exec *soteriav1alpha1.DRExecution,
-	plan *soteriav1alpha1.DRPlan,
+	plan *soteriav1alpha1.DRPlan, driverName string,
 ) {
 	logger := log.FromContext(ctx)
 
@@ -1404,8 +1233,7 @@ func (e *WaveExecutor) executeRetryGroup(
 	// Reconstruct the chunk from execution status and plan.
 	chunk := e.reconstructChunk(target, exec, plan)
 
-	// Resolve drivers for the retry group.
-	driverMap, fallbackDriver, err := e.resolveDrivers(ctx, chunk)
+	driverMap, fallbackDriver, err := e.resolveDrivers(ctx, chunk, driverName)
 	if err != nil {
 		logger.Error(err, "Driver resolution failed during retry", "group", target.GroupName)
 		completionTime := metav1.Now()
