@@ -46,7 +46,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	"github.com/soteria-project/soteria/internal/preflight"
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
 	"github.com/soteria-project/soteria/pkg/controller/drexecution"
 	"github.com/soteria-project/soteria/pkg/controller/drplan"
@@ -110,7 +109,6 @@ func TestMain(m *testing.M) {
 
 	testReg := newNoopRegistry()
 	testRegistry := testReg
-	scLister := &preflight.KubeStorageClassLister{Client: clientset.StorageV1()}
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -127,7 +125,6 @@ func TestMain(m *testing.M) {
 		NamespaceLookup: nsLookup,
 		Recorder:        eventRecorder,
 		Registry:        testRegistry,
-		SCLister:        scLister,
 		PVCResolver:     testPVCResolver,
 		DiskEnricher:    testDiskEnricher,
 	}).SetupWithManager(mgr); err != nil {

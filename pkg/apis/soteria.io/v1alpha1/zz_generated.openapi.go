@@ -1008,7 +1008,7 @@ func schema_pkg_apis_soteriaio_v1alpha1_PreflightVM(ref common.ReferenceCallback
 					},
 					"storageBackend": {
 						SchemaProps: spec.SchemaProps{
-							Description: "StorageBackend is the driver name resolved from PVC storage class (or \"unknown\").",
+							Description: "StorageBackend is the plan's declared VolumeReplicationDriver stamped on every VM.",
 							Default:     "",
 							Type:        []string{"string"},
 							Format:      "",

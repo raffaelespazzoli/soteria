@@ -16,7 +16,8 @@ limitations under the License.
 
 // health.go implements per-volume-group replication health polling for the
 // DRPlan controller (FR31/FR32). On each reconcile cycle the controller
-// resolves a storage driver and VolumeGroupID for every resolved VG, polls
+// resolves the storage driver from the plan's declared VolumeReplicationDriver
+// field, obtains a VolumeGroupID for every resolved VG, polls
 // GetReplicationStatus, and maps the result into VolumeGroupHealth entries
 // on DRPlanStatus. Health transitions emit Kubernetes events and a degraded
 // aggregate triggers shorter requeue intervals (30s vs 10min).
@@ -29,9 +30,7 @@ import (
 	"strings"
 	"time"
 
-	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
@@ -48,10 +47,11 @@ const (
 
 // pollReplicationHealth resolves a driver and VolumeGroupID for each VG in
 // the plan's waves, calls GetReplicationStatus, and returns per-VG health.
+// The driver is resolved from the plan's declared VolumeReplicationDriver field.
 // Errors are handled gracefully per-VG rather than failing the entire poll.
 func (r *DRPlanReconciler) pollReplicationHealth(
 	ctx context.Context,
-	_ *soteriav1alpha1.DRPlan,
+	driverName string,
 	waves []soteriav1alpha1.WaveInfo,
 ) []soteriav1alpha1.VolumeGroupHealth {
 	logger := log.FromContext(ctx)
@@ -64,7 +64,7 @@ func (r *DRPlanReconciler) pollReplicationHealth(
 	results := make([]soteriav1alpha1.VolumeGroupHealth, 0, totalVGs)
 	for _, wave := range waves {
 		for _, vg := range wave.Groups {
-			health := r.pollSingleVG(ctx, vg, now)
+			health := r.pollSingleVG(ctx, driverName, vg, now)
 			results = append(results, health)
 			logger.V(1).Info("Polled replication health",
 				"vg", vg.Name, "namespace", vg.Namespace,
@@ -78,12 +78,13 @@ func (r *DRPlanReconciler) pollReplicationHealth(
 // replication status, and maps the result to VolumeGroupHealth.
 func (r *DRPlanReconciler) pollSingleVG(
 	ctx context.Context,
+	driverName string,
 	vg soteriav1alpha1.VolumeGroupInfo,
 	now metav1.Time,
 ) soteriav1alpha1.VolumeGroupHealth {
 	logger := log.FromContext(ctx)
 
-	drv, fallback, err := r.resolveDriverForVG(ctx, vg)
+	drv, err := r.resolveDriverForVG(ctx, driverName)
 	if err != nil {
 		logger.V(1).Info("Could not resolve driver for volume group",
 			"vg", vg.Name, "error", err)
@@ -122,70 +123,16 @@ func (r *DRPlanReconciler) pollSingleVG(
 		}
 	}
 
-	h := mapReplicationStatus(vg, status, now)
-	if fallback {
-		h.Message = "no PVC storage class found, using fallback driver"
-	}
-	return h
+	return mapReplicationStatus(vg, status, now)
 }
 
-// resolveDriverForVG resolves the StorageProvider for a VG by iterating all
-// VM PVCs to find a storage class and looking up the driver in the registry.
-// Follows the same iteration pattern as WaveExecutor.resolveVGStorageClass:
-// walk every VM in the group, every PVC in that VM, and return the first
-// non-empty storage class match. All VMs in a VG share the same storage class
-// (validated upstream by ResolveVolumeGroups). The fallback return indicates
-// that no PVC storage class was found and the registry fallback was used.
+// resolveDriverForVG resolves the StorageProvider from the plan's declared
+// VolumeReplicationDriver field via the driver registry. The driver is always
+// known from the plan spec — no PVC → StorageClass → provisioner lookup needed.
 func (r *DRPlanReconciler) resolveDriverForVG(
-	ctx context.Context,
-	vg soteriav1alpha1.VolumeGroupInfo,
-) (drv drivers.StorageProvider, fallback bool, err error) {
-	if len(vg.VMNames) == 0 {
-		return nil, false, fmt.Errorf("volume group %q has no VMs", vg.Name)
-	}
-
-	if r.PVCResolver == nil {
-		d, e := r.Registry.GetDriver("")
-		return d, true, e
-	}
-
-	for _, vmName := range vg.VMNames {
-		pvcNames, pvcErr := r.PVCResolver.ResolvePVCNames(ctx, vmName, vg.Namespace)
-		if pvcErr != nil {
-			return nil, false, fmt.Errorf("resolving PVCs for VM %s/%s: %w", vg.Namespace, vmName, pvcErr)
-		}
-		for _, pvcName := range pvcNames {
-			pvc, pvcErr := r.getPVC(ctx, vg.Namespace, pvcName)
-			if pvcErr != nil {
-				return nil, false, fmt.Errorf("fetching PVC %s/%s: %w", vg.Namespace, pvcName, pvcErr)
-			}
-			scName := ""
-			if pvc.Spec.StorageClassName != nil {
-				scName = *pvc.Spec.StorageClassName
-			}
-			if scName != "" {
-				d, e := r.Registry.GetDriverForPVC(ctx, scName, r.SCLister)
-				return d, false, e
-			}
-		}
-	}
-
-	d, e := r.Registry.GetDriver("")
-	return d, true, e
-}
-
-// getPVC fetches a PVC by namespace/name using the controller-runtime client.
-func (r *DRPlanReconciler) getPVC(
-	ctx context.Context, namespace, name string,
-) (*corev1.PersistentVolumeClaim, error) {
-	var pvc corev1.PersistentVolumeClaim
-	if err := r.Get(ctx, types.NamespacedName{
-		Namespace: namespace,
-		Name:      name,
-	}, &pvc); err != nil {
-		return nil, err
-	}
-	return &pvc, nil
+	_ context.Context, driverName string,
+) (drivers.StorageProvider, error) {
+	return r.Registry.GetDriver(driverName)
 }
 
 // resolveVolumeGroupID obtains the driver-level VolumeGroupID via the

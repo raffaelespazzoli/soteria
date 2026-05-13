@@ -1,6 +1,6 @@
 # Story 11.4: Health Monitoring Resolves Driver from Plan Spec
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -46,25 +46,25 @@ This story simplifies `resolveDriverForVG` and removes `PVCResolver` and `SCList
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Simplify resolveDriverForVG (AC: #1, #6)
-  - [ ] 1.1 Change `resolveDriverForVG` to accept a `driverName string` parameter
-  - [ ] 1.2 Replace PVC → SC → provisioner iteration with `r.Registry.GetDriver(driverName)`
-  - [ ] 1.3 Remove fallback return value — the driver is always known
+- [x] Task 1: Simplify resolveDriverForVG (AC: #1, #6)
+  - [x] 1.1 Change `resolveDriverForVG` to accept a `driverName string` parameter
+  - [x] 1.2 Replace PVC → SC → provisioner iteration with `r.Registry.GetDriver(driverName)`
+  - [x] 1.3 Remove fallback return value — the driver is always known
 
-- [ ] Task 2: Update pollSingleVG and pollReplicationHealth (AC: #2, #9)
-  - [ ] 2.1 Thread the plan's `VolumeReplicationDriver` through `pollReplicationHealth` → `pollSingleVG` → `resolveDriverForVG`
-  - [ ] 2.2 Update `pollReplicationHealth` signature to accept `driverName string` or the full `DRPlan`
+- [x] Task 2: Update pollSingleVG and pollReplicationHealth (AC: #2, #9)
+  - [x] 2.1 Thread the plan's `VolumeReplicationDriver` through `pollReplicationHealth` → `pollSingleVG` → `resolveDriverForVG`
+  - [x] 2.2 Update `pollReplicationHealth` signature to accept `driverName string` or the full `DRPlan`
 
-- [ ] Task 3: Clean up dependencies (AC: #3, #4, #7)
-  - [ ] 3.1 Remove PVC/SC resolution code from `resolveDriverForVG`
-  - [ ] 3.2 Evaluate if `PVCResolver` and `SCLister` are still needed on `DRPlanReconciler` for other purposes
-  - [ ] 3.3 Evaluate if `getPVC` helper is still needed; delete if orphaned
+- [x] Task 3: Clean up dependencies (AC: #3, #4, #7)
+  - [x] 3.1 Remove PVC/SC resolution code from `resolveDriverForVG`
+  - [x] 3.2 Evaluate if `PVCResolver` and `SCLister` are still needed on `DRPlanReconciler` for other purposes
+  - [x] 3.3 Evaluate if `getPVC` helper is still needed; delete if orphaned
 
-- [ ] Task 4: Update tests (AC: #8)
-  - [ ] 4.1 Update `pkg/controller/drplan/health_test.go` — remove SC/PVC mocking in driver resolution tests
-  - [ ] 4.2 Add test: verify `resolveDriverForVG` uses the declared driver name
-  - [ ] 4.3 Run `make test` — all tests pass
-  - [ ] 4.4 Run `make lint-fix && make lint` — zero lint issues
+- [x] Task 4: Update tests (AC: #8)
+  - [x] 4.1 Update `pkg/controller/drplan/health_test.go` — remove SC/PVC mocking in driver resolution tests
+  - [x] 4.2 Add test: verify `resolveDriverForVG` uses the declared driver name
+  - [x] 4.3 Run `make test` — all tests pass
+  - [x] 4.4 Run `make lint-fix && make lint` — zero new lint issues (3 pre-existing issues in unrelated files)
 
 ## Dev Notes
 
@@ -122,3 +122,7 @@ func (r *DRPlanReconciler) resolveDriverForVG(
 make test                 # All unit tests
 make lint-fix && make lint # Code style
 ```
+
+### Review Findings
+
+- [x] [Review][Patch] Unknown-driver tests do not match production registry behavior [`pkg/controller/drplan/health_test.go`] — Added comments clarifying that these tests intentionally use an empty registry (no fallback) to exercise the error-handling path, which diverges from production wiring where the noop fallback would mask the error.

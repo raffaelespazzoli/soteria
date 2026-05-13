@@ -45,15 +45,6 @@ func (m mockPVCResolver) ResolvePVCNames(_ context.Context, _, _ string) ([]stri
 	return nil, nil
 }
 
-// mockSCLister returns a fixed provisioner for any storage class name.
-type mockSCLister struct {
-	provisioner string
-}
-
-func (m *mockSCLister) GetProvisioner(_ context.Context, _ string) (string, error) {
-	return m.provisioner, nil
-}
-
 func newHealthTestReconciler(
 	objs []client.Object,
 	discoverer engine.VMDiscoverer,
@@ -73,7 +64,6 @@ func newHealthTestReconciler(
 		NamespaceLookup: &mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{}},
 		Recorder:        events.NewFakeRecorder(10),
 		Registry:        registry,
-		SCLister:        &mockSCLister{provisioner: noop.ProvisionerName},
 		PVCResolver:     mockPVCResolver{},
 	}, fakeClient
 }
@@ -93,7 +83,7 @@ func TestPollReplicationHealth_HealthyVG(t *testing.T) {
 	})
 
 	registry := drivers.NewRegistry()
-	registry.SetFallbackDriver(func() drivers.StorageProvider { return fakeDriver })
+	registry.RegisterDriver(noop.PlanDriverName, func() drivers.StorageProvider { return fakeDriver })
 
 	plan := newTestPlan()
 	vms := []engine.VMReference{
@@ -154,7 +144,7 @@ func TestPollReplicationHealth_SyncingVG(t *testing.T) {
 	})
 
 	registry := drivers.NewRegistry()
-	registry.SetFallbackDriver(func() drivers.StorageProvider { return fakeDriver })
+	registry.RegisterDriver(noop.PlanDriverName, func() drivers.StorageProvider { return fakeDriver })
 
 	plan := newTestPlan()
 	vms := []engine.VMReference{
@@ -316,7 +306,7 @@ func TestReconcile_DegradedHealth_ShorterRequeue(t *testing.T) {
 	})
 
 	registry := drivers.NewRegistry()
-	registry.SetFallbackDriver(func() drivers.StorageProvider { return fakeDriver })
+	registry.RegisterDriver(noop.PlanDriverName, func() drivers.StorageProvider { return fakeDriver })
 
 	plan := newTestPlan()
 	vms := []engine.VMReference{
@@ -363,7 +353,7 @@ func TestReconcile_DriverError_ErrorHealth(t *testing.T) {
 	})
 
 	registry := drivers.NewRegistry()
-	registry.SetFallbackDriver(func() drivers.StorageProvider { return fakeDriver })
+	registry.RegisterDriver(noop.PlanDriverName, func() drivers.StorageProvider { return fakeDriver })
 
 	plan := newTestPlan()
 	vms := []engine.VMReference{
@@ -430,8 +420,7 @@ func TestReconcile_RegistryNil_NoHealthFields(t *testing.T) {
 
 func TestReconcile_ActiveDRExecution_SkipsPolling(t *testing.T) {
 	registry := drivers.NewRegistry()
-	registry.RegisterDriver(noop.ProvisionerName, func() drivers.StorageProvider { return noop.New() })
-	registry.SetFallbackDriver(func() drivers.StorageProvider { return noop.New() })
+	registry.RegisterDriver(noop.PlanDriverName, func() drivers.StorageProvider { return noop.New() })
 
 	plan := newTestPlan()
 
@@ -483,7 +472,7 @@ func TestReconcile_NoDRExecution_PollsHealth(t *testing.T) {
 	})
 
 	registry := drivers.NewRegistry()
-	registry.SetFallbackDriver(func() drivers.StorageProvider { return fakeDriver })
+	registry.RegisterDriver(noop.PlanDriverName, func() drivers.StorageProvider { return fakeDriver })
 
 	plan := newTestPlan()
 
@@ -524,7 +513,7 @@ func TestReconcile_TerminalDRExecution_PollsHealth(t *testing.T) {
 	})
 
 	registry := drivers.NewRegistry()
-	registry.SetFallbackDriver(func() drivers.StorageProvider { return fakeDriver })
+	registry.RegisterDriver(noop.PlanDriverName, func() drivers.StorageProvider { return fakeDriver })
 
 	plan := newTestPlan()
 
@@ -566,6 +555,40 @@ func TestReconcile_TerminalDRExecution_PollsHealth(t *testing.T) {
 	}
 }
 
+func TestResolveDriverForVG_UsesDeclaredDriverName(t *testing.T) {
+	fakeDriver := fakedrv.New()
+	registry := drivers.NewRegistry()
+	registry.RegisterDriver(noop.PlanDriverName, func() drivers.StorageProvider { return fakeDriver })
+
+	r := &DRPlanReconciler{Registry: registry}
+
+	drv, err := r.resolveDriverForVG(context.Background(), noop.PlanDriverName)
+	if err != nil {
+		t.Fatalf("resolveDriverForVG() error: %v", err)
+	}
+	if drv != fakeDriver {
+		t.Error("Expected the driver registered under the plan-level name")
+	}
+}
+
+// Uses an empty registry (no fallback) to verify the error-handling path.
+// Production wiring via drivers/all sets a noop fallback, so this path only
+// fires if a future driver is registered without a fallback.
+func TestResolveDriverForVG_UnknownDriver_ReturnsError(t *testing.T) {
+	registry := drivers.NewRegistry()
+
+	r := &DRPlanReconciler{Registry: registry}
+
+	_, err := r.resolveDriverForVG(context.Background(), "nonexistent-driver")
+	if err == nil {
+		t.Fatal("Expected error for unregistered driver name")
+	}
+}
+
+// Uses an empty registry (no fallback) to exercise the graceful-degradation
+// path where driver resolution fails. In production the noop fallback would
+// mask this; the test validates that health reports Unknown rather than
+// crashing when the registry cannot resolve the plan's driver.
 func TestReconcile_DriverNotFound_UnknownHealth(t *testing.T) {
 	registry := drivers.NewRegistry()
 

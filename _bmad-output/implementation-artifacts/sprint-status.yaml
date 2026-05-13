@@ -328,7 +328,7 @@ development_status:
   11-1-add-volumereplicationdriver-to-drplanspec: done
   11-2-executor-resolves-driver-from-plan-spec: done
   11-3-preflight-reports-declared-driver: done
-  11-4-health-monitoring-resolves-driver-from-plan-spec: ready-for-dev
+  11-4-health-monitoring-resolves-driver-from-plan-spec: done
   11-5-console-ui-displays-volume-replication-driver: ready-for-dev
   epic-11-retrospective: optional
 

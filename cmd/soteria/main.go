@@ -48,7 +48,6 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	"github.com/soteria-project/soteria/internal/preflight"
 	"github.com/soteria-project/soteria/pkg/admission"
 	soteriainstall "github.com/soteria-project/soteria/pkg/apis/soteria.io/install"
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
@@ -254,7 +253,6 @@ func main() {
 
 	vmDiscoverer := engine.NewTypedVMDiscoverer(mgr.GetClient())
 	nsLookup := &engine.DefaultNamespaceLookup{Client: clientset.CoreV1()}
-	scLister := &preflight.KubeStorageClassLister{Client: clientset.StorageV1()}
 
 	var pvcResolver engine.PVCResolver
 	var diskEnricher engine.DiskEnricher
@@ -279,7 +277,6 @@ func main() {
 		NamespaceLookup: nsLookup,
 		Recorder:        eventRecorder,
 		Registry:        drivers.DefaultRegistry,
-		SCLister:        scLister,
 		PVCResolver:     pvcResolver,
 		DiskEnricher:    diskEnricher,
 		LocalSite:       siteName,

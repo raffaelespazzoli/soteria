@@ -101,7 +101,6 @@ const (
 // +kubebuilder:rbac:groups=kubevirt.io,resources=virtualmachines,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch
-// +kubebuilder:rbac:groups=storage.k8s.io,resources=storageclasses,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 
@@ -114,10 +113,10 @@ type DRPlanReconciler struct {
 	VMDiscoverer    engine.VMDiscoverer
 	NamespaceLookup engine.NamespaceLookup
 	Recorder        events.EventRecorder
-	// Registry resolves CSI provisioner → StorageProvider for health polling.
-	// When nil, replication health monitoring is skipped (backward compat).
+	// Registry resolves the plan's declared VolumeReplicationDriver to a
+	// StorageProvider for health polling. When nil, replication health
+	// monitoring is skipped (backward compat).
 	Registry    *drivers.Registry
-	SCLister    drivers.StorageClassLister
 	PVCResolver engine.PVCResolver
 	// DiskEnricher resolves per-disk PVC topology for discovered VMs.
 	// When nil, disk enrichment is skipped (backward compat).
@@ -392,7 +391,7 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	// driver interactions during execution).
 	var replicationHealth []soteriav1alpha1.VolumeGroupHealth
 	if r.Registry != nil && !r.hasActiveExecution(ctx, plan.Name) {
-		replicationHealth = r.pollReplicationHealth(ctx, &plan, waves)
+		replicationHealth = r.pollReplicationHealth(ctx, plan.Spec.VolumeReplicationDriver, waves)
 		logger.V(1).Info("Replication health polled",
 			"totalVGs", len(replicationHealth))
 	}
