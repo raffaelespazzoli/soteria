@@ -21,7 +21,7 @@ function makePlanWithSiteDiscovery(
       maxConcurrentFailovers: 1,
       primarySite: 'dc-west',
       secondarySite: 'dc-east',
-      volumeReplicationDriver: 'noop',
+      volumeReplicationDriver: { type: 'noop' },
     },
     status: {
       phase: 'SteadyState',

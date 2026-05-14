@@ -50,7 +50,7 @@ func createDRPlanWithThrottle(t *testing.T, ctx context.Context, name string, ma
 			Name: name,
 		},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			VolumeReplicationDriver: "noop",
+			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
 			PrimarySite:             "dc-west",
 			SecondarySite:           "dc-east",
 			MaxConcurrentFailovers:  maxConcurrent,

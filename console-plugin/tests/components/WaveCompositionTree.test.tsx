@@ -23,7 +23,7 @@ const mockPlanWithWaves: DRPlan = {
     maxConcurrentFailovers: 4,
     primarySite: 'dc1-prod',
     secondarySite: 'dc2-prod',
-    volumeReplicationDriver: 'noop',
+    volumeReplicationDriver: { type: 'noop' },
   },
   status: {
     phase: 'SteadyState',
@@ -134,7 +134,7 @@ const mockPlanNoWaves: DRPlan = {
     maxConcurrentFailovers: 2,
     primarySite: 'dc1',
     secondarySite: 'dc2',
-    volumeReplicationDriver: 'noop',
+    volumeReplicationDriver: { type: 'noop' },
   },
   status: { phase: 'SteadyState', waves: [] },
 };

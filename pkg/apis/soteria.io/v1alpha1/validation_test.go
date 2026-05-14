@@ -73,7 +73,7 @@ func TestValidateDRPlan(t *testing.T) {
 			name: "valid plan",
 			plan: &DRPlan{
 				Spec: DRPlanSpec{
-					VolumeReplicationDriver: "noop",
+					VolumeReplicationDriver: VolumeReplicationDriverConfig{Type: "noop"},
 					MaxConcurrentFailovers:  4,
 					PrimarySite:             "dc-west",
 					SecondarySite:           "dc-east",
@@ -85,7 +85,7 @@ func TestValidateDRPlan(t *testing.T) {
 			name: "maxConcurrentFailovers zero",
 			plan: &DRPlan{
 				Spec: DRPlanSpec{
-					VolumeReplicationDriver: "noop",
+					VolumeReplicationDriver: VolumeReplicationDriverConfig{Type: "noop"},
 					MaxConcurrentFailovers:  0,
 					PrimarySite:             "dc-west",
 					SecondarySite:           "dc-east",
@@ -98,7 +98,7 @@ func TestValidateDRPlan(t *testing.T) {
 			name: "maxConcurrentFailovers negative",
 			plan: &DRPlan{
 				Spec: DRPlanSpec{
-					VolumeReplicationDriver: "noop",
+					VolumeReplicationDriver: VolumeReplicationDriverConfig{Type: "noop"},
 					MaxConcurrentFailovers:  -1,
 					PrimarySite:             "dc-west",
 					SecondarySite:           "dc-east",
@@ -111,7 +111,7 @@ func TestValidateDRPlan(t *testing.T) {
 			name: "minimal valid plan",
 			plan: &DRPlan{
 				Spec: DRPlanSpec{
-					VolumeReplicationDriver: "noop",
+					VolumeReplicationDriver: VolumeReplicationDriverConfig{Type: "noop"},
 					MaxConcurrentFailovers:  2,
 					PrimarySite:             "dc-west",
 					SecondarySite:           "dc-east",
@@ -123,7 +123,7 @@ func TestValidateDRPlan(t *testing.T) {
 			name: "missing primarySite",
 			plan: &DRPlan{
 				Spec: DRPlanSpec{
-					VolumeReplicationDriver: "noop",
+					VolumeReplicationDriver: VolumeReplicationDriverConfig{Type: "noop"},
 					MaxConcurrentFailovers:  4,
 					PrimarySite:             "",
 					SecondarySite:           "dc-east",
@@ -136,7 +136,7 @@ func TestValidateDRPlan(t *testing.T) {
 			name: "missing secondarySite",
 			plan: &DRPlan{
 				Spec: DRPlanSpec{
-					VolumeReplicationDriver: "noop",
+					VolumeReplicationDriver: VolumeReplicationDriverConfig{Type: "noop"},
 					MaxConcurrentFailovers:  4,
 					PrimarySite:             "dc-west",
 					SecondarySite:           "",
@@ -149,7 +149,7 @@ func TestValidateDRPlan(t *testing.T) {
 			name: "primarySite equals secondarySite",
 			plan: &DRPlan{
 				Spec: DRPlanSpec{
-					VolumeReplicationDriver: "noop",
+					VolumeReplicationDriver: VolumeReplicationDriverConfig{Type: "noop"},
 					MaxConcurrentFailovers:  4,
 					PrimarySite:             "dc-west",
 					SecondarySite:           "dc-west",
@@ -325,7 +325,7 @@ func TestValidateDRExecutionUpdate(t *testing.T) {
 func TestValidateDRPlanUpdate(t *testing.T) {
 	validPlan := &DRPlan{
 		Spec: DRPlanSpec{
-			VolumeReplicationDriver: "noop",
+			VolumeReplicationDriver: VolumeReplicationDriverConfig{Type: "noop"},
 			MaxConcurrentFailovers:  4,
 			PrimarySite:             "dc-west",
 			SecondarySite:           "dc-east",
@@ -333,7 +333,7 @@ func TestValidateDRPlanUpdate(t *testing.T) {
 	}
 	invalidPlan := &DRPlan{
 		Spec: DRPlanSpec{
-			VolumeReplicationDriver: "noop",
+			VolumeReplicationDriver: VolumeReplicationDriverConfig{Type: "noop"},
 			MaxConcurrentFailovers:  0,
 			PrimarySite:             "dc-west",
 			SecondarySite:           "dc-east",
@@ -357,7 +357,7 @@ func TestValidateDRPlanUpdate(t *testing.T) {
 	t.Run("primarySite changed", func(t *testing.T) {
 		changed := &DRPlan{
 			Spec: DRPlanSpec{
-				VolumeReplicationDriver: "noop",
+				VolumeReplicationDriver: VolumeReplicationDriverConfig{Type: "noop"},
 				MaxConcurrentFailovers:  4,
 				PrimarySite:             "dc-north",
 				SecondarySite:           "dc-east",
@@ -375,7 +375,7 @@ func TestValidateDRPlanUpdate(t *testing.T) {
 	t.Run("secondarySite changed", func(t *testing.T) {
 		changed := &DRPlan{
 			Spec: DRPlanSpec{
-				VolumeReplicationDriver: "noop",
+				VolumeReplicationDriver: VolumeReplicationDriverConfig{Type: "noop"},
 				MaxConcurrentFailovers:  4,
 				PrimarySite:             "dc-west",
 				SecondarySite:           "dc-south",
@@ -393,7 +393,7 @@ func TestValidateDRPlanUpdate(t *testing.T) {
 	t.Run("both sites changed", func(t *testing.T) {
 		changed := &DRPlan{
 			Spec: DRPlanSpec{
-				VolumeReplicationDriver: "noop",
+				VolumeReplicationDriver: VolumeReplicationDriverConfig{Type: "noop"},
 				MaxConcurrentFailovers:  4,
 				PrimarySite:             "dc-north",
 				SecondarySite:           "dc-south",
@@ -408,7 +408,7 @@ func TestValidateDRPlanUpdate(t *testing.T) {
 	t.Run("volumeReplicationDriver changed", func(t *testing.T) {
 		changed := &DRPlan{
 			Spec: DRPlanSpec{
-				VolumeReplicationDriver: "other",
+				VolumeReplicationDriver: VolumeReplicationDriverConfig{Type: "other"},
 				MaxConcurrentFailovers:  4,
 				PrimarySite:             "dc-west",
 				SecondarySite:           "dc-east",
@@ -418,9 +418,13 @@ func TestValidateDRPlanUpdate(t *testing.T) {
 		if len(errs) != 2 {
 			t.Fatalf("expected 2 errors (unsupported + immutable), got %d: %v", len(errs), errs)
 		}
+		wantFields := map[string]bool{
+			"spec.volumeReplicationDriver.type": true,
+			"spec.volumeReplicationDriver":      true,
+		}
 		for _, e := range errs {
-			if e.Field != "spec.volumeReplicationDriver" {
-				t.Errorf("error.Field = %q, want %q", e.Field, "spec.volumeReplicationDriver")
+			if !wantFields[e.Field] {
+				t.Errorf("unexpected error.Field = %q", e.Field)
 			}
 		}
 	})
@@ -428,7 +432,7 @@ func TestValidateDRPlanUpdate(t *testing.T) {
 	t.Run("volumeReplicationDriver unchanged", func(t *testing.T) {
 		samePlan := &DRPlan{
 			Spec: DRPlanSpec{
-				VolumeReplicationDriver: "noop",
+				VolumeReplicationDriver: VolumeReplicationDriverConfig{Type: "noop"},
 				MaxConcurrentFailovers:  8,
 				PrimarySite:             "dc-west",
 				SecondarySite:           "dc-east",
@@ -444,7 +448,7 @@ func TestValidateDRPlanUpdate(t *testing.T) {
 func TestValidateDRPlan_VolumeReplicationDriver_Required(t *testing.T) {
 	plan := &DRPlan{
 		Spec: DRPlanSpec{
-			VolumeReplicationDriver: "",
+			VolumeReplicationDriver: VolumeReplicationDriverConfig{Type: ""},
 			MaxConcurrentFailovers:  4,
 			PrimarySite:             "dc-west",
 			SecondarySite:           "dc-east",
@@ -454,15 +458,15 @@ func TestValidateDRPlan_VolumeReplicationDriver_Required(t *testing.T) {
 	if len(errs) != 1 {
 		t.Fatalf("expected 1 error, got %d: %v", len(errs), errs)
 	}
-	if errs[0].Field != "spec.volumeReplicationDriver" {
-		t.Errorf("error.Field = %q, want %q", errs[0].Field, "spec.volumeReplicationDriver")
+	if errs[0].Field != "spec.volumeReplicationDriver.type" {
+		t.Errorf("error.Field = %q, want %q", errs[0].Field, "spec.volumeReplicationDriver.type")
 	}
 }
 
 func TestValidateDRPlan_VolumeReplicationDriver_InvalidValue(t *testing.T) {
 	plan := &DRPlan{
 		Spec: DRPlanSpec{
-			VolumeReplicationDriver: "not-a-real-driver",
+			VolumeReplicationDriver: VolumeReplicationDriverConfig{Type: "not-a-real-driver"},
 			MaxConcurrentFailovers:  4,
 			PrimarySite:             "dc-west",
 			SecondarySite:           "dc-east",
@@ -472,7 +476,7 @@ func TestValidateDRPlan_VolumeReplicationDriver_InvalidValue(t *testing.T) {
 	if len(errs) != 1 {
 		t.Fatalf("expected 1 error, got %d: %v", len(errs), errs)
 	}
-	if errs[0].Field != "spec.volumeReplicationDriver" {
-		t.Errorf("error.Field = %q, want %q", errs[0].Field, "spec.volumeReplicationDriver")
+	if errs[0].Field != "spec.volumeReplicationDriver.type" {
+		t.Errorf("error.Field = %q, want %q", errs[0].Field, "spec.volumeReplicationDriver.type")
 	}
 }

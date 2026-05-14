@@ -123,7 +123,7 @@ func newWatchDRPlan(name string) *v1alpha1.DRPlan {
 			UID:  types.UID(gocql.TimeUUID().String()),
 		},
 		Spec: v1alpha1.DRPlanSpec{
-			VolumeReplicationDriver: "noop",
+			VolumeReplicationDriver: v1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
 			PrimarySite:             "dc-west",
 			SecondarySite:           "dc-east",
 			MaxConcurrentFailovers:  2,

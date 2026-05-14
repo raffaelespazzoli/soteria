@@ -391,7 +391,7 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	// driver interactions during execution).
 	var replicationHealth []soteriav1alpha1.VolumeGroupHealth
 	if r.Registry != nil && !r.hasActiveExecution(ctx, plan.Name) {
-		replicationHealth = r.pollReplicationHealth(ctx, plan.Spec.VolumeReplicationDriver, waves)
+		replicationHealth = r.pollReplicationHealth(ctx, plan.Spec.VolumeReplicationDriver.Type, waves)
 		logger.V(1).Info("Replication health polled",
 			"totalVGs", len(replicationHealth))
 	}
@@ -1266,7 +1266,7 @@ func (r *DRPlanReconciler) composePreflightReport(
 		DiscoveryResult:         discovery,
 		ConsistencyResult:       consistency,
 		ChunkResult:             chunks,
-		VolumeReplicationDriver: plan.Spec.VolumeReplicationDriver,
+		VolumeReplicationDriver: plan.Spec.VolumeReplicationDriver.Type,
 		Waves:                   waves,
 		LocalSite:               r.LocalSite,
 		PrimarySiteDiscovery:    plan.Status.PrimarySiteDiscovery,

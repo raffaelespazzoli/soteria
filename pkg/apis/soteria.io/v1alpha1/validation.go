@@ -50,15 +50,16 @@ func ValidateDRPlan(plan *DRPlan) field.ErrorList {
 		))
 	}
 
-	switch plan.Spec.VolumeReplicationDriver {
+	drvPath := specPath.Child("volumeReplicationDriver")
+	switch plan.Spec.VolumeReplicationDriver.Type {
 	case "":
-		allErrs = append(allErrs, field.Required(specPath.Child("volumeReplicationDriver"), ""))
+		allErrs = append(allErrs, field.Required(drvPath.Child("type"), ""))
 	case "noop":
 		// valid
 	default:
 		allErrs = append(allErrs, field.NotSupported(
-			specPath.Child("volumeReplicationDriver"),
-			plan.Spec.VolumeReplicationDriver,
+			drvPath.Child("type"),
+			plan.Spec.VolumeReplicationDriver.Type,
 			[]string{"noop"},
 		))
 	}

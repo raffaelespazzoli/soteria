@@ -41,7 +41,7 @@ func newReprotectInput(vgs []VolumeGroupEntry) ReprotectInput {
 		Plan: &soteriav1alpha1.DRPlan{
 			ObjectMeta: metav1.ObjectMeta{Name: "plan-1"},
 			Spec: soteriav1alpha1.DRPlanSpec{
-				VolumeReplicationDriver: "noop",
+				VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
 				PrimarySite:             "dc-west",
 				SecondarySite:           "dc-east",
 			},

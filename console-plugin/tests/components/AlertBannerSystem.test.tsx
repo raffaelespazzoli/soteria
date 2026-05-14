@@ -19,7 +19,7 @@ function makePlan(
       maxConcurrentFailovers: 1,
       primarySite: 'site-a',
       secondarySite: 'site-b',
-      volumeReplicationDriver: 'noop',
+      volumeReplicationDriver: { type: 'noop' },
     },
     status: {
       phase: 'SteadyState',

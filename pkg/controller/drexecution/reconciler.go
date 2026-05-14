@@ -738,7 +738,7 @@ func (r *DRExecutionReconciler) buildVolumeGroupEntries(
 			}
 			seen[key] = true
 
-			drv, err := r.WaveExecutor.ResolveVGDriver(ctx, plan.Spec.VolumeReplicationDriver)
+			drv, err := r.WaveExecutor.ResolveVGDriver(ctx, plan.Spec.VolumeReplicationDriver.Type)
 			if err != nil {
 				return nil, fmt.Errorf("resolving driver for volume group %s: %w", vg.Name, err)
 			}

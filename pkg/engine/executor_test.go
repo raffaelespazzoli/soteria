@@ -147,7 +147,7 @@ func newTestPlan(name string) *soteriav1alpha1.DRPlan {
 	return &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: name},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			VolumeReplicationDriver: "noop",
+			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
 			MaxConcurrentFailovers:  4,
 			PrimarySite:             "dc-west",
 			SecondarySite:           "dc-east",
@@ -266,16 +266,18 @@ func TestWaveExecutor_Execute_ResolvesNamedDriver(t *testing.T) {
 	reg.RegisterDriver("custom-repl", func() drivers.StorageProvider { return noop.New() })
 
 	plan := newTestPlan("plan-drv")
-	plan.Spec.VolumeReplicationDriver = "custom-repl"
+	plan.Spec.VolumeReplicationDriver = soteriav1alpha1.VolumeReplicationDriverConfig{Type: "custom-repl"}
 	exec := newTestExecution("exec-drv", "plan-drv")
 	vms := makeVMs([]string{"vm-1"}, "alpha")
 	cl := newFakeClient(vms, plan, exec)
 
 	executor := &WaveExecutor{
-		Client:          cl,
-		VMDiscoverer:    &mockVMDiscoverer{vms: vms},
-		NamespaceLookup: &mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{"ns-1": soteriav1alpha1.ConsistencyLevelVM}},
-		Registry:        reg,
+		Client:       cl,
+		VMDiscoverer: &mockVMDiscoverer{vms: vms},
+		NamespaceLookup: &mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{
+			"ns-1": soteriav1alpha1.ConsistencyLevelVM,
+		}},
+		Registry: reg,
 	}
 	handler := &mockHandler{}
 
@@ -299,16 +301,18 @@ func TestWaveExecutor_Execute_FailsForUnregisteredDriver(t *testing.T) {
 	reg := drivers.NewRegistry()
 
 	plan := newTestPlan("plan-bad")
-	plan.Spec.VolumeReplicationDriver = "nonexistent-driver"
+	plan.Spec.VolumeReplicationDriver = soteriav1alpha1.VolumeReplicationDriverConfig{Type: "nonexistent-driver"}
 	exec := newTestExecution("exec-bad", "plan-bad")
 	vms := makeVMs([]string{"vm-1"}, "alpha")
 	cl := newFakeClient(vms, plan, exec)
 
 	executor := &WaveExecutor{
-		Client:          cl,
-		VMDiscoverer:    &mockVMDiscoverer{vms: vms},
-		NamespaceLookup: &mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{"ns-1": soteriav1alpha1.ConsistencyLevelVM}},
-		Registry:        reg,
+		Client:       cl,
+		VMDiscoverer: &mockVMDiscoverer{vms: vms},
+		NamespaceLookup: &mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{
+			"ns-1": soteriav1alpha1.ConsistencyLevelVM,
+		}},
+		Registry: reg,
 	}
 
 	_ = executor.Execute(context.Background(), ExecuteInput{

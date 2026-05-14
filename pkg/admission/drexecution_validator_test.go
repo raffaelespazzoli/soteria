@@ -105,7 +105,7 @@ func TestDRExecutionValidator_ValidCREATE_Accepted(t *testing.T) {
 					"my-plan": {
 						ObjectMeta: metav1.ObjectMeta{Name: "my-plan"},
 						Spec: soteriav1alpha1.DRPlanSpec{
-							VolumeReplicationDriver: "noop",
+							VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
 							PrimarySite:             "dc-west",
 							SecondarySite:           "dc-east",
 						},
@@ -209,7 +209,7 @@ func TestDRExecutionValidator_PlanInWrongPhase_Denied(t *testing.T) {
 			"my-plan": {
 				ObjectMeta: metav1.ObjectMeta{Name: "my-plan"},
 				Spec: soteriav1alpha1.DRPlanSpec{
-					VolumeReplicationDriver: "noop",
+					VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
 					PrimarySite:             "dc-west",
 					SecondarySite:           "dc-east",
 				},
@@ -256,7 +256,7 @@ func TestDRExecutionValidator_ConcurrencyDelegatedToPlugin(t *testing.T) {
 			"my-plan": {
 				ObjectMeta: metav1.ObjectMeta{Name: "my-plan"},
 				Spec: soteriav1alpha1.DRPlanSpec{
-					VolumeReplicationDriver: "noop",
+					VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
 					PrimarySite:             "dc-west",
 					SecondarySite:           "dc-east",
 				},
@@ -289,7 +289,7 @@ func TestDRExecutionValidator_NoConcurrencyCheck_Allowed(t *testing.T) {
 			"my-plan": {
 				ObjectMeta: metav1.ObjectMeta{Name: "my-plan"},
 				Spec: soteriav1alpha1.DRPlanSpec{
-					VolumeReplicationDriver: "noop",
+					VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
 					PrimarySite:             "dc-west",
 					SecondarySite:           "dc-east",
 				},
@@ -338,7 +338,7 @@ func TestDRExecutionValidator_RejectWhenSitesOutOfSync(t *testing.T) {
 			"my-plan": {
 				ObjectMeta: metav1.ObjectMeta{Name: "my-plan"},
 				Spec: soteriav1alpha1.DRPlanSpec{
-					VolumeReplicationDriver: "noop",
+					VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
 					PrimarySite:             "dc-west",
 					SecondarySite:           "dc-east",
 				},
@@ -387,7 +387,7 @@ func TestDRExecutionValidator_AllowWhenSitesInSync(t *testing.T) {
 			"my-plan": {
 				ObjectMeta: metav1.ObjectMeta{Name: "my-plan"},
 				Spec: soteriav1alpha1.DRPlanSpec{
-					VolumeReplicationDriver: "noop",
+					VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
 					PrimarySite:             "dc-west",
 					SecondarySite:           "dc-east",
 				},
@@ -453,7 +453,7 @@ func TestDRExecutionValidator_DenyWhenDisksInconsistent(t *testing.T) {
 					"my-plan": {
 						ObjectMeta: metav1.ObjectMeta{Name: "my-plan"},
 						Spec: soteriav1alpha1.DRPlanSpec{
-							VolumeReplicationDriver: "noop",
+							VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
 							PrimarySite:             "dc-west",
 							SecondarySite:           "dc-east",
 						},
@@ -512,7 +512,7 @@ func TestDRExecutionValidator_AllowWhenDisksConsistent(t *testing.T) {
 			"my-plan": {
 				ObjectMeta: metav1.ObjectMeta{Name: "my-plan"},
 				Spec: soteriav1alpha1.DRPlanSpec{
-					VolumeReplicationDriver: "noop",
+					VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
 					PrimarySite:             "dc-west",
 					SecondarySite:           "dc-east",
 				},
@@ -559,7 +559,7 @@ func TestDRExecutionValidator_RequiresBothSitesInSyncAndDisksConsistent(t *testi
 			"my-plan": {
 				ObjectMeta: metav1.ObjectMeta{Name: "my-plan"},
 				Spec: soteriav1alpha1.DRPlanSpec{
-					VolumeReplicationDriver: "noop",
+					VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
 					PrimarySite:             "dc-west",
 					SecondarySite:           "dc-east",
 				},

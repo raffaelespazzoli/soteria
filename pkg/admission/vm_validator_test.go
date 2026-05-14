@@ -56,7 +56,7 @@ func TestVMValidator_PlanExistence(t *testing.T) {
 	planERP := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "plan-erp"},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			VolumeReplicationDriver: "noop",
+			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
 			MaxConcurrentFailovers:  4,
 			PrimarySite:             "dc-west",
 			SecondarySite:           "dc-east",
@@ -155,7 +155,7 @@ func TestVMValidator_WaveConflict(t *testing.T) {
 	planERP := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "plan-erp"},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			VolumeReplicationDriver: "noop",
+			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
 			MaxConcurrentFailovers:  4,
 			PrimarySite:             "dc-west",
 			SecondarySite:           "dc-east",

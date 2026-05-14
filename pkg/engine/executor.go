@@ -230,7 +230,7 @@ func (e *WaveExecutor) Execute(ctx context.Context, input ExecuteInput) error {
 		return fmt.Errorf("writing initial wave status: %w", err)
 	}
 
-	driverName := plan.Spec.VolumeReplicationDriver
+	driverName := plan.Spec.VolumeReplicationDriver.Type
 	for i, wc := range chunkResult.Waves {
 		if ctx.Err() != nil {
 			logger.Info("Context cancelled, stopping execution")
@@ -314,7 +314,7 @@ func (e *WaveExecutor) ExecuteWaveHandler(
 		}
 	}
 	if len(chunks) > 0 {
-		e.executeWave(ctx, waveIdx, chunks, handler, exec, plan.Spec.VolumeReplicationDriver)
+		e.executeWave(ctx, waveIdx, chunks, handler, exec, plan.Spec.VolumeReplicationDriver.Type)
 	}
 }
 
@@ -330,7 +330,7 @@ func (e *WaveExecutor) ExecuteFromWave(
 	exec := input.Execution
 	plan := input.Plan
 
-	driverName := plan.Spec.VolumeReplicationDriver
+	driverName := plan.Spec.VolumeReplicationDriver.Type
 	for i := startWaveIndex; i < len(exec.Status.Waves); i++ {
 		if ctx.Err() != nil {
 			logger.Info("Context cancelled, stopping execution")
@@ -998,7 +998,7 @@ func (e *WaveExecutor) BuildExecutionGroups(
 	chunkInput := buildChunkInput(discovery, consistency, vms)
 	chunkResult := ChunkWaves(chunkInput, plan.Spec.MaxConcurrentFailovers)
 
-	driverName := plan.Spec.VolumeReplicationDriver
+	driverName := plan.Spec.VolumeReplicationDriver.Type
 	var groups []ExecutionGroup
 	for waveIdx, wc := range chunkResult.Waves {
 		for _, chunk := range wc.Chunks {
@@ -1154,7 +1154,7 @@ func (e *WaveExecutor) ExecuteRetry(ctx context.Context, input RetryInput) error
 	}
 	sort.Ints(waveIndices)
 
-	driverName := input.Plan.Spec.VolumeReplicationDriver
+	driverName := input.Plan.Spec.VolumeReplicationDriver.Type
 	for _, wi := range waveIndices {
 		if ctx.Err() != nil {
 			logger.Info("Context cancelled during retry, stopping")

@@ -72,7 +72,7 @@ func createDRPlan(t *testing.T, ctx context.Context, name string) *soteriav1alph
 			Name: name,
 		},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			VolumeReplicationDriver: "noop",
+			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
 			PrimarySite:             "dc-west",
 			SecondarySite:           "dc-east",
 			MaxConcurrentFailovers:  5,

@@ -10,7 +10,7 @@ function makePlan(overrides: Partial<DRPlan['status']> = {}): DRPlan {
       maxConcurrentFailovers: 4,
       primarySite: 'dc1-prod',
       secondarySite: 'dc2-prod',
-      volumeReplicationDriver: 'noop',
+      volumeReplicationDriver: { type: 'noop' },
     },
     status: {
       phase: 'SteadyState',

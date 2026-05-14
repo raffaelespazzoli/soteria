@@ -50,7 +50,7 @@ func createDRPlan(t *testing.T, ctx context.Context, client dynamic.Interface, n
 			"kind":       "DRPlan",
 			"metadata":   map[string]any{"name": name},
 			"spec": map[string]any{
-				"volumeReplicationDriver": "noop",
+				"volumeReplicationDriver": map[string]any{"type": "noop"},
 				"maxConcurrentFailovers":  int64(2),
 				"primarySite":             "dc-west",
 				"secondarySite":           "dc-east",
@@ -332,7 +332,7 @@ func TestAdmission_DRPlan_InvalidCreate_Rejected(t *testing.T) {
 			"kind":       "DRPlan",
 			"metadata":   map[string]any{"name": "admission-invalid-plan"},
 			"spec": map[string]any{
-				"volumeReplicationDriver": "noop",
+				"volumeReplicationDriver": map[string]any{"type": "noop"},
 				"maxConcurrentFailovers":  int64(0),
 				"primarySite":             "dc-west",
 				"secondarySite":           "dc-east",
@@ -375,5 +375,58 @@ func TestAdmission_DRPlan_ImmutableSiteUpdate_Rejected(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "primarySite") {
 		t.Errorf("Expected 'primarySite' in error, got: %v", err)
+	}
+}
+
+func TestAdmission_DRPlan_ImmutableDriverUpdate_Rejected(t *testing.T) {
+	client := newDynamicClientForAdmission(t)
+	ctx := context.Background()
+
+	planName := "admission-immut-driver"
+	createDRPlan(t, ctx, client, planName,
+		soteriav1alpha1.PhaseSteadyState, nil)
+	defer deleteDRPlan(t, ctx, client, planName)
+
+	got, err := client.Resource(drplanGVR()).Get(
+		ctx, planName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Get DRPlan failed: %v", err)
+	}
+
+	spec := got.Object["spec"].(map[string]any)
+	spec["volumeReplicationDriver"] = map[string]any{"type": "other"}
+
+	_, err = client.Resource(drplanGVR()).Update(
+		ctx, got, metav1.UpdateOptions{})
+	if err == nil {
+		t.Fatal("Expected update to be rejected when volumeReplicationDriver changes")
+	}
+	if !strings.Contains(err.Error(), "volumeReplicationDriver") {
+		t.Errorf("Expected 'volumeReplicationDriver' in error, got: %v", err)
+	}
+}
+
+func TestAdmission_DRPlan_ScalarDriverCreate_Rejected(t *testing.T) {
+	client := newDynamicClientForAdmission(t)
+	ctx := context.Background()
+
+	plan := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "soteria.io/v1alpha1",
+			"kind":       "DRPlan",
+			"metadata":   map[string]any{"name": "admission-scalar-driver"},
+			"spec": map[string]any{
+				"volumeReplicationDriver": "noop",
+				"maxConcurrentFailovers":  int64(2),
+				"primarySite":             "dc-west",
+				"secondarySite":           "dc-east",
+			},
+		},
+	}
+
+	_, err := client.Resource(drplanGVR()).Create(ctx, plan, metav1.CreateOptions{})
+	if err == nil {
+		defer deleteDRPlan(t, ctx, client, "admission-scalar-driver")
+		t.Fatal("Expected DRPlan to be rejected when volumeReplicationDriver is a scalar string")
 	}
 }

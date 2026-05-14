@@ -56,7 +56,7 @@ limitations under the License.
 //     after each group completes.
 //
 //     Driver resolution: the executor resolves the StorageProvider via
-//     Registry.GetDriver(plan.Spec.VolumeReplicationDriver), reading the
+//     Registry.GetDriver(plan.Spec.VolumeReplicationDriver.Type), reading the
 //     plan-level declared driver name rather than deriving it at runtime from
 //     PVC → StorageClass → provisioner lookups. This eliminates the SCLister
 //     dependency and all runtime Kubernetes API calls for driver resolution.

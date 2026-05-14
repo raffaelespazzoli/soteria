@@ -44,7 +44,7 @@ func newDRPlan(name string) *unstructured.Unstructured {
 			"kind":       "DRPlan",
 			"metadata":   map[string]any{"name": name},
 			"spec": map[string]any{
-				"volumeReplicationDriver": "noop",
+				"volumeReplicationDriver": map[string]any{"type": "noop"},
 				"maxConcurrentFailovers":  int64(2),
 			},
 		},

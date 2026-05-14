@@ -40,7 +40,7 @@ func TestDRExecutionReconciler_SuccessfulSetup(t *testing.T) {
 	plan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "exec-success-plan"},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			VolumeReplicationDriver: "noop",
+			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
 			PrimarySite:             "dc-west",
 			SecondarySite:           "dc-east",
 			MaxConcurrentFailovers:  4,
@@ -132,7 +132,7 @@ func TestDRExecutionReconciler_InvalidPhase(t *testing.T) {
 	plan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "exec-invalid-phase-plan"},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			VolumeReplicationDriver: "noop",
+			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
 			PrimarySite:             "dc-west",
 			SecondarySite:           "dc-east",
 			MaxConcurrentFailovers:  4,
@@ -192,7 +192,7 @@ func TestDRExecutionReconciler_IdempotentRereconcile(t *testing.T) {
 	plan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "exec-idempotent-plan"},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			VolumeReplicationDriver: "noop",
+			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
 			PrimarySite:             "dc-west",
 			SecondarySite:           "dc-east",
 			MaxConcurrentFailovers:  4,
@@ -256,7 +256,7 @@ func TestDRExecutionReconciler_DisasterMode(t *testing.T) {
 	plan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "exec-disaster-plan"},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			VolumeReplicationDriver: "noop",
+			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
 			PrimarySite:             "dc-west",
 			SecondarySite:           "dc-east",
 			MaxConcurrentFailovers:  4,
@@ -333,7 +333,7 @@ func TestDRExecutionReconciler_FailbackModes(t *testing.T) {
 			plan := &soteriav1alpha1.DRPlan{
 				ObjectMeta: metav1.ObjectMeta{Name: "exec-failback-" + tt.suffix + "-plan"},
 				Spec: soteriav1alpha1.DRPlanSpec{
-					VolumeReplicationDriver: "noop",
+					VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
 					PrimarySite:             "dc-west",
 					SecondarySite:           "dc-east",
 					MaxConcurrentFailovers:  4,
@@ -390,7 +390,7 @@ func TestDRExecutionReconciler_SiteAware_OnlyTargetOwns(t *testing.T) {
 	plan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "site-aware-integ-plan"},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			VolumeReplicationDriver: "noop",
+			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
 			PrimarySite:             "east",
 			SecondarySite:           "west",
 			MaxConcurrentFailovers:  4,

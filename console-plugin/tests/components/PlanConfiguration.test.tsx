@@ -29,7 +29,7 @@ const mockPlan: DRPlan = {
     maxConcurrentFailovers: 4,
     primarySite: 'dc1-prod',
     secondarySite: 'dc2-prod',
-    volumeReplicationDriver: 'noop',
+    volumeReplicationDriver: { type: 'noop' },
   },
   status: {
     phase: 'SteadyState',
@@ -68,7 +68,7 @@ const mockPlanMinimal: DRPlan = {
     maxConcurrentFailovers: 1,
     primarySite: 'site-a',
     secondarySite: 'site-b',
-    volumeReplicationDriver: 'noop',
+    volumeReplicationDriver: { type: 'noop' },
   },
   status: { phase: 'SteadyState' },
 };

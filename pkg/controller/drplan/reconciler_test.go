@@ -85,7 +85,7 @@ func newTestPlan() *soteriav1alpha1.DRPlan {
 			Generation: 1,
 		},
 		Spec: soteriav1alpha1.DRPlanSpec{
-			VolumeReplicationDriver: "noop",
+			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
 			MaxConcurrentFailovers:  5,
 			PrimarySite:             testPrimarySite,
 			SecondarySite:           testSecondarySite,
@@ -959,7 +959,7 @@ func TestReconcile_Preflight_PopulatedOnSuccess(t *testing.T) {
 		t.Error("Preflight.GeneratedAt should not be nil")
 	}
 
-	declaredDriver := plan.Spec.VolumeReplicationDriver
+	declaredDriver := plan.Spec.VolumeReplicationDriver.Type
 	for _, wave := range updated.Status.Preflight.Waves {
 		for _, vm := range wave.VMs {
 			if vm.StorageBackend != declaredDriver {
@@ -995,7 +995,7 @@ func TestReconcile_Preflight_DeclaredDriverStamped(t *testing.T) {
 		t.Fatal("Preflight report not populated")
 	}
 
-	declaredDriver := plan.Spec.VolumeReplicationDriver
+	declaredDriver := plan.Spec.VolumeReplicationDriver.Type
 	for _, wave := range updated.Status.Preflight.Waves {
 		for _, vm := range wave.VMs {
 			if vm.StorageBackend != declaredDriver {

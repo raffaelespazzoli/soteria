@@ -99,7 +99,7 @@ export const PlanConfiguration: React.FC<PlanConfigurationProps> = ({ plan }) =>
             <DescriptionListGroup>
               <DescriptionListTerm>Volume Replication Driver</DescriptionListTerm>
               <DescriptionListDescription>
-                {plan.spec?.volumeReplicationDriver}
+                {plan.spec?.volumeReplicationDriver?.type}
               </DescriptionListDescription>
             </DescriptionListGroup>
             <DescriptionListGroup>

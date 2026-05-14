@@ -1,6 +1,6 @@
 # Story 12.0a: Restructure VolumeReplicationDriver as Nested Config
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -62,45 +62,45 @@ Restructure `VolumeReplicationDriver` from a flat string to a `VolumeReplication
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create VolumeReplicationDriverConfig struct (AC: #1, #2, #13)
-  - [ ] 1.1 In `pkg/apis/soteria.io/v1alpha1/types.go`, add `VolumeReplicationDriverConfig` struct with `Type string` field and kubebuilder markers
-  - [ ] 1.2 Change `DRPlanSpec.VolumeReplicationDriver` from `string` to `VolumeReplicationDriverConfig`
-  - [ ] 1.3 Run `make manifests generate` to regenerate DeepCopy and OpenAPI schemas
+- [x] Task 1: Create VolumeReplicationDriverConfig struct (AC: #1, #2, #13)
+  - [x] 1.1 In `pkg/apis/soteria.io/v1alpha1/types.go`, add `VolumeReplicationDriverConfig` struct with `Type string` field and kubebuilder markers
+  - [x] 1.2 Change `DRPlanSpec.VolumeReplicationDriver` from `string` to `VolumeReplicationDriverConfig`
+  - [x] 1.3 Run `make manifests generate` to regenerate DeepCopy and OpenAPI schemas
 
-- [ ] Task 2: Update validation (AC: #3, #4)
-  - [ ] 2.1 In `ValidateDRPlan`, update `switch plan.Spec.VolumeReplicationDriver` to `switch plan.Spec.VolumeReplicationDriver.Type`
-  - [ ] 2.2 Update field paths from `specPath.Child("volumeReplicationDriver")` to `specPath.Child("volumeReplicationDriver").Child("type")`
-  - [ ] 2.3 In `ValidateDRPlanUpdate`, update immutability check to compare the full struct (Go struct comparison works since both fields are strings)
+- [x] Task 2: Update validation (AC: #3, #4)
+  - [x] 2.1 In `ValidateDRPlan`, update `switch plan.Spec.VolumeReplicationDriver` to `switch plan.Spec.VolumeReplicationDriver.Type`
+  - [x] 2.2 Update field paths from `specPath.Child("volumeReplicationDriver")` to `specPath.Child("volumeReplicationDriver").Child("type")`
+  - [x] 2.3 In `ValidateDRPlanUpdate`, update immutability check to compare the full struct (Go struct comparison works since both fields are strings)
 
-- [ ] Task 3: Update executor (AC: #5, #14)
-  - [ ] 3.1 In `pkg/engine/executor.go`, update all `plan.Spec.VolumeReplicationDriver` to `plan.Spec.VolumeReplicationDriver.Type` (4 locations: Execute, ExecuteWaveHandler, ExecuteFromWave, ExecuteRetry)
-  - [ ] 3.2 Update `pkg/engine/doc.go` driver resolution description
+- [x] Task 3: Update executor (AC: #5, #14)
+  - [x] 3.1 In `pkg/engine/executor.go`, update all `plan.Spec.VolumeReplicationDriver` to `plan.Spec.VolumeReplicationDriver.Type` (5 locations: Execute, ExecuteWaveHandler, ExecuteFromWave, ExecuteRetry x2)
+  - [x] 3.2 Update `pkg/engine/doc.go` driver resolution description
 
-- [ ] Task 4: Update controllers (AC: #6, #7)
-  - [ ] 4.1 In `pkg/controller/drplan/reconciler.go`, update `plan.Spec.VolumeReplicationDriver` to `.VolumeReplicationDriver.Type` (pollReplicationHealth call + CompositionInput assignment)
-  - [ ] 4.2 In `pkg/controller/drplan/health.go`, update any direct references
-  - [ ] 4.3 In `pkg/controller/drexecution/reconciler.go`, update `plan.Spec.VolumeReplicationDriver` to `.VolumeReplicationDriver.Type`
+- [x] Task 4: Update controllers (AC: #6, #7)
+  - [x] 4.1 In `pkg/controller/drplan/reconciler.go`, update `plan.Spec.VolumeReplicationDriver` to `.VolumeReplicationDriver.Type` (pollReplicationHealth call + CompositionInput assignment)
+  - [x] 4.2 In `pkg/controller/drplan/health.go`, update any direct references
+  - [x] 4.3 In `pkg/controller/drexecution/reconciler.go`, update `plan.Spec.VolumeReplicationDriver` to `.VolumeReplicationDriver.Type`
 
-- [ ] Task 5: Update console plugin (AC: #8)
-  - [ ] 5.1 In `console-plugin/src/models/types.ts`, change `volumeReplicationDriver: string` to `volumeReplicationDriver: { type: string }`
-  - [ ] 5.2 In `console-plugin/src/components/DRPlanDetail/PlanConfiguration.tsx`, change `plan.spec?.volumeReplicationDriver` to `plan.spec?.volumeReplicationDriver?.type`
+- [x] Task 5: Update console plugin (AC: #8)
+  - [x] 5.1 In `console-plugin/src/models/types.ts`, change `volumeReplicationDriver: string` to `volumeReplicationDriver: { type: string }`
+  - [x] 5.2 In `console-plugin/src/components/DRPlanDetail/PlanConfiguration.tsx`, change `plan.spec?.volumeReplicationDriver` to `plan.spec?.volumeReplicationDriver?.type`
 
-- [ ] Task 6: Go test fixture sweep (AC: #9, #11)
-  - [ ] 6.1 Search all `*_test.go` files for `VolumeReplicationDriver: "noop"` — replace with `VolumeReplicationDriver: v1alpha1.VolumeReplicationDriverConfig{Type: "noop"}`
-  - [ ] 6.2 Search for unstructured map-style specs with `"volumeReplicationDriver": "noop"` — replace with `"volumeReplicationDriver": map[string]any{"type": "noop"}`
-  - [ ] 6.3 Update validation tests: struct construction in Required/Immutable/Unchanged/InvalidValue test cases
+- [x] Task 6: Go test fixture sweep (AC: #9, #11)
+  - [x] 6.1 Search all `*_test.go` files for `VolumeReplicationDriver: "noop"` — replace with `VolumeReplicationDriver: v1alpha1.VolumeReplicationDriverConfig{Type: "noop"}`
+  - [x] 6.2 Search for unstructured map-style specs with `"volumeReplicationDriver": "noop"` — replace with `"volumeReplicationDriver": map[string]any{"type": "noop"}`
+  - [x] 6.3 Update validation tests: struct construction in Required/Immutable/Unchanged/InvalidValue test cases
 
-- [ ] Task 7: Console plugin test fixture sweep (AC: #10)
-  - [ ] 7.1 Search all console-plugin test files for `volumeReplicationDriver: 'noop'` — replace with `volumeReplicationDriver: { type: 'noop' }`
+- [x] Task 7: Console plugin test fixture sweep (AC: #10)
+  - [x] 7.1 Search all console-plugin test files for `volumeReplicationDriver: 'noop'` — replace with `volumeReplicationDriver: { type: 'noop' }`
 
-- [ ] Task 8: Update sample CRD (AC: #12)
-  - [ ] 8.1 In `config/samples/soteria_v1alpha1_drplan.yaml`, change `volumeReplicationDriver: noop` to nested YAML
+- [x] Task 8: Update sample CRD (AC: #12)
+  - [x] 8.1 In `config/samples/soteria_v1alpha1_drplan.yaml`, change `volumeReplicationDriver: noop` to nested YAML
 
-- [ ] Task 9: Verify all tests pass (AC: #15)
-  - [ ] 9.1 Run `make test` — all unit tests pass
-  - [ ] 9.2 Run `make lint-fix` followed by `make lint` — no new lint errors
-  - [ ] 9.3 Run integration tests — no regressions
-  - [ ] 9.4 Run `cd console-plugin && npm test` — all console tests pass
+- [x] Task 9: Verify all tests pass (AC: #15)
+  - [x] 9.1 Run `make test` — all unit tests pass
+  - [x] 9.2 Run `make lint-fix` followed by `make lint` — no new lint errors
+  - [x] 9.3 Run integration tests — no regressions
+  - [x] 9.4 Run `cd console-plugin && npm test` — all console tests pass
 
 ## Dev Notes
 
@@ -326,10 +326,99 @@ cd console-plugin && npm test   # Console plugin tests
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4.6 (Cursor)
 
 ### Debug Log References
 
+- Fixed missed 5th `plan.Spec.VolumeReplicationDriver` in executor.go `ExecuteRetry` (line 1157)
+- Fixed `CompositionInput.VolumeReplicationDriver` over-replacement in `internal/preflight/checks_test.go` — field is `string` on CompositionInput, not the struct
+- Fixed import alias mismatch: 3 integration test files (`replication_test.go`, `store_test.go`, `watch_test.go`) use `v1alpha1` not `soteriav1alpha1`
+- Updated validation test expectations for new field paths (`spec.volumeReplicationDriver.type`)
+- Fixed 2 pre-existing line-length lint issues in `executor_test.go`
+
 ### Completion Notes List
 
+- `VolumeReplicationDriverConfig` struct added with `Type string` field + `+kubebuilder:validation:Required` and `+kubebuilder:validation:Enum=noop` markers
+- `DRPlanSpec.VolumeReplicationDriver` changed from `string` to `VolumeReplicationDriverConfig`
+- `ValidateDRPlan` updated: field path now `spec.volumeReplicationDriver.type` via `drvPath.Child("type")`
+- `ValidateDRPlanUpdate` immutability check unchanged (Go struct comparison works)
+- Executor updated at 5 locations (Execute, ExecuteWaveHandler, ExecuteFromWave, ExecuteRetry x2)
+- `doc.go` updated to reference `.VolumeReplicationDriver.Type`
+- DRPlan controller updated at 2 locations (pollReplicationHealth, CompositionInput)
+- DRExecution controller updated at 1 location (ResolveVGDriver)
+- Console plugin interface changed to `{ type: string }`, display path to `.type`
+- Go typed fixture sweep: ~80 occurrences across 19 test files
+- Go unstructured map fixture sweep: 6 occurrences across 3 test files
+- Console plugin fixture sweep: 22 occurrences across 17 test files
+- Sample CRD updated to nested YAML
+- DeepCopy/OpenAPI schemas regenerated cleanly
+- All unit tests pass (0 failures), all lint clean (0 issues), all integration tests pass (6 suites), all console tests pass (592 tests)
+
 ### File List
+
+**Modified production files:**
+- `pkg/apis/soteria.io/v1alpha1/types.go`
+- `pkg/apis/soteria.io/v1alpha1/validation.go`
+- `pkg/apis/soteria.io/v1alpha1/zz_generated.deepcopy.go` (auto-generated)
+- `pkg/engine/executor.go`
+- `pkg/engine/doc.go`
+- `pkg/controller/drplan/reconciler.go`
+- `pkg/controller/drexecution/reconciler.go`
+- `console-plugin/src/models/types.ts`
+- `console-plugin/src/components/DRPlanDetail/PlanConfiguration.tsx`
+- `config/samples/soteria_v1alpha1_drplan.yaml`
+
+**Modified Go test files (typed fixtures):**
+- `pkg/apis/soteria.io/v1alpha1/validation_test.go`
+- `pkg/admission/plugin_test.go`
+- `pkg/admission/drplan_validator_test.go`
+- `pkg/admission/drexecution_validator_test.go`
+- `pkg/admission/vm_validator_test.go`
+- `pkg/controller/drplan/reconciler_test.go`
+- `pkg/controller/drexecution/reconciler_test.go`
+- `pkg/engine/executor_test.go`
+- `pkg/engine/reprotect_test.go`
+- `internal/preflight/checks_test.go`
+- `pkg/registry/drplan/strategy_test.go`
+- `test/integration/controller/suite_test.go`
+- `test/integration/controller/drplan_test.go`
+- `test/integration/controller/drplan_consistency_test.go`
+- `test/integration/controller/drplan_preflight_test.go`
+- `test/integration/controller/drexecution_test.go`
+- `test/integration/replication/replication_test.go`
+- `test/integration/storage/store_test.go`
+- `test/integration/storage/watch_test.go`
+- `test/integration/admission/vm_webhook_test.go`
+
+**Modified Go test files (unstructured map fixtures):**
+- `test/integration/apiserver/admission_test.go`
+- `test/integration/apiserver/apiserver_test.go`
+- `test/integration/rbac/rbac_test.go`
+
+**Modified console-plugin test files:**
+- `console-plugin/tests/components/PlanConfiguration.test.tsx`
+- `console-plugin/tests/components/DRPlanDetailPage.test.tsx`
+- `console-plugin/tests/components/DRLifecycleDiagram.test.tsx`
+- `console-plugin/tests/components/DRPlanActions.test.tsx`
+- `console-plugin/tests/components/KeyboardAccessibility.test.tsx`
+- `console-plugin/tests/components/DiskDisagreementAlert.test.tsx`
+- `console-plugin/tests/components/AlertBannerSystem.test.tsx`
+- `console-plugin/tests/components/DRDashboardPage.test.tsx`
+- `console-plugin/tests/components/Accessibility.test.tsx`
+- `console-plugin/tests/components/TransitionProgressBanner.test.tsx`
+- `console-plugin/tests/components/SiteDisagreementAlert.test.tsx`
+- `console-plugin/tests/components/SiteDiscoverySection.test.tsx`
+- `console-plugin/tests/components/DRDashboardToolbar.test.tsx`
+- `console-plugin/tests/components/DRDashboard.test.tsx`
+- `console-plugin/tests/components/WaveCompositionTree.test.tsx`
+- `console-plugin/tests/utils/drPlanUtils.test.ts`
+- `console-plugin/tests/hooks/usePreflightData.test.ts`
+
+**Auto-generated files (via make manifests generate):**
+- `config/crd/bases/*.yaml`
+- `pkg/apis/soteria.io/v1alpha1/zz_generated.deepcopy.go`
+- OpenAPI generated files
+
+### Change Log
+
+- 2026-05-14: Restructured VolumeReplicationDriver from flat string to VolumeReplicationDriverConfig struct with Type field. Pure mechanical refactor — no new functionality, no API behavior change. Fixture sweep across ~42 files.

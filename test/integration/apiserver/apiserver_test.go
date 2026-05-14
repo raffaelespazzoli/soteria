@@ -104,7 +104,7 @@ func TestAPIServer_DRPlan_CRUD(t *testing.T) {
 				"name": "test-plan",
 			},
 			"spec": map[string]any{
-				"volumeReplicationDriver": "noop",
+				"volumeReplicationDriver": map[string]any{"type": "noop"},
 				"maxConcurrentFailovers":  int64(2),
 				"primarySite":             "dc-west",
 				"secondarySite":           "dc-east",
@@ -187,7 +187,7 @@ func TestAPIServer_DRPlan_StatusSubresource(t *testing.T) {
 				"name": "plan-status-test",
 			},
 			"spec": map[string]any{
-				"volumeReplicationDriver": "noop",
+				"volumeReplicationDriver": map[string]any{"type": "noop"},
 				"maxConcurrentFailovers":  int64(1),
 				"primarySite":             "dc-west",
 				"secondarySite":           "dc-east",
@@ -402,7 +402,7 @@ func TestAPIServer_DRPlan_Watch(t *testing.T) {
 				"name": "watched-plan",
 			},
 			"spec": map[string]any{
-				"volumeReplicationDriver": "noop",
+				"volumeReplicationDriver": map[string]any{"type": "noop"},
 				"maxConcurrentFailovers":  int64(1),
 				"primarySite":             "dc-west",
 				"secondarySite":           "dc-east",

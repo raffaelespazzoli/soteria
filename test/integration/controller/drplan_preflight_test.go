@@ -110,7 +110,7 @@ func TestDRPlanReconciler_Preflight_BasicComposition(t *testing.T) {
 	if pf.Waves[0].VMCount != 2 {
 		t.Errorf("Wave VMCount = %d, want 2", pf.Waves[0].VMCount)
 	}
-	declaredDriver := plan.Spec.VolumeReplicationDriver
+	declaredDriver := plan.Spec.VolumeReplicationDriver.Type
 	for _, vm := range pf.Waves[0].VMs {
 		if vm.StorageBackend != declaredDriver {
 			t.Errorf("VM %s StorageBackend = %q, want %q (declared driver)", vm.Name, vm.StorageBackend, declaredDriver)
@@ -177,7 +177,7 @@ func TestDRPlanReconciler_Preflight_DeclaredDriverStamped(t *testing.T) {
 	if len(pf.Waves[0].VMs) != 1 {
 		t.Fatalf("Expected 1 VM, got %d", len(pf.Waves[0].VMs))
 	}
-	declaredDriver := plan.Spec.VolumeReplicationDriver
+	declaredDriver := plan.Spec.VolumeReplicationDriver.Type
 	if pf.Waves[0].VMs[0].StorageBackend != declaredDriver {
 		t.Errorf("StorageBackend = %q, want %q (declared driver)", pf.Waves[0].VMs[0].StorageBackend, declaredDriver)
 	}
@@ -286,7 +286,7 @@ func TestDRPlanReconciler_Preflight_NoStorageWarnings(t *testing.T) {
 		}
 	}
 
-	declaredDriver := plan.Spec.VolumeReplicationDriver
+	declaredDriver := plan.Spec.VolumeReplicationDriver.Type
 	if len(pf.Waves) > 0 {
 		for _, vm := range pf.Waves[0].VMs {
 			if vm.StorageBackend != declaredDriver {
