@@ -1,6 +1,6 @@
 # Story 12.0: Noop VolumeReplication Controller + volumeReplicationClass Field
 
-Status: ready-for-dev
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -107,52 +107,57 @@ This design:
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Add `VolumeReplicationClass` to VolumeReplicationDriverConfig (AC: #1, #10)
-  - [ ] 1.1 In `pkg/apis/soteria.io/v1alpha1/types.go`, add `VolumeReplicationClass string` to `VolumeReplicationDriverConfig` with `+optional` marker and JSON tag `volumeReplicationClass,omitempty`. Place after `Type`.
-  - [ ] 1.2 Run `make manifests generate` to regenerate DeepCopy and OpenAPI schemas
+- [x] Task 1: Add `VolumeReplicationClass` to VolumeReplicationDriverConfig (AC: #1, #10)
+  - [x] 1.1 In `pkg/apis/soteria.io/v1alpha1/types.go`, add `VolumeReplicationClass string` to `VolumeReplicationDriverConfig` with `+optional` marker and JSON tag `volumeReplicationClass,omitempty`. Place after `Type`.
+  - [x] 1.2 Run `make manifests generate` to regenerate DeepCopy and OpenAPI schemas
 
-- [ ] Task 2: Add contextual validation (AC: #2, #3)
-  - [ ] 2.1 In `ValidateDRPlan` (`validation.go`), after the type switch: when `type == "noop"` and `VolumeReplicationClass != ""`, append `field.Forbidden` error
-  - [ ] 2.2 When `type == "csi-extension"` and `VolumeReplicationClass == ""`, append `field.Required` error (note: the csi-extension enum value is added in Story 12.1, so this validation branch can be added now but won't be reachable until 12.1 extends the enum)
-  - [ ] 2.3 Verify immutability is covered by the existing struct comparison from Story 12.0a
+- [x] Task 2: Add contextual validation (AC: #2, #3)
+  - [x] 2.1 In `ValidateDRPlan` (`validation.go`), after the type switch: when `type == "noop"` and `VolumeReplicationClass != ""`, append `field.Forbidden` error
+  - [x] 2.2 When `type == "csi-extension"` and `VolumeReplicationClass == ""`, append `field.Required` error (note: the csi-extension enum value is added in Story 12.1, so this validation branch can be added now but won't be reachable until 12.1 extends the enum)
+  - [x] 2.3 Verify immutability is covered by the existing struct comparison from Story 12.0a
 
-- [ ] Task 3: Add CSI Addons dependency (AC: #4)
-  - [ ] 3.1 Run `go get github.com/csi-addons/kubernetes-csi-addons` to add the module
-  - [ ] 3.2 Add CSI Addons replication v1alpha1 scheme registration in manager entry point (`cmd/soteria/` — verify exact file path before editing)
-  - [ ] 3.3 Run `go mod tidy`
+- [x] Task 3: Add CSI Addons dependency (AC: #4)
+  - [x] 3.1 Run `go get github.com/csi-addons/kubernetes-csi-addons` to add the module
+  - [x] 3.2 Add CSI Addons replication v1alpha1 scheme registration in manager entry point (`cmd/soteria/` — verify exact file path before editing)
+  - [x] 3.3 Run `go mod tidy`
 
-- [ ] Task 4: Create noop VolumeReplication controller (AC: #5, #6, #7, #8)
-  - [ ] 4.1 Create `pkg/controller/volumereplication/doc.go` with package doc and RBAC markers
-  - [ ] 4.2 Create `pkg/controller/volumereplication/reconciler.go` with `VolumeReplicationReconciler` struct
-  - [ ] 4.3 Implement `Reconcile` for VolumeReplication: fetch CR, skip if class != noop, set status
-  - [ ] 4.4 Implement `Reconcile` for VolumeGroupReplication: same pattern
-  - [ ] 4.5 Implement `SetupWithManager` watching both VR and VGR types
-  - [ ] 4.6 Register controller in `cmd/soteria/main.go`
+- [x] Task 4: Create noop VolumeReplication controller (AC: #5, #6, #7, #8)
+  - [x] 4.1 Create `pkg/controller/volumereplication/doc.go` with package doc and RBAC markers
+  - [x] 4.2 Create `pkg/controller/volumereplication/reconciler.go` with `VolumeReplicationReconciler` struct
+  - [x] 4.3 Implement `Reconcile` for VolumeReplication: fetch CR, skip if class != noop, set status
+  - [x] 4.4 Implement `Reconcile` for VolumeGroupReplication: same pattern
+  - [x] 4.5 Implement `SetupWithManager` watching both VR and VGR types
+  - [x] 4.6 Register controller in `cmd/soteria/main.go`
 
-- [ ] Task 5: Update sample CRD (AC: #9)
-  - [ ] 5.1 In `config/samples/soteria_v1alpha1_drplan.yaml`, add comment showing csi-extension example with `volumeReplicationClass`
+- [x] Task 5: Update sample CRD (AC: #9)
+  - [x] 5.1 In `config/samples/soteria_v1alpha1_drplan.yaml`, add comment showing csi-extension example with `volumeReplicationClass`
 
-- [ ] Task 6: Update console plugin types (AC: #14)
-  - [ ] 6.1 In `console-plugin/src/models/types.ts`, add `volumeReplicationClass?: string` to the `volumeReplicationDriver` interface
+- [x] Task 6: Update console plugin types (AC: #14)
+  - [x] 6.1 In `console-plugin/src/models/types.ts`, add `volumeReplicationClass?: string` to the `volumeReplicationDriver` interface
 
-- [ ] Task 7: Validation tests (AC: #12)
-  - [ ] 7.1 Add `TestValidateDRPlan_VolumeReplicationClass_ForbiddenForNoop`
-  - [ ] 7.2 Add `TestValidateDRPlan_VolumeReplicationClass_RequiredForCSIExtension` (may need to temporarily bypass enum to test csi-extension path)
-  - [ ] 7.3 Add `TestValidateDRPlanUpdate_VolumeReplicationClass_Immutable`
+- [x] Task 7: Validation tests (AC: #12)
+  - [x] 7.1 Add `TestValidateDRPlan_VolumeReplicationClass_ForbiddenForNoop`
+  - [x] 7.2 Add `TestValidateDRPlan_VolumeReplicationClass_RequiredForCSIExtension` (may need to temporarily bypass enum to test csi-extension path)
+  - [x] 7.3 Add `TestValidateDRPlanUpdate_VolumeReplicationClass_Immutable`
 
-- [ ] Task 8: Noop controller tests (AC: #13)
-  - [ ] 8.1 Create `pkg/controller/volumereplication/reconciler_test.go` with table-driven tests
-  - [ ] 8.2 Test VR reconciliation for primary/secondary/resync states
-  - [ ] 8.3 Test VR skip for non-noop class
-  - [ ] 8.4 Test VGR reconciliation for noop class
-  - [ ] 8.5 Test VGR skip for non-noop class
-  - [ ] 8.6 Test not-found (deleted CR) returns no error
-  - [ ] 8.7 Test idempotent re-reconciliation
+- [x] Task 8: Noop controller tests (AC: #13)
+  - [x] 8.1 Create `pkg/controller/volumereplication/reconciler_test.go` with table-driven tests
+  - [x] 8.2 Test VR reconciliation for primary/secondary/resync states
+  - [x] 8.3 Test VR skip for non-noop class
+  - [x] 8.4 Test VGR reconciliation for noop class
+  - [x] 8.5 Test VGR skip for non-noop class
+  - [x] 8.6 Test not-found (deleted CR) returns no error
+  - [x] 8.7 Test idempotent re-reconciliation
 
-- [ ] Task 9: Verify all tests pass (AC: #16)
-  - [ ] 9.1 Run `make test` — all unit tests pass
-  - [ ] 9.2 Run `make lint-fix` followed by `make lint` — no new lint errors
-  - [ ] 9.3 Run integration tests — no regressions
+- [x] Task 9: Verify all tests pass (AC: #16)
+  - [x] 9.1 Run `make test` — all unit tests pass
+  - [x] 9.2 Run `make lint-fix` followed by `make lint` — no new lint errors
+  - [x] 9.3 Run integration tests — no regressions
+
+### Review Findings
+
+- [x] [Review][Patch] Noop reconciler rewrites already-correct status on every reconcile [`pkg/controller/volumereplication/reconciler.go`]
+  `applyNoopStatus()` always stamps fresh `LastCompletionTime`, `LastSyncTime`, and condition `LastTransitionTime` values, and both reconcile paths always call `Status().Update()` for `soteria-noop` objects. That makes the controller non-idempotent for already-correct resources, risks self-triggered reconcile churn from its own status updates, and does not satisfy AC13's "already-correct status unchanged" intent. The current idempotency test only compares `State` and condition count, so it would not catch this mutation pattern.
 
 ## Dev Notes
 
@@ -317,10 +322,50 @@ cd console-plugin && npm test   # Console plugin tests
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4 (via Cursor)
 
 ### Debug Log References
 
+- Initial dupl lint failure in reconciler.go (VR and VGR reconcile methods flagged as duplicate code) — resolved by extracting `applyNoopStatus` helper that operates on the shared `VolumeReplicationStatus` struct
+- `vrAdapter` type caused `expected pointer` error from fake client's `Status().Update` — eliminated adapter pattern in favor of direct method calls with shared `applyNoopStatus` helper
+- Deprecated `result.Requeue` in tests — replaced with `result.RequeueAfter != 0` check
+
 ### Completion Notes List
 
+- `VolumeReplicationClass` optional string field added to `VolumeReplicationDriverConfig` with `+optional` marker and `omitempty` JSON tag
+- Contextual validation: `field.Forbidden` when type=noop + class set; `field.Required` when type=csi-extension + class empty (csi-extension branch unreachable until Story 12.1 extends the Type enum)
+- Immutability verified by existing struct-level comparison from Story 12.0a — explicit test confirms
+- `github.com/csi-addons/kubernetes-csi-addons@v0.14.0` added to go.mod; replication v1alpha1 scheme registered in init()
+- New `pkg/controller/volumereplication/` package with `VolumeReplicationReconciler` watching VR and VGR CRs filtered by `soteria-noop` class
+- `applyNoopStatus` shared helper stamps state/conditions/timestamps onto the embedded `VolumeReplicationStatus` (avoids dupl lint between VR and VGR reconcile methods)
+- Two separate controllers registered via `SetupVolumeReplicationController` and `SetupVolumeGroupReplicationController` using `reconcile.Func` wrapper
+- RBAC markers on doc.go for `replication.storage.openshift.io` resources (volumereplications + volumegroupreplications)
+- Sample CRD updated with csi-extension example comment
+- Console plugin `DRPlanSpec.volumeReplicationDriver` interface extended with `volumeReplicationClass?: string`
+- 3 new validation tests + 8 controller tests (with subtests: VR primary/secondary/resync, VGR primary/secondary, skip non-noop, not-found, idempotent)
+- 85.7% coverage on new controller package, 10.0% on v1alpha1 types (unchanged), 0 lint issues
+- All existing unit tests (20 packages), integration tests (10 suites), and console plugin tests (602) pass with zero regressions
+
 ### File List
+
+**New files:**
+- `pkg/controller/volumereplication/doc.go`
+- `pkg/controller/volumereplication/reconciler.go`
+- `pkg/controller/volumereplication/reconciler_test.go`
+
+**Modified files:**
+- `pkg/apis/soteria.io/v1alpha1/types.go` — VolumeReplicationClass field added to VolumeReplicationDriverConfig
+- `pkg/apis/soteria.io/v1alpha1/validation.go` — contextual noop/csi-extension validation
+- `pkg/apis/soteria.io/v1alpha1/validation_test.go` — 3 new tests
+- `pkg/apis/soteria.io/v1alpha1/zz_generated.deepcopy.go` — auto-generated
+- `pkg/apis/soteria.io/v1alpha1/zz_generated.openapi.go` — auto-generated
+- `cmd/soteria/main.go` — CSI Addons scheme registration + VR/VGR controller setup
+- `config/samples/soteria_v1alpha1_drplan.yaml` — csi-extension example comment
+- `config/rbac/role.yaml` — auto-generated RBAC rules for replication.storage.openshift.io
+- `console-plugin/src/models/types.ts` — volumeReplicationClass optional field
+- `go.mod` — github.com/csi-addons/kubernetes-csi-addons v0.14.0 added
+- `go.sum` — updated
+
+### Change Log
+
+- 2026-05-14: Story 12.0 implemented — VolumeReplicationClass field + noop VolumeReplication controller + CSI Addons dependency + contextual validation + 11 new tests

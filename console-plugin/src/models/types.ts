@@ -75,7 +75,7 @@ export interface DRPlanSpec {
   maxConcurrentFailovers: number;
   primarySite: string;
   secondarySite: string;
-  volumeReplicationDriver: { type: string };
+  volumeReplicationDriver: { type: string; volumeReplicationClass?: string };
   vmReadyTimeout?: string;
 }
 

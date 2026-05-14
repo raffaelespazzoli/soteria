@@ -1412,6 +1412,13 @@ func schema_pkg_apis_soteriaio_v1alpha1_VolumeReplicationDriverConfig(ref common
 							Format:      "",
 						},
 					},
+					"volumeReplicationClass": {
+						SchemaProps: spec.SchemaProps{
+							Description: "VolumeReplicationClass is the VolumeReplicationClass name stamped on VolumeReplication and VolumeGroupReplication CRs created by the CSI Extension driver. Only applicable when Type is csi-extension. Immutable after creation (covered by struct-level immutability).",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 				},
 				Required: []string{"type"},
 			},

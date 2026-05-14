@@ -55,7 +55,17 @@ func ValidateDRPlan(plan *DRPlan) field.ErrorList {
 	case "":
 		allErrs = append(allErrs, field.Required(drvPath.Child("type"), ""))
 	case "noop":
-		// valid
+		if plan.Spec.VolumeReplicationDriver.VolumeReplicationClass != "" {
+			allErrs = append(allErrs, field.Forbidden(
+				drvPath.Child("volumeReplicationClass"),
+				"not applicable for noop driver",
+			))
+		}
+	case "csi-extension":
+		if plan.Spec.VolumeReplicationDriver.VolumeReplicationClass == "" {
+			allErrs = append(allErrs, field.Required(
+				drvPath.Child("volumeReplicationClass"), ""))
+		}
 	default:
 		allErrs = append(allErrs, field.NotSupported(
 			drvPath.Child("type"),

@@ -90,6 +90,13 @@ type VolumeReplicationDriverConfig struct {
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Enum=noop
 	Type string `json:"type"`
+
+	// VolumeReplicationClass is the VolumeReplicationClass name stamped on
+	// VolumeReplication and VolumeGroupReplication CRs created by the CSI
+	// Extension driver. Only applicable when Type is csi-extension.
+	// Immutable after creation (covered by struct-level immutability).
+	// +optional
+	VolumeReplicationClass string `json:"volumeReplicationClass,omitempty"`
 }
 
 type DRPlanSpec struct {

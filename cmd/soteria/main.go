@@ -48,12 +48,15 @@ import (
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
+	replicationv1alpha1 "github.com/csi-addons/kubernetes-csi-addons/api/replication.storage/v1alpha1"
+
 	"github.com/soteria-project/soteria/pkg/admission"
 	soteriainstall "github.com/soteria-project/soteria/pkg/apis/soteria.io/install"
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
 	"github.com/soteria-project/soteria/pkg/apiserver"
 	"github.com/soteria-project/soteria/pkg/controller/drexecution"
 	"github.com/soteria-project/soteria/pkg/controller/drplan"
+	"github.com/soteria-project/soteria/pkg/controller/volumereplication"
 	"github.com/soteria-project/soteria/pkg/drivers"
 	"github.com/soteria-project/soteria/pkg/engine"
 	scylladb "github.com/soteria-project/soteria/pkg/storage/scylladb"
@@ -69,6 +72,7 @@ func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 	utilruntime.Must(soteriav1alpha1.AddToScheme(scheme))
 	utilruntime.Must(kubevirtv1.AddToScheme(scheme))
+	utilruntime.Must(replicationv1alpha1.AddToScheme(scheme))
 	// +kubebuilder:scaffold:scheme
 }
 
@@ -344,6 +348,19 @@ func main() {
 		LocalSite:        siteName,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "DRExecution")
+		os.Exit(1)
+	}
+
+	vrReconciler := &volumereplication.VolumeReplicationReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}
+	if err := vrReconciler.SetupVolumeReplicationController(mgr); err != nil {
+		setupLog.Error(err, "Failed to create controller", "controller", "VolumeReplication")
+		os.Exit(1)
+	}
+	if err := vrReconciler.SetupVolumeGroupReplicationController(mgr); err != nil {
+		setupLog.Error(err, "Failed to create controller", "controller", "VolumeGroupReplication")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder

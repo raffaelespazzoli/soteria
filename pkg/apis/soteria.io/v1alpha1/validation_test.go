@@ -463,6 +463,89 @@ func TestValidateDRPlan_VolumeReplicationDriver_Required(t *testing.T) {
 	}
 }
 
+func TestValidateDRPlan_VolumeReplicationClass_ForbiddenForNoop(t *testing.T) {
+	plan := &DRPlan{
+		Spec: DRPlanSpec{
+			VolumeReplicationDriver: VolumeReplicationDriverConfig{
+				Type:                   "noop",
+				VolumeReplicationClass: "some-class",
+			},
+			MaxConcurrentFailovers: 4,
+			PrimarySite:            "dc-west",
+			SecondarySite:          "dc-east",
+		},
+	}
+	errs := ValidateDRPlan(plan)
+	if len(errs) != 1 {
+		t.Fatalf("expected 1 error, got %d: %v", len(errs), errs)
+	}
+	if errs[0].Field != "spec.volumeReplicationDriver.volumeReplicationClass" {
+		t.Errorf("error.Field = %q, want %q", errs[0].Field, "spec.volumeReplicationDriver.volumeReplicationClass")
+	}
+	if errs[0].Type != "FieldValueForbidden" {
+		t.Errorf("error.Type = %q, want FieldValueForbidden", errs[0].Type)
+	}
+}
+
+func TestValidateDRPlan_VolumeReplicationClass_RequiredForCSIExtension(t *testing.T) {
+	plan := &DRPlan{
+		Spec: DRPlanSpec{
+			VolumeReplicationDriver: VolumeReplicationDriverConfig{
+				Type:                   "csi-extension",
+				VolumeReplicationClass: "",
+			},
+			MaxConcurrentFailovers: 4,
+			PrimarySite:            "dc-west",
+			SecondarySite:          "dc-east",
+		},
+	}
+	errs := ValidateDRPlan(plan)
+	if len(errs) != 1 {
+		t.Fatalf("expected 1 error, got %d: %v", len(errs), errs)
+	}
+	if errs[0].Field != "spec.volumeReplicationDriver.volumeReplicationClass" {
+		t.Errorf("error.Field = %q, want %q", errs[0].Field, "spec.volumeReplicationDriver.volumeReplicationClass")
+	}
+	if errs[0].Type != "FieldValueRequired" {
+		t.Errorf("error.Type = %q, want FieldValueRequired", errs[0].Type)
+	}
+}
+
+func TestValidateDRPlanUpdate_VolumeReplicationClass_Immutable(t *testing.T) {
+	oldPlan := &DRPlan{
+		Spec: DRPlanSpec{
+			VolumeReplicationDriver: VolumeReplicationDriverConfig{
+				Type:                   "csi-extension",
+				VolumeReplicationClass: "class-a",
+			},
+			MaxConcurrentFailovers: 4,
+			PrimarySite:            "dc-west",
+			SecondarySite:          "dc-east",
+		},
+	}
+	newPlan := &DRPlan{
+		Spec: DRPlanSpec{
+			VolumeReplicationDriver: VolumeReplicationDriverConfig{
+				Type:                   "csi-extension",
+				VolumeReplicationClass: "class-b",
+			},
+			MaxConcurrentFailovers: 4,
+			PrimarySite:            "dc-west",
+			SecondarySite:          "dc-east",
+		},
+	}
+	errs := ValidateDRPlanUpdate(newPlan, oldPlan)
+	foundImmutable := false
+	for _, e := range errs {
+		if e.Field == "spec.volumeReplicationDriver" && e.Type == "FieldValueForbidden" {
+			foundImmutable = true
+		}
+	}
+	if !foundImmutable {
+		t.Errorf("expected immutability error on spec.volumeReplicationDriver, got: %v", errs)
+	}
+}
+
 func TestValidateDRPlan_VolumeReplicationDriver_InvalidValue(t *testing.T) {
 	plan := &DRPlan{
 		Spec: DRPlanSpec{
