@@ -7,34 +7,56 @@ Status: ready-for-dev
 ## Story
 
 As a platform engineer,
-I want a `volumeReplicationClass` field on DRPlanSpec and a noop controller that simulates CSI Addons VolumeReplication/VolumeGroupReplication operations,
+I want a `volumeReplicationClass` field inside the VolumeReplicationDriver config and a noop controller that simulates CSI Addons VolumeReplication/VolumeGroupReplication operations,
 So that on-cluster UAT can validate the full CSI Extension driver lifecycle (Stories 12.1–12.6) without real storage infrastructure.
 
 ## Background
 
 ### Current State
 
-The DRPlanSpec has `volumeReplicationDriver` (enum: `noop`, required, immutable) added in Story 11.1. The StorageProvider 6-method interface in `pkg/drivers/interface.go` abstracts volume replication. The noop driver (`pkg/drivers/noop/driver.go`) implements all 6 methods as no-ops. No CSI Addons types exist in the project yet.
+Story 12.0a restructured `DRPlanSpec.VolumeReplicationDriver` from a flat string to a `VolumeReplicationDriverConfig` struct with a `Type` field. The struct currently contains only `Type string`. The noop driver is the only admissible value. No CSI Addons types exist in the project yet.
 
 ### Why This Story
 
 Epic 12 introduces a CSI Extension storage driver that translates StorageProvider calls into VolumeReplication and VolumeGroupReplication CRs (from the `kubernetes-csi-addons` project). On real clusters, a CSI Addons sidecar controller reconciles these CRs by talking to the storage backend. For development and UAT, no storage backend exists — so a noop controller is needed to simulate successful CSI Addons operations on-cluster.
 
-The `volumeReplicationClass` field tells the CSI Extension driver which VolumeReplicationClass to stamp on created VR/VGR CRs. The noop controller watches for CRs with `soteria-noop` as the class and reconciles their status to simulate success.
+The `volumeReplicationClass` field tells the CSI Extension driver which VolumeReplicationClass to stamp on created VR/VGR CRs. It is placed inside the `VolumeReplicationDriverConfig` struct because it is driver-specific configuration — only meaningful when `type: csi-extension`. The noop controller watches for CRs with `soteria-noop` as the class and reconciles their status to simulate success.
 
 ### Scope
 
 Two deliverables:
-1. **`volumeReplicationClass` field on DRPlanSpec** — free-form string (not enum), required, immutable. Follows the same validation pattern as `primarySite`/`secondarySite`.
+1. **`VolumeReplicationClass` field on `VolumeReplicationDriverConfig`** — optional string with `+optional` marker. Programmatic validation makes it required when `type == "csi-extension"` and rejects it when `type == "noop"`. Immutable (covered by the whole-struct immutability from Story 12.0a).
 2. **Noop VolumeReplication controller** — new package `pkg/controller/volumereplication/` that watches VolumeReplication + VolumeGroupReplication CRs, filtering by `spec.volumeReplicationClass == "soteria-noop"`, and sets status to simulate successful replication.
+
+### Design — VolumeReplicationClass Placement
+
+```yaml
+# noop driver — volumeReplicationClass not specified (optional, forbidden for noop)
+spec:
+  volumeReplicationDriver:
+    type: noop
+
+# csi-extension driver — volumeReplicationClass required
+spec:
+  volumeReplicationDriver:
+    type: csi-extension
+    volumeReplicationClass: my-replication-class
+```
+
+This design:
+- Enforces that `volumeReplicationClass` only makes sense for `csi-extension`
+- Supports different replication classes without affecting the top-level spec
+- Supports different drivers with additional parameters without affecting the top-level spec
 
 ## Acceptance Criteria
 
-1. **AC1 — New field on DRPlanSpec:** `VolumeReplicationClass string` field added to `DRPlanSpec` in `pkg/apis/soteria.io/v1alpha1/types.go` with `+kubebuilder:validation:Required` marker. JSON tag: `volumeReplicationClass`. Free-form string — no Enum marker.
+1. **AC1 — New field on VolumeReplicationDriverConfig:** `VolumeReplicationClass string` field added to `VolumeReplicationDriverConfig` in `types.go` with `+optional` marker. JSON tag: `volumeReplicationClass,omitempty`.
 
-2. **AC2 — Immutability enforcement:** `ValidateDRPlanUpdate` in `pkg/apis/soteria.io/v1alpha1/validation.go` rejects updates that change `volumeReplicationClass` with `field.Forbidden(..., "field is immutable")`, following the same pattern as `primarySite`/`secondarySite`/`volumeReplicationDriver`.
+2. **AC2 — Contextual create validation:** `ValidateDRPlan` in `validation.go` enforces:
+   - When `Type == "csi-extension"`: `VolumeReplicationClass` must be non-empty (`field.Required`)
+   - When `Type == "noop"`: `VolumeReplicationClass` must be empty (`field.Forbidden`, "not applicable for noop driver")
 
-3. **AC3 — Create validation:** `ValidateDRPlan` in `validation.go` rejects empty `volumeReplicationClass` with `field.Required`.
+3. **AC3 — Immutability covered by struct comparison:** The whole-struct immutability check from Story 12.0a covers `VolumeReplicationClass` automatically (Go struct equality). No additional immutability code needed — verify with a test.
 
 4. **AC4 — CSI Addons dependency:** `github.com/csi-addons/kubernetes-csi-addons` added to `go.mod`. CSI Addons `replication.storage` v1alpha1 types registered in scheme (both in `cmd/soteria/main.go` and test suites).
 
@@ -50,20 +72,20 @@ Two deliverables:
    - Sets embedded `VolumeReplicationStatus` fields identically to AC5
    - `PersistentVolumeClaimsRefList` left empty (noop has no real PVCs)
 
-7. **AC7 — Controller registration:** Controller registered in the manager entry point (`cmd/soteria/` — verify exact path; file may not be committed yet) with `SetupWithManager`. The noop class value (`"soteria-noop"`) is configurable via a constant. CSI Addons scheme added alongside existing scheme registrations.
+7. **AC7 — Controller registration:** Controller registered in the manager entry point (`cmd/soteria/` — verify exact path) with `SetupWithManager`. The noop class value (`"soteria-noop"`) is configurable via a constant. CSI Addons scheme added alongside existing scheme registrations.
 
 8. **AC8 — doc.go and RBAC:** `pkg/controller/volumereplication/doc.go` with package description and `+kubebuilder:rbac` markers for `volumereplications` and `volumegroupreplications` resources in the `replication.storage.openshift.io` group (get, list, watch, update, patch for status subresource).
 
-9. **AC9 — Sample CRD updated:** `config/samples/soteria_v1alpha1_drplan.yaml` includes `volumeReplicationClass: soteria-noop`.
+9. **AC9 — Sample CRD unchanged for noop:** `config/samples/soteria_v1alpha1_drplan.yaml` uses `type: noop` — no `volumeReplicationClass` needed. Add a comment showing the csi-extension example.
 
 10. **AC10 — Codegen:** `make manifests generate` runs cleanly. DeepCopy and OpenAPI schemas reflect the new field.
 
-11. **AC11 — Test fixture sweep:** All test files that construct `DRPlan` or `DRPlanSpec` objects are updated to include `VolumeReplicationClass: "soteria-noop"`. Mechanical sweep — no test logic changes.
+11. **AC11 — No test fixture sweep needed:** Since `volumeReplicationClass` is optional and forbidden for noop, existing test fixtures with `VolumeReplicationDriverConfig{Type: "noop"}` remain valid. No sweep required.
 
 12. **AC12 — Validation tests:** New tests in `validation_test.go`:
-    - `TestValidateDRPlan_VolumeReplicationClass_Required` — empty value rejected
-    - `TestValidateDRPlanUpdate_VolumeReplicationClass_Immutable` — changed value rejected
-    - `TestValidateDRPlanUpdate_VolumeReplicationClass_Unchanged` — same value accepted
+    - `TestValidateDRPlan_VolumeReplicationClass_ForbiddenForNoop` — non-empty value with `type: noop` rejected
+    - `TestValidateDRPlan_VolumeReplicationClass_RequiredForCSIExtension` — empty value with `type: csi-extension` rejected (requires extending enum first or using a validation-only test that bypasses enum check)
+    - `TestValidateDRPlanUpdate_VolumeReplicationClass_Immutable` — changed value rejected (covered by struct comparison, but explicit test confirms)
 
 13. **AC13 — Noop controller unit tests:** Table-driven tests using fake `client.Client` (not envtest) in `pkg/controller/volumereplication/reconciler_test.go`:
     - VR with `soteria-noop` class + `primary` state → status Primary + conditions correct
@@ -75,19 +97,24 @@ Two deliverables:
     - VGR with different class → ignored
     - Idempotent re-reconciliation: already-correct status unchanged
 
-    Note: Integration test suite (`test/integration/controller/suite_test.go`) is NOT modified in this story — the noop VR/VGR controller is validated via unit tests with fake client. CSI Addons CRDs are not installed in the envtest environment. Future stories may add integration coverage.
+    Note: Integration test suite (`test/integration/controller/suite_test.go`) is NOT modified in this story — the noop VR/VGR controller is validated via unit tests with fake client. CSI Addons CRDs are not installed in the envtest environment.
 
-14. **AC14 — All existing tests pass:** `make test` and integration tests pass with zero regressions.
+14. **AC14 — Console plugin updated:** `VolumeReplicationDriverConfig` TS interface in `types.ts` gains `volumeReplicationClass?: string`. No display changes — the console does not display `volumeReplicationClass` in this story.
+
+15. **AC15 — Console plugin test fixtures unchanged:** Since the field is optional and noop doesn't use it, no console test fixture updates are needed.
+
+16. **AC16 — All existing tests pass:** `make test` and integration tests pass with zero regressions.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Add `volumeReplicationClass` to DRPlanSpec (AC: #1, #10)
-  - [ ] 1.1 In `pkg/apis/soteria.io/v1alpha1/types.go`, add `VolumeReplicationClass string` to `DRPlanSpec` with `+kubebuilder:validation:Required` marker and JSON tag `volumeReplicationClass`. Place after `VolumeReplicationDriver`.
+- [ ] Task 1: Add `VolumeReplicationClass` to VolumeReplicationDriverConfig (AC: #1, #10)
+  - [ ] 1.1 In `pkg/apis/soteria.io/v1alpha1/types.go`, add `VolumeReplicationClass string` to `VolumeReplicationDriverConfig` with `+optional` marker and JSON tag `volumeReplicationClass,omitempty`. Place after `Type`.
   - [ ] 1.2 Run `make manifests generate` to regenerate DeepCopy and OpenAPI schemas
 
-- [ ] Task 2: Add validation (AC: #2, #3)
-  - [ ] 2.1 In `ValidateDRPlan` (`validation.go`), add required check for `volumeReplicationClass` (empty → `field.Required`)
-  - [ ] 2.2 In `ValidateDRPlanUpdate`, add immutability check for `volumeReplicationClass` (changed → `field.Forbidden`)
+- [ ] Task 2: Add contextual validation (AC: #2, #3)
+  - [ ] 2.1 In `ValidateDRPlan` (`validation.go`), after the type switch: when `type == "noop"` and `VolumeReplicationClass != ""`, append `field.Forbidden` error
+  - [ ] 2.2 When `type == "csi-extension"` and `VolumeReplicationClass == ""`, append `field.Required` error (note: the csi-extension enum value is added in Story 12.1, so this validation branch can be added now but won't be reachable until 12.1 extends the enum)
+  - [ ] 2.3 Verify immutability is covered by the existing struct comparison from Story 12.0a
 
 - [ ] Task 3: Add CSI Addons dependency (AC: #4)
   - [ ] 3.1 Run `go get github.com/csi-addons/kubernetes-csi-addons` to add the module
@@ -103,18 +130,15 @@ Two deliverables:
   - [ ] 4.6 Register controller in `cmd/soteria/main.go`
 
 - [ ] Task 5: Update sample CRD (AC: #9)
-  - [ ] 5.1 In `config/samples/soteria_v1alpha1_drplan.yaml`, add `volumeReplicationClass: soteria-noop`
+  - [ ] 5.1 In `config/samples/soteria_v1alpha1_drplan.yaml`, add comment showing csi-extension example with `volumeReplicationClass`
 
-- [ ] Task 6: Test fixture sweep (AC: #11)
-  - [ ] 6.1 Search all `*.go` and `*_test.go` files for `DRPlanSpec{` or `DRPlan{` typed constructions — add `VolumeReplicationClass: "soteria-noop"` to every fixture
-  - [ ] 6.2 Search for **unstructured** map-style DRPlan specs (e.g., `"spec": map[string]any{`) — these also need `"volumeReplicationClass": "soteria-noop"`. Critical files: `test/integration/apiserver/admission_test.go` (`createDRPlan` helper), `test/integration/apiserver/apiserver_test.go` (inline specs), `test/integration/rbac/rbac_test.go` (`newDRPlan` helper)
-  - [ ] 6.3 Update console-plugin `DRPlanSpec` interface in `console-plugin/src/models/types.ts` — add `volumeReplicationClass: string`
-  - [ ] 6.4 Search all console-plugin test files for DRPlanSpec object constructions and add `volumeReplicationClass: 'soteria-noop'`
+- [ ] Task 6: Update console plugin types (AC: #14)
+  - [ ] 6.1 In `console-plugin/src/models/types.ts`, add `volumeReplicationClass?: string` to the `volumeReplicationDriver` interface
 
 - [ ] Task 7: Validation tests (AC: #12)
-  - [ ] 7.1 Add `TestValidateDRPlan_VolumeReplicationClass_Required`
-  - [ ] 7.2 Add `TestValidateDRPlanUpdate_VolumeReplicationClass_Immutable`
-  - [ ] 7.3 Add `TestValidateDRPlanUpdate_VolumeReplicationClass_Unchanged`
+  - [ ] 7.1 Add `TestValidateDRPlan_VolumeReplicationClass_ForbiddenForNoop`
+  - [ ] 7.2 Add `TestValidateDRPlan_VolumeReplicationClass_RequiredForCSIExtension` (may need to temporarily bypass enum to test csi-extension path)
+  - [ ] 7.3 Add `TestValidateDRPlanUpdate_VolumeReplicationClass_Immutable`
 
 - [ ] Task 8: Noop controller tests (AC: #13)
   - [ ] 8.1 Create `pkg/controller/volumereplication/reconciler_test.go` with table-driven tests
@@ -125,7 +149,7 @@ Two deliverables:
   - [ ] 8.6 Test not-found (deleted CR) returns no error
   - [ ] 8.7 Test idempotent re-reconciliation
 
-- [ ] Task 9: Verify all tests pass (AC: #14)
+- [ ] Task 9: Verify all tests pass (AC: #16)
   - [ ] 9.1 Run `make test` — all unit tests pass
   - [ ] 9.2 Run `make lint-fix` followed by `make lint` — no new lint errors
   - [ ] 9.3 Run integration tests — no regressions
@@ -136,39 +160,58 @@ Two deliverables:
 
 | File | Change |
 |------|--------|
-| `pkg/apis/soteria.io/v1alpha1/types.go` | Add `VolumeReplicationClass` field to `DRPlanSpec` |
-| `pkg/apis/soteria.io/v1alpha1/validation.go` | Required + immutable validation |
+| `pkg/apis/soteria.io/v1alpha1/types.go` | Add `VolumeReplicationClass` field to `VolumeReplicationDriverConfig` |
+| `pkg/apis/soteria.io/v1alpha1/validation.go` | Contextual required/forbidden validation |
 | `pkg/apis/soteria.io/v1alpha1/validation_test.go` | 3 new validation tests |
 | `pkg/controller/volumereplication/doc.go` | Package doc + RBAC markers |
 | `pkg/controller/volumereplication/reconciler.go` | Noop reconciler |
 | `pkg/controller/volumereplication/reconciler_test.go` | Unit tests |
 | `cmd/soteria/` (verify exact path) | CSI Addons scheme + controller registration |
-| `config/samples/soteria_v1alpha1_drplan.yaml` | Add field to sample |
-| `console-plugin/src/models/types.ts` | Add `volumeReplicationClass: string` to `DRPlanSpec` |
-| ~19 typed Go test files + ~3 unstructured Go test files + ~17 console-plugin test files | Fixture sweep |
+| `config/samples/soteria_v1alpha1_drplan.yaml` | Comment with csi-extension example |
+| `console-plugin/src/models/types.ts` | Add `volumeReplicationClass?: string` to interface |
 
 ### Field Design
 
 ```go
-type DRPlanSpec struct {
-    // VolumeReplicationDriver is the registered driver that handles volume
-    // replication operations for this plan's volumes. Immutable after creation.
-    // +kubebuilder:validation:Required
-    // +kubebuilder:validation:Enum=noop
-    VolumeReplicationDriver string `json:"volumeReplicationDriver"`
+type VolumeReplicationDriverConfig struct {
+	// Type is the registered driver that handles volume replication
+	// operations for this plan's volumes. Immutable after creation.
+	// +kubebuilder:validation:Required
+	// +kubebuilder:validation:Enum=noop
+	Type string `json:"type"`
 
-    // VolumeReplicationClass is the VolumeReplicationClass name stamped on
-    // VolumeReplication and VolumeGroupReplication CRs created by the CSI
-    // Extension driver. Free-form string — validated only for non-empty.
-    // Immutable after creation.
-    // +kubebuilder:validation:Required
-    VolumeReplicationClass string `json:"volumeReplicationClass"`
-
-    // ... existing fields unchanged ...
+	// VolumeReplicationClass is the VolumeReplicationClass name stamped on
+	// VolumeReplication and VolumeGroupReplication CRs created by the CSI
+	// Extension driver. Only applicable when Type is csi-extension.
+	// Immutable after creation (covered by struct-level immutability).
+	// +optional
+	VolumeReplicationClass string `json:"volumeReplicationClass,omitempty"`
 }
 ```
 
-**Why free-form (not enum):** Unlike `volumeReplicationDriver` which maps to an in-process driver registry, `volumeReplicationClass` is an opaque string passed through to external CRs. Real deployments use vendor-specific class names (e.g., `dell-powerstore-replication`, `ceph-rbd-replication`). Enumerating these in Soteria's API would couple it to storage vendors.
+**Why optional:** The field is driver-specific. For `noop`, there's no VolumeReplicationClass to stamp — specifying one would be confusing. For `csi-extension`, it's required because every VR/VGR CR needs a class. Programmatic validation enforces this contextual requirement.
+
+**Why no test fixture sweep:** Unlike Story 11.1's `volumeReplicationDriver` (required for all plans), `volumeReplicationClass` is optional with `omitempty`. Existing noop fixtures don't specify it. Go's zero value (`""`) is valid for noop. No sweep needed.
+
+### Contextual Validation Design
+
+```go
+drvPath := specPath.Child("volumeReplicationDriver")
+switch plan.Spec.VolumeReplicationDriver.Type {
+case "noop":
+    if plan.Spec.VolumeReplicationDriver.VolumeReplicationClass != "" {
+        allErrs = append(allErrs, field.Forbidden(
+            drvPath.Child("volumeReplicationClass"),
+            "not applicable for noop driver",
+        ))
+    }
+case "csi-extension":
+    if plan.Spec.VolumeReplicationDriver.VolumeReplicationClass == "" {
+        allErrs = append(allErrs, field.Required(
+            drvPath.Child("volumeReplicationClass"), ""))
+    }
+}
+```
 
 ### CSI Addons Types Reference
 
@@ -177,7 +220,7 @@ type DRPlanSpec struct {
 **API group:** `replication.storage.openshift.io` / version `v1alpha1`
 
 **VolumeReplication (VR):**
-- `spec.volumeReplicationClass` — string, matches DRPlanSpec's value
+- `spec.volumeReplicationClass` — string, matches the plan's VolumeReplicationClass
 - `spec.replicationState` — enum: `primary`, `secondary`, `resync`
 - `spec.dataSource` — TypedLocalObjectReference (PVC)
 - `status.state` — `Primary`, `Secondary`, `Unknown`
@@ -215,105 +258,35 @@ type VolumeReplicationReconciler struct {
 
 **Reconcile logic (VolumeGroupReplication):** Same pattern, filtering on `spec.volumeReplicationClassName == NoopVolumeReplicationClass`.
 
-**SetupWithManager:** Use two controller registrations or a single controller with `Watches()` for the second type. Preferred: two separate controllers (`For(VolumeReplication)` and `For(VolumeGroupReplication)`) to keep predicates clean. Or a single reconciler struct with two `SetupWithManager` calls creating two controllers.
-
-**Recommended approach:** Single reconciler struct, two setup methods:
+**SetupWithManager:** Single reconciler struct, two setup methods:
 - `SetupVolumeReplicationController(mgr) error` — `For(&VolumeReplication{})`
 - `SetupVolumeGroupReplicationController(mgr) error` — `For(&VolumeGroupReplication{})`
-
-### Validation Pattern
-
-Follow the existing pattern in `validation.go` exactly. For `volumeReplicationClass`, since it is free-form (not enum), the create validation is just a non-empty check:
-
-```go
-if plan.Spec.VolumeReplicationClass == "" {
-    allErrs = append(allErrs, field.Required(specPath.Child("volumeReplicationClass"), ""))
-}
-```
-
-Update validation — immutability:
-
-```go
-if newPlan.Spec.VolumeReplicationClass != oldPlan.Spec.VolumeReplicationClass {
-    allErrs = append(allErrs, field.Forbidden(specPath.Child("volumeReplicationClass"), "field is immutable"))
-}
-```
-
-### Test Fixture Sweep Pattern
-
-Same pattern as Story 11.1 (~22 Go test files, ~17 console-plugin test files). Every `DRPlanSpec{}` construction needs `VolumeReplicationClass: "soteria-noop"`. Every console-plugin spec object needs `volumeReplicationClass: 'soteria-noop'`.
-
-Known Go test file locations (typed `DRPlanSpec{}` constructions):
-- `pkg/apis/soteria.io/v1alpha1/validation_test.go`
-- `pkg/controller/drplan/reconciler_test.go`
-- `pkg/controller/drexecution/reconciler_test.go`
-- `pkg/engine/executor_test.go`
-- `pkg/engine/reprotect_test.go`
-- `pkg/admission/plugin_test.go`
-- `pkg/admission/drplan_validator_test.go`
-- `pkg/admission/drexecution_validator_test.go`
-- `pkg/admission/vm_validator_test.go`
-- `internal/preflight/checks_test.go`
-- `pkg/registry/drplan/strategy_test.go`
-- `test/integration/controller/*_test.go`
-- `test/integration/replication/*_test.go`
-- `test/integration/storage/*_test.go`
-
-Known Go test file locations (unstructured `map[string]any` specs — easy to miss):
-- `test/integration/apiserver/admission_test.go` — `createDRPlan` helper builds spec as map
-- `test/integration/apiserver/apiserver_test.go` — inline DRPlan spec maps
-- `test/integration/rbac/rbac_test.go` — `newDRPlan` helper builds spec as map
-
-Note: `pkg/apiserver/critical_fields_test.go` builds status-only `DRPlan{}` fixtures (no spec) — does NOT need sweeping.
-
-Known console-plugin test file locations (from Story 11.5):
-- `console-plugin/tests/components/PlanConfiguration.test.tsx`
-- `console-plugin/tests/components/DRPlanDetailPage.test.tsx`
-- `console-plugin/tests/components/DRLifecycleDiagram.test.tsx`
-- `console-plugin/tests/components/DRPlanActions.test.tsx`
-- `console-plugin/tests/components/KeyboardAccessibility.test.tsx`
-- `console-plugin/tests/components/DiskDisagreementAlert.test.tsx`
-- `console-plugin/tests/components/AlertBannerSystem.test.tsx`
-- `console-plugin/tests/components/DRDashboardPage.test.tsx`
-- `console-plugin/tests/components/Accessibility.test.tsx`
-- `console-plugin/tests/components/TransitionProgressBanner.test.tsx`
-- `console-plugin/tests/components/SiteDisagreementAlert.test.tsx`
-- `console-plugin/tests/components/SiteDiscoverySection.test.tsx`
-- `console-plugin/tests/components/DRDashboardToolbar.test.tsx`
-- `console-plugin/tests/components/DRDashboard.test.tsx`
-- `console-plugin/tests/components/WaveCompositionTree.test.tsx`
-- `console-plugin/tests/utils/drPlanUtils.test.ts`
-- `console-plugin/tests/hooks/usePreflightData.test.ts`
-
-Also update TypeScript `DRPlanSpec` interface in `console-plugin/src/models/types.ts` to add `volumeReplicationClass: string`.
 
 ### What NOT to Change
 
 - `pkg/drivers/` — no driver changes needed; `volumeReplicationClass` is for external CRs, not the in-process driver registry
-- `pkg/engine/` — engine does not use `volumeReplicationClass` (it uses `volumeReplicationDriver` for driver resolution)
+- `pkg/engine/` — engine does not use `volumeReplicationClass` (it uses `volumeReplicationDriver.Type` for driver resolution)
 - `internal/preflight/` — preflight does not inspect `volumeReplicationClass`
-- `pkg/controller/drplan/health.go` — health monitoring uses the driver, not the class
-- `pkg/apiserver/critical_fields.go` — `volumeReplicationClass` is immutable; cannot trigger critical-field writes
-- `pkg/admission/plugin.go` — admission plugin delegates to `ValidateDRPlan`/`ValidateDRPlanUpdate`; no admission-specific logic needed for the new field
-- `pkg/registry/drplan/strategy.go` — table convertor columns are metadata/status only (Name, Phase, VMs, etc.); no spec columns, no changes needed
-- `test/integration/controller/suite_test.go` — noop VR/VGR controller is NOT registered here; unit tests with fake client cover behavior; CSI Addons CRDs are not installed in envtest
-- `PlanConfiguration` component in console plugin — this story adds the TypeScript type only; displaying `volumeReplicationClass` in the UI is deferred to a future story if needed
+- `pkg/controller/drplan/health.go` — health monitoring uses the driver type, not the class
+- `pkg/apiserver/critical_fields.go` — `volumeReplicationDriver` is immutable; cannot trigger critical-field writes
+- `pkg/admission/plugin.go` — admission plugin delegates to `ValidateDRPlan`/`ValidateDRPlanUpdate`; no admission-specific logic needed
+- `pkg/registry/drplan/strategy.go` — table convertor columns are metadata/status only; no spec columns
+- `test/integration/controller/suite_test.go` — noop VR/VGR controller is NOT registered here
+- Existing test fixtures — `volumeReplicationClass` is optional for noop, no sweep needed
 
 ### Previous Story Intelligence
 
-- **Story 11.1 (Add VolumeReplicationDriver to DRPlanSpec):** Established the exact pattern for this story's Part A. Required+immutable field, validation in `ValidateDRPlan` + `ValidateDRPlanUpdate`, test fixture sweep (~22 Go files + ~17 console test files), sample CRD update. Key difference: 11.1 used Enum marker; 12.0 does NOT (free-form string).
-- **Story 11.5 (Console UI Displays Volume Replication Driver):** Updated console-plugin `DRPlanSpec` TS interface and swept test fixtures. Same sweep needed for `volumeReplicationClass`.
+- **Story 12.0a (Restructure VolumeReplicationDriver):** Converted flat string to `VolumeReplicationDriverConfig{Type}`. This story adds the second field to that struct.
+- **Story 11.1 (Add VolumeReplicationDriver to DRPlanSpec):** Established the required+immutable field pattern. This story's validation is contextual (required only for csi-extension) rather than universal.
 - **Story 4.9 (Site Topology Fields):** Added `primarySite`/`secondarySite` as immutable fields — the original immutability validation pattern.
-- **Epic 11 retrospective:** Noted Story 12.0 scope: "Noop VolumeReplication Controller + volumeReplicationClass field on DRPlanSpec."
 
 ### Git Intelligence
 
-Recent commits (all Epic 11):
+Recent commits (all Epic 11 + 12.0a):
+- Story 12.0a restructured VolumeReplicationDriver to nested config
 - `062a1ab` Fix 9 TypeScript type-check errors in console-plugin
 - `016174c` Story 11.5: Console UI displays volume replication driver
 - `d89a977` Story 11.1: Add VolumeReplicationDriver to DRPlanSpec
-
-Patterns: clean single-story commits, fixture sweeps are done as part of each story, codegen always follows type changes.
 
 ### Build Commands
 
@@ -332,12 +305,11 @@ cd console-plugin && npm test   # Console plugin tests
 
 ### References
 
-- [Source: `pkg/apis/soteria.io/v1alpha1/types.go` — DRPlanSpec struct, lines 84–105]
-- [Source: `pkg/apis/soteria.io/v1alpha1/validation.go` — ValidateDRPlan/ValidateDRPlanUpdate, lines 40–94]
+- [Source: `pkg/apis/soteria.io/v1alpha1/types.go` — VolumeReplicationDriverConfig struct and DRPlanSpec]
+- [Source: `pkg/apis/soteria.io/v1alpha1/validation.go` — ValidateDRPlan/ValidateDRPlanUpdate]
 - [Source: `pkg/controller/drplan/doc.go` — controller doc.go pattern]
 - [Source: `pkg/controller/drexecution/doc.go` — RBAC markers + doc.go pattern]
-- [Source: `pkg/drivers/noop/driver.go` — noop pattern and registration, lines 223–236]
-- [Source: sprint-status.yaml comments — Epic 12 story definitions]
+- [Source: `pkg/drivers/noop/driver.go` — noop pattern and registration]
 - [Source: CSI Addons VolumeReplication types — `api/replication.storage/v1alpha1/volumereplication_types.go`]
 - [Source: CSI Addons VolumeGroupReplication types — `api/replication.storage/v1alpha1/volumegroupreplication_types.go`]
 

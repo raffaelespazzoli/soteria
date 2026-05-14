@@ -12,7 +12,7 @@ So that the driver can be selected via `volumeReplicationDriver: csi-extension` 
 
 ### Context
 
-Epic 11 introduced the `volumeReplicationDriver` field on DRPlanSpec with `noop` as the only admissible value. This story extends the enum to include `csi-extension` and creates the driver package skeleton. The `csi-extension` driver manages volume replication through CSI Addons VolumeReplication and VolumeGroupReplication Kubernetes CRDs, reconciled by the csi-addons sidecar.
+Story 12.0a restructured `DRPlanSpec.VolumeReplicationDriver` from a flat string to a `VolumeReplicationDriverConfig` struct. Story 12.0 added the `VolumeReplicationClass` optional field inside that struct. The `Type` field currently admits only `noop`. This story extends the enum to include `csi-extension` and creates the driver package skeleton. The `csi-extension` driver manages volume replication through CSI Addons VolumeReplication and VolumeGroupReplication Kubernetes CRDs, reconciled by the csi-addons sidecar.
 
 ### Design
 
@@ -34,7 +34,7 @@ All 6 StorageProvider methods initially return `drivers.ErrDriverNotFound` (or a
 
 4. **AC4 — Import in all.go:** `pkg/drivers/all/all.go` imports `_ "github.com/soteria-project/soteria/pkg/drivers/csiextension"`.
 
-5. **AC5 — Enum extended:** `DRPlanSpec.VolumeReplicationDriver` kubebuilder marker updated to `+kubebuilder:validation:Enum=noop;csi-extension`. `make manifests generate` regenerates CRD/OpenAPI.
+5. **AC5 — Enum extended:** `VolumeReplicationDriverConfig.Type` kubebuilder marker updated to `+kubebuilder:validation:Enum=noop;csi-extension`. Programmatic validation in `ValidateDRPlan` switch statement updated to accept `"csi-extension"` (the contextual `VolumeReplicationClass` required check from Story 12.0 becomes reachable). `make manifests generate` regenerates CRD/OpenAPI.
 
 6. **AC6 — Package documentation:** `pkg/drivers/csiextension/doc.go` describes the driver's purpose: managing volume replication through CSI Addons VolumeReplication/VolumeGroupReplication CRDs.
 
@@ -51,9 +51,10 @@ All 6 StorageProvider methods initially return `drivers.ErrDriverNotFound` (or a
 - [ ] Task 2: Import in all.go (AC: #4)
   - [ ] 2.1 Add `_ "github.com/soteria-project/soteria/pkg/drivers/csiextension"` import to `pkg/drivers/all/all.go`
 
-- [ ] Task 3: Extend enum (AC: #5)
-  - [ ] 3.1 Update `+kubebuilder:validation:Enum=noop;csi-extension` marker on `VolumeReplicationDriver` in `types.go`
-  - [ ] 3.2 Run `make manifests generate`
+- [ ] Task 3: Extend enum and validation (AC: #5)
+  - [ ] 3.1 Update `+kubebuilder:validation:Enum=noop;csi-extension` marker on `VolumeReplicationDriverConfig.Type` in `types.go`
+  - [ ] 3.2 Add `case "csi-extension":` to the `ValidateDRPlan` switch in `validation.go` (the contextual `VolumeReplicationClass` required check from Story 12.0 is already in this branch)
+  - [ ] 3.3 Run `make manifests generate`
 
 - [ ] Task 4: Update sample (AC: #8)
   - [ ] 4.1 Add comment to `config/samples/soteria_v1alpha1_drplan.yaml`
@@ -73,7 +74,8 @@ All 6 StorageProvider methods initially return `drivers.ErrDriverNotFound` (or a
 | `pkg/drivers/csiextension/driver.go` | New — Driver struct, stubs, init() |
 | `pkg/drivers/csiextension/registration_test.go` | New — registration test |
 | `pkg/drivers/all/all.go` | Modified — add import |
-| `pkg/apis/soteria.io/v1alpha1/types.go` | Modified — extend enum |
+| `pkg/apis/soteria.io/v1alpha1/types.go` | Modified — extend enum on `VolumeReplicationDriverConfig.Type` |
+| `pkg/apis/soteria.io/v1alpha1/validation.go` | Modified — add `csi-extension` case to switch |
 
 ### Driver Stub Pattern
 
@@ -109,7 +111,8 @@ func init() {
 
 ### Dependency
 
-- **Depends on Epic 11 (Story 11.1)** — `VolumeReplicationDriver` field must exist on `DRPlanSpec`.
+- **Depends on Story 12.0a** — `VolumeReplicationDriverConfig` struct with `Type` field must exist.
+- **Depends on Story 12.0** — `VolumeReplicationClass` field and contextual validation must be in place.
 
 ### Previous Story Intelligence
 
