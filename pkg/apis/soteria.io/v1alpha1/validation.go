@@ -70,7 +70,7 @@ func ValidateDRPlan(plan *DRPlan) field.ErrorList {
 		allErrs = append(allErrs, field.NotSupported(
 			drvPath.Child("type"),
 			plan.Spec.VolumeReplicationDriver.Type,
-			[]string{"noop"},
+			[]string{"noop", "csi-extension"},
 		))
 	}
 

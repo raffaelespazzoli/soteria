@@ -14,14 +14,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package all registers every built-in StorageProvider driver via init()
-// side-effect imports. Import this package from main.go to activate all
-// drivers:
-//
-//	import _ "github.com/soteria-project/soteria/pkg/drivers/all"
-package all
+package csiextension
 
 import (
-	_ "github.com/soteria-project/soteria/pkg/drivers/csiextension"
-	_ "github.com/soteria-project/soteria/pkg/drivers/noop"
+	"testing"
+
+	"github.com/soteria-project/soteria/pkg/drivers"
 )
+
+func TestGetDriver_ReturnsNonNilProvider(t *testing.T) {
+	drv, err := drivers.GetDriver(DriverName)
+	if err != nil {
+		t.Fatalf("GetDriver(%q) returned error: %v", DriverName, err)
+	}
+	if drv == nil {
+		t.Fatalf("GetDriver(%q) returned nil provider", DriverName)
+	}
+}

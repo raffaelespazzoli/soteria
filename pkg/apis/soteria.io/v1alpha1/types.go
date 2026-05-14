@@ -88,7 +88,7 @@ type VolumeReplicationDriverConfig struct {
 	// Type is the registered driver that handles volume replication
 	// operations for this plan's volumes. Immutable after creation.
 	// +kubebuilder:validation:Required
-	// +kubebuilder:validation:Enum=noop
+	// +kubebuilder:validation:Enum=noop;csi-extension
 	Type string `json:"type"`
 
 	// VolumeReplicationClass is the VolumeReplicationClass name stamped on

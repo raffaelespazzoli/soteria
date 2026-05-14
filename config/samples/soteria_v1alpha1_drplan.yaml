@@ -4,7 +4,7 @@ metadata:
   name: erp-full-stack
 spec:
   # Volume replication driver that handles storage operations for this plan.
-  # Currently only "noop" is supported; future drivers extend the enum.
+  # Supported values: "noop", "csi-extension".
   # Immutable after creation.
   volumeReplicationDriver:
     type: noop
