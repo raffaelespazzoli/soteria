@@ -901,6 +901,349 @@ func TestCreateVolumeGroup_EmptyPVCNames_ReturnsError(t *testing.T) {
 // Create-or-update (AlreadyExists) test
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// StopReplication & SetSource — Table-driven state transition tests (12.4)
+// ---------------------------------------------------------------------------
+
+func TestStopReplication_StateTransitions(t *testing.T) {
+	tests := []struct {
+		name      string
+		initial   replicationv1alpha1.ReplicationState
+		wantState replicationv1alpha1.ReplicationState
+	}{
+		{"primary to secondary", ReplicationStatePrimary, ReplicationStateSecondary},
+		{"secondary to primary", ReplicationStateSecondary, ReplicationStatePrimary},
+		{"resync to primary", ReplicationStateResync, ReplicationStatePrimary},
+		{"unknown to primary", replicationv1alpha1.ReplicationState("unknown"), ReplicationStatePrimary},
+		{"empty to primary", replicationv1alpha1.ReplicationState(""), ReplicationStatePrimary},
+	}
+
+	for _, tt := range tests {
+		t.Run("VR/"+tt.name, func(t *testing.T) {
+			vr := &replicationv1alpha1.VolumeReplication{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      vgIDPrefix + testVGNameVM + "-data",
+					Namespace: "default",
+					Labels:    map[string]string{LabelVolumeGroup: testVGNameVM},
+				},
+				Spec: replicationv1alpha1.VolumeReplicationSpec{
+					VolumeReplicationClass: "ceph-rbd",
+					ReplicationState:       tt.initial,
+					DataSource: corev1.TypedLocalObjectReference{
+						Kind: "PersistentVolumeClaim", Name: "data",
+					},
+				},
+			}
+
+			drv := testDriver(t, vr)
+			ctx := context.Background()
+
+			if err := drv.StopReplication(ctx, vgIDFromNamespace("default", testVGNameVM)); err != nil {
+				t.Fatalf("StopReplication: %v", err)
+			}
+
+			var got replicationv1alpha1.VolumeReplication
+			if err := drv.client.Get(ctx, client.ObjectKeyFromObject(vr), &got); err != nil {
+				t.Fatalf("Get: %v", err)
+			}
+			if got.Spec.ReplicationState != tt.wantState {
+				t.Errorf("ReplicationState = %q, want %q", got.Spec.ReplicationState, tt.wantState)
+			}
+		})
+
+		t.Run("VGR/"+tt.name, func(t *testing.T) {
+			vgr := &replicationv1alpha1.VolumeGroupReplication{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      vgIDPrefix + testVGNameNS,
+					Namespace: testNamespace,
+					Labels:    map[string]string{LabelVolumeGroup: testVGNameNS},
+				},
+				Spec: replicationv1alpha1.VolumeGroupReplicationSpec{
+					VolumeGroupReplicationClassName: "ceph-rbd-group",
+					VolumeReplicationClassName:      "ceph-rbd",
+					ReplicationState:                tt.initial,
+				},
+			}
+
+			drv := testDriver(t, vgr)
+			ctx := context.Background()
+
+			if err := drv.StopReplication(ctx, vgIDFromNamespace(testNamespace, testVGNameNS)); err != nil {
+				t.Fatalf("StopReplication: %v", err)
+			}
+
+			var got replicationv1alpha1.VolumeGroupReplication
+			if err := drv.client.Get(ctx, client.ObjectKeyFromObject(vgr), &got); err != nil {
+				t.Fatalf("Get: %v", err)
+			}
+			if got.Spec.ReplicationState != tt.wantState {
+				t.Errorf("ReplicationState = %q, want %q", got.Spec.ReplicationState, tt.wantState)
+			}
+		})
+	}
+}
+
+func TestSetSource_StateTransitions(t *testing.T) {
+	tests := []struct {
+		name    string
+		initial replicationv1alpha1.ReplicationState
+	}{
+		{"secondary to primary", ReplicationStateSecondary},
+		{"resync to primary", ReplicationStateResync},
+		{"already primary (idempotent)", ReplicationStatePrimary},
+	}
+
+	for _, tt := range tests {
+		t.Run("VR/"+tt.name, func(t *testing.T) {
+			vr := &replicationv1alpha1.VolumeReplication{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      vgIDPrefix + testVGNameVM + "-data",
+					Namespace: "default",
+					Labels:    map[string]string{LabelVolumeGroup: testVGNameVM},
+				},
+				Spec: replicationv1alpha1.VolumeReplicationSpec{
+					VolumeReplicationClass: "ceph-rbd",
+					ReplicationState:       tt.initial,
+					DataSource: corev1.TypedLocalObjectReference{
+						Kind: "PersistentVolumeClaim", Name: "data",
+					},
+				},
+			}
+
+			drv := testDriver(t, vr)
+			ctx := context.Background()
+
+			if err := drv.SetSource(ctx, vgIDFromNamespace("default", testVGNameVM)); err != nil {
+				t.Fatalf("SetSource: %v", err)
+			}
+
+			var got replicationv1alpha1.VolumeReplication
+			if err := drv.client.Get(ctx, client.ObjectKeyFromObject(vr), &got); err != nil {
+				t.Fatalf("Get: %v", err)
+			}
+			if got.Spec.ReplicationState != ReplicationStatePrimary {
+				t.Errorf("ReplicationState = %q, want primary", got.Spec.ReplicationState)
+			}
+		})
+
+		t.Run("VGR/"+tt.name, func(t *testing.T) {
+			vgr := &replicationv1alpha1.VolumeGroupReplication{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      vgIDPrefix + testVGNameNS,
+					Namespace: testNamespace,
+					Labels:    map[string]string{LabelVolumeGroup: testVGNameNS},
+				},
+				Spec: replicationv1alpha1.VolumeGroupReplicationSpec{
+					VolumeGroupReplicationClassName: "ceph-rbd-group",
+					VolumeReplicationClassName:      "ceph-rbd",
+					ReplicationState:                tt.initial,
+				},
+			}
+
+			drv := testDriver(t, vgr)
+			ctx := context.Background()
+
+			if err := drv.SetSource(ctx, vgIDFromNamespace(testNamespace, testVGNameNS)); err != nil {
+				t.Fatalf("SetSource: %v", err)
+			}
+
+			var got replicationv1alpha1.VolumeGroupReplication
+			if err := drv.client.Get(ctx, client.ObjectKeyFromObject(vgr), &got); err != nil {
+				t.Fatalf("Get: %v", err)
+			}
+			if got.Spec.ReplicationState != ReplicationStatePrimary {
+				t.Errorf("ReplicationState = %q, want primary", got.Spec.ReplicationState)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// StopReplication — multi-PVC atomicity & idempotency (Story 12.4)
+// ---------------------------------------------------------------------------
+
+func TestStopReplication_MultiplePVCs_AllFlipped(t *testing.T) {
+	drv := testDriver(t)
+	ctx := context.Background()
+
+	_, err := drv.CreateVolumeGroup(ctx, drivers.VolumeGroupSpec{
+		Name:      testVGNameVM,
+		Namespace: "default",
+		PVCNames:  []string{"data", "logs", "config"},
+		Labels:    primaryLabels("ceph-rbd"),
+	})
+	if err != nil {
+		t.Fatalf("CreateVolumeGroup: %v", err)
+	}
+
+	vgID := vgIDFromNamespace("default", testVGNameVM)
+	if err := drv.StopReplication(ctx, vgID); err != nil {
+		t.Fatalf("StopReplication: %v", err)
+	}
+
+	var vrList replicationv1alpha1.VolumeReplicationList
+	if err := drv.client.List(ctx, &vrList); err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(vrList.Items) != 3 {
+		t.Fatalf("expected 3 VRs, got %d", len(vrList.Items))
+	}
+	for _, vr := range vrList.Items {
+		if vr.Spec.ReplicationState != ReplicationStateSecondary {
+			t.Errorf("VR %s: state = %q, want secondary", vr.Name, vr.Spec.ReplicationState)
+		}
+	}
+}
+
+func TestStopReplication_DoubleFlip_Idempotent(t *testing.T) {
+	drv := testDriver(t)
+	ctx := context.Background()
+
+	_, err := drv.CreateVolumeGroup(ctx, drivers.VolumeGroupSpec{
+		Name:      testVGNameVM,
+		Namespace: "default",
+		PVCNames:  []string{"data"},
+		Labels:    primaryLabels("ceph-rbd"),
+	})
+	if err != nil {
+		t.Fatalf("CreateVolumeGroup: %v", err)
+	}
+
+	vgID := vgIDFromNamespace("default", testVGNameVM)
+	if err := drv.StopReplication(ctx, vgID); err != nil {
+		t.Fatalf("first StopReplication: %v", err)
+	}
+	if err := drv.StopReplication(ctx, vgID); err != nil {
+		t.Fatalf("second StopReplication: %v", err)
+	}
+
+	var vrList replicationv1alpha1.VolumeReplicationList
+	if err := drv.client.List(ctx, &vrList); err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	for _, vr := range vrList.Items {
+		if vr.Spec.ReplicationState != ReplicationStatePrimary {
+			t.Errorf("VR %s: state = %q, want primary (double-flip)", vr.Name, vr.Spec.ReplicationState)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Error & edge-case tests (Story 12.4)
+// ---------------------------------------------------------------------------
+
+func TestStopReplication_NotFound(t *testing.T) {
+	drv := testDriver(t)
+	ctx := context.Background()
+
+	err := drv.StopReplication(ctx, "csi-ext-default/nonexistent")
+	if !errors.Is(err, drivers.ErrVolumeGroupNotFound) {
+		t.Errorf("StopReplication for nonexistent: got %v, want ErrVolumeGroupNotFound", err)
+	}
+}
+
+func TestSetSource_NotFound(t *testing.T) {
+	drv := testDriver(t)
+	ctx := context.Background()
+
+	err := drv.SetSource(ctx, "csi-ext-default/nonexistent")
+	if !errors.Is(err, drivers.ErrVolumeGroupNotFound) {
+		t.Errorf("SetSource for nonexistent: got %v, want ErrVolumeGroupNotFound", err)
+	}
+}
+
+func TestStopReplication_ContextCancelled(t *testing.T) {
+	drv := testDriver(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if err := drv.StopReplication(ctx, "csi-ext-default/test"); err == nil {
+		t.Fatal("expected error for cancelled context")
+	}
+}
+
+func TestSetSource_ContextCancelled(t *testing.T) {
+	drv := testDriver(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if err := drv.SetSource(ctx, "csi-ext-default/test"); err == nil {
+		t.Fatal("expected error for cancelled context")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Helper function tests (Story 12.4)
+// ---------------------------------------------------------------------------
+
+func TestFlipReplicationState(t *testing.T) {
+	tests := []struct {
+		name    string
+		current replicationv1alpha1.ReplicationState
+		want    replicationv1alpha1.ReplicationState
+	}{
+		{"primary to secondary", ReplicationStatePrimary, ReplicationStateSecondary},
+		{"secondary to primary", ReplicationStateSecondary, ReplicationStatePrimary},
+		{"resync to primary", ReplicationStateResync, ReplicationStatePrimary},
+		{"unknown to primary", replicationv1alpha1.ReplicationState("unknown"), ReplicationStatePrimary},
+		{"empty to primary", replicationv1alpha1.ReplicationState(""), ReplicationStatePrimary},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := flipReplicationState(tt.current); got != tt.want {
+				t.Errorf("flipReplicationState(%q) = %q, want %q", tt.current, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCrSet_CurrentState(t *testing.T) {
+	tests := []struct {
+		name string
+		set  crSet
+		want replicationv1alpha1.ReplicationState
+	}{
+		{
+			name: "VGR takes precedence",
+			set: crSet{
+				vgrs: []replicationv1alpha1.VolumeGroupReplication{
+					{Spec: replicationv1alpha1.VolumeGroupReplicationSpec{
+						ReplicationState: ReplicationStateSecondary,
+					}},
+				},
+			},
+			want: ReplicationStateSecondary,
+		},
+		{
+			name: "VR when no VGR",
+			set: crSet{
+				vrs: []replicationv1alpha1.VolumeReplication{
+					{Spec: replicationv1alpha1.VolumeReplicationSpec{
+						ReplicationState: ReplicationStatePrimary,
+					}},
+				},
+			},
+			want: ReplicationStatePrimary,
+		},
+		{
+			name: "empty set",
+			set:  crSet{},
+			want: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.set.currentState(); got != tt.want {
+				t.Errorf("currentState() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Create-or-update (AlreadyExists) test
+// ---------------------------------------------------------------------------
+
 func TestCreateVolumeGroup_PartialRetry_SkipsExisting(t *testing.T) {
 	drv := testDriver(t)
 	ctx := context.Background()

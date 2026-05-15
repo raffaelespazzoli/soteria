@@ -339,12 +339,28 @@ func (d *Driver) pvcNamesFromSelector(
 	return names, nil
 }
 
-func (d *Driver) SetSource(_ context.Context, _ drivers.VolumeGroupID) error {
-	return fmt.Errorf("csi-extension: SetSource not yet implemented")
+func (d *Driver) SetSource(ctx context.Context, id drivers.VolumeGroupID) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	set, err := d.listCRsForVG(ctx, id)
+	if err != nil {
+		return err
+	}
+	return d.updateReplicationState(ctx, set, ReplicationStatePrimary)
 }
 
-func (d *Driver) StopReplication(_ context.Context, _ drivers.VolumeGroupID) error {
-	return fmt.Errorf("csi-extension: StopReplication not yet implemented")
+func (d *Driver) StopReplication(ctx context.Context, id drivers.VolumeGroupID) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	set, err := d.listCRsForVG(ctx, id)
+	if err != nil {
+		return err
+	}
+	return d.flipReplicationStates(ctx, set)
 }
 
 func (d *Driver) GetReplicationStatus(_ context.Context, _ drivers.VolumeGroupID) (drivers.ReplicationStatus, error) {

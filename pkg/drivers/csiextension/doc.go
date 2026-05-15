@@ -31,6 +31,14 @@ limitations under the License.
 // initial spec.replicationState is determined by the site role passed in
 // VolumeGroupSpec.Labels[SiteRoleLabel].
 //
+// Story 12.4 implements StopReplication and SetSource as declarative
+// state transitions on the VR/VGR CRs' spec.replicationState field.
+// StopReplication reads the current state and flips the replication
+// direction (primary→secondary, secondary/resync→primary). SetSource
+// unconditionally sets the state to primary (idempotent). Both methods
+// locate CRs via the soteria.io/volume-group label and skip updates
+// when the CR is already in the target state.
+//
 // Unlike the noop driver, csi-extension requires a Kubernetes client at
 // construction time and cannot use init() for self-registration. Instead,
 // main.go registers it after the controller-runtime manager is created:
