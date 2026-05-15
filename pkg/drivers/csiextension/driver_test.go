@@ -21,6 +21,7 @@ import (
 	"encoding/json"
 	"errors"
 	"testing"
+	"time"
 
 	replicationv1alpha1 "github.com/csi-addons/kubernetes-csi-addons/api/replication.storage/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
@@ -76,6 +77,7 @@ const (
 	testVGNameVM  = "vm-default-web01"
 	testVGNameNS  = "ns-erp-db"
 	testNamespace = "erp-db"
+	testPVCLogs   = "logs"
 )
 
 func makePVC(name string) *corev1.PersistentVolumeClaim {
@@ -1237,6 +1239,517 @@ func TestCrSet_CurrentState(t *testing.T) {
 				t.Errorf("currentState() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Create-or-update (AlreadyExists) test
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// GetReplicationStatus — Role mapping tests (Story 12.5, AC1)
+// ---------------------------------------------------------------------------
+
+func TestGetReplicationStatus_RoleMapping(t *testing.T) {
+	tests := []struct {
+		name     string
+		state    replicationv1alpha1.State
+		wantRole drivers.VolumeRole
+	}{
+		{"Primary→Source", replicationv1alpha1.PrimaryState, drivers.RoleSource},
+		{"Secondary→Target", replicationv1alpha1.SecondaryState, drivers.RoleTarget},
+		{"Unknown→NonReplicated", replicationv1alpha1.UnknownState, drivers.RoleNonReplicated},
+		{"empty→NonReplicated", "", drivers.RoleNonReplicated},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := mapRole(tt.state); got != tt.wantRole {
+				t.Errorf("mapRole(%q) = %q, want %q", tt.state, got, tt.wantRole)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// GetReplicationStatus — Health mapping tests (Story 12.5, AC2, AC7)
+// ---------------------------------------------------------------------------
+
+func conditionTrue(typ string) metav1.Condition {
+	return metav1.Condition{Type: typ, Status: metav1.ConditionTrue}
+}
+
+func conditionFalse(typ string) metav1.Condition {
+	return metav1.Condition{Type: typ, Status: metav1.ConditionFalse}
+}
+
+func TestGetReplicationStatus_HealthMapping(t *testing.T) {
+	tests := []struct {
+		name       string
+		conditions []metav1.Condition
+		wantHealth drivers.ReplicationHealth
+	}{
+		{
+			"Completed=True→Healthy",
+			[]metav1.Condition{conditionTrue(replicationv1alpha1.ConditionCompleted)},
+			drivers.HealthHealthy,
+		},
+		{
+			"Degraded=True→Degraded",
+			[]metav1.Condition{conditionTrue(replicationv1alpha1.ConditionDegraded)},
+			drivers.HealthDegraded,
+		},
+		{
+			"Resyncing=True→Syncing",
+			[]metav1.Condition{conditionTrue(replicationv1alpha1.ConditionResyncing)},
+			drivers.HealthSyncing,
+		},
+		{
+			"Degraded=True takes precedence over Completed=True",
+			[]metav1.Condition{
+				conditionTrue(replicationv1alpha1.ConditionCompleted),
+				conditionTrue(replicationv1alpha1.ConditionDegraded),
+			},
+			drivers.HealthDegraded,
+		},
+		{
+			"Resyncing=True takes precedence over Completed=True",
+			[]metav1.Condition{
+				conditionTrue(replicationv1alpha1.ConditionCompleted),
+				conditionTrue(replicationv1alpha1.ConditionResyncing),
+			},
+			drivers.HealthSyncing,
+		},
+		{
+			"Degraded=True takes precedence over Resyncing=True",
+			[]metav1.Condition{
+				conditionTrue(replicationv1alpha1.ConditionDegraded),
+				conditionTrue(replicationv1alpha1.ConditionResyncing),
+			},
+			drivers.HealthDegraded,
+		},
+		{
+			"all False→Unknown",
+			[]metav1.Condition{
+				conditionFalse(replicationv1alpha1.ConditionCompleted),
+				conditionFalse(replicationv1alpha1.ConditionDegraded),
+				conditionFalse(replicationv1alpha1.ConditionResyncing),
+			},
+			drivers.HealthUnknown,
+		},
+		{
+			"empty conditions→Unknown",
+			nil,
+			drivers.HealthUnknown,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := mapHealth(tt.conditions); got != tt.wantHealth {
+				t.Errorf("mapHealth() = %q, want %q", got, tt.wantHealth)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// GetReplicationStatus — Worst health aggregation (Story 12.5, AC4)
+// ---------------------------------------------------------------------------
+
+func TestWorstHealth(t *testing.T) {
+	tests := []struct {
+		name    string
+		healths []drivers.ReplicationHealth
+		want    drivers.ReplicationHealth
+	}{
+		{"all healthy", []drivers.ReplicationHealth{drivers.HealthHealthy, drivers.HealthHealthy}, drivers.HealthHealthy},
+		{
+			"healthy+degraded",
+			[]drivers.ReplicationHealth{drivers.HealthHealthy, drivers.HealthDegraded},
+			drivers.HealthDegraded,
+		},
+		{"healthy+syncing", []drivers.ReplicationHealth{drivers.HealthHealthy, drivers.HealthSyncing}, drivers.HealthSyncing},
+		{
+			"syncing+degraded",
+			[]drivers.ReplicationHealth{drivers.HealthSyncing, drivers.HealthDegraded},
+			drivers.HealthDegraded,
+		},
+		{"unknown worst", []drivers.ReplicationHealth{drivers.HealthHealthy, drivers.HealthUnknown}, drivers.HealthUnknown},
+		{"single healthy", []drivers.ReplicationHealth{drivers.HealthHealthy}, drivers.HealthHealthy},
+		{"empty defaults to healthy", []drivers.ReplicationHealth{}, drivers.HealthHealthy},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := worstHealth(tt.healths); got != tt.want {
+				t.Errorf("worstHealth() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// GetReplicationStatus — VR single-CR (Story 12.5, AC1-AC3)
+// ---------------------------------------------------------------------------
+
+func makeVRWithStatus(
+	name, namespace, vgName string,
+	state replicationv1alpha1.State,
+	conditions []metav1.Condition,
+	syncTime *metav1.Time,
+) *replicationv1alpha1.VolumeReplication {
+	return &replicationv1alpha1.VolumeReplication{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+			Labels:    map[string]string{LabelVolumeGroup: vgName},
+		},
+		Spec: replicationv1alpha1.VolumeReplicationSpec{
+			VolumeReplicationClass: "ceph-rbd",
+			ReplicationState:       ReplicationStatePrimary,
+			DataSource: corev1.TypedLocalObjectReference{
+				Kind: "PersistentVolumeClaim",
+				Name: "data",
+			},
+		},
+		Status: replicationv1alpha1.VolumeReplicationStatus{
+			State:        state,
+			Conditions:   conditions,
+			LastSyncTime: syncTime,
+		},
+	}
+}
+
+func TestGetReplicationStatus_VR_Healthy(t *testing.T) {
+	syncTime := metav1.Now()
+	vr := makeVRWithStatus(
+		vgIDPrefix+testVGNameVM+"-data", "default", testVGNameVM,
+		replicationv1alpha1.PrimaryState,
+		[]metav1.Condition{conditionTrue(replicationv1alpha1.ConditionCompleted)},
+		&syncTime,
+	)
+
+	drv := testDriver(t, vr)
+	ctx := context.Background()
+
+	status, err := drv.GetReplicationStatus(ctx, vgIDFromNamespace("default", testVGNameVM))
+	if err != nil {
+		t.Fatalf("GetReplicationStatus: %v", err)
+	}
+	if status.Role != drivers.RoleSource {
+		t.Errorf("Role = %q, want Source", status.Role)
+	}
+	if status.Health != drivers.HealthHealthy {
+		t.Errorf("Health = %q, want Healthy", status.Health)
+	}
+	if status.LastSyncTime == nil {
+		t.Fatal("LastSyncTime should not be nil")
+	}
+}
+
+func TestGetReplicationStatus_VR_Degraded(t *testing.T) {
+	const vgName = "vm-erp-db-app01"
+	vr := makeVRWithStatus(
+		vgIDPrefix+vgName+"-data", testNamespace, vgName,
+		replicationv1alpha1.SecondaryState,
+		[]metav1.Condition{conditionTrue(replicationv1alpha1.ConditionDegraded)},
+		nil,
+	)
+
+	drv := testDriver(t, vr)
+	ctx := context.Background()
+
+	status, err := drv.GetReplicationStatus(ctx, vgIDFromNamespace(testNamespace, vgName))
+	if err != nil {
+		t.Fatalf("GetReplicationStatus: %v", err)
+	}
+	if status.Role != drivers.RoleTarget {
+		t.Errorf("Role = %q, want Target", status.Role)
+	}
+	if status.Health != drivers.HealthDegraded {
+		t.Errorf("Health = %q, want Degraded", status.Health)
+	}
+	if status.LastSyncTime != nil {
+		t.Errorf("LastSyncTime = %v, want nil", status.LastSyncTime)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// GetReplicationStatus — VR aggregation (Story 12.5, AC4)
+// ---------------------------------------------------------------------------
+
+func TestGetReplicationStatus_VR_Aggregation_WorstHealthWins(t *testing.T) {
+	now := metav1.Now()
+	earlier := metav1.NewTime(now.Add(-10 * time.Minute))
+
+	vr1 := makeVRWithStatus(
+		vgIDPrefix+testVGNameVM+"-data", "default", testVGNameVM,
+		replicationv1alpha1.PrimaryState,
+		[]metav1.Condition{conditionTrue(replicationv1alpha1.ConditionCompleted)},
+		&now,
+	)
+	vr2 := makeVRWithStatus(
+		vgIDPrefix+testVGNameVM+"-logs", "default", testVGNameVM,
+		replicationv1alpha1.PrimaryState,
+		[]metav1.Condition{conditionTrue(replicationv1alpha1.ConditionDegraded)},
+		&earlier,
+	)
+	vr2.Spec.DataSource.Name = testPVCLogs
+
+	drv := testDriver(t, vr1, vr2)
+	ctx := context.Background()
+
+	status, err := drv.GetReplicationStatus(ctx, vgIDFromNamespace("default", testVGNameVM))
+	if err != nil {
+		t.Fatalf("GetReplicationStatus: %v", err)
+	}
+
+	if status.Role != drivers.RoleSource {
+		t.Errorf("Role = %q, want Source (from first CR)", status.Role)
+	}
+	if status.Health != drivers.HealthDegraded {
+		t.Errorf("Health = %q, want Degraded (worst wins)", status.Health)
+	}
+	if status.LastSyncTime == nil {
+		t.Fatal("LastSyncTime should not be nil")
+	}
+	if status.LastSyncTime.Truncate(time.Second) != earlier.Truncate(time.Second) {
+		t.Errorf("LastSyncTime = %v, want %v (oldest)", status.LastSyncTime, earlier.Time)
+	}
+}
+
+func TestGetReplicationStatus_VR_Aggregation_ThreePVCs_MixedHealth(t *testing.T) {
+	now := metav1.Now()
+	earlier := metav1.NewTime(now.Add(-5 * time.Minute))
+	earliest := metav1.NewTime(now.Add(-20 * time.Minute))
+
+	vr1 := makeVRWithStatus(
+		vgIDPrefix+testVGNameVM+"-data", "default", testVGNameVM,
+		replicationv1alpha1.PrimaryState,
+		[]metav1.Condition{conditionTrue(replicationv1alpha1.ConditionCompleted)},
+		&now,
+	)
+	vr2 := makeVRWithStatus(
+		vgIDPrefix+testVGNameVM+"-logs", "default", testVGNameVM,
+		replicationv1alpha1.PrimaryState,
+		[]metav1.Condition{conditionTrue(replicationv1alpha1.ConditionResyncing)},
+		&earlier,
+	)
+	vr2.Spec.DataSource.Name = testPVCLogs
+	vr3 := makeVRWithStatus(
+		vgIDPrefix+testVGNameVM+"-config", "default", testVGNameVM,
+		replicationv1alpha1.PrimaryState,
+		[]metav1.Condition{conditionTrue(replicationv1alpha1.ConditionCompleted)},
+		&earliest,
+	)
+	vr3.Spec.DataSource.Name = "config"
+
+	drv := testDriver(t, vr1, vr2, vr3)
+	ctx := context.Background()
+
+	status, err := drv.GetReplicationStatus(ctx, vgIDFromNamespace("default", testVGNameVM))
+	if err != nil {
+		t.Fatalf("GetReplicationStatus: %v", err)
+	}
+	if status.Health != drivers.HealthSyncing {
+		t.Errorf("Health = %q, want Syncing (worst of Healthy+Syncing+Healthy)", status.Health)
+	}
+	if status.LastSyncTime == nil || status.LastSyncTime.Truncate(time.Second) != earliest.Truncate(time.Second) {
+		t.Errorf("LastSyncTime = %v, want %v (oldest)", status.LastSyncTime, earliest.Time)
+	}
+}
+
+func TestGetReplicationStatus_VR_Aggregation_NilSyncTimes(t *testing.T) {
+	vr1 := makeVRWithStatus(
+		vgIDPrefix+testVGNameVM+"-data", "default", testVGNameVM,
+		replicationv1alpha1.PrimaryState,
+		[]metav1.Condition{conditionTrue(replicationv1alpha1.ConditionCompleted)},
+		nil,
+	)
+	vr2 := makeVRWithStatus(
+		vgIDPrefix+testVGNameVM+"-logs", "default", testVGNameVM,
+		replicationv1alpha1.PrimaryState,
+		[]metav1.Condition{conditionTrue(replicationv1alpha1.ConditionCompleted)},
+		nil,
+	)
+	vr2.Spec.DataSource.Name = testPVCLogs
+
+	drv := testDriver(t, vr1, vr2)
+	ctx := context.Background()
+
+	status, err := drv.GetReplicationStatus(ctx, vgIDFromNamespace("default", testVGNameVM))
+	if err != nil {
+		t.Fatalf("GetReplicationStatus: %v", err)
+	}
+	if status.LastSyncTime != nil {
+		t.Errorf("LastSyncTime = %v, want nil (all sync times nil)", status.LastSyncTime)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// GetReplicationStatus — VGR direct mapping (Story 12.5, AC5)
+// ---------------------------------------------------------------------------
+
+func makeVGRWithStatus(
+	name, namespace, vgName string,
+	state replicationv1alpha1.State,
+	conditions []metav1.Condition,
+	syncTime *metav1.Time,
+) *replicationv1alpha1.VolumeGroupReplication {
+	return &replicationv1alpha1.VolumeGroupReplication{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+			Labels:    map[string]string{LabelVolumeGroup: vgName},
+		},
+		Spec: replicationv1alpha1.VolumeGroupReplicationSpec{
+			VolumeGroupReplicationClassName: "ceph-rbd-group",
+			VolumeReplicationClassName:      "ceph-rbd",
+			ReplicationState:                ReplicationStatePrimary,
+		},
+		Status: replicationv1alpha1.VolumeGroupReplicationStatus{
+			VolumeReplicationStatus: replicationv1alpha1.VolumeReplicationStatus{
+				State:        state,
+				Conditions:   conditions,
+				LastSyncTime: syncTime,
+			},
+		},
+	}
+}
+
+func TestGetReplicationStatus_VGR_Healthy(t *testing.T) {
+	syncTime := metav1.Now()
+	vgr := makeVGRWithStatus(
+		vgIDPrefix+testVGNameNS, testNamespace, testVGNameNS,
+		replicationv1alpha1.PrimaryState,
+		[]metav1.Condition{conditionTrue(replicationv1alpha1.ConditionCompleted)},
+		&syncTime,
+	)
+
+	drv := testDriver(t, vgr)
+	ctx := context.Background()
+
+	status, err := drv.GetReplicationStatus(ctx, vgIDFromNamespace(testNamespace, testVGNameNS))
+	if err != nil {
+		t.Fatalf("GetReplicationStatus: %v", err)
+	}
+	if status.Role != drivers.RoleSource {
+		t.Errorf("Role = %q, want Source", status.Role)
+	}
+	if status.Health != drivers.HealthHealthy {
+		t.Errorf("Health = %q, want Healthy", status.Health)
+	}
+	if status.LastSyncTime == nil {
+		t.Fatal("LastSyncTime should not be nil")
+	}
+}
+
+func TestGetReplicationStatus_VGR_Secondary_Syncing(t *testing.T) {
+	vgr := makeVGRWithStatus(
+		vgIDPrefix+testVGNameNS, testNamespace, testVGNameNS,
+		replicationv1alpha1.SecondaryState,
+		[]metav1.Condition{conditionTrue(replicationv1alpha1.ConditionResyncing)},
+		nil,
+	)
+
+	drv := testDriver(t, vgr)
+	ctx := context.Background()
+
+	status, err := drv.GetReplicationStatus(ctx, vgIDFromNamespace(testNamespace, testVGNameNS))
+	if err != nil {
+		t.Fatalf("GetReplicationStatus: %v", err)
+	}
+	if status.Role != drivers.RoleTarget {
+		t.Errorf("Role = %q, want Target", status.Role)
+	}
+	if status.Health != drivers.HealthSyncing {
+		t.Errorf("Health = %q, want Syncing", status.Health)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// GetReplicationStatus — Not found (Story 12.5, AC6)
+// ---------------------------------------------------------------------------
+
+func TestGetReplicationStatus_VR_NotFound(t *testing.T) {
+	drv := testDriver(t)
+	ctx := context.Background()
+
+	_, err := drv.GetReplicationStatus(ctx, vgIDFromNamespace("default", testVGNameVM))
+	if !errors.Is(err, drivers.ErrVolumeGroupNotFound) {
+		t.Errorf("GetReplicationStatus for nonexistent VR: got %v, want ErrVolumeGroupNotFound", err)
+	}
+}
+
+func TestGetReplicationStatus_VGR_NotFound(t *testing.T) {
+	drv := testDriver(t)
+	ctx := context.Background()
+
+	_, err := drv.GetReplicationStatus(ctx, vgIDFromNamespace(testNamespace, testVGNameNS))
+	if !errors.Is(err, drivers.ErrVolumeGroupNotFound) {
+		t.Errorf("GetReplicationStatus for nonexistent VGR: got %v, want ErrVolumeGroupNotFound", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// GetReplicationStatus — Empty status (Story 12.5, AC7)
+// ---------------------------------------------------------------------------
+
+func TestGetReplicationStatus_VR_EmptyStatus(t *testing.T) {
+	vr := makeVRWithStatus(
+		vgIDPrefix+testVGNameVM+"-data", "default", testVGNameVM,
+		"", nil, nil,
+	)
+
+	drv := testDriver(t, vr)
+	ctx := context.Background()
+
+	status, err := drv.GetReplicationStatus(ctx, vgIDFromNamespace("default", testVGNameVM))
+	if err != nil {
+		t.Fatalf("GetReplicationStatus: %v", err)
+	}
+	if status.Role != drivers.RoleNonReplicated {
+		t.Errorf("Role = %q, want NonReplicated (empty state)", status.Role)
+	}
+	if status.Health != drivers.HealthUnknown {
+		t.Errorf("Health = %q, want Unknown (no conditions)", status.Health)
+	}
+	if status.LastSyncTime != nil {
+		t.Errorf("LastSyncTime = %v, want nil", status.LastSyncTime)
+	}
+}
+
+func TestGetReplicationStatus_VGR_EmptyStatus(t *testing.T) {
+	vgr := makeVGRWithStatus(
+		vgIDPrefix+testVGNameNS, testNamespace, testVGNameNS,
+		"", nil, nil,
+	)
+
+	drv := testDriver(t, vgr)
+	ctx := context.Background()
+
+	status, err := drv.GetReplicationStatus(ctx, vgIDFromNamespace(testNamespace, testVGNameNS))
+	if err != nil {
+		t.Fatalf("GetReplicationStatus: %v", err)
+	}
+	if status.Role != drivers.RoleNonReplicated {
+		t.Errorf("Role = %q, want NonReplicated (empty state)", status.Role)
+	}
+	if status.Health != drivers.HealthUnknown {
+		t.Errorf("Health = %q, want Unknown (no conditions)", status.Health)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// GetReplicationStatus — Context cancellation (Story 12.5)
+// ---------------------------------------------------------------------------
+
+func TestGetReplicationStatus_ContextCancelled(t *testing.T) {
+	drv := testDriver(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := drv.GetReplicationStatus(ctx, vgIDFromNamespace("default", testVGNameVM))
+	if err == nil {
+		t.Fatal("expected error for cancelled context")
 	}
 }
 

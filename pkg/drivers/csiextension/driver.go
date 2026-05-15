@@ -363,6 +363,36 @@ func (d *Driver) StopReplication(ctx context.Context, id drivers.VolumeGroupID) 
 	return d.flipReplicationStates(ctx, set)
 }
 
-func (d *Driver) GetReplicationStatus(_ context.Context, _ drivers.VolumeGroupID) (drivers.ReplicationStatus, error) {
-	return drivers.ReplicationStatus{}, fmt.Errorf("csi-extension: GetReplicationStatus not yet implemented")
+func (d *Driver) GetReplicationStatus(
+	ctx context.Context, id drivers.VolumeGroupID,
+) (drivers.ReplicationStatus, error) {
+	if err := ctx.Err(); err != nil {
+		return drivers.ReplicationStatus{}, err
+	}
+
+	namespace, vgName := parseVGID(id)
+	opts := []client.ListOption{vgLabelSelector(vgName)}
+	if namespace != "" {
+		opts = append(opts, client.InNamespace(namespace))
+	}
+
+	if isMultiVM(vgName) {
+		var list replicationv1alpha1.VolumeGroupReplicationList
+		if err := d.client.List(ctx, &list, opts...); err != nil {
+			return drivers.ReplicationStatus{}, fmt.Errorf("listing VolumeGroupReplication CRs for %s: %w", vgName, err)
+		}
+		if len(list.Items) == 0 {
+			return drivers.ReplicationStatus{}, drivers.ErrVolumeGroupNotFound
+		}
+		return statusFromVGR(&list.Items[0]), nil
+	}
+
+	var list replicationv1alpha1.VolumeReplicationList
+	if err := d.client.List(ctx, &list, opts...); err != nil {
+		return drivers.ReplicationStatus{}, fmt.Errorf("listing VolumeReplication CRs for %s: %w", vgName, err)
+	}
+	if len(list.Items) == 0 {
+		return drivers.ReplicationStatus{}, drivers.ErrVolumeGroupNotFound
+	}
+	return aggregateVRStatus(list.Items), nil
 }

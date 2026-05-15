@@ -19,7 +19,7 @@ limitations under the License.
 // Kubernetes CRDs. The csi-addons sidecar container reconciles these CRDs into
 // actual storage-level replication operations.
 //
-// This driver is progressively implemented across Stories 12.1–12.5.
+// This driver is progressively implemented across Stories 12.1–12.6.
 // Story 12.3 implements CreateVolumeGroup, DeleteVolumeGroup, and
 // GetVolumeGroup using a rendering rule based on VG name prefix:
 //
@@ -38,6 +38,15 @@ limitations under the License.
 // unconditionally sets the state to primary (idempotent). Both methods
 // locate CRs via the soteria.io/volume-group label and skip updates
 // when the CR is already in the target state.
+//
+// Story 12.5 implements GetReplicationStatus for health monitoring.
+// It reads VR/VGR status fields (status.state, status.conditions,
+// status.lastSyncTime) and maps them to Soteria's ReplicationStatus
+// (VolumeRole, ReplicationHealth, LastSyncTime). For single-VM volume
+// groups with multiple VR CRs, health is aggregated using worst-wins,
+// role comes from the first CR, and LastSyncTime is the oldest across
+// all PVCs. Multi-VM groups map directly from the single VGR CR.
+// Not-found returns ErrVolumeGroupNotFound; empty status returns Unknown.
 //
 // Unlike the noop driver, csi-extension requires a Kubernetes client at
 // construction time and cannot use init() for self-registration. Instead,

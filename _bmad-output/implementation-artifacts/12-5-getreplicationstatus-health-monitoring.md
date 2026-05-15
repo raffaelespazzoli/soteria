@@ -1,6 +1,6 @@
 # Story 12.5: GetReplicationStatus — Health Monitoring
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -62,39 +62,39 @@ For single-VM volume groups with multiple VR CRs (one per PVC), health is aggreg
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Implement role mapping (AC: #1)
-  - [ ] 1.1 Map `status.state` string to Soteria `VolumeRole`
-  - [ ] 1.2 Handle unknown/empty states gracefully
+- [x] Task 1: Implement role mapping (AC: #1)
+  - [x] 1.1 Map `status.state` string to Soteria `VolumeRole`
+  - [x] 1.2 Handle unknown/empty states gracefully
 
-- [ ] Task 2: Implement health mapping (AC: #2, #7)
-  - [ ] 2.1 Map CSI status/conditions to Soteria `ReplicationHealth`
-  - [ ] 2.2 Handle empty conditions gracefully
+- [x] Task 2: Implement health mapping (AC: #2, #7)
+  - [x] 2.1 Map CSI status/conditions to Soteria `ReplicationHealth`
+  - [x] 2.2 Handle empty conditions gracefully
 
-- [ ] Task 3: Implement LastSyncTime extraction (AC: #3)
-  - [ ] 3.1 Read `last_sync_time` from VR/VGR status
-  - [ ] 3.2 Convert to `*time.Time`
+- [x] Task 3: Implement LastSyncTime extraction (AC: #3)
+  - [x] 3.1 Read `last_sync_time` from VR/VGR status
+  - [x] 3.2 Convert to `*time.Time`
 
-- [ ] Task 4: VR aggregation (AC: #4)
-  - [ ] 4.1 Read all VR CRs for the VG
-  - [ ] 4.2 Aggregate health (worst wins)
-  - [ ] 4.3 Pick role from first CR
-  - [ ] 4.4 Pick oldest LastSyncTime
+- [x] Task 4: VR aggregation (AC: #4)
+  - [x] 4.1 Read all VR CRs for the VG
+  - [x] 4.2 Aggregate health (worst wins)
+  - [x] 4.3 Pick role from first CR
+  - [x] 4.4 Pick oldest LastSyncTime
 
-- [ ] Task 5: VGR direct mapping (AC: #5)
-  - [ ] 5.1 Read single VGR CR status
-  - [ ] 5.2 Map directly to ReplicationStatus
+- [x] Task 5: VGR direct mapping (AC: #5)
+  - [x] 5.1 Read single VGR CR status
+  - [x] 5.2 Map directly to ReplicationStatus
 
-- [ ] Task 6: Not-found handling (AC: #6)
-  - [ ] 6.1 Return NotReplicating when no CRs found
+- [x] Task 6: Not-found handling (AC: #6)
+  - [x] 6.1 Return NotReplicating when no CRs found
 
-- [ ] Task 7: Unit tests (AC: #8)
-  - [ ] 7.1 Test all role mappings (Primary→Source, Secondary→Target, etc.)
-  - [ ] 7.2 Test all health mappings
-  - [ ] 7.3 Test VR aggregation with mixed health
-  - [ ] 7.4 Test VGR direct mapping
-  - [ ] 7.5 Test not-found returns NotReplicating
-  - [ ] 7.6 Test empty-status returns Unknown
-  - [ ] 7.7 Run `make test` and `make lint`
+- [x] Task 7: Unit tests (AC: #8)
+  - [x] 7.1 Test all role mappings (Primary→Source, Secondary→Target, etc.)
+  - [x] 7.2 Test all health mappings
+  - [x] 7.3 Test VR aggregation with mixed health
+  - [x] 7.4 Test VGR direct mapping
+  - [x] 7.5 Test not-found returns NotReplicating
+  - [x] 7.6 Test empty-status returns Unknown
+  - [x] 7.7 Run `make test` and `make lint`
 
 ## Dev Notes
 
@@ -144,3 +144,41 @@ func worstHealth(healths []drivers.ReplicationHealth) drivers.ReplicationHealth 
 make test
 make lint-fix && make lint
 ```
+
+## Dev Agent Record
+
+### Implementation Plan
+
+Implemented GetReplicationStatus for the CSI Extension driver with:
+- `status.go`: Pure mapping helpers — `mapRole` (CSI State → VolumeRole), `mapHealth` (CSI conditions → ReplicationHealth with priority-based precedence: Degraded > Resyncing > Completed), `worstHealth` (aggregation), `oldestSyncTime`, `statusFromVR`, `aggregateVRStatus`, `statusFromVGR`
+- `driver.go`: `GetReplicationStatus` method — routes single-VM (vm-*) to VR aggregation path, multi-VM (ns-*) to VGR direct mapping path; returns NotReplicating for not-found; ctx.Err() guard
+- `doc.go`: Updated with Story 12.5 description
+
+### Completion Notes
+
+All 8 ACs satisfied:
+- AC1: mapRole handles Primary→Source, Secondary→Target, Unknown/empty→NonReplicated (4 test cases)
+- AC2: mapHealth handles Completed→Healthy, Degraded→Degraded, Resyncing→Syncing, with precedence rules (8 test cases)
+- AC3: LastSyncTime extracted from VR/VGR status, converted to *time.Time
+- AC4: VR aggregation — worst-health-wins, first-CR role, oldest sync time (3 aggregation tests + 7 worstHealth unit tests)
+- AC5: VGR direct mapping (2 test cases)
+- AC6: Not-found returns ErrVolumeGroupNotFound (2 test cases — VR and VGR paths)
+- AC7: Empty status returns {NonReplicated, Unknown} gracefully (2 test cases)
+- AC8: 19 new test functions covering all mappings, aggregation, not-found, empty-status, context cancellation
+
+Coverage: 89.4% (up from 86.7%), 0 lint issues, all unit + integration tests pass.
+
+## File List
+
+- `pkg/drivers/csiextension/status.go` — NEW: health/role mapping helpers, VR aggregation, VGR mapping
+- `pkg/drivers/csiextension/driver.go` — MODIFIED: GetReplicationStatus implementation (replaced stub)
+- `pkg/drivers/csiextension/driver_test.go` — MODIFIED: 19 new test functions
+- `pkg/drivers/csiextension/doc.go` — MODIFIED: Added Story 12.5 description
+
+## Change Log
+
+- 2026-05-15: Implemented GetReplicationStatus with health/role mapping, VR aggregation, VGR direct mapping, not-found/empty-status graceful handling, 19 new tests, 89.4% coverage, 0 lint issues
+
+### Review Findings
+
+- [x] [Review][Patch] Align GetReplicationStatus not-found behavior with the shared driver contract [`pkg/drivers/csiextension/driver.go`:`GetReplicationStatus`] — Return `drivers.ErrVolumeGroupNotFound` for missing VR/VGR objects and update the new Story 12.5 tests/docs accordingly so the CSI extension driver stays consistent with the `StorageProvider` interface and conformance suite.
