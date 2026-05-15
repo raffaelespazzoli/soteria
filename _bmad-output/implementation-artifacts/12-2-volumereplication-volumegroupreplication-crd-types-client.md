@@ -1,6 +1,6 @@
 # Story 12.2: VolumeReplication / VolumeGroupReplication CRD Types & Client
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -49,33 +49,33 @@ The driver uses `controller-runtime`'s `client.Client` (already available in the
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Evaluate dependency approach (AC: #1)
-  - [ ] 1.1 Check if `github.com/csi-addons/kubernetes-csi-addons/api` is importable and stable
-  - [ ] 1.2 If yes, `go get` the module; if no, define local types in `pkg/drivers/csiextension/types.go`
+- [x] Task 1: Evaluate dependency approach (AC: #1)
+  - [x] 1.1 Check if `github.com/csi-addons/kubernetes-csi-addons/api` is importable and stable
+  - [x] 1.2 If yes, `go get` the module; if no, define local types in `pkg/drivers/csiextension/types.go`
 
-- [ ] Task 2: Define or import types (AC: #1, #2)
-  - [ ] 2.1 Ensure VolumeReplication, VolumeGroupReplication, and their List types are available
-  - [ ] 2.2 Define `ReplicationStatePrimary`, `ReplicationStateSecondary`, `ReplicationStateResync` constants
+- [x] Task 2: Define or import types (AC: #1, #2)
+  - [x] 2.1 Ensure VolumeReplication, VolumeGroupReplication, and their List types are available
+  - [x] 2.2 Define `ReplicationStatePrimary`, `ReplicationStateSecondary`, `ReplicationStateResync` constants
 
-- [ ] Task 3: VolumeReplicationClass reference (AC: #3)
-  - [ ] 3.1 Decide on the mechanism (driver config, DRPlan annotation, convention-based)
-  - [ ] 3.2 Implement the reference mechanism
+- [x] Task 3: VolumeReplicationClass reference (AC: #3)
+  - [x] 3.1 Decide on the mechanism (driver config, DRPlan annotation, convention-based)
+  - [x] 3.2 Implement the reference mechanism
 
-- [ ] Task 4: Client injection (AC: #4, #5)
-  - [ ] 4.1 Add `client.Client` field to `Driver` struct
-  - [ ] 4.2 Update `New()` constructor to accept a client
-  - [ ] 4.3 Update the driver factory/registration to provide the client
-  - [ ] 4.4 Consider whether `DriverFactory` needs to become `DriverFactory func(config) StorageProvider` or use a post-registration config
+- [x] Task 4: Client injection (AC: #4, #5)
+  - [x] 4.1 Add `client.Client` field to `Driver` struct
+  - [x] 4.2 Update `New()` constructor to accept a client
+  - [x] 4.3 Update the driver factory/registration to provide the client
+  - [x] 4.4 Consider whether `DriverFactory` needs to become `DriverFactory func(config) StorageProvider` or use a post-registration config
 
-- [ ] Task 5: Scheme registration (AC: #6)
-  - [ ] 5.1 Register VR/VGR types in the scheme used by the manager
-  - [ ] 5.2 Verify `client.Client.Get/Create/Update/Delete` works with VR/VGR types
+- [x] Task 5: Scheme registration (AC: #6)
+  - [x] 5.1 Register VR/VGR types in the scheme used by the manager
+  - [x] 5.2 Verify `client.Client.Get/Create/Update/Delete` works with VR/VGR types
 
-- [ ] Task 6: Tests (AC: #7)
-  - [ ] 6.1 Test type serialization round-trip
-  - [ ] 6.2 Test driver construction with injected client
-  - [ ] 6.3 Run `make test` — all tests pass
-  - [ ] 6.4 Run `make lint-fix && make lint` — zero lint issues
+- [x] Task 6: Tests (AC: #7)
+  - [x] 6.1 Test type serialization round-trip
+  - [x] 6.2 Test driver construction with injected client
+  - [x] 6.3 Run `make test` — all tests pass
+  - [x] 6.4 Run `make lint-fix && make lint` — zero lint issues
 
 ## Dev Notes
 
@@ -130,3 +130,44 @@ go get github.com/csi-addons/kubernetes-csi-addons/api/...  # If importing
 make test
 make lint-fix && make lint
 ```
+
+## Dev Agent Record
+
+### Implementation Plan
+
+- **Option 1 (import) confirmed**: csi-addons v0.14.0 already in go.mod (from Story 12.0). VR/VGR types are well-defined and stable. No new go.mod changes needed.
+- **ReplicationState constants**: Created `constants.go` re-exporting `Primary`/`Secondary`/`Resync` from csi-addons `replicationv1alpha1` package as `ReplicationStatePrimary`/`ReplicationStateSecondary`/`ReplicationStateResync`.
+- **VolumeReplicationClass mechanism**: Already exists on `DRPlanSpec.VolumeReplicationDriver.VolumeReplicationClass` (from Story 12.0). Added `VolumeReplicationClassLabel` constant (`soteria.io/volume-replication-class`) for passing the class name through `VolumeGroupSpec.Labels` to the driver without changing the `StorageProvider` interface.
+- **Client injection (closure pattern)**: Chose Option 2 (closure capture). Removed `init()` from `driver.go`, removed csiextension from `all.go` (no more side-effect import since it needs a client). `main.go` registers the driver after manager creation: `drivers.RegisterDriver(csiextension.DriverName, func() drivers.StorageProvider { return csiextension.New(mgr.GetClient()) })`.
+- **Scheme registration**: Already done in `main.go init()` since Story 12.0: `utilruntime.Must(replicationv1alpha1.AddToScheme(scheme))`. Verified via TestSchemeRegistration_* tests.
+- **No changes to**: StorageProvider interface, Registry internals, noop driver, handler/executor.
+
+### Completion Notes
+
+All 6 tasks and subtasks completed. 11 tests (with subtests) covering: driver construction with client, nil client safety, ReplicationState constant values, VR/VGR JSON round-trip serialization, scheme registration for VR and VGR, fake client CRUD verification, VolumeReplicationClassLabel non-empty, DriverName correctness, registry-based driver retrieval. All unit tests pass, all integration tests pass, 0 lint issues.
+
+### Debug Log
+
+No debug issues encountered. Clean implementation.
+
+## File List
+
+| File | Action |
+|------|--------|
+| `pkg/drivers/csiextension/constants.go` | New — ReplicationState constants, VolumeReplicationClassLabel |
+| `pkg/drivers/csiextension/driver.go` | Modified — added client.Client field, updated New() signature, removed init() |
+| `pkg/drivers/csiextension/doc.go` | Modified — updated docs for new construction pattern |
+| `pkg/drivers/csiextension/driver_test.go` | New — 11 tests for types, scheme, client injection, constants |
+| `pkg/drivers/csiextension/registration_test.go` | Modified — updated to manual registry (no init()) |
+| `pkg/drivers/all/all.go` | Modified — removed csiextension import (no more init() side-effect) |
+| `cmd/soteria/main.go` | Modified — explicit csi-extension driver registration after manager creation |
+
+## Change Log
+
+- 2026-05-14: Story 12.2 implemented — csi-addons VR/VGR types imported (Option 1), ReplicationState constants defined, client.Client injected into Driver via closure-based factory registration in main.go, VolumeReplicationClassLabel for per-plan VRC passing, 11 tests added, 0 lint issues, all unit/integration tests pass
+
+### Review Findings
+
+- [x] [Review][Patch] Derive `VolumeGroupReplicationClass` by convention from `volumeReplicationClass` — added `VolumeGroupReplicationClassLabel` constant, updated doc.go
+- [x] [Review][Patch] Assert replication class fields in the JSON round-trip tests — added `classJSONKey` table field and assertion
+- [x] [Review][Patch] Exercise real fake-client CRUD instead of only constructor wiring — full Create/Get/Update/Delete cycle on VolumeReplication

@@ -20,11 +20,20 @@ limitations under the License.
 // actual storage-level replication operations.
 //
 // This driver is progressively implemented across Stories 12.1–12.5.
-// Story 12.1 creates the skeleton with stub methods that return
-// "not yet implemented" errors; subsequent stories fill in real logic.
+// Story 12.2 adds a controller-runtime client for managing VR/VGR resources,
+// ReplicationState constants, and scheme registration.
 //
-// The driver registers itself under the plan-level name "csi-extension" via
-// init(). Import the package for side-effect registration:
+// Unlike the noop driver, csi-extension requires a Kubernetes client at
+// construction time and cannot use init() for self-registration. Instead,
+// main.go registers it after the controller-runtime manager is created:
 //
-//	import _ "github.com/soteria-project/soteria/pkg/drivers/csiextension"
+//	drivers.RegisterDriver(csiextension.DriverName, func() drivers.StorageProvider {
+//	    return csiextension.New(mgr.GetClient())
+//	})
+//
+// The VolumeReplicationClass for VR CRs is specified per-DRPlan in
+// DRPlanSpec.VolumeReplicationDriver.VolumeReplicationClass and passed to
+// the driver through VolumeGroupSpec.Labels[VolumeReplicationClassLabel].
+// The VolumeGroupReplicationClass for VGR CRs is derived by convention
+// from the same value and passed via Labels[VolumeGroupReplicationClassLabel].
 package csiextension

@@ -20,6 +20,8 @@ import (
 	"context"
 	"fmt"
 
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
 	"github.com/soteria-project/soteria/pkg/drivers"
 )
 
@@ -29,13 +31,18 @@ const DriverName = "csi-extension"
 var _ drivers.StorageProvider = (*Driver)(nil)
 
 // Driver is a StorageProvider that manages volume replication through CSI
-// Addons VolumeReplication and VolumeGroupReplication CRDs. Fields (client,
-// config, etc.) are added in Story 12.2.
-type Driver struct{}
+// Addons VolumeReplication and VolumeGroupReplication CRDs. It holds a
+// controller-runtime client for creating, reading, updating, and deleting
+// VR/VGR resources in the cluster.
+type Driver struct {
+	client client.Client
+}
 
-// New creates a new csi-extension Driver.
-func New() *Driver {
-	return &Driver{}
+// New creates a new csi-extension Driver with the given Kubernetes client.
+// The client must have the CSI Addons replication types registered in its
+// scheme (see replicationv1alpha1.AddToScheme).
+func New(c client.Client) *Driver {
+	return &Driver{client: c}
 }
 
 func (d *Driver) CreateVolumeGroup(_ context.Context, _ drivers.VolumeGroupSpec) (drivers.VolumeGroupInfo, error) {
@@ -60,10 +67,4 @@ func (d *Driver) StopReplication(_ context.Context, _ drivers.VolumeGroupID) err
 
 func (d *Driver) GetReplicationStatus(_ context.Context, _ drivers.VolumeGroupID) (drivers.ReplicationStatus, error) {
 	return drivers.ReplicationStatus{}, fmt.Errorf("csi-extension: GetReplicationStatus not yet implemented")
-}
-
-func init() {
-	drivers.RegisterDriver(DriverName, func() drivers.StorageProvider {
-		return New()
-	})
 }

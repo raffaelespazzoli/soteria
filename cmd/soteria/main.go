@@ -58,6 +58,7 @@ import (
 	"github.com/soteria-project/soteria/pkg/controller/drplan"
 	"github.com/soteria-project/soteria/pkg/controller/volumereplication"
 	"github.com/soteria-project/soteria/pkg/drivers"
+	"github.com/soteria-project/soteria/pkg/drivers/csiextension"
 	"github.com/soteria-project/soteria/pkg/engine"
 	scylladb "github.com/soteria-project/soteria/pkg/storage/scylladb"
 	// +kubebuilder:scaffold:imports
@@ -239,6 +240,13 @@ func main() {
 		setupLog.Error(err, "Failed to start manager")
 		os.Exit(1)
 	}
+
+	// Register the csi-extension driver with the manager's client. This
+	// cannot use init() because the driver needs a Kubernetes client that
+	// is only available after the manager is created.
+	drivers.RegisterDriver(csiextension.DriverName, func() drivers.StorageProvider {
+		return csiextension.New(mgr.GetClient())
+	})
 
 	// ---- Signal handler (shared by all subsystems) ----
 

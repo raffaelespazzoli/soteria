@@ -22,6 +22,5 @@ limitations under the License.
 package all
 
 import (
-	_ "github.com/soteria-project/soteria/pkg/drivers/csiextension"
 	_ "github.com/soteria-project/soteria/pkg/drivers/noop"
 )

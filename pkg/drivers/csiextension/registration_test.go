@@ -23,7 +23,12 @@ import (
 )
 
 func TestGetDriver_ReturnsNonNilProvider(t *testing.T) {
-	drv, err := drivers.GetDriver(DriverName)
+	reg := drivers.NewRegistry()
+	reg.RegisterDriver(DriverName, func() drivers.StorageProvider {
+		return New(nil)
+	})
+
+	drv, err := reg.GetDriver(DriverName)
 	if err != nil {
 		t.Fatalf("GetDriver(%q) returned error: %v", DriverName, err)
 	}
