@@ -38,3 +38,20 @@ const VolumeReplicationClassLabel = "soteria.io/volume-replication-class"
 // to the driver. By convention, the executor derives this from the plan's
 // VolumeReplicationClass value when no explicit override is configured.
 const VolumeGroupReplicationClassLabel = "soteria.io/volume-group-replication-class"
+
+// LabelVolumeGroup is applied to VR/VGR CRs (and to PVCs for VGR source
+// selection) so the driver can locate them by volume group name.
+const LabelVolumeGroup = "soteria.io/volume-group"
+
+// LabelDRPlan is applied to VR/VGR CRs for plan-scoped identification.
+const LabelDRPlan = "soteria.io/drplan"
+
+// SiteRoleLabel carries the local site's replication role in
+// VolumeGroupSpec.Labels. The executor determines this from the plan's
+// primarySite/secondarySite fields and the operator's --site-name flag.
+const SiteRoleLabel = "soteria.io/site-role"
+
+const (
+	SiteRolePrimary   = "primary"
+	SiteRoleSecondary = "secondary"
+)

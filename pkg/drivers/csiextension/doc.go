@@ -20,8 +20,16 @@ limitations under the License.
 // actual storage-level replication operations.
 //
 // This driver is progressively implemented across Stories 12.1–12.5.
-// Story 12.2 adds a controller-runtime client for managing VR/VGR resources,
-// ReplicationState constants, and scheme registration.
+// Story 12.3 implements CreateVolumeGroup, DeleteVolumeGroup, and
+// GetVolumeGroup using a rendering rule based on VG name prefix:
+//
+//   - "vm-*" (single-VM) → one VolumeReplication CR per PVC
+//   - "ns-*" (namespace-level, multi-VM) → one VolumeGroupReplication CR
+//
+// Created CRs are labeled with soteria.io/volume-group and
+// soteria.io/drplan for identification and idempotent re-lookup. The
+// initial spec.replicationState is determined by the site role passed in
+// VolumeGroupSpec.Labels[SiteRoleLabel].
 //
 // Unlike the noop driver, csi-extension requires a Kubernetes client at
 // construction time and cannot use init() for self-registration. Instead,
