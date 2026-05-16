@@ -5,7 +5,10 @@ Communicate with the user in `{communication_language}`.
 **Contract anchor** (survives context compaction — re-read if uncertain):
 - You are an orchestrator, not an implementer — delegate all work to subagents
 - Every sub-skill (`bmad-create-story`, `bmad-dev-story`, `bmad-code-review`) runs in a **fresh subagent** with clean LLM context
+- **Model routing:** `bmad-create-story` and `bmad-dev-story` → **claude-opus-4-6** (extended/high thinking). `bmad-code-review` → **gpt-5.4** (medium thinking). Apply via platform subagent model parameter (Cursor: `model` field; Claude Code: `--model`). If the preferred model isn't available, use the best alternative and note the substitution.
 - Subagents run autonomously but you **relay "decision needed" questions** back to the user
+- **Code review is non-interactive** — runs fully autonomously unless a genuine design or requirements decision is needed. Code-level fixes are applied without user involvement.
+- **Decision escalation protocol:** When interrupting for user input, always: (1) describe the issue with full context — what happened, why it matters, what's at stake; (2) give a concrete example illustrating the problem; (3) lay out the available choices with trade-offs for each. Only then wait for user input.
 - On any failure: **halt** with what failed, which story, and instructions to re-invoke
 - `sprint-status.yaml` is the sole checkpoint — story statuses determine resume position
 - Respect `--commit-policy` and `--skip-confirmations` args from SKILL.md
@@ -59,7 +62,7 @@ For each dependency layer (in order):
 
 1. Identify stories in this layer still in `backlog` state.
 
-2. Launch subagents — one `bmad-create-story` per story. If multiple stories are ready, launch them in parallel:
+2. Launch subagents — one `bmad-create-story` per story, using **claude-opus-4-6** (extended/high thinking). If multiple stories are ready, launch them in parallel:
 
    **Subagent prompt template:**
    ```
@@ -71,6 +74,8 @@ For each dependency layer (in order):
    When complete, report: story_key, output_file_path, status (success/failed/decision_needed),
    and a one-line summary.
    ```
+
+   **Model parameter:** Set model to `claude-opus-4-6` on each subagent (Cursor: `model` field on Task tool; Claude Code: `--model claude-opus-4-6`). If unavailable, use the best alternative and note the substitution to the user.
 
 3. Wait for all subagents in the batch to complete.
    - If any reports `decision_needed`: relay the question to the user, get the answer, and resume that subagent.
@@ -137,9 +142,11 @@ For each dependency layer (in topological order):
 
    STEP 2 — CODE REVIEW: Run the bmad-code-review skill on your changes.
    Run the review fully and autonomously — complete all layers, produce the
-   triage report.
-   If the review raises a design/requirements question (not a code fix),
-   describe it and halt.
+   triage report. Apply all code-level fixes without user interaction.
+   Only halt for genuine design or requirements decisions that you cannot
+   resolve from the story spec alone. If halting, provide: (1) full context
+   on the issue and why it matters, (2) a concrete example, (3) the available
+   choices with trade-offs for each.
 
    STEP 3 — REVIEW FIXES: If code review requested changes, re-run dev-story
    to address review findings (it supports review continuation mode), then
@@ -151,6 +158,11 @@ For each dependency layer (in topological order):
    When complete, report: story_key, status (success/failed/decision_needed),
    review_patches_count, files_changed_count, commit_sha, and a one-line summary.
    ```
+
+   **Model parameters:**
+   - STEP 1 (dev-story): use **claude-opus-4-6** with extended/high thinking
+   - STEP 2 (code-review): use **gpt-5.4** with medium thinking
+   - In a single worktree subagent, set the subagent's model to `claude-opus-4-6` (the primary work). For the code-review step within, spawn a nested subagent with model `gpt-5.4` if the platform supports it. If nested model switching isn't possible, use the worktree subagent's model for both and note the substitution.
 
 3. Launch all stories in the layer simultaneously. Monitor for completion.
 
@@ -199,9 +211,11 @@ For each dependency layer (in topological order):
 If `best-of-n-runner` subagents aren't available, process stories **sequentially on the main branch** within each layer:
 
 For each story:
-1. Spawn a `generalPurpose` subagent for `bmad-dev-story`
-2. On success, spawn a `generalPurpose` subagent for `bmad-code-review`
-3. If changes requested: re-run dev-story then code-review until approved
+1. Spawn a `generalPurpose` subagent for `bmad-dev-story` with model **claude-opus-4-6** (extended/high thinking)
+2. On success, spawn a `generalPurpose` subagent for `bmad-code-review` with model **gpt-5.4** (medium thinking)
+   - Code review runs non-interactively — apply all code-level fixes autonomously
+   - Only relay to the user for genuine design/requirements decisions, following the decision escalation protocol (context + example + choices with trade-offs)
+3. If changes requested: re-run dev-story (claude-opus-4-6) then code-review (gpt-5.4) until approved
 4. Commit (respecting `--commit-policy`):
    ```
    feat(epic-{N}): {story_key} — {story title}
