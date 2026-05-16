@@ -1,0 +1,59 @@
+{
+  "scanner": "prompt-craft-prepass",
+  "script": "prepass-prompt-metrics.py",
+  "version": "1.0.0",
+  "skill_path": ".claude/skills/bmad-epic-dev",
+  "timestamp": "2026-05-16T10:27:43.648665+00:00",
+  "status": "info",
+  "skill_md_summary": {
+    "line_count": 33,
+    "token_estimate": 458,
+    "overview_lines": 14,
+    "table_count": 0,
+    "table_lines": 0,
+    "fenced_block_count": 0,
+    "fenced_block_lines": 0,
+    "section_count": 2
+  },
+  "prompt_health": {
+    "total_prompts": 0,
+    "prompts_with_config_header": 0,
+    "prompts_with_progression": 0
+  },
+  "aggregate": {
+    "total_files_scanned": 1,
+    "total_token_estimate": 458,
+    "total_waste_patterns": 0,
+    "total_back_references": 0
+  },
+  "resource_sizes": {},
+  "files": [
+    {
+      "file": "SKILL.md",
+      "line_count": 33,
+      "token_estimate": 458,
+      "sections": [
+        {
+          "level": 2,
+          "title": "Overview",
+          "line": 8
+        },
+        {
+          "level": 2,
+          "title": "On Activation",
+          "line": 23
+        }
+      ],
+      "table_count": 0,
+      "table_lines": 0,
+      "fenced_block_count": 0,
+      "fenced_block_lines": 0,
+      "waste_patterns": [],
+      "back_references": [],
+      "has_config_header": false,
+      "has_progression": true,
+      "overview_lines": 14,
+      "is_skill_md": true
+    }
+  ]
+}

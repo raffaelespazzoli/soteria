@@ -1,0 +1,450 @@
+{
+  "meta": {
+    "skill_name": "bmad-epic-dev",
+    "skill_path": "/home/rspazzol/git/dr-orchestrator/.claude/skills/bmad-epic-dev",
+    "timestamp": "2026-05-16T10:28:00Z",
+    "scanner_count": 8
+  },
+  "narrative": "bmad-epic-dev is a strong orchestration skill: lean activation, clear delegation to create-story / dev-story / code-review, and sensible parallelism constraints. The highest-impact improvements are (1) moving Step 0 and related YAML/table/DAG bookkeeping into a small pre-pass tool to cut tokens and variance, (2) fixing tooling/classification drift so multi-phase logic in references/ is not labeled a simple utility, and (3) reconciling automated commits and confirmation gates with common user policies via intent routing and commit modes.",
+  "grade": "Good",
+  "broken": [
+    {
+      "title": "Automated workflow type contradicts multi-phase orchestration",
+      "file": "SKILL.md",
+      "line": 1,
+      "detail": "workflow-integrity-prepass.json sets workflow_type to simple-utility while SKILL.md and references/phase-logic.md define validation, DAG planning, Phase A/C, completion, and resume—so automation may apply the wrong ruleset.",
+      "action": "Expose an explicit workflow classification in SKILL.md and/or teach the prepass classifier to detect phased logic living under references/*.md.",
+      "severity": "high",
+      "source": "workflow-integrity"
+    }
+  ],
+  "opportunities": [
+    {
+      "name": "Shift deterministic orchestration to pre-pass tooling",
+      "description": "YAML merges, epic discovery, markdown story-table parsing, DAG construction, layer grouping, sprint-status checks, and completion counts are mechanical but currently executed by the orchestrator LLM, driving heavy token use (roughly 1.3k–4.5k tokens per epic estimated shiftable) and parse/discovery failure modes.",
+      "severity": "high",
+      "impact": "Lower latency and token cost, more reliable structure, reusable JSON for scanners and CI validators, clearer halt messages when epic files are ambiguous.",
+      "action": "Add a PEP 723 Python or small CLI (single entrypoint with --help) that deep-merges BMad config, resolves the epic file, parses the Stories table, builds layers, emits epic_plan.json, and optionally runs post-step --verify assertions; update prompts to narrate that payload.",
+      "finding_count": 9,
+      "findings": [
+        {
+          "title": "Step 0 bundles epic resolution, YAML validation, table parse, DAG, and layers",
+          "file": "references/phase-logic.md",
+          "line": 3,
+          "detail": "Scanner estimates 500+ tokens of LLM tax per large run; work is deterministic graph/table/YAML logic.",
+          "source": "script-opportunities"
+        },
+        {
+          "title": "Config merge could emit resolved JSON instead of two-file reads",
+          "file": "SKILL.md",
+          "line": 23,
+          "detail": "LLM loads _bmad/config.yaml and config.user.yaml separately; script could deep-merge and validate paths.",
+          "source": "script-opportunities"
+        },
+        {
+          "title": "Post–Phase A sprint-status verification is mechanical",
+          "file": "references/phase-logic.md",
+          "line": 61,
+          "detail": "Assert each story reached ready-for-dev after parallel create-story batch.",
+          "source": "script-opportunities"
+        },
+        {
+          "title": "Post–dev-story status check expects review state",
+          "file": "references/phase-logic.md",
+          "line": 114,
+          "detail": "Could be assert_status(epic, story, review) in tooling.",
+          "source": "script-opportunities"
+        },
+        {
+          "title": "New backlog detection after Phase C benefits snapshot diff",
+          "file": "references/phase-logic.md",
+          "line": 159,
+          "detail": "Avoid second full-file reasoning pass over sprint-status.yaml.",
+          "source": "script-opportunities"
+        },
+        {
+          "title": "Completion aggregates derivable from YAML/git",
+          "file": "references/phase-logic.md",
+          "line": 171,
+          "detail": "Counts of done stories and epic transitions can be scripted partially or fully.",
+          "source": "script-opportunities"
+        },
+        {
+          "title": "Resume routing table encodable in same module",
+          "file": "references/phase-logic.md",
+          "line": 184,
+          "detail": "Marginal token savings but fits bundled epic-plan tool.",
+          "source": "script-opportunities"
+        },
+        {
+          "title": "Optional extraction subagent/script threshold for huge epic markdown",
+          "file": "references/phase-logic.md",
+          "line": 11,
+          "detail": "Parent may ingest entire narrative body when only the Stories table matters.",
+          "source": "execution-efficiency"
+        },
+        {
+          "title": "Epic file discovery heuristics can yield ambiguous matches",
+          "file": "references/phase-logic.md",
+          "line": 3,
+          "detail": "Needs explicit validation path: exactly one match, readable table, or templated halt.",
+          "source": "skill-cohesion"
+        }
+      ]
+    },
+    {
+      "name": "Harden phase reference against compaction and BMad conventions",
+      "description": "phase-logic.md is the executable prompt but omits a compact restatement of orchestration invariants, lacks explicit language/output headers, and lives outside numbered root stage files—so integrity tooling sees zero stages and context compaction can drop SKILL.md contract details.",
+      "severity": "medium",
+      "impact": "Safer long-running epics, consistent triggering hooks, better automated checks, less cognitive friction from Phase A→C gap.",
+      "action": "Add a short anchor mirroring SKILL.md contract bullets; add communication/document-language preamble; shorten description hook; clarify Phase B; strengthen authoritative sequential-execution wording; document references-only pattern or split numbered stages.",
+      "finding_count": 7,
+      "findings": [
+        {
+          "title": "Missing anchor block for non-negotiable contract under compaction",
+          "file": "references/phase-logic.md",
+          "line": 1,
+          "detail": "Opening jumps into Step 0 without restating fresh subagents, relay decisions, halt/resume, sprint-status truth.",
+          "source": "prompt-craft"
+        },
+        {
+          "title": "No BMad-style config header binding communication_language",
+          "file": "references/phase-logic.md",
+          "line": 1,
+          "detail": "SKILL.md resolves variables but executable file lacks upfront binding.",
+          "source": "prompt-craft"
+        },
+        {
+          "title": "Complex-workflow checklist expects numbered root stage files",
+          "file": "SKILL.md",
+          "line": 32,
+          "detail": "Single references/phase-logic.md diverges from 01-*.md convention.",
+          "source": "workflow-integrity"
+        },
+        {
+          "title": "Missing explicit language/output preamble in phase reference",
+          "file": "references/phase-logic.md",
+          "line": 1,
+          "detail": "Scanner expects restated config-bound behavior for multi-step external prompts.",
+          "source": "workflow-integrity"
+        },
+        {
+          "title": "Description first clause longer than 5–8 word hook",
+          "file": "SKILL.md",
+          "line": 3,
+          "detail": "May dilute conservative triggering; shorten hook before Use when clause.",
+          "source": "workflow-integrity"
+        },
+        {
+          "title": "Reference load instruction could state authoritative ordering",
+          "file": "SKILL.md",
+          "line": 32,
+          "detail": "Add explicit execute-all-steps-in-order unless halted language.",
+          "source": "prompt-craft"
+        },
+        {
+          "title": "Phase lettering skips B between A and C",
+          "file": "references/phase-logic.md",
+          "line": 36,
+          "detail": "Readers assume missing content; note reserved or renumber.",
+          "source": "workflow-integrity"
+        }
+      ]
+    },
+    {
+      "name": "Align commits, intent routing, subagent contracts, and headless use",
+      "description": "Automated git commits conflict with common only-commit-when-asked rules; the flow lacks a lightweight wrong-skill guard before expensive parsing; subagent prompts omit structured completion payloads; experts and automators need fewer gates and explicit no-commit or JSON exit options.",
+      "severity": "medium",
+      "impact": "Fewer expensive misfires, restored trust with cautious users, shorter handoffs, clearer path for CI or chained agents.",
+      "action": "Add intent-before-ingestion line with sibling skill pointers; introduce commit_policy modes; optional resume-silent or skip_confirmations when state implies Phase C only; define JSON or capped-bullet subagent return schema; document headless flags and minimal structured exit payload.",
+      "finding_count": 8,
+      "findings": [
+        {
+          "title": "Phase A and Phase C prescribe commits without user-rule reconciliation",
+          "file": "references/phase-logic.md",
+          "line": 78,
+          "detail": "Conflicts with workspace norms; needs explicit requirement or configurable deferral.",
+          "source": "skill-cohesion"
+        },
+        {
+          "title": "No intent checkpoint before heavy epic parsing",
+          "file": "references/phase-logic.md",
+          "line": 3,
+          "detail": "Wrong skill invocation is costly; suggest confirming full-epic intent vs single-story.",
+          "source": "enhancement-opportunities"
+        },
+        {
+          "title": "Commit policy should be first-class configuration",
+          "file": "references/phase-logic.md",
+          "line": 61,
+          "detail": "defer-commits or confirm-each-commit modes preserve checkpoints without silent conflict.",
+          "source": "enhancement-opportunities"
+        },
+        {
+          "title": "Experts hit soft gates even when only Phase C remains",
+          "file": "references/phase-logic.md",
+          "line": 36,
+          "detail": "resume-silent or skip plan approval when sprint-status shows in-progress ready-for-dev only.",
+          "source": "enhancement-opportunities"
+        },
+        {
+          "title": "Subagent prompts lack structured completion payload",
+          "file": "references/phase-logic.md",
+          "line": 47,
+          "detail": "Prose-only returns drive verbose handoffs and re-reads.",
+          "source": "execution-efficiency"
+        },
+        {
+          "title": "Overview emphasis may over imply parallel implementation",
+          "file": "SKILL.md",
+          "line": 10,
+          "detail": "Clarify parallelism applies to Phase A specs not Phase C implementation.",
+          "source": "enhancement-opportunities"
+        },
+        {
+          "title": "Headless automation blocked by confirmations and relays",
+          "file": "references/phase-logic.md",
+          "line": 1,
+          "detail": "Needs documented auto-resolve parameters and structured exit JSON.",
+          "source": "enhancement-opportunities"
+        },
+        {
+          "title": "create-story no-interaction wording vs relay-decisions contract",
+          "file": "references/phase-logic.md",
+          "line": 47,
+          "detail": "Align ambiguity handling with dev-story do-not-assume tone.",
+          "source": "skill-cohesion"
+        }
+      ]
+    }
+  ],
+  "strengths": [
+    {
+      "title": "Lean activation and progressive disclosure",
+      "detail": "SKILL.md stays ~33 lines (~458 tokens); long procedure lives in references/phase-logic.md without inline bloat."
+    },
+    {
+      "title": "Clear orchestrator vs implementer split",
+      "detail": "Delegation to specialized BMad skills prevents role drift and keeps the parent focused on sequencing and checkpoints."
+    },
+    {
+      "title": "Concrete subagent templates",
+      "detail": "Fenced prompts for create-story, dev-story, and code-review reduce improvisation errors."
+    },
+    {
+      "title": "Sound parallelism and checkpoint model",
+      "detail": "Phase A parallelizes by DAG layer; Phase C stays sequential with rationale; sprint-status.yaml supports resume and amortizes rework."
+    },
+    {
+      "title": "Path and scaffold hygiene",
+      "detail": "Path standards scan passed with zero findings; frontmatter naming matches folder; required sections present."
+    }
+  ],
+  "detailed_analysis": {
+    "structure": {
+      "assessment": "Frontmatter, Overview, On Activation, and references wiring are correct; no orphaned placeholders or forbidden exit sections. Pre-pass automation under-classifies workflow type versus manual review.",
+      "findings": []
+    },
+    "craft": {
+      "assessment": "Overview quality is strong with appropriate length; rationale appears where procedure might be questioned; phase-logic behaves as the real stage prompt despite zero root *.md stage files in metrics.",
+      "overview_quality": "appropriate",
+      "progressive_disclosure": "good",
+      "findings": []
+    },
+    "cohesion": {
+      "assessment": "Coherent backlog-to-done identity with explicit loops for review-spawned stories; moderate tension between automated commits and typical user agent rules; skill-level workflow YAML graph absent by design.",
+      "dimensions": {
+        "stage_flow": {
+          "score": "strong",
+          "notes": "Validate and parse, plan, Phase A by layer, Phase C sequential, completion and spawn loop are explicit."
+        },
+        "purpose_alignment": {
+          "score": "moderate",
+          "notes": "Orchestrator role matches procedure; commit automation and confirmation density may mismatch user expectations."
+        },
+        "complexity_appropriateness": {
+          "score": "strong",
+          "notes": "Single reference plus short activation fits full-epic scope; parallelism bounded with rationale."
+        },
+        "completeness_gaps": {
+          "score": "moderate",
+          "notes": "Epic discovery edge cases and git staging policy variance between phases remain underspecified."
+        },
+        "redundancy": {
+          "score": "strong",
+          "notes": "SKILL.md vs phase-logic split avoids duplicated rules."
+        },
+        "dependency_graph_logic": {
+          "score": "moderate",
+          "notes": "Story DAG is well specified in prose; no machine-readable skill manifest for external runners."
+        },
+        "external_skill_integration": {
+          "score": "strong",
+          "notes": "Clear chaining among create-story, dev-story, code-review with consistent halt semantics."
+        }
+      },
+      "findings": [
+        {
+          "title": "git add scope differs between Phase A and Phase C",
+          "file": "references/phase-logic.md",
+          "line": 61,
+          "detail": "Phase A suggests broader adds vs Phase C git add -A; standardize with rationale.",
+          "source": "skill-cohesion"
+        },
+        {
+          "title": "Optional structured workflow sidecar for future runners",
+          "file": "SKILL.md",
+          "line": 32,
+          "detail": "Consider manifest mapping phases to inputs/outputs if BMad gains structured execution.",
+          "source": "skill-cohesion"
+        }
+      ]
+    },
+    "efficiency": {
+      "assessment": "Delegation-first design parallelizes independent spec work and serializes implementation intentionally; execution-deps prepass passes with empty stages because orchestration is markdown-driven.",
+      "findings": []
+    },
+    "experience": {
+      "assessment": "First-timers benefit from DAG education and resume contract but face opaque multi-epic backlog choice and commit discomfort; experts want fewer gates; edge cases need clearer discovery failure templates; automators need flags and JSON exits.",
+      "journeys": [
+        {
+          "archetype": "first-timer",
+          "summary": "Invocation works when one backlog epic exists; friction appears when multiple epics backlog, commits surprise users, or parsing fails late.",
+          "friction_points": [
+            "Opaque epic selection when several backlog",
+            "Git commit assumptions vs personal rules",
+            "Late discovery of malformed story tables"
+          ],
+          "bright_spots": [
+            "Resume via sprint-status reduces fear of lost progress",
+            "Layered plan teaches dependency ordering"
+          ]
+        },
+        {
+          "archetype": "expert",
+          "summary": "Wants Phase C throughput and minimal ceremony but hits confirmation prompts and sequential implementation constraint.",
+          "friction_points": [
+            "Soft gates after batches",
+            "No documented implement-only entry",
+            "Parallelism expectation mismatch from overview tone"
+          ],
+          "bright_spots": [
+            "Transparent topological ordering",
+            "Phase A respects DAG independence"
+          ]
+        },
+        {
+          "archetype": "confused",
+          "summary": "May trigger epic orchestration when meaning single-story work or PR review.",
+          "friction_points": [
+            "No intent checkpoint before expensive Step 0",
+            "Risk of mutating wrong epic if misaligned"
+          ],
+          "bright_spots": [
+            "Epic done early exit is cheap when nothing remains"
+          ]
+        },
+        {
+          "archetype": "edge-case",
+          "summary": "Unusual paths include planning-only epic files, multi-deps strings, mid-flight stories, YAML drift, review-spawned backlog.",
+          "friction_points": [
+            "Ambiguous epic file resolution rules",
+            "Surprising loop back to Phase A after spawn",
+            "No spelled recovery for done marker vs missing artifacts"
+          ],
+          "bright_spots": [
+            "Re-parse DAG on resume handles partial completion",
+            "Sequential fallback when parallel unavailable"
+          ]
+        },
+        {
+          "archetype": "hostile-environment",
+          "summary": "Broken YAML, hook failures, read-only FS, or missing parallel subagents stress the flow.",
+          "friction_points": [
+            "Unclear committed-vs-status state after git failures",
+            "No fallback if subagents unavailable entirely"
+          ],
+          "bright_spots": [
+            "Documented sequential fallback for Phase A when parallel blocked"
+          ]
+        },
+        {
+          "archetype": "automator",
+          "summary": "CI or chained agents want deterministic completion signals without human relays.",
+          "friction_points": [
+            "Confirmation gates and decision-needed loops",
+            "No documented dry-run or no-commit contract",
+            "Missing structured JSON exit artifact"
+          ],
+          "bright_spots": [
+            "Externalized YAML and git state suit automation if gates parameterized"
+          ]
+        }
+      ],
+      "autonomous": {
+        "potential": "partially-adaptable",
+        "notes": "Checkpoint files help machines; human confirmations and relays remain blockers until parameterized."
+      },
+      "findings": [
+        {
+          "title": "Optional epic distillate output for chaining agents",
+          "file": "references/phase-logic.md",
+          "line": 171,
+          "detail": "Low priority enhancement to invoke distillator or emit compact summary artifact.",
+          "source": "enhancement-opportunities"
+        }
+      ]
+    },
+    "scripts": {
+      "assessment": "No scripts directory exists; lint reports informational pass only. Highest ROI is bundling Step 0 with config merge into one epic-plan style tool plus optional validators.",
+      "token_savings": "Roughly 1,300–4,500 tokens per full epic orchestration if mechanical steps move off-LLM (scanner estimate).",
+      "findings": [
+        {
+          "title": "scripts-temp scan found no scripts directory",
+          "file": "scripts/",
+          "line": 1,
+          "detail": "Nothing to lint; opportunity is greenfield helper tooling.",
+          "source": "scripts-temp"
+        }
+      ]
+    }
+  },
+  "recommendations": [
+    {
+      "rank": 1,
+      "action": "Implement epic-plan / bmad-context pre-pass emitting epic_plan.json and fix workflow-type classification for references-based phased skills.",
+      "resolves": 12,
+      "effort": "high"
+    },
+    {
+      "rank": 2,
+      "action": "Add phase-logic anchor block, language preamble, shorter description hook, Phase B note, and stronger authoritative execution wording.",
+      "resolves": 7,
+      "effort": "low"
+    },
+    {
+      "rank": 3,
+      "action": "Introduce intent-before-ingestion gate plus commit_policy modes and optional resume-silent or skip_confirmations behaviors.",
+      "resolves": 6,
+      "effort": "medium"
+    },
+    {
+      "rank": 4,
+      "action": "Define structured subagent completion schema for create-story, dev-story, and code-review handoffs.",
+      "resolves": 3,
+      "effort": "medium"
+    },
+    {
+      "rank": 5,
+      "action": "Clarify in Overview that parallelism applies to Phase A specs while Phase C implementation stays sequential per branch.",
+      "resolves": 1,
+      "effort": "low"
+    },
+    {
+      "rank": 6,
+      "action": "Standardize git staging policy across Phase A and Phase C with one sentence of rationale.",
+      "resolves": 1,
+      "effort": "low"
+    }
+  ]
+}

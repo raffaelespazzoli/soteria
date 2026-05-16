@@ -1,0 +1,33 @@
+{
+  "scanner": "path-standards",
+  "script": "scan-path-standards.py",
+  "version": "2.1.0",
+  "skill_path": ".claude/skills/bmad-epic-dev",
+  "timestamp": "2026-05-16T10:27:41.357198+00:00",
+  "files_scanned": [
+    "SKILL.md",
+    "references/phase-logic.md"
+  ],
+  "status": "pass",
+  "findings": [],
+  "assessments": {},
+  "summary": {
+    "total_findings": 0,
+    "by_severity": {
+      "critical": 0,
+      "high": 0,
+      "medium": 0,
+      "low": 0
+    },
+    "by_category": {
+      "double_prefix": 0,
+      "bare_bmad": 0,
+      "absolute_path": 0,
+      "relative_prefix": 0,
+      "bare_internal_path": 0,
+      "frontmatter": 0,
+      "structure": 0
+    },
+    "assessment": "Path standards scan complete"
+  }
+}

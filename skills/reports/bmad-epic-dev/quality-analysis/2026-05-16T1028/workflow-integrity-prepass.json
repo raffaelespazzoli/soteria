@@ -1,0 +1,45 @@
+{
+  "scanner": "workflow-integrity-prepass",
+  "script": "prepass-workflow-integrity.py",
+  "version": "1.0.0",
+  "skill_path": ".claude/skills/bmad-epic-dev",
+  "timestamp": "2026-05-16T10:28:00.803827+00:00",
+  "status": "pass",
+  "metadata": {
+    "frontmatter": {
+      "name": "bmad-epic-dev",
+      "description": "Orchestrates full epic development: story spec creation, implementation, and code review. Use when the user says 'dev this epic' or 'implement epic [number]'."
+    },
+    "sections": [
+      {
+        "level": 2,
+        "title": "Overview",
+        "line": 8
+      },
+      {
+        "level": 2,
+        "title": "On Activation",
+        "line": 23
+      }
+    ],
+    "workflow_type": "simple-utility"
+  },
+  "stage_summary": {
+    "total_stages": 0,
+    "referenced": [],
+    "actual": [],
+    "missing_stages": [],
+    "orphaned_stages": []
+  },
+  "prompt_details": [],
+  "issues": [],
+  "summary": {
+    "total_issues": 0,
+    "by_severity": {
+      "critical": 0,
+      "high": 0,
+      "medium": 0,
+      "low": 0
+    }
+  }
+}

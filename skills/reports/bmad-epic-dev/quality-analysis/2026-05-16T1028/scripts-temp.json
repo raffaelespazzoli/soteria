@@ -1,0 +1,45 @@
+{
+  "scanner": "scripts",
+  "script": "scan-scripts.py",
+  "version": "2.0.0",
+  "skill_path": ".claude/skills/bmad-epic-dev",
+  "timestamp": "2026-05-16T10:27:42.702830+00:00",
+  "status": "pass",
+  "findings": [
+    {
+      "file": "scripts/",
+      "severity": "info",
+      "category": "none",
+      "title": "No scripts/ directory found \u2014 nothing to scan",
+      "detail": "",
+      "action": ""
+    }
+  ],
+  "assessments": {
+    "lint_summary": {
+      "tools_used": [],
+      "files_linted": 0,
+      "lint_issues": 0
+    },
+    "script_summary": {
+      "total_scripts": 0,
+      "by_type": {
+        "python": [],
+        "shell": [],
+        "node": [],
+        "other": []
+      },
+      "missing_tests": []
+    }
+  },
+  "summary": {
+    "total_findings": 0,
+    "by_severity": {
+      "critical": 0,
+      "high": 0,
+      "medium": 0,
+      "low": 0
+    },
+    "assessment": ""
+  }
+}
