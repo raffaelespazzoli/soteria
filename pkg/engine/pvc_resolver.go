@@ -52,8 +52,11 @@ func (r *KubeVirtPVCResolver) ResolvePVCNames(ctx context.Context, vmName, names
 
 	var pvcNames []string
 	for _, vol := range vm.Spec.Template.Spec.Volumes {
-		if vol.PersistentVolumeClaim != nil {
+		switch {
+		case vol.PersistentVolumeClaim != nil:
 			pvcNames = append(pvcNames, vol.PersistentVolumeClaim.ClaimName)
+		case vol.DataVolume != nil:
+			pvcNames = append(pvcNames, vol.DataVolume.Name)
 		}
 	}
 	return pvcNames, nil

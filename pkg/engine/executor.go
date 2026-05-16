@@ -48,6 +48,7 @@ import (
 
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
 	"github.com/soteria-project/soteria/pkg/drivers"
+	"github.com/soteria-project/soteria/pkg/drivers/csiextension"
 	"github.com/soteria-project/soteria/pkg/metrics"
 )
 
@@ -129,6 +130,7 @@ type ExecutionGroup struct {
 	WaveIndex    int
 	StepRecorder StepRecorder
 	PVCResolver  PVCResolver
+	DriverLabels map[string]string
 }
 
 // DriverForVG returns the driver for the named volume group.
@@ -163,6 +165,7 @@ type WaveExecutor struct {
 	PVCResolver       PVCResolver
 	VMHealthValidator VMHealthValidator
 	Checkpointer      Checkpointer
+	DriverLabels      map[string]string
 
 	statusMu sync.Mutex
 }
@@ -231,6 +234,7 @@ func (e *WaveExecutor) Execute(ctx context.Context, input ExecuteInput) error {
 	}
 
 	driverName := plan.Spec.VolumeReplicationDriver.Type
+	e.DriverLabels = buildDriverLabels(plan.Spec.VolumeReplicationDriver)
 	for i, wc := range chunkResult.Waves {
 		if ctx.Err() != nil {
 			logger.Info("Context cancelled, stopping execution")
@@ -314,6 +318,7 @@ func (e *WaveExecutor) ExecuteWaveHandler(
 		}
 	}
 	if len(chunks) > 0 {
+		e.DriverLabels = buildDriverLabels(plan.Spec.VolumeReplicationDriver)
 		e.executeWave(ctx, waveIdx, chunks, handler, exec, plan.Spec.VolumeReplicationDriver.Type)
 	}
 }
@@ -331,6 +336,7 @@ func (e *WaveExecutor) ExecuteFromWave(
 	plan := input.Plan
 
 	driverName := plan.Spec.VolumeReplicationDriver.Type
+	e.DriverLabels = buildDriverLabels(plan.Spec.VolumeReplicationDriver)
 	for i := startWaveIndex; i < len(exec.Status.Waves); i++ {
 		if ctx.Err() != nil {
 			logger.Info("Context cancelled, stopping execution")
@@ -485,6 +491,7 @@ func (e *WaveExecutor) executeGroup(
 		WaveIndex:    waveIdx,
 		StepRecorder: noopStepRecorder{},
 		PVCResolver:  e.PVCResolver,
+		DriverLabels: e.DriverLabels,
 	}
 
 	var steps []soteriav1alpha1.StepStatus
@@ -999,6 +1006,7 @@ func (e *WaveExecutor) BuildExecutionGroups(
 	chunkResult := ChunkWaves(chunkInput, plan.Spec.MaxConcurrentFailovers)
 
 	driverName := plan.Spec.VolumeReplicationDriver.Type
+	drvLabels := buildDriverLabels(plan.Spec.VolumeReplicationDriver)
 	var groups []ExecutionGroup
 	for waveIdx, wc := range chunkResult.Waves {
 		for _, chunk := range wc.Chunks {
@@ -1007,15 +1015,25 @@ func (e *WaveExecutor) BuildExecutionGroups(
 				return nil, fmt.Errorf("resolving drivers for chunk %s: %w", chunk.Name, err)
 			}
 			groups = append(groups, ExecutionGroup{
-				Chunk:       chunk,
-				Driver:      fallbackDriver,
-				Drivers:     driverMap,
-				WaveIndex:   waveIdx,
-				PVCResolver: e.PVCResolver,
+				Chunk:        chunk,
+				Driver:       fallbackDriver,
+				Drivers:      driverMap,
+				WaveIndex:    waveIdx,
+				PVCResolver:  e.PVCResolver,
+				DriverLabels: drvLabels,
 			})
 		}
 	}
 	return groups, nil
+}
+
+func buildDriverLabels(cfg soteriav1alpha1.VolumeReplicationDriverConfig) map[string]string {
+	lbls := map[string]string{}
+	if cfg.VolumeReplicationClass != "" {
+		lbls[csiextension.VolumeReplicationClassLabel] = cfg.VolumeReplicationClass
+		lbls[csiextension.VolumeGroupReplicationClassLabel] = cfg.VolumeReplicationClass
+	}
+	return lbls
 }
 
 // --- Retry support ---
@@ -1155,6 +1173,7 @@ func (e *WaveExecutor) ExecuteRetry(ctx context.Context, input RetryInput) error
 	sort.Ints(waveIndices)
 
 	driverName := input.Plan.Spec.VolumeReplicationDriver.Type
+	e.DriverLabels = buildDriverLabels(input.Plan.Spec.VolumeReplicationDriver)
 	for _, wi := range waveIndices {
 		if ctx.Err() != nil {
 			logger.Info("Context cancelled during retry, stopping")
@@ -1256,6 +1275,7 @@ func (e *WaveExecutor) executeRetryGroup(
 		WaveIndex:    target.WaveIndex,
 		StepRecorder: noopStepRecorder{},
 		PVCResolver:  e.PVCResolver,
+		DriverLabels: e.DriverLabels,
 	}
 
 	var steps []soteriav1alpha1.StepStatus

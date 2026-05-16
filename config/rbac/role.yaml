@@ -42,8 +42,12 @@ rules:
   - volumegroupreplications
   - volumereplications
   verbs:
+  - create
+  - delete
   - get
   - list
+  - patch
+  - update
   - watch
 - apiGroups:
   - replication.storage.openshift.io

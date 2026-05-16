@@ -288,6 +288,7 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 
 10. **No UI for unpopulated data sources** — before building UI components (columns, badges, formatters, hooks) for a data field, verify the field is actually populated by at least one driver or controller in the current codebase. Speculative UI for future data sources becomes dead code that causes phantom behaviors (e.g., `estimatedRPO` built in Epic 5 was never populated, `UnprotectedVMs` caused a 30-second status patch loop)
 11. **Interaction-pattern spike before each epic** — when an epic introduces new SDK/API interaction patterns (not just new technology), deploy a minimal test exercising each distinct capability before writing story specs. For Console plugin epics, test each: write operation (k8sCreate, k8sPatch), watch pattern (single-resource vs list), routing mechanism (useParams, pathname extraction), and admission path (webhook vs registry strategy). A spike is for new *interaction patterns* within familiar stacks, not just new stacks
+12. **CRD-management stories need extra review scrutiny** — stories that create, update, or delete external Kubernetes CRDs (e.g., VolumeReplication, VolumeGroupReplication, Certificates) must receive heightened code review attention covering: (a) RBAC markers include all verbs the code actually uses (get/list/watch is insufficient when the code also creates/updates/deletes), (b) namespace scoping is explicit and consistent across Create/Get/List/Delete paths, (c) idempotency handles AlreadyExists and NotFound gracefully, (d) informer cache behavior is safe for Create-then-List sequences in the same goroutine (prefer API reader or pre-created resources), (e) concurrent controller races are addressed when another controller reconciles the same CRs (retry-on-conflict or pre-creation). Learned from Epic 12 UAT where 5 bugs (3 blockers) were all in CRD management integration seams, not driver logic
 
 **Domain-Specific Safety Rules:**
 
@@ -331,4 +332,4 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 - Review periodically for outdated rules
 - Remove rules that become obvious over time
 
-Last Updated: 2026-04-30
+Last Updated: 2026-05-15
