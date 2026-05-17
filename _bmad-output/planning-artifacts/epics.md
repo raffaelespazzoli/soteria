@@ -2704,7 +2704,7 @@ So that the UI accurately reflects execution state from the source of truth with
 
 ## Epic 13: VolumeReplication Lifecycle Management & Cascade Ownership
 
-DRPlan assumes full lifecycle ownership of VolumeReplication (VR) and VolumeGroupReplication (VGR) objects. Each Soteria controller instance creates VR/VGR on its local cluster via `createOrUpdate` with `spec.replicationState` reflecting the site's current role: `primary` where VMs are running, `secondary` where they are not. DRPlan deletes VR/VGR objects via dual finalizers (one per site), ensuring both clusters clean up before the object is garbage collected. DRPlan watches VR/VGR status to derive replication health (replacing poll-only). DRExecution mutates `spec.replicationState` during transitions. DRPlan owns DRExecution via OwnerReference for cascade delete. The `resync` replication state is not used — only `primary`/`secondary`.
+DRPlan assumes full lifecycle ownership of VolumeReplication (VR) and VolumeGroupReplication (VGR) objects. Each Soteria controller instance creates VR/VGR on its local cluster via `createOrUpdate` with `spec.replicationState` reflecting the site's current role: `primary` (writable) where VMs are running, `secondary` (read-only) where they are not. DRPlan deletes VR/VGR objects via dual finalizers (one per site), ensuring both clusters clean up before the object is garbage collected. DRPlan watches VR/VGR status to derive replication health (replacing poll-only). DRExecution mutates `spec.replicationState` during transitions: the failover handler calls `SetSource` on the target site (promoting to `primary`/writable before VMs start) and Step0 calls `StopReplication` on the source site for planned migration (demoting to `secondary`/read-only). DRPlan owns DRExecution via OwnerReference for cascade delete. The `resync` replication state is not used — only `primary`/`secondary`.
 
 ### Story 13.1: DRExecution OwnerReference for Cascade Delete
 
@@ -2809,6 +2809,7 @@ So that VR/VGR lifecycle is managed by the DRPlan and the replication state alwa
 
 - Soteria never sets `spec.replicationState = resync` today — the `Resync` handling in `flipReplicationState` and `stateForReplicationState` is dead-code defense. This story removes it for clarity
 - `ConditionResyncing` in VR/VGR *status* is unrelated — it's a CSI Addons status condition reported by real storage drivers and is still read by `mapHealth` in `status.go` (unchanged)
+- **IMPORTANT:** After this change, `StopReplication` always sets `secondary` (read-only). The failover handler currently calls `StopReplication` on the Owner (target) to promote it — Story 13.6 MUST restructure the failover handler to call `SetSource → StartVM` (not `StopReplication → StartVM`) and add `StopReplication` to Step0 for planned migration
 - DRPlan reconciler needs RBAC for `replication.storage.openshift.io` VR/VGR resources (get/list/watch/create/update/patch)
 - `VolumeGroupSpec.Labels` already carries `soteria.io/site-role` — reuse for state derivation
 - Scope: ~5 modified prod files, ~5 modified test files
@@ -2974,42 +2975,54 @@ So that the replication direction follows the VM migration: `primary` on the sit
 
 #### Acceptance Criteria
 
-**AC1: Failover — target site SetSource**
-**Given** a failover execution (planned_migration or disaster) transitioning from SteadyState
-**When** the Owner (target/secondary site) processes each DRGroup
-**Then** it calls `SetSource` which sets VR/VGR `spec.replicationState = primary` on the target site
-**And** `StopReplication` on the source site sets `spec.replicationState = secondary`
+**AC1: Failover handler restructure — SetSource replaces StopReplication on Owner**
+**Given** the FailoverHandler's per-group path currently calls `StopReplication → StartVM` on the Owner (target) site
+**When** Story 13.2 changes StopReplication to always set `secondary`
+**Then** the per-group path is changed to `SetSource → StartVM` (SetSource sets `primary`, making the target volume writable before VMs start)
+**And** `StopReplication` is no longer called in the per-group handler on the Owner site
 
-**AC2: Failback — symmetric reverse**
+**AC2: Step0 adds StopReplication for planned migration**
+**Given** a planned_migration failover with GracefulShutdown=true
+**When** Step0 (PreExecute) runs on the source/active site
+**Then** it calls `StopReplication` on the source site's local VR/VGR (setting `secondary` — demoting the source volume to read-only)
+**And** this happens after StopVM (VMs are already stopped, volume is safe to demote)
+**And** disaster failover (GracefulShutdown=false) does NOT call StopReplication in Step0 (source may be unreachable)
+
+**AC3: Failback — symmetric reverse**
 **Given** a failback execution transitioning from DRedSteadyState
-**When** the Owner (target/primary site) processes each DRGroup
-**Then** `SetSource` sets VR/VGR `spec.replicationState = primary` on the primary site
-**And** `StopReplication` sets `spec.replicationState = secondary` on the secondary site
+**When** the Owner (target/original primary site) processes each DRGroup
+**Then** `SetSource` sets VR/VGR `spec.replicationState = primary` on the target site (promoting it writable)
+**And** Step0 on the source/current active site calls `StopReplication` → `secondary` (planned) or is skipped (disaster)
 
-**AC3: Reprotect — role confirmation**
+**AC4: Reprotect — role confirmation**
 **Given** a reprotect execution transitioning from FailedOver
 **When** the ReprotectHandler processes volume groups
-**Then** `StopReplication` sets `spec.replicationState = secondary` (demoting the old active)
+**Then** `StopReplication` sets `spec.replicationState = secondary` (demoting the old active, tolerant of failure)
 **And** `SetSource` sets `spec.replicationState = primary` (confirming the new active)
 **And** the result matches the rest-state table: active site has `primary`, passive has `secondary`
 
-**AC4: State table invariant**
+**AC5: State table invariant**
 **Given** any rest state (SteadyState, FailedOver, DRedSteadyState, FailedBack)
 **When** the transition completes and the system reaches the next rest state
 **Then** the site where VMs are running has VR/VGR with `spec.replicationState = primary`
 **And** the other site has VR/VGR with `spec.replicationState = secondary`
 
-**AC5: Tests**
+**AC6: Tests**
 **Given** the failover, failback, and reprotect handlers
 **When** integration tests run
 **Then** each transition is verified to produce the correct replicationState on both sites
 **And** the state table invariant is verified at every rest state
+**And** existing tests that assert "SetSource should not be called during failover" are updated to assert `SetSource` IS called
 **And** all existing tests pass with zero regressions
 
 #### Technical Notes
 
-- This story codifies the behavior that emerges from Stories 13.2 (StopReplication=secondary) and the existing SetSource (=primary)
-- The main code changes are in test fixtures and assertions — the handler logic is already correct given 13.2's StopReplication change
-- Story 13.5 must land first so the resolve paths use `GetVolumeGroup` (read-only) instead of `CreateVolumeGroup`
+- This story restructures the failover handler from `StopReplication → StartVM` to `SetSource → StartVM` — a real handler change, not just tests
+- The change is required because 13.2 makes StopReplication always set `secondary`, which would leave the target volume read-only (VMs can't write)
+- `SetSource` (always sets `primary`) promotes the target volume to writable before VMs start
+- Step0 adds StopReplication back for planned migration (reversed from the 5.7 simplification that removed it)
+- For disaster failover, Step0 remains a no-op (source unreachable) — the source site's VR/VGR stays stale until recovery, then DRPlan reconciler fixes it
+- Reprotect handler is structurally unchanged (StopReplication + SetSource), but semantics are now clearer with 13.2's simplification
+- Story 13.5 must land first so resolve paths use `GetVolumeGroup` (read-only)
 - A table-driven integration test covering the full 8-phase cycle validates the invariant
-- Scope: ~1 modified prod file, ~4 modified test files
+- Scope: ~3 modified prod files (`failover.go`, `failover_test.go`, `doc.go`), ~4 modified test files
