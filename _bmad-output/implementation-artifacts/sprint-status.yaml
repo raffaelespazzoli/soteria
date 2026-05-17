@@ -1,5 +1,6 @@
 # generated: 2026-04-06
-# last_updated: 2026-05-16
+# last_updated: 2026-05-17
+# epic-13 created: VolumeReplication Lifecycle Management & Cascade Ownership — 6 stories (13.1 DRExecution OwnerReference for Cascade Delete, 13.2 DRPlan CreateOrUpdate VR/VGR with Site-Aware State, 13.3 Dual Finalizers on VR/VGR Objects, 13.4 DRPlan Watches VR/VGR for Replication Health, 13.5 Remove CreateVolumeGroup from Engine/Reprotect/Health Paths, 13.6 DRExecution Mutates VR/VGR ReplicationState During Transitions). DRPlan assumes full lifecycle ownership of VR/VGR objects via createOrUpdate + dual finalizers (one per site). Simplified replication state model: primary where VMs run, secondary where they don't (resync cleanup folded into 13.2). DRPlan watches VR/VGR status for reactive health updates. DRExecution owns OwnerReference to DRPlan for cascade delete. Engine/reprotect/health paths migrated from CreateVolumeGroup to GetVolumeGroup. Depends on Epic 12.
 # 12.6 done: Conformance Suite & Integration Testing — conformance_test.go adapter passes all 27 RunConformance subtests, integration_test.go covers full lifecycle (VR single-VM + VGR multi-VM: Create→StopReplication→SetSource→GetReplicationStatus→Delete with CR state/count assertions at each step), health mapping (13 VR + 10 VGR state×condition combinations including precedence), error handling (API errors via interceptor.Funcs, externally-deleted CRs returning ErrVolumeGroupNotFound for both Stop/SetSource×VR/VGR, empty status→Unknown), concurrent access (Create+Get, Stop+SetSource, GetReplicationStatus with goroutines and -race), 90.9% coverage, 0 lint issues, all unit/integration tests pass (~1 new file)
 # 12.5 done: GetReplicationStatus Health Monitoring — mapRole (CSI State→VolumeRole: Primary→Source, Secondary→Target, Unknown→NonReplicated), mapHealth (conditions→ReplicationHealth with Degraded>Resyncing>Completed precedence), worstHealth aggregation, oldestSyncTime, VR aggregation for single-VM VGs (worst-health-wins, first-CR role, oldest sync time), VGR direct mapping for multi-VM VGs, not-found returns ErrVolumeGroupNotFound (aligned with driver contract), empty-status returns Unknown gracefully, ctx.Err() guard, 19 new tests (4 role + 8 health + 7 worstHealth + 2 VR single + 3 VR aggregation + 2 VGR + 2 not-found + 2 empty-status + 1 context-cancelled = 31 test cases), 89.4% coverage, 0 lint issues, all unit/integration tests pass; review patches: not-found behavior aligned with StorageProvider contract (ErrVolumeGroupNotFound replaces {NonReplicated,NotReplicating} nil-error return, 2 tests updated) (~1 new file, ~3 modified files)
 # 12.3 done: CreateVolumeGroup/DeleteVolumeGroup/GetVolumeGroup — review patches: namespace encoded in VolumeGroupID (csi-ext-<ns>/<name>), create-or-update semantics (AlreadyExists skip replaces getByName idempotency check), DeleteVolumeGroup ignores NotFound, getByName propagates pvcNamesFromSelector error, empty PVCNames validation guard, parseVGID with strings.Cut, 32 tests (12 retained + 18 original + 2 new: empty-PVCNames + partial-retry), 0 lint issues, all unit/integration tests pass (~3 modified prod files, ~1 modified test file)
@@ -355,3 +356,12 @@ development_status:
   12-5-getreplicationstatus-health-monitoring: done
   12-6-conformance-suite-integration-testing: done
   epic-12-retrospective: optional
+
+  # Epic 13: VolumeReplication Lifecycle Management & Cascade Ownership
+  epic-13: backlog
+  13-1-drexecution-ownerreference-cascade-delete: backlog
+  13-2-drplan-createorupdate-vr-vgr-site-aware-state: backlog
+  13-3-dual-finalizers-on-vr-vgr-objects: backlog
+  13-4-drplan-watches-vr-vgr-replication-health: backlog
+  13-5-remove-createvolumegroup-from-engine-reprotect-health: backlog
+  13-6-drexecution-mutates-vr-vgr-replicationstate-during-transitions: backlog

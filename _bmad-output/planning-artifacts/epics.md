@@ -4,8 +4,8 @@ workflowCompleted: true
 completedAt: '2026-04-06'
 project_name: 'dr-orchestrator'
 user_name: 'Raffa'
-totalEpics: 11
-totalStories: 57
+totalEpics: 13
+totalStories: 64
 totalFRsCovered: 44
 totalNFRsAddressed: 19
 totalUXDRsCovered: 20
@@ -2701,3 +2701,315 @@ So that the UI accurately reflects execution state from the source of truth with
 **And** DRExecution test fixtures include `phase` and `isActive` fields
 **And** jest-axe accessibility audit passes
 **And** all tests pass with zero regressions
+
+## Epic 13: VolumeReplication Lifecycle Management & Cascade Ownership
+
+DRPlan assumes full lifecycle ownership of VolumeReplication (VR) and VolumeGroupReplication (VGR) objects. Each Soteria controller instance creates VR/VGR on its local cluster via `createOrUpdate` with `spec.replicationState` reflecting the site's current role: `primary` where VMs are running, `secondary` where they are not. DRPlan deletes VR/VGR objects via dual finalizers (one per site), ensuring both clusters clean up before the object is garbage collected. DRPlan watches VR/VGR status to derive replication health (replacing poll-only). DRExecution mutates `spec.replicationState` during transitions. DRPlan owns DRExecution via OwnerReference for cascade delete. The `resync` replication state is not used — only `primary`/`secondary`.
+
+### Story 13.1: DRExecution OwnerReference for Cascade Delete
+
+As a platform engineer,
+I want DRExecution objects to have an OwnerReference pointing to their DRPlan,
+So that deleting a DRPlan automatically cascade-deletes all its DRExecutions.
+
+#### Acceptance Criteria
+
+**AC1: OwnerReference set on creation**
+**Given** a DRExecution is created via the aggregated API server
+**When** `PrepareForCreate` in `pkg/registry/drexecution/strategy.go` processes the resource
+**Then** it sets a controller OwnerReference on the DRExecution with the DRPlan as owner (using `metav1.OwnerReference` with `Controller: true`, `BlockOwnerDeletion: true`)
+**And** the DRPlan is fetched by `spec.planName` to resolve the UID
+
+**AC2: Cascade delete behavior**
+**Given** a DRPlan with one or more DRExecutions
+**When** the DRPlan is deleted
+**Then** Kubernetes garbage collection cascade-deletes all owned DRExecutions
+**And** no manual cleanup of DRExecution resources is required
+
+**AC3: Backward compatibility**
+**Given** existing DRExecution resources without an OwnerReference
+**When** the updated reconciler processes them
+**Then** they continue to function normally (OwnerReference is not retroactively added — only new executions get it)
+
+**AC4: Tests**
+**Given** the DRExecution strategy and reconciler
+**When** unit and integration tests run
+**Then** PrepareForCreate tests verify OwnerReference is set with correct plan UID
+**And** integration tests verify cascade delete behavior
+**And** all existing tests pass with zero regressions
+
+#### Technical Notes
+
+- Both DRPlan and DRExecution are cluster-scoped — `metav1.OwnerReference` works for cluster-scoped → cluster-scoped ownership
+- `PrepareForCreate` already stamps `soteria.io/plan-name` label; OwnerReference is set in the same method
+- The strategy needs a `PlanGetter` (rest.Getter or client.Reader) to fetch the DRPlan for UID resolution
+- Scope: ~2 modified prod files, ~2 modified test files
+
+### Story 13.2: DRPlan CreateOrUpdate VR/VGR with Site-Aware State
+
+As a platform engineer,
+I want the DRPlan controller to create or update VolumeReplication and VolumeGroupReplication objects on each site with the correct replication state,
+So that VR/VGR lifecycle is managed by the DRPlan and the replication state always reflects the site's current role.
+
+#### Acceptance Criteria
+
+**AC1: CreateOrUpdate in DRPlan reconciler**
+**Given** a DRPlan with discovered VMs and resolved volume groups
+**When** the DRPlan controller reconciles (active or passive site)
+**Then** it calls `createOrUpdate` (via the CSI Extension driver) for each volume group's VR/VGR on the local cluster
+**And** the `createOrUpdate` uses `controllerutil.CreateOrUpdate` semantics (create if absent, update spec if changed)
+
+**AC2: Site-aware replicationState derivation**
+**Given** the DRPlan controller with `LocalSite` configured
+**When** creating or updating VR/VGR on the local cluster
+**Then** `spec.replicationState` is set to `primary` if `LocalSite == plan.Status.ActiveSite` (or `plan.Spec.PrimarySite` when ActiveSite is empty)
+**And** `spec.replicationState` is set to `secondary` if `LocalSite != ActiveSite`
+
+**AC3: Each site creates independently**
+**Given** two Soteria controller instances (one per site)
+**When** both reconcile the same DRPlan
+**Then** each creates VR/VGR only on its own cluster (local Kubernetes API)
+**And** the primary site creates with `replicationState: primary`
+**And** the secondary site creates with `replicationState: secondary`
+
+**AC4: No createOrUpdate during active execution**
+**Given** a DRPlan with an active (non-terminal) DRExecution
+**When** the DRPlan controller reconciles
+**Then** it skips the createOrUpdate of VR/VGR (the DRExecution controller owns replication state changes during execution)
+
+**AC5: CSI Extension driver CreateVolumeGroup uses createOrUpdate**
+**Given** the CSI Extension driver
+**When** `CreateVolumeGroup` is called
+**Then** it uses `createOrUpdate` semantics (not create-only with AlreadyExists skip)
+**And** on update, only `spec.replicationState` is mutated (DataSource and class are immutable)
+
+**AC6: StopReplication always sets secondary**
+**Given** the CSI Extension driver's `StopReplication` method
+**When** called on a VR/VGR with any `spec.replicationState`
+**Then** it sets `spec.replicationState` to `secondary` (not a flip)
+**And** the `flipReplicationState` helper is replaced with unconditional `secondary` assignment
+
+**AC7: Noop controller drops resync case**
+**Given** the noop VolumeReplication controller's `stateForReplicationState` function
+**When** mapping `spec.replicationState` to status
+**Then** only `primary` and `secondary` cases are handled (the `Resync` case is removed from the switch)
+**And** `statusUpToDate` is simplified accordingly
+
+**AC8: Tests**
+**Given** the DRPlan reconciler, CSI Extension driver, and noop controller
+**When** tests run
+**Then** reconciler tests verify VR/VGR creation with correct replicationState per site role
+**And** driver tests verify createOrUpdate idempotency (create + update path)
+**And** StopReplication tests verify it always sets `secondary` regardless of input state
+**And** resync test cases in the noop controller are removed or replaced
+**And** tests verify no createOrUpdate during active execution
+**And** all existing tests pass with zero regressions
+
+#### Technical Notes
+
+- Soteria never sets `spec.replicationState = resync` today — the `Resync` handling in `flipReplicationState` and `stateForReplicationState` is dead-code defense. This story removes it for clarity
+- `ConditionResyncing` in VR/VGR *status* is unrelated — it's a CSI Addons status condition reported by real storage drivers and is still read by `mapHealth` in `status.go` (unchanged)
+- DRPlan reconciler needs RBAC for `replication.storage.openshift.io` VR/VGR resources (get/list/watch/create/update/patch)
+- `VolumeGroupSpec.Labels` already carries `soteria.io/site-role` — reuse for state derivation
+- Scope: ~5 modified prod files, ~5 modified test files
+
+### Story 13.3: Dual Finalizers on VR/VGR Objects
+
+As a platform engineer,
+I want VR/VGR objects to carry two finalizers (one per site),
+So that both Soteria controller instances clean up their local resources before the object is garbage collected, and DRPlan deletion triggers VR/VGR cleanup.
+
+#### Acceptance Criteria
+
+**AC1: Finalizer constants**
+**Given** the CSI Extension constants
+**When** updated
+**Then** two finalizer constants are defined: `soteria.io/site-primary` and `soteria.io/site-secondary`
+
+**AC2: Finalizer added on creation**
+**Given** the DRPlan controller creating a VR/VGR on the local cluster
+**When** the object is created or updated
+**Then** the controller adds its site-specific finalizer (e.g., primary site adds `soteria.io/site-primary`)
+**And** the finalizer is added only if not already present
+
+**AC3: Finalizer removed on DRPlan deletion**
+**Given** a DRPlan with a deletion timestamp (being deleted)
+**When** the DRPlan controller reconciles
+**Then** it deletes all VR/VGR objects owned by this plan (by label `soteria.io/drplan`)
+**And** removes its site-specific finalizer from each VR/VGR before deletion
+**And** removes the DRPlan's own finalizer only after all VR/VGR finalizers are cleared
+
+**AC4: DRPlan finalizer**
+**Given** a DRPlan
+**When** first reconciled
+**Then** the DRPlan controller adds a finalizer `soteria.io/volume-replication` to the DRPlan
+**And** this finalizer prevents DRPlan deletion until VR/VGR cleanup is complete
+
+**AC5: Cross-site cleanup**
+**Given** a VR/VGR with both `soteria.io/site-primary` and `soteria.io/site-secondary` finalizers
+**When** the primary site controller removes `soteria.io/site-primary`
+**Then** the object remains (secondary finalizer still present)
+**When** the secondary site controller removes `soteria.io/site-secondary`
+**Then** the object is garbage collected
+
+**AC6: Degraded mode — one site down**
+**Given** a DRPlan being deleted while one site is unreachable
+**When** the reachable site's controller removes its finalizer
+**Then** the VR/VGR object remains in Terminating state until the other site recovers
+**And** when the other site recovers, its controller removes its finalizer and the object is GC'd
+
+**AC7: Tests**
+**Given** the finalizer logic
+**When** tests run
+**Then** tests verify finalizer addition on create
+**And** tests verify finalizer removal on DRPlan deletion
+**And** tests verify GC only after both finalizers removed
+**And** all existing tests pass with zero regressions
+
+#### Technical Notes
+
+- DRPlan reconciler needs `update` permission on VR/VGR for finalizer manipulation
+- The DRPlan finalizer follows the same pattern as standard Kubernetes operator finalizers
+- Finalizers are set on VR/VGR objects (not on the DRPlan itself — the DRPlan gets its own separate finalizer)
+- Scope: ~3 modified prod files, ~3 modified test files
+
+### Story 13.4: DRPlan Watches VR/VGR for Replication Health
+
+As a platform engineer,
+I want the DRPlan controller to watch VR/VGR status changes and update replication health reactively,
+So that health updates are timely and event-driven rather than purely poll-based.
+
+#### Acceptance Criteria
+
+**AC1: Secondary watch on VR/VGR**
+**Given** the DRPlan controller's `SetupWithManager`
+**When** setting up watches
+**Then** it watches VolumeReplication and VolumeGroupReplication resources
+**And** uses a predicate that fires only on `status.state` or `status.conditions` changes
+
+**AC2: Event-to-DRPlan mapping**
+**Given** a VR/VGR status change event
+**When** the watch handler processes it
+**Then** it reads the `soteria.io/drplan` label to determine the owning DRPlan
+**And** enqueues a reconcile request for that DRPlan
+
+**AC3: Health derived from VR/VGR status.state**
+**Given** the DRPlan controller reconciling after a VR/VGR status change
+**When** updating `status.replicationHealth`
+**Then** it reads `status.state` from VR/VGR objects (via the existing `GetReplicationStatus` driver method)
+**And** maps to the existing `VolumeGroupHealth` model
+
+**AC4: Poll-based health retained as fallback**
+**Given** the existing poll-based health monitoring
+**When** the watch-based path is added
+**Then** the periodic requeue (10m normal / 30s degraded) is retained as a safety net
+**And** the watch provides faster reaction to state changes between poll intervals
+
+**AC5: Tests**
+**Given** the watch setup and event handler
+**When** tests run
+**Then** watch predicate tests verify filtering on status changes only
+**And** event handler tests verify correct DRPlan enqueue from label
+**And** all existing health monitoring tests pass with zero regressions
+
+#### Technical Notes
+
+- The predicate should ignore `metadata` and `spec` changes (only `status` is relevant)
+- Similar pattern to the existing VM watch predicate (`vmRelevantChangePredicate`)
+- RBAC markers for VR/VGR watch already exist from Story 12.0
+- Scope: ~2 modified prod files, ~2 modified test files
+
+### Story 13.5: Remove CreateVolumeGroup from Engine, Reprotect & Health Paths
+
+As a developer,
+I want the failover engine, reprotect handler, and health polling to use `GetVolumeGroup` instead of `CreateVolumeGroup` for VG ID resolution,
+So that VR/VGR creation responsibility is exclusively owned by the DRPlan reconciler (Story 13.2), and execution/monitoring paths only read.
+
+**Background:** Currently `CreateVolumeGroup` is used as an idempotent "get-or-create" in three locations: `resolveVolumeGroupID` in `pkg/engine/failover.go`, `resolveVGID` in `pkg/controller/drexecution/reconciler.go`, and `resolveVolumeGroupID` in `pkg/controller/drplan/health.go`. With Story 13.2 moving VR/VGR creation to the DRPlan reconciler, these paths should use the read-only `GetVolumeGroup` method instead.
+
+#### Acceptance Criteria
+
+**AC1: Engine failover path uses GetVolumeGroup**
+**Given** the `resolveVolumeGroupID` function in `pkg/engine/failover.go`
+**When** resolving a VolumeGroupInfo to a driver-level VolumeGroupID
+**Then** it calls `driver.GetVolumeGroup` instead of `driver.CreateVolumeGroup`
+**And** if the VG is not found (`ErrVolumeGroupNotFound`), the error is propagated with a clear message indicating the DRPlan reconciler has not yet created the VR/VGR
+
+**AC2: DRExecution reprotect path uses GetVolumeGroup**
+**Given** the `resolveVGID` function in `pkg/controller/drexecution/reconciler.go`
+**When** `buildVolumeGroupEntries` resolves VG IDs for reprotect
+**Then** it calls `drv.GetVolumeGroup` instead of `drv.CreateVolumeGroup`
+**And** the function signature changes to accept a `VolumeGroupID` (the ID format is deterministic from name/namespace) or uses `GetVolumeGroup` by name
+
+**AC3: DRPlan health path uses GetVolumeGroup**
+**Given** the `resolveVolumeGroupID` function in `pkg/controller/drplan/health.go`
+**When** resolving VG IDs for health polling
+**Then** it calls `drv.GetVolumeGroup` instead of `drv.CreateVolumeGroup`
+
+**AC4: PVC resolution no longer needed in resolve paths**
+**Given** that VR/VGR objects already exist (created by DRPlan)
+**When** resolving a VG ID
+**Then** the PVCResolver calls are removed from the resolve functions (PVC information was only needed for `CreateVolumeGroup`)
+**And** the VG ID is derived deterministically from the VG name/namespace (matching the ID format established in Story 12.3)
+
+**AC5: Tests updated**
+**Given** all tests that stub `OnCreateVolumeGroup` for resolve purposes
+**When** updated
+**Then** they stub `OnGetVolumeGroup` instead
+**And** new tests verify that `ErrVolumeGroupNotFound` is handled gracefully with a descriptive error
+**And** all existing tests pass with zero regressions, 0 lint issues
+
+#### Technical Notes
+
+- The VolumeGroupID format is `csi-ext-<namespace>/<name>` (from Story 12.3) — this can be computed deterministically without calling `GetVolumeGroup` at all, but using `GetVolumeGroup` validates the VR/VGR exists
+- The `PVCResolver` dependency in the resolve functions can be dropped since PVC names are only needed during creation
+- This story depends on 13.3 (DRPlan must create VR/VGR before execution can run)
+- Scope: ~3 modified prod files, ~5 modified test files
+
+### Story 13.6: DRExecution Mutates VR/VGR ReplicationState During Transitions
+
+As a platform engineer,
+I want the DRExecution controller to change `spec.replicationState` on VR/VGR objects during DR transitions,
+So that the replication direction follows the VM migration: `primary` on the site becoming active, `secondary` on the site becoming passive.
+
+#### Acceptance Criteria
+
+**AC1: Failover — target site SetSource**
+**Given** a failover execution (planned_migration or disaster) transitioning from SteadyState
+**When** the Owner (target/secondary site) processes each DRGroup
+**Then** it calls `SetSource` which sets VR/VGR `spec.replicationState = primary` on the target site
+**And** `StopReplication` on the source site sets `spec.replicationState = secondary`
+
+**AC2: Failback — symmetric reverse**
+**Given** a failback execution transitioning from DRedSteadyState
+**When** the Owner (target/primary site) processes each DRGroup
+**Then** `SetSource` sets VR/VGR `spec.replicationState = primary` on the primary site
+**And** `StopReplication` sets `spec.replicationState = secondary` on the secondary site
+
+**AC3: Reprotect — role confirmation**
+**Given** a reprotect execution transitioning from FailedOver
+**When** the ReprotectHandler processes volume groups
+**Then** `StopReplication` sets `spec.replicationState = secondary` (demoting the old active)
+**And** `SetSource` sets `spec.replicationState = primary` (confirming the new active)
+**And** the result matches the rest-state table: active site has `primary`, passive has `secondary`
+
+**AC4: State table invariant**
+**Given** any rest state (SteadyState, FailedOver, DRedSteadyState, FailedBack)
+**When** the transition completes and the system reaches the next rest state
+**Then** the site where VMs are running has VR/VGR with `spec.replicationState = primary`
+**And** the other site has VR/VGR with `spec.replicationState = secondary`
+
+**AC5: Tests**
+**Given** the failover, failback, and reprotect handlers
+**When** integration tests run
+**Then** each transition is verified to produce the correct replicationState on both sites
+**And** the state table invariant is verified at every rest state
+**And** all existing tests pass with zero regressions
+
+#### Technical Notes
+
+- This story codifies the behavior that emerges from Stories 13.2 (StopReplication=secondary) and the existing SetSource (=primary)
+- The main code changes are in test fixtures and assertions — the handler logic is already correct given 13.2's StopReplication change
+- Story 13.5 must land first so the resolve paths use `GetVolumeGroup` (read-only) instead of `CreateVolumeGroup`
+- A table-driven integration test covering the full 8-phase cycle validates the invariant
+- Scope: ~1 modified prod file, ~4 modified test files
