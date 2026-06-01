@@ -86,6 +86,29 @@ func replicationStateFromLabels(lbls map[string]string) replicationv1alpha1.Repl
 	return ReplicationStatePrimary
 }
 
+func finalizerForSiteRole(lbls map[string]string) string {
+	identity := lbls[SiteIdentityLabel]
+	if identity == "" {
+		identity = lbls[SiteRoleLabel]
+	}
+	if identity == SiteRoleSecondary {
+		return FinalizerSiteSecondary
+	}
+	return FinalizerSitePrimary
+}
+
+// removeSiteFinalizers strips both site-specific finalizers from obj.
+// Returns true if any finalizer was actually removed.
+// Used by DeleteVolumeGroup for complete single-site teardown (tests,
+// conformance, engine workflows). The DRPlan deletion path uses
+// cleanupVolumeReplicationFinalizers instead, which removes only the
+// local site's finalizer and waits for the peer to remove its own.
+func removeSiteFinalizers(obj client.Object) bool {
+	a := controllerutil.RemoveFinalizer(obj, FinalizerSitePrimary)
+	b := controllerutil.RemoveFinalizer(obj, FinalizerSiteSecondary)
+	return a || b
+}
+
 func vgLabels(vgName string, specLabels map[string]string) map[string]string {
 	m := map[string]string{
 		LabelVolumeGroup: vgName,
@@ -133,9 +156,11 @@ func (d *Driver) createVRs(
 				Namespace: spec.Namespace,
 			},
 		}
+		siteFinalizer := finalizerForSiteRole(spec.Labels)
 		_, err := controllerutil.CreateOrUpdate(ctx, d.client, vr, func() error {
 			vr.Labels = crLabels
 			vr.Spec.ReplicationState = state
+			controllerutil.AddFinalizer(vr, siteFinalizer)
 			if vr.CreationTimestamp.IsZero() {
 				vr.Spec.VolumeReplicationClass = vrClass
 				vr.Spec.DataSource = corev1.TypedLocalObjectReference{
@@ -191,9 +216,11 @@ func (d *Driver) createVGR(
 			Namespace: spec.Namespace,
 		},
 	}
+	siteFinalizer := finalizerForSiteRole(spec.Labels)
 	_, err := controllerutil.CreateOrUpdate(ctx, d.client, vgr, func() error {
 		vgr.Labels = crLabels
 		vgr.Spec.ReplicationState = state
+		controllerutil.AddFinalizer(vgr, siteFinalizer)
 		if vgr.CreationTimestamp.IsZero() {
 			vgr.Spec.VolumeGroupReplicationClassName = vgrClass
 			vgr.Spec.VolumeReplicationClassName = vrClass
@@ -236,8 +263,14 @@ func (d *Driver) DeleteVolumeGroup(ctx context.Context, id drivers.VolumeGroupID
 		return fmt.Errorf("listing VolumeReplication CRs for %s: %w", vgName, err)
 	}
 	for i := range vrList.Items {
-		if err := d.client.Delete(ctx, &vrList.Items[i]); err != nil && !apierrors.IsNotFound(err) {
-			return fmt.Errorf("deleting VolumeReplication %s: %w", vrList.Items[i].Name, err)
+		vr := &vrList.Items[i]
+		if removeSiteFinalizers(vr) {
+			if err := d.client.Update(ctx, vr); err != nil && !apierrors.IsNotFound(err) {
+				return fmt.Errorf("removing finalizers from VolumeReplication %s: %w", vr.Name, err)
+			}
+		}
+		if err := d.client.Delete(ctx, vr); err != nil && !apierrors.IsNotFound(err) {
+			return fmt.Errorf("deleting VolumeReplication %s: %w", vr.Name, err)
 		}
 	}
 
@@ -246,8 +279,14 @@ func (d *Driver) DeleteVolumeGroup(ctx context.Context, id drivers.VolumeGroupID
 		return fmt.Errorf("listing VolumeGroupReplication CRs for %s: %w", vgName, err)
 	}
 	for i := range vgrList.Items {
-		if err := d.client.Delete(ctx, &vgrList.Items[i]); err != nil && !apierrors.IsNotFound(err) {
-			return fmt.Errorf("deleting VolumeGroupReplication %s: %w", vgrList.Items[i].Name, err)
+		vgr := &vgrList.Items[i]
+		if removeSiteFinalizers(vgr) {
+			if err := d.client.Update(ctx, vgr); err != nil && !apierrors.IsNotFound(err) {
+				return fmt.Errorf("removing finalizers from VolumeGroupReplication %s: %w", vgr.Name, err)
+			}
+		}
+		if err := d.client.Delete(ctx, vgr); err != nil && !apierrors.IsNotFound(err) {
+			return fmt.Errorf("deleting VolumeGroupReplication %s: %w", vgr.Name, err)
 		}
 	}
 

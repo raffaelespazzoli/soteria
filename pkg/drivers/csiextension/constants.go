@@ -40,6 +40,22 @@ const (
 	SiteRoleSecondary                = drivers.SiteRoleSecondary
 )
 
+// Finalizer constants for dual-site cleanup on VR/VGR objects.
+// Each site adds its own finalizer so that deletion requires both sites
+// to clean up independently. The DRPlan finalizer blocks DRPlan GC
+// until all owned VR/VGR finalizers are removed.
+const (
+	FinalizerSitePrimary       = "soteria.io/site-primary"
+	FinalizerSiteSecondary     = "soteria.io/site-secondary"
+	FinalizerVolumeReplication = "soteria.io/volume-replication"
+)
+
+// SiteIdentityLabel carries the physical site identity (primary/secondary)
+// for finalizer selection. Unlike SiteRoleLabel, which tracks the replication
+// role and flips on failover, SiteIdentityLabel is stable across failovers
+// so the correct site finalizer is always selected.
+const SiteIdentityLabel = "soteria.io/site-identity"
+
 // LabelVolumeGroup is applied to VR/VGR CRs (and to PVCs for VGR source
 // selection) so the driver can locate them by volume group name.
 const LabelVolumeGroup = "soteria.io/volume-group"

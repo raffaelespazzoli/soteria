@@ -1844,6 +1844,189 @@ func TestGetReplicationStatus_ContextCancelled(t *testing.T) {
 // Create-or-update (AlreadyExists) test
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Finalizer tests (Story 13.3)
+// ---------------------------------------------------------------------------
+
+func TestFinalizerForSiteRole(t *testing.T) {
+	tests := []struct {
+		name   string
+		labels map[string]string
+		want   string
+	}{
+		{"primary explicit", map[string]string{SiteRoleLabel: SiteRolePrimary}, FinalizerSitePrimary},
+		{"secondary", map[string]string{SiteRoleLabel: SiteRoleSecondary}, FinalizerSiteSecondary},
+		{"missing label defaults to primary", map[string]string{}, FinalizerSitePrimary},
+		{"nil map defaults to primary", nil, FinalizerSitePrimary},
+		{"identity overrides role after failover", map[string]string{
+			SiteRoleLabel:     SiteRoleSecondary,
+			SiteIdentityLabel: SiteRolePrimary,
+		}, FinalizerSitePrimary},
+		{"identity secondary with role primary", map[string]string{
+			SiteRoleLabel:     SiteRolePrimary,
+			SiteIdentityLabel: SiteRoleSecondary,
+		}, FinalizerSiteSecondary},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := finalizerForSiteRole(tt.labels); got != tt.want {
+				t.Errorf("finalizerForSiteRole() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func postFailoverPrimaryLabels() map[string]string {
+	m := primaryLabels()
+	m[SiteRoleLabel] = SiteRoleSecondary
+	m[SiteIdentityLabel] = SiteRolePrimary
+	return m
+}
+
+func TestCreateVolumeGroup_SiteFinalizer(t *testing.T) {
+	tests := []struct {
+		name          string
+		multiVM       bool
+		labels        map[string]string
+		wantFinalizer string
+	}{
+		{"VR/primary", false, primaryLabels(), FinalizerSitePrimary},
+		{"VR/secondary", false, secondaryLabels(), FinalizerSiteSecondary},
+		{"VGR/primary", true, primaryLabels(), FinalizerSitePrimary},
+		{"VGR/secondary", true, secondaryLabels(), FinalizerSiteSecondary},
+		{"VR/post-failover primary identity", false, postFailoverPrimaryLabels(), FinalizerSitePrimary},
+		{"VGR/post-failover primary identity", true, postFailoverPrimaryLabels(), FinalizerSitePrimary},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var objs []client.Object
+			vgName := testVGNameVM
+			ns := "default"
+			pvcs := []string{testPVCData}
+			if tt.multiVM {
+				vgName = testVGNameNS
+				ns = testNamespace
+				pvcs = []string{"pvc-1"}
+				objs = append(objs, makePVC("pvc-1"))
+			}
+
+			drv := testDriver(t, objs...)
+			ctx := context.Background()
+
+			_, err := drv.CreateVolumeGroup(ctx, drivers.VolumeGroupSpec{
+				Name: vgName, Namespace: ns, PVCNames: pvcs, Labels: tt.labels,
+			})
+			if err != nil {
+				t.Fatalf("CreateVolumeGroup: %v", err)
+			}
+
+			var finalizers []string
+			if tt.multiVM {
+				var list replicationv1alpha1.VolumeGroupReplicationList
+				if err := drv.client.List(ctx, &list); err != nil {
+					t.Fatalf("List: %v", err)
+				}
+				if len(list.Items) != 1 {
+					t.Fatalf("expected 1 VGR, got %d", len(list.Items))
+				}
+				finalizers = list.Items[0].Finalizers
+			} else {
+				var list replicationv1alpha1.VolumeReplicationList
+				if err := drv.client.List(ctx, &list); err != nil {
+					t.Fatalf("List: %v", err)
+				}
+				if len(list.Items) != 1 {
+					t.Fatalf("expected 1 VR, got %d", len(list.Items))
+				}
+				finalizers = list.Items[0].Finalizers
+			}
+
+			found := false
+			for _, f := range finalizers {
+				if f == tt.wantFinalizer {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("missing %s finalizer; finalizers = %v", tt.wantFinalizer, finalizers)
+			}
+		})
+	}
+}
+
+func TestCreateVolumeGroup_VR_Idempotent_FinalizerNotDuplicated(t *testing.T) {
+	drv := testDriver(t)
+	ctx := context.Background()
+
+	spec := drivers.VolumeGroupSpec{
+		Name:      testVGNameVM,
+		Namespace: "default",
+		PVCNames:  []string{testPVCData},
+		Labels:    primaryLabels(),
+	}
+
+	if _, err := drv.CreateVolumeGroup(ctx, spec); err != nil {
+		t.Fatalf("first CreateVolumeGroup: %v", err)
+	}
+	if _, err := drv.CreateVolumeGroup(ctx, spec); err != nil {
+		t.Fatalf("second CreateVolumeGroup: %v", err)
+	}
+
+	var vrList replicationv1alpha1.VolumeReplicationList
+	if err := drv.client.List(ctx, &vrList); err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	vr := vrList.Items[0]
+	count := 0
+	for _, f := range vr.Finalizers {
+		if f == FinalizerSitePrimary {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected exactly 1 %s finalizer, got %d; finalizers = %v",
+			FinalizerSitePrimary, count, vr.Finalizers)
+	}
+}
+
+func TestCreateVolumeGroup_VGR_Idempotent_FinalizerNotDuplicated(t *testing.T) {
+	drv := testDriver(t, makePVC("pvc-1"))
+	ctx := context.Background()
+
+	spec := drivers.VolumeGroupSpec{
+		Name:      testVGNameNS,
+		Namespace: testNamespace,
+		PVCNames:  []string{"pvc-1"},
+		Labels:    primaryLabels(),
+	}
+
+	if _, err := drv.CreateVolumeGroup(ctx, spec); err != nil {
+		t.Fatalf("first CreateVolumeGroup: %v", err)
+	}
+	if _, err := drv.CreateVolumeGroup(ctx, spec); err != nil {
+		t.Fatalf("second CreateVolumeGroup: %v", err)
+	}
+
+	var vgrList replicationv1alpha1.VolumeGroupReplicationList
+	if err := drv.client.List(ctx, &vgrList); err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(vgrList.Items) != 1 {
+		t.Fatalf("expected 1 VGR, got %d", len(vgrList.Items))
+	}
+	vgr := vgrList.Items[0]
+	count := 0
+	for _, f := range vgr.Finalizers {
+		if f == FinalizerSitePrimary {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected exactly 1 %s finalizer, got %d; finalizers = %v",
+			FinalizerSitePrimary, count, vgr.Finalizers)
+	}
+}
+
 func TestCreateVolumeGroup_PartialRetry_SkipsExisting(t *testing.T) {
 	drv := testDriver(t)
 	ctx := context.Background()

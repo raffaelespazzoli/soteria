@@ -52,6 +52,13 @@ rules:
 - apiGroups:
   - replication.storage.openshift.io
   resources:
+  - volumegroupreplications/finalizers
+  - volumereplications/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - replication.storage.openshift.io
+  resources:
   - volumegroupreplications/status
   - volumereplications/status
   verbs:

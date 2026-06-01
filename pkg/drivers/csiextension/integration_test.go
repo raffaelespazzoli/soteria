@@ -164,7 +164,14 @@ func deleteAllCRs(t *testing.T, c client.Client) {
 		t.Fatalf("List VRs: %v", err)
 	}
 	for i := range vrList.Items {
-		if err := c.Delete(ctx, &vrList.Items[i]); err != nil {
+		vr := &vrList.Items[i]
+		if len(vr.Finalizers) > 0 {
+			vr.Finalizers = nil
+			if err := c.Update(ctx, vr); err != nil {
+				t.Fatalf("Remove VR finalizers: %v", err)
+			}
+		}
+		if err := c.Delete(ctx, vr); err != nil {
 			t.Fatalf("Delete VR: %v", err)
 		}
 	}
@@ -174,7 +181,14 @@ func deleteAllCRs(t *testing.T, c client.Client) {
 		t.Fatalf("List VGRs: %v", err)
 	}
 	for i := range vgrList.Items {
-		if err := c.Delete(ctx, &vgrList.Items[i]); err != nil {
+		vgr := &vgrList.Items[i]
+		if len(vgr.Finalizers) > 0 {
+			vgr.Finalizers = nil
+			if err := c.Update(ctx, vgr); err != nil {
+				t.Fatalf("Remove VGR finalizers: %v", err)
+			}
+		}
+		if err := c.Delete(ctx, vgr); err != nil {
 			t.Fatalf("Delete VGR: %v", err)
 		}
 	}

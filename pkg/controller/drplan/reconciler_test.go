@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	replicationv1alpha1 "github.com/csi-addons/kubernetes-csi-addons/api/replication.storage/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -37,6 +38,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
+	"github.com/soteria-project/soteria/pkg/drivers/csiextension"
 	"github.com/soteria-project/soteria/pkg/engine"
 )
 
@@ -2734,6 +2736,349 @@ func TestReconcile_StorageClassMixed_PrefersOverDiskAgreed(t *testing.T) {
 	readyCond := findReadyCondition(updated.Status.Conditions)
 	if readyCond == nil || readyCond.Status != metav1.ConditionFalse {
 		t.Error("Expected Ready=False when VG SC is mixed")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Finalizer tests (Story 13.3)
+// ---------------------------------------------------------------------------
+
+func newCSIExtensionPlan() *soteriav1alpha1.DRPlan {
+	p := newTestPlan()
+	p.Spec.VolumeReplicationDriver.Type = "csi-extension"
+	return p
+}
+
+func TestReconcile_CSIExtension_AddsDRPlanFinalizer(t *testing.T) {
+	plan := newCSIExtensionPlan()
+
+	r, c := newReconciler([]client.Object{plan}, &mockVMDiscoverer{})
+
+	result, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: planKey,
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+	if result.RequeueAfter == 0 {
+		t.Error("expected RequeueAfter > 0 after adding finalizer")
+	}
+
+	var updated soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &updated); err != nil {
+		t.Fatalf("Get plan: %v", err)
+	}
+
+	found := false
+	for _, f := range updated.Finalizers {
+		if f == csiextension.FinalizerVolumeReplication {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("DRPlan missing %s finalizer; finalizers = %v",
+			csiextension.FinalizerVolumeReplication, updated.Finalizers)
+	}
+}
+
+func TestReconcile_NoopDriver_SkipsDRPlanFinalizer(t *testing.T) {
+	plan := newTestPlan()
+	plan.Spec.VolumeReplicationDriver.Type = "noop"
+
+	vms := []engine.VMReference{
+		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+	}
+	r, c := newReconciler([]client.Object{plan}, &mockVMDiscoverer{vms: vms})
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: planKey,
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	var updated soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &updated); err != nil {
+		t.Fatalf("Get plan: %v", err)
+	}
+
+	for _, f := range updated.Finalizers {
+		if f == csiextension.FinalizerVolumeReplication {
+			t.Errorf("noop driver plan should NOT have %s finalizer",
+				csiextension.FinalizerVolumeReplication)
+		}
+	}
+}
+
+func newCSIExtensionScheme() *runtime.Scheme {
+	s := newTestScheme()
+	_ = replicationv1alpha1.AddToScheme(s)
+	return s
+}
+
+func newReconcilerWithCSIScheme(
+	objs []client.Object,
+	discoverer engine.VMDiscoverer,
+) (*DRPlanReconciler, client.Client) {
+	scheme := newCSIExtensionScheme()
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(objs...).
+		WithStatusSubresource(&soteriav1alpha1.DRPlan{}).
+		Build()
+
+	return &DRPlanReconciler{
+		Client:          fakeClient,
+		Scheme:          scheme,
+		VMDiscoverer:    discoverer,
+		NamespaceLookup: &mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{}},
+		Recorder:        events.NewFakeRecorder(10),
+		LocalSite:       testPrimarySite,
+	}, fakeClient
+}
+
+func TestReconcile_DRPlanDeletion_RemovesSiteFinalizerFromVR(t *testing.T) {
+	now := metav1.Now()
+	plan := newCSIExtensionPlan()
+	plan.Finalizers = []string{csiextension.FinalizerVolumeReplication}
+	plan.DeletionTimestamp = &now
+	plan.Status.ActiveSite = testPrimarySite
+
+	vr := &replicationv1alpha1.VolumeReplication{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "csi-ext-vr-1",
+			Namespace: "default",
+			Labels:    map[string]string{csiextension.LabelDRPlan: plan.Name},
+			Finalizers: []string{
+				csiextension.FinalizerSitePrimary,
+				csiextension.FinalizerSiteSecondary,
+			},
+		},
+		Spec: replicationv1alpha1.VolumeReplicationSpec{
+			VolumeReplicationClass: "ceph-rbd",
+			ReplicationState:       replicationv1alpha1.Primary,
+		},
+	}
+
+	r, c := newReconcilerWithCSIScheme([]client.Object{plan, vr}, &mockVMDiscoverer{})
+	r.LocalSite = testPrimarySite
+
+	result, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: planKey,
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	// VR still has the secondary finalizer, so DRPlan should requeue.
+	if result.RequeueAfter == 0 {
+		t.Error("expected RequeueAfter > 0 when remote finalizer remains")
+	}
+
+	// VR should no longer have the primary finalizer.
+	var updatedVR replicationv1alpha1.VolumeReplication
+	if err := c.Get(context.Background(), client.ObjectKeyFromObject(vr), &updatedVR); err != nil {
+		t.Fatalf("Get VR: %v", err)
+	}
+	for _, f := range updatedVR.Finalizers {
+		if f == csiextension.FinalizerSitePrimary {
+			t.Error("VR should not have primary finalizer after cleanup")
+		}
+	}
+	if len(updatedVR.Finalizers) != 1 || updatedVR.Finalizers[0] != csiextension.FinalizerSiteSecondary {
+		t.Errorf("VR finalizers = %v, want [%s]",
+			updatedVR.Finalizers, csiextension.FinalizerSiteSecondary)
+	}
+
+	// DRPlan finalizer should still be present (remote finalizer remains).
+	var updatedPlan soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &updatedPlan); err != nil {
+		t.Fatalf("Get plan: %v", err)
+	}
+	found := false
+	for _, f := range updatedPlan.Finalizers {
+		if f == csiextension.FinalizerVolumeReplication {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("DRPlan finalizer should remain while remote VR finalizer exists")
+	}
+}
+
+func TestReconcile_DRPlanDeletion_RemovesDRPlanFinalizerWhenClean(t *testing.T) {
+	now := metav1.Now()
+	plan := newCSIExtensionPlan()
+	plan.Finalizers = []string{csiextension.FinalizerVolumeReplication}
+	plan.DeletionTimestamp = &now
+	plan.Status.ActiveSite = testPrimarySite
+
+	// VR has only the local (primary) finalizer — cleanup will make it fully clean.
+	vr := &replicationv1alpha1.VolumeReplication{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "csi-ext-vr-1",
+			Namespace: "default",
+			Labels:    map[string]string{csiextension.LabelDRPlan: plan.Name},
+			Finalizers: []string{
+				csiextension.FinalizerSitePrimary,
+			},
+		},
+		Spec: replicationv1alpha1.VolumeReplicationSpec{
+			VolumeReplicationClass: "ceph-rbd",
+			ReplicationState:       replicationv1alpha1.Primary,
+		},
+	}
+
+	r, c := newReconcilerWithCSIScheme([]client.Object{plan, vr}, &mockVMDiscoverer{})
+	r.LocalSite = testPrimarySite
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: planKey,
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	// DRPlan finalizer was removed and since DeletionTimestamp was set,
+	// the fake client GC's the object. NotFound is the expected outcome.
+	var updatedPlan soteriav1alpha1.DRPlan
+	err = c.Get(context.Background(), planKey, &updatedPlan)
+	if err == nil {
+		for _, f := range updatedPlan.Finalizers {
+			if f == csiextension.FinalizerVolumeReplication {
+				t.Error("DRPlan finalizer should be removed after all VR/VGR cleanup is done")
+			}
+		}
+	}
+}
+
+func TestReconcile_DRPlanDeletion_NoVRVGR_RemovesFinalizer(t *testing.T) {
+	now := metav1.Now()
+	plan := newCSIExtensionPlan()
+	plan.Finalizers = []string{csiextension.FinalizerVolumeReplication}
+	plan.DeletionTimestamp = &now
+
+	r, c := newReconcilerWithCSIScheme([]client.Object{plan}, &mockVMDiscoverer{})
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: planKey,
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	// DRPlan was deleted (no finalizers remain + DeletionTimestamp set → GC'd).
+	var updatedPlan soteriav1alpha1.DRPlan
+	err = c.Get(context.Background(), planKey, &updatedPlan)
+	if err == nil {
+		for _, f := range updatedPlan.Finalizers {
+			if f == csiextension.FinalizerVolumeReplication {
+				t.Error("DRPlan finalizer should be removed when no VR/VGR exist")
+			}
+		}
+	}
+}
+
+func TestReconcile_DRPlanDeletion_PostFailover_RemovesCorrectFinalizer(t *testing.T) {
+	now := metav1.Now()
+	plan := newCSIExtensionPlan()
+	plan.Finalizers = []string{csiextension.FinalizerVolumeReplication}
+	plan.DeletionTimestamp = &now
+	plan.Status.ActiveSite = testSecondarySite
+
+	vr := &replicationv1alpha1.VolumeReplication{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "csi-ext-vr-failover",
+			Namespace: "default",
+			Labels:    map[string]string{csiextension.LabelDRPlan: plan.Name},
+			Finalizers: []string{
+				csiextension.FinalizerSitePrimary,
+				csiextension.FinalizerSiteSecondary,
+			},
+		},
+		Spec: replicationv1alpha1.VolumeReplicationSpec{
+			VolumeReplicationClass: "ceph-rbd",
+			ReplicationState:       replicationv1alpha1.Secondary,
+		},
+	}
+
+	r, c := newReconcilerWithCSIScheme([]client.Object{plan, vr}, &mockVMDiscoverer{})
+	r.LocalSite = testPrimarySite
+
+	result, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: planKey,
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+	if result.RequeueAfter == 0 {
+		t.Error("expected RequeueAfter > 0 when remote finalizer remains")
+	}
+
+	var updatedVR replicationv1alpha1.VolumeReplication
+	if err := c.Get(context.Background(), client.ObjectKeyFromObject(vr), &updatedVR); err != nil {
+		t.Fatalf("Get VR: %v", err)
+	}
+
+	for _, f := range updatedVR.Finalizers {
+		if f == csiextension.FinalizerSitePrimary {
+			t.Error("VR should not have primary finalizer — physical primary site must remove it even after failover")
+		}
+	}
+	if len(updatedVR.Finalizers) != 1 || updatedVR.Finalizers[0] != csiextension.FinalizerSiteSecondary {
+		t.Errorf("VR finalizers = %v, want [%s]",
+			updatedVR.Finalizers, csiextension.FinalizerSiteSecondary)
+	}
+}
+
+func TestReconcile_DRPlanDeletion_VGR_RemovesSiteFinalizer(t *testing.T) {
+	now := metav1.Now()
+	plan := newCSIExtensionPlan()
+	plan.Finalizers = []string{csiextension.FinalizerVolumeReplication}
+	plan.DeletionTimestamp = &now
+	plan.Status.ActiveSite = testPrimarySite
+
+	vgr := &replicationv1alpha1.VolumeGroupReplication{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "csi-ext-vgr-1",
+			Namespace: "default",
+			Labels:    map[string]string{csiextension.LabelDRPlan: plan.Name},
+			Finalizers: []string{
+				csiextension.FinalizerSitePrimary,
+				csiextension.FinalizerSiteSecondary,
+			},
+		},
+		Spec: replicationv1alpha1.VolumeGroupReplicationSpec{
+			VolumeGroupReplicationClassName: "ceph-rbd-group",
+			ReplicationState:                replicationv1alpha1.Primary,
+		},
+	}
+
+	r, c := newReconcilerWithCSIScheme([]client.Object{plan, vgr}, &mockVMDiscoverer{})
+	r.LocalSite = testPrimarySite
+
+	result, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: planKey,
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+	if result.RequeueAfter == 0 {
+		t.Error("expected RequeueAfter > 0 when remote finalizer remains")
+	}
+
+	var updatedVGR replicationv1alpha1.VolumeGroupReplication
+	if err := c.Get(context.Background(), client.ObjectKeyFromObject(vgr), &updatedVGR); err != nil {
+		t.Fatalf("Get VGR: %v", err)
+	}
+	for _, f := range updatedVGR.Finalizers {
+		if f == csiextension.FinalizerSitePrimary {
+			t.Error("VGR should not have primary finalizer after cleanup")
+		}
+	}
+	if len(updatedVGR.Finalizers) != 1 || updatedVGR.Finalizers[0] != csiextension.FinalizerSiteSecondary {
+		t.Errorf("VGR finalizers = %v, want [%s]",
+			updatedVGR.Finalizers, csiextension.FinalizerSiteSecondary)
 	}
 }
 

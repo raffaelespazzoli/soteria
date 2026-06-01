@@ -51,14 +51,17 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
+	replicationv1alpha1 "github.com/csi-addons/kubernetes-csi-addons/api/replication.storage/v1alpha1"
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
 	"github.com/soteria-project/soteria/pkg/drivers"
+	"github.com/soteria-project/soteria/pkg/drivers/csiextension"
 	"github.com/soteria-project/soteria/pkg/engine"
 	"github.com/soteria-project/soteria/pkg/metrics"
 
@@ -103,8 +106,10 @@ const (
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
-// +kubebuilder:rbac:groups=replication.storage.openshift.io,resources=volumereplications,verbs=get;list;watch;create;update;patch
-// +kubebuilder:rbac:groups=replication.storage.openshift.io,resources=volumegroupreplications,verbs=get;list;watch;create;update;patch
+// +kubebuilder:rbac:groups=replication.storage.openshift.io,resources=volumereplications,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=replication.storage.openshift.io,resources=volumegroupreplications,verbs=get;list;watch;create;update;patch;delete
+// +kubebuilder:rbac:groups=replication.storage.openshift.io,resources=volumereplications/finalizers,verbs=update
+// +kubebuilder:rbac:groups=replication.storage.openshift.io,resources=volumegroupreplications/finalizers,verbs=update
 
 // DRPlanReconciler reconciles DRPlan objects by discovering VMs, grouping them
 // into execution waves, resolving volume group consistency, and chunking into
@@ -141,6 +146,39 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
+	}
+
+	// Add the VR cleanup finalizer to the DRPlan when the driver is
+	// csi-extension. Noop plans don't create VR/VGR objects and must not
+	// block deletion on VR/VGR cleanup.
+	if plan.Spec.VolumeReplicationDriver.Type == "csi-extension" &&
+		!controllerutil.ContainsFinalizer(&plan, csiextension.FinalizerVolumeReplication) {
+		controllerutil.AddFinalizer(&plan, csiextension.FinalizerVolumeReplication)
+		if err := r.Update(ctx, &plan); err != nil {
+			return ctrl.Result{}, fmt.Errorf("adding VR finalizer to DRPlan: %w", err)
+		}
+		logger.Info("Added VolumeReplication finalizer to DRPlan")
+		return ctrl.Result{RequeueAfter: time.Second}, nil
+	}
+
+	// Handle DRPlan deletion: clean up site finalizers from VR/VGR objects,
+	// then remove the DRPlan's own finalizer so it can be garbage-collected.
+	if !plan.DeletionTimestamp.IsZero() &&
+		controllerutil.ContainsFinalizer(&plan, csiextension.FinalizerVolumeReplication) {
+		done, err := r.cleanupVolumeReplicationFinalizers(ctx, &plan)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+		if !done {
+			return ctrl.Result{RequeueAfter: 5 * time.Second}, nil
+		}
+
+		controllerutil.RemoveFinalizer(&plan, csiextension.FinalizerVolumeReplication)
+		if err := r.Update(ctx, &plan); err != nil {
+			return ctrl.Result{}, fmt.Errorf("removing VR finalizer from DRPlan: %w", err)
+		}
+		logger.Info("Removed VolumeReplication finalizer from DRPlan")
+		return ctrl.Result{}, nil
 	}
 
 	if r.LocalSite != "" {
@@ -493,6 +531,89 @@ func (r *DRPlanReconciler) siteReplicationRole(plan *soteriav1alpha1.DRPlan) str
 	return drivers.SiteRoleSecondary
 }
 
+// cleanupVolumeReplicationFinalizers removes the local site's finalizer from
+// all VR and VGR objects owned by this DRPlan, then deletes them. Returns
+// true when all objects have been cleaned up (or none exist). The local
+// finalizer is derived from physical site identity (LocalSite vs plan spec),
+// NOT from the replication role, so it stays correct across failovers.
+// In non-site-aware mode the primary finalizer is targeted; however,
+// reconcileVolumeReplication requires LocalSite to be set, so VR/VGR
+// objects should not exist in non-site-aware mode.
+func (r *DRPlanReconciler) cleanupVolumeReplicationFinalizers(
+	ctx context.Context,
+	plan *soteriav1alpha1.DRPlan,
+) (bool, error) {
+	logger := log.FromContext(ctx)
+	labelSelector := client.MatchingLabels{csiextension.LabelDRPlan: plan.Name}
+
+	localFinalizer := csiextension.FinalizerSitePrimary
+	if r.LocalSite == plan.Spec.SecondarySite {
+		localFinalizer = csiextension.FinalizerSiteSecondary
+	}
+
+	pending := false
+
+	var vrList replicationv1alpha1.VolumeReplicationList
+	if err := r.List(ctx, &vrList, labelSelector); err != nil {
+		return false, fmt.Errorf("listing VolumeReplications for cleanup: %w", err)
+	}
+	for i := range vrList.Items {
+		vr := &vrList.Items[i]
+		if controllerutil.ContainsFinalizer(vr, localFinalizer) {
+			patch := client.MergeFrom(vr.DeepCopy())
+			controllerutil.RemoveFinalizer(vr, localFinalizer)
+			if err := r.Patch(ctx, vr, patch); err != nil {
+				return false, fmt.Errorf("removing finalizer from VolumeReplication %s/%s: %w",
+					vr.Namespace, vr.Name, err)
+			}
+			logger.Info("Removed site finalizer from VolumeReplication",
+				"vr", vr.Name, "namespace", vr.Namespace, "finalizer", localFinalizer)
+		}
+		if vr.DeletionTimestamp.IsZero() {
+			if err := r.Delete(ctx, vr); err != nil {
+				if !errors.IsNotFound(err) {
+					return false, fmt.Errorf("deleting VolumeReplication %s/%s: %w",
+						vr.Namespace, vr.Name, err)
+				}
+			}
+		}
+		if len(vr.Finalizers) > 0 {
+			pending = true
+		}
+	}
+
+	var vgrList replicationv1alpha1.VolumeGroupReplicationList
+	if err := r.List(ctx, &vgrList, labelSelector); err != nil {
+		return false, fmt.Errorf("listing VolumeGroupReplications for cleanup: %w", err)
+	}
+	for i := range vgrList.Items {
+		vgr := &vgrList.Items[i]
+		if controllerutil.ContainsFinalizer(vgr, localFinalizer) {
+			patch := client.MergeFrom(vgr.DeepCopy())
+			controllerutil.RemoveFinalizer(vgr, localFinalizer)
+			if err := r.Patch(ctx, vgr, patch); err != nil {
+				return false, fmt.Errorf("removing finalizer from VolumeGroupReplication %s/%s: %w",
+					vgr.Namespace, vgr.Name, err)
+			}
+			logger.Info("Removed site finalizer from VolumeGroupReplication",
+				"vgr", vgr.Name, "namespace", vgr.Namespace, "finalizer", localFinalizer)
+		}
+		if vgr.DeletionTimestamp.IsZero() {
+			if err := r.Delete(ctx, vgr); err != nil {
+				if !errors.IsNotFound(err) {
+					return false, fmt.Errorf("deleting VolumeGroupReplication %s/%s: %w",
+						vgr.Namespace, vgr.Name, err)
+				}
+			}
+		}
+		if len(vgr.Finalizers) > 0 {
+			pending = true
+		}
+	}
+
+	return !pending, nil
+}
+
 // reconcileVolumeReplication ensures VR/VGR objects exist with the correct
 // replicationState for this site. Skipped when no driver registry is
 // configured or during active execution. Returns an error if any VR/VGR
@@ -519,6 +640,11 @@ func (r *DRPlanReconciler) reconcileVolumeReplication(
 		return nil
 	}
 
+	siteIdentity := drivers.SiteRolePrimary
+	if r.LocalSite == plan.Spec.SecondarySite {
+		siteIdentity = drivers.SiteRoleSecondary
+	}
+
 	var firstErr error
 	for _, wave := range waves {
 		for _, vg := range wave.Groups {
@@ -541,8 +667,9 @@ func (r *DRPlanReconciler) reconcileVolumeReplication(
 			}
 
 			labels := map[string]string{
-				drivers.SiteRoleLabel: siteRole,
-				drivers.LabelDRPlan:   plan.Name,
+				drivers.SiteRoleLabel:          siteRole,
+				drivers.LabelDRPlan:            plan.Name,
+				csiextension.SiteIdentityLabel: siteIdentity,
 			}
 			if vrClass != "" {
 				labels[drivers.VolumeReplicationClassLabel] = vrClass

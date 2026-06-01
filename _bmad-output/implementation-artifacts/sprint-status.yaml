@@ -367,7 +367,7 @@ development_status:
   epic-13: in-progress
   13-1-drexecution-ownerreference-cascade-delete: done
   13-2-drplan-createorupdate-vr-vgr-site-aware-state: done
-  13-3-dual-finalizers-on-vr-vgr-objects: ready-for-dev
+  13-3-dual-finalizers-on-vr-vgr-objects: done
   13-4-drplan-watches-vr-vgr-replication-health: ready-for-dev
   13-5-remove-createvolumegroup-from-engine-reprotect-health: ready-for-dev
   13-6-drexecution-mutates-vr-vgr-replicationstate-during-transitions: ready-for-dev
