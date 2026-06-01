@@ -692,3 +692,266 @@ func findCondition(conditions []metav1.Condition, condType string) *metav1.Condi
 	}
 	return nil
 }
+
+// ---------------------------------------------------------------------------
+// reconcileVolumeReplication tests (Story 13.2)
+// ---------------------------------------------------------------------------
+
+func TestReconcileVolumeReplication_PrimarySite_CallsCreateVolumeGroupWithPrimary(t *testing.T) {
+	plan := &soteriav1alpha1.DRPlan{
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-vr", Generation: 1},
+		Spec: soteriav1alpha1.DRPlanSpec{
+			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{
+				Type:                   "noop",
+				VolumeReplicationClass: "ceph-rbd",
+			},
+			MaxConcurrentFailovers: 5,
+			PrimarySite:            testPrimarySite,
+			SecondarySite:          testSecondarySite,
+		},
+		Status: soteriav1alpha1.DRPlanStatus{
+			ActiveSite: testPrimarySite,
+		},
+	}
+
+	waves := []soteriav1alpha1.WaveInfo{
+		{
+			WaveKey: "1",
+			Groups: []soteriav1alpha1.VolumeGroupInfo{
+				{Name: "vm-default-app1", Namespace: "default", VMNames: []string{"app1"}},
+			},
+		},
+	}
+
+	fakeDriver := fakedrv.New()
+	registry := drivers.NewRegistry()
+	registry.RegisterDriver("noop", func() drivers.StorageProvider { return fakeDriver })
+
+	pvcResolver := &mockPVCResolverWithNames{names: map[string][]string{
+		"default/app1": {"data-pvc", "logs-pvc"},
+	}}
+
+	r := &DRPlanReconciler{
+		Client:          fake.NewClientBuilder().WithScheme(newTestScheme()).WithObjects(plan).Build(),
+		Scheme:          newTestScheme(),
+		VMDiscoverer:    &mockVMDiscoverer{},
+		NamespaceLookup: &mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{}},
+		Recorder:        events.NewFakeRecorder(10),
+		Registry:        registry,
+		PVCResolver:     pvcResolver,
+		LocalSite:       testPrimarySite,
+	}
+
+	r.reconcileVolumeReplication(context.Background(), plan, waves)
+
+	calls := fakeDriver.CallsTo("CreateVolumeGroup")
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 CreateVolumeGroup call, got %d", len(calls))
+	}
+
+	spec := calls[0].Args[0].(drivers.VolumeGroupSpec)
+	if spec.Labels[drivers.SiteRoleLabel] != drivers.SiteRolePrimary {
+		t.Errorf("site role = %q, want %q", spec.Labels[drivers.SiteRoleLabel], drivers.SiteRolePrimary)
+	}
+	if spec.Labels[drivers.LabelDRPlan] != "plan-vr" {
+		t.Errorf("drplan label = %q, want plan-vr", spec.Labels[drivers.LabelDRPlan])
+	}
+	if spec.Labels[drivers.VolumeReplicationClassLabel] != "ceph-rbd" {
+		t.Errorf("vrClass = %q, want ceph-rbd", spec.Labels[drivers.VolumeReplicationClassLabel])
+	}
+}
+
+func TestReconcileVolumeReplication_SecondarySite_CallsCreateVolumeGroupWithSecondary(t *testing.T) {
+	plan := &soteriav1alpha1.DRPlan{
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-vr", Generation: 1},
+		Spec: soteriav1alpha1.DRPlanSpec{
+			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{
+				Type:                   "noop",
+				VolumeReplicationClass: "ceph-rbd",
+			},
+			MaxConcurrentFailovers: 5,
+			PrimarySite:            testPrimarySite,
+			SecondarySite:          testSecondarySite,
+		},
+		Status: soteriav1alpha1.DRPlanStatus{
+			ActiveSite: testPrimarySite,
+		},
+	}
+
+	waves := []soteriav1alpha1.WaveInfo{
+		{
+			WaveKey: "1",
+			Groups: []soteriav1alpha1.VolumeGroupInfo{
+				{Name: "vm-default-app1", Namespace: "default", VMNames: []string{"app1"}},
+			},
+		},
+	}
+
+	fakeDriver := fakedrv.New()
+	registry := drivers.NewRegistry()
+	registry.RegisterDriver("noop", func() drivers.StorageProvider { return fakeDriver })
+
+	pvcResolver := &mockPVCResolverWithNames{names: map[string][]string{
+		"default/app1": {"data-pvc"},
+	}}
+
+	r := &DRPlanReconciler{
+		Client:          fake.NewClientBuilder().WithScheme(newTestScheme()).WithObjects(plan).Build(),
+		Scheme:          newTestScheme(),
+		VMDiscoverer:    &mockVMDiscoverer{},
+		NamespaceLookup: &mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{}},
+		Recorder:        events.NewFakeRecorder(10),
+		Registry:        registry,
+		PVCResolver:     pvcResolver,
+		LocalSite:       testSecondarySite,
+	}
+
+	r.reconcileVolumeReplication(context.Background(), plan, waves)
+
+	calls := fakeDriver.CallsTo("CreateVolumeGroup")
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 CreateVolumeGroup call, got %d", len(calls))
+	}
+
+	spec := calls[0].Args[0].(drivers.VolumeGroupSpec)
+	if spec.Labels[drivers.SiteRoleLabel] != drivers.SiteRoleSecondary {
+		t.Errorf("site role = %q, want %q", spec.Labels[drivers.SiteRoleLabel], drivers.SiteRoleSecondary)
+	}
+}
+
+func TestReconcileVolumeReplication_SkippedDuringActiveExecution(t *testing.T) {
+	plan := &soteriav1alpha1.DRPlan{
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-vr", Generation: 1},
+		Spec: soteriav1alpha1.DRPlanSpec{
+			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{
+				Type:                   "noop",
+				VolumeReplicationClass: "ceph-rbd",
+			},
+			MaxConcurrentFailovers: 5,
+			PrimarySite:            testPrimarySite,
+			SecondarySite:          testSecondarySite,
+		},
+		Status: soteriav1alpha1.DRPlanStatus{
+			ActiveSite: testPrimarySite,
+		},
+	}
+
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "exec-1",
+			Labels: map[string]string{soteriav1alpha1.PlanNameLabel: "plan-vr"},
+		},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-vr",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+	}
+
+	waves := []soteriav1alpha1.WaveInfo{
+		{
+			WaveKey: "1",
+			Groups: []soteriav1alpha1.VolumeGroupInfo{
+				{Name: "vm-default-app1", Namespace: "default", VMNames: []string{"app1"}},
+			},
+		},
+	}
+
+	fakeDriver := fakedrv.New()
+	registry := drivers.NewRegistry()
+	registry.RegisterDriver("noop", func() drivers.StorageProvider { return fakeDriver })
+
+	pvcResolver := &mockPVCResolverWithNames{names: map[string][]string{
+		"default/app1": {"data-pvc"},
+	}}
+
+	scheme := newTestScheme()
+	r := &DRPlanReconciler{
+		Client:          fake.NewClientBuilder().WithScheme(scheme).WithObjects(plan, exec).Build(),
+		Scheme:          scheme,
+		VMDiscoverer:    &mockVMDiscoverer{},
+		NamespaceLookup: &mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{}},
+		Recorder:        events.NewFakeRecorder(10),
+		Registry:        registry,
+		PVCResolver:     pvcResolver,
+		LocalSite:       testPrimarySite,
+	}
+
+	r.reconcileVolumeReplication(context.Background(), plan, waves)
+
+	calls := fakeDriver.CallsTo("CreateVolumeGroup")
+	if len(calls) != 0 {
+		t.Errorf("expected 0 CreateVolumeGroup calls during active execution, got %d", len(calls))
+	}
+}
+
+func TestReconcileVolumeReplication_FallbackToPrimarySiteWhenActiveSiteEmpty(t *testing.T) {
+	plan := &soteriav1alpha1.DRPlan{
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-vr", Generation: 1},
+		Spec: soteriav1alpha1.DRPlanSpec{
+			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{
+				Type:                   "noop",
+				VolumeReplicationClass: "ceph-rbd",
+			},
+			MaxConcurrentFailovers: 5,
+			PrimarySite:            testPrimarySite,
+			SecondarySite:          testSecondarySite,
+		},
+		Status: soteriav1alpha1.DRPlanStatus{
+			ActiveSite: "",
+		},
+	}
+
+	waves := []soteriav1alpha1.WaveInfo{
+		{
+			WaveKey: "1",
+			Groups: []soteriav1alpha1.VolumeGroupInfo{
+				{Name: "vm-default-app1", Namespace: "default", VMNames: []string{"app1"}},
+			},
+		},
+	}
+
+	fakeDriver := fakedrv.New()
+	registry := drivers.NewRegistry()
+	registry.RegisterDriver("noop", func() drivers.StorageProvider { return fakeDriver })
+
+	pvcResolver := &mockPVCResolverWithNames{names: map[string][]string{
+		"default/app1": {"data-pvc"},
+	}}
+
+	r := &DRPlanReconciler{
+		Client:          fake.NewClientBuilder().WithScheme(newTestScheme()).WithObjects(plan).Build(),
+		Scheme:          newTestScheme(),
+		VMDiscoverer:    &mockVMDiscoverer{},
+		NamespaceLookup: &mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{}},
+		Recorder:        events.NewFakeRecorder(10),
+		Registry:        registry,
+		PVCResolver:     pvcResolver,
+		LocalSite:       testPrimarySite,
+	}
+
+	r.reconcileVolumeReplication(context.Background(), plan, waves)
+
+	calls := fakeDriver.CallsTo("CreateVolumeGroup")
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 CreateVolumeGroup call, got %d", len(calls))
+	}
+
+	spec := calls[0].Args[0].(drivers.VolumeGroupSpec)
+	if spec.Labels[drivers.SiteRoleLabel] != drivers.SiteRolePrimary {
+		t.Errorf("site role = %q, want %q (fallback to PrimarySite when ActiveSite empty)",
+			spec.Labels[drivers.SiteRoleLabel], drivers.SiteRolePrimary)
+	}
+}
+
+// mockPVCResolverWithNames returns configured PVC names keyed by "namespace/vmName".
+type mockPVCResolverWithNames struct {
+	names map[string][]string
+}
+
+func (m *mockPVCResolverWithNames) ResolvePVCNames(_ context.Context, vmName, namespace string) ([]string, error) {
+	key := namespace + "/" + vmName
+	if names, ok := m.names[key]; ok {
+		return names, nil
+	}
+	return nil, nil
+}

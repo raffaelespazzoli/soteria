@@ -18,6 +18,8 @@ package csiextension
 
 import (
 	replicationv1alpha1 "github.com/csi-addons/kubernetes-csi-addons/api/replication.storage/v1alpha1"
+
+	"github.com/soteria-project/soteria/pkg/drivers"
 )
 
 // ReplicationState constants for CSI Addons VolumeReplication spec.replicationState.
@@ -28,30 +30,16 @@ const (
 	ReplicationStateResync    = replicationv1alpha1.Resync
 )
 
-// VolumeReplicationClassLabel is the key in VolumeGroupSpec.Labels through
-// which the executor passes the VolumeReplicationClass name from
-// DRPlanSpec.VolumeReplicationDriver.VolumeReplicationClass to the driver.
-const VolumeReplicationClassLabel = "soteria.io/volume-replication-class"
-
-// VolumeGroupReplicationClassLabel is the key in VolumeGroupSpec.Labels
-// through which the executor passes the VolumeGroupReplicationClass name
-// to the driver. By convention, the executor derives this from the plan's
-// VolumeReplicationClass value when no explicit override is configured.
-const VolumeGroupReplicationClassLabel = "soteria.io/volume-group-replication-class"
+// Label constants re-exported from pkg/drivers for backward compatibility.
+const (
+	VolumeReplicationClassLabel      = drivers.VolumeReplicationClassLabel
+	VolumeGroupReplicationClassLabel = drivers.VolumeGroupReplicationClassLabel
+	LabelDRPlan                      = drivers.LabelDRPlan
+	SiteRoleLabel                    = drivers.SiteRoleLabel
+	SiteRolePrimary                  = drivers.SiteRolePrimary
+	SiteRoleSecondary                = drivers.SiteRoleSecondary
+)
 
 // LabelVolumeGroup is applied to VR/VGR CRs (and to PVCs for VGR source
 // selection) so the driver can locate them by volume group name.
 const LabelVolumeGroup = "soteria.io/volume-group"
-
-// LabelDRPlan is applied to VR/VGR CRs for plan-scoped identification.
-const LabelDRPlan = "soteria.io/drplan"
-
-// SiteRoleLabel carries the local site's replication role in
-// VolumeGroupSpec.Labels. The executor determines this from the plan's
-// primarySite/secondarySite fields and the operator's --site-name flag.
-const SiteRoleLabel = "soteria.io/site-role"
-
-const (
-	SiteRolePrimary   = "primary"
-	SiteRoleSecondary = "secondary"
-)

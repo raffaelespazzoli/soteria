@@ -169,9 +169,9 @@ func TestReconcileVolumeReplication(t *testing.T) {
 			wantReplicating: metav1.ConditionFalse,
 		},
 		{
-			name:            "resync state",
+			name:            "resync state falls to unknown",
 			state:           replicationv1alpha1.Resync,
-			wantState:       replicationv1alpha1.SecondaryState,
+			wantState:       replicationv1alpha1.UnknownState,
 			wantReplicating: metav1.ConditionFalse,
 		},
 	}

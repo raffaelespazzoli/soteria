@@ -1,6 +1,6 @@
 # Story 13.2: DRPlan CreateOrUpdate VR/VGR with Site-Aware State
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -28,38 +28,46 @@ So that VR/VGR lifecycle is managed by the DRPlan and the replication state alwa
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Refactor CSI Extension driver CreateVolumeGroup to createOrUpdate semantics (AC: #5)
-  - [ ] 1.1 In `createVRs()`: replace `client.Create` + AlreadyExists skip with `controllerutil.CreateOrUpdate` pattern — on update, mutate only `spec.replicationState` (leave DataSource and VolumeReplicationClass untouched)
-  - [ ] 1.2 In `createVGR()`: replace `client.Create` + AlreadyExists skip with `controllerutil.CreateOrUpdate` pattern — on update, mutate only `spec.replicationState` (leave Source selector, class fields untouched)
-  - [ ] 1.3 Update driver unit tests for createOrUpdate idempotency (create path + update path with state change)
+- [x] Task 1: Refactor CSI Extension driver CreateVolumeGroup to createOrUpdate semantics (AC: #5)
+  - [x] 1.1 In `createVRs()`: replace `client.Create` + AlreadyExists skip with `controllerutil.CreateOrUpdate` pattern — on update, mutate only `spec.replicationState` (leave DataSource and VolumeReplicationClass untouched)
+  - [x] 1.2 In `createVGR()`: replace `client.Create` + AlreadyExists skip with `controllerutil.CreateOrUpdate` pattern — on update, mutate only `spec.replicationState` (leave Source selector, class fields untouched)
+  - [x] 1.3 Update driver unit tests for createOrUpdate idempotency (create path + update path with state change)
 
-- [ ] Task 2: Refactor CSI Extension driver StopReplication to always set secondary (AC: #6)
-  - [ ] 2.1 Replace `flipReplicationStates()` call in `StopReplication` with `updateReplicationState(ctx, set, ReplicationStateSecondary)`
-  - [ ] 2.2 Delete `flipReplicationStates()` method and `flipReplicationState()` helper function from `helpers.go`
-  - [ ] 2.3 Update StopReplication tests to verify unconditional `secondary` output regardless of input state (remove flip assertions)
+- [x] Task 2: Refactor CSI Extension driver StopReplication to always set secondary (AC: #6)
+  - [x] 2.1 Replace `flipReplicationStates()` call in `StopReplication` with `updateReplicationState(ctx, set, ReplicationStateSecondary)`
+  - [x] 2.2 Delete `flipReplicationStates()` method and `flipReplicationState()` helper function from `helpers.go`
+  - [x] 2.3 Update StopReplication tests to verify unconditional `secondary` output regardless of input state (remove flip assertions)
 
-- [ ] Task 3: Remove Resync case from noop VolumeReplication controller (AC: #7)
-  - [ ] 3.1 In `stateForReplicationState()`: remove `replicationv1alpha1.Resync` from the `case replicationv1alpha1.Secondary` line
-  - [ ] 3.2 Simplify `statusUpToDate` if any Resync-specific logic exists
-  - [ ] 3.3 Remove/update Resync test case in `reconciler_test.go`
+- [x] Task 3: Remove Resync case from noop VolumeReplication controller (AC: #7)
+  - [x] 3.1 In `stateForReplicationState()`: remove `replicationv1alpha1.Resync` from the `case replicationv1alpha1.Secondary` line
+  - [x] 3.2 Simplify `statusUpToDate` if any Resync-specific logic exists
+  - [x] 3.3 Remove/update Resync test case in `reconciler_test.go`
 
-- [ ] Task 4: Add VR/VGR createOrUpdate to DRPlan reconciler (AC: #1, #2, #3, #4)
-  - [ ] 4.1 Add a new method `reconcileVolumeReplication(ctx, plan, waves)` on `DRPlanReconciler` that iterates volume groups and calls `driver.CreateVolumeGroup` with site-aware labels
-  - [ ] 4.2 Derive site role: if `LocalSite == plan.Status.ActiveSite` (fallback to `plan.Spec.PrimarySite` when empty) → `SiteRolePrimary`, else → `SiteRoleSecondary`
-  - [ ] 4.3 Gate: skip call if `r.hasActiveExecution(ctx, plan.Name)` is true
-  - [ ] 4.4 Wire the new method into the reconcile loop (after wave formation, before health polling)
-  - [ ] 4.5 Add RBAC markers for `replication.storage.openshift.io` VR/VGR resources (get, list, watch, create, update, patch)
+- [x] Task 4: Add VR/VGR createOrUpdate to DRPlan reconciler (AC: #1, #2, #3, #4)
+  - [x] 4.1 Add a new method `reconcileVolumeReplication(ctx, plan, waves)` on `DRPlanReconciler` that iterates volume groups and calls `driver.CreateVolumeGroup` with site-aware labels
+  - [x] 4.2 Derive site role: if `LocalSite == plan.Status.ActiveSite` (fallback to `plan.Spec.PrimarySite` when empty) → `SiteRolePrimary`, else → `SiteRoleSecondary`
+  - [x] 4.3 Gate: skip call if `r.hasActiveExecution(ctx, plan.Name)` is true
+  - [x] 4.4 Wire the new method into the reconcile loop (after wave formation, before health polling)
+  - [x] 4.5 Add RBAC markers for `replication.storage.openshift.io` VR/VGR resources (get, list, watch, create, update, patch)
 
-- [ ] Task 5: Tests (AC: #8)
-  - [ ] 5.1 Reconciler unit tests: verify createOrUpdate called with correct site role for primary vs secondary site
-  - [ ] 5.2 Reconciler unit tests: verify no createOrUpdate when active execution exists
-  - [ ] 5.3 Driver integration tests: createOrUpdate idempotency (create new + update existing with different state)
-  - [ ] 5.4 StopReplication tests: always secondary regardless of input state (primary→secondary, secondary→secondary)
+- [x] Task 5: Tests (AC: #8)
+  - [x] 5.1 Reconciler unit tests: verify createOrUpdate called with correct site role for primary vs secondary site
+  - [x] 5.2 Reconciler unit tests: verify no createOrUpdate when active execution exists
+  - [x] 5.3 Driver integration tests: createOrUpdate idempotency (create new + update existing with different state)
+  - [x] 5.4 StopReplication tests: always secondary regardless of input state (primary→secondary, secondary→secondary)
 
-- [ ] Task 6: Verify (AC: all)
-  - [ ] 6.1 `make test` — all tests pass
-  - [ ] 6.2 `make lint-fix && make lint` — zero lint issues
-  - [ ] 6.3 `make manifests generate` — RBAC markers generate correctly
+- [x] Task 6: Verify (AC: all)
+  - [x] 6.1 `make test` — all tests pass
+  - [x] 6.2 `make lint-fix && make lint` — zero lint issues
+  - [x] 6.3 `make manifests generate` — RBAC markers generate correctly
+
+### Review Findings
+
+- [x] [Review][Patch] Passive-site reconcile path never creates or updates VR/VGR objects [pkg/controller/drplan/reconciler.go:159]
+- [x] [Review][Patch] Health polling re-invokes `CreateVolumeGroup` without site-role labels and can reset secondary CRs back to primary [pkg/controller/drplan/health.go:157]
+- [x] [Review][Patch] Active-execution gate fails open when listing `DRExecution` objects errors [pkg/controller/drplan/reconciler.go:448]
+- [x] [Review][Patch] PVC resolution errors only skip the failing VM and can create partial volume-group CRs [pkg/controller/drplan/reconciler.go:503]
+- [x] [Review][Patch] VR/VGR create-or-update failures are only logged and never surfaced for retry or status [pkg/controller/drplan/reconciler.go:526]
 
 ## Dev Notes
 

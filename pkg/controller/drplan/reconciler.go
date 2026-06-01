@@ -103,6 +103,8 @@ const (
 // +kubebuilder:rbac:groups="",resources=persistentvolumeclaims,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get
 // +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups=replication.storage.openshift.io,resources=volumereplications,verbs=get;list;watch;create;update;patch
+// +kubebuilder:rbac:groups=replication.storage.openshift.io,resources=volumegroupreplications,verbs=get;list;watch;create;update;patch
 
 // DRPlanReconciler reconciles DRPlan objects by discovering VMs, grouping them
 // into execution waves, resolving volume group consistency, and chunking into
@@ -386,12 +388,19 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	logger.Info("Preflight report generated",
 		"totalVMs", report.TotalVMs, "warnings", len(report.Warnings))
 
+	// Ensure VR/VGR objects exist with the correct replicationState for this
+	// site before polling health. Skipped during active execution.
+	if vrErr := r.reconcileVolumeReplication(ctx, &plan, waves); vrErr != nil {
+		r.event(&plan, "Warning", "VolumeReplicationSyncFailed",
+			fmt.Sprintf("Failed to reconcile VR/VGR objects: %v", vrErr))
+	}
+
 	// Poll replication health when the driver infrastructure is wired and no
 	// execution is active (derived from DRExecution resources — the engine owns
 	// driver interactions during execution).
 	var replicationHealth []soteriav1alpha1.VolumeGroupHealth
 	if r.Registry != nil && !r.hasActiveExecution(ctx, plan.Name) {
-		replicationHealth = r.pollReplicationHealth(ctx, plan.Spec.VolumeReplicationDriver.Type, waves)
+		replicationHealth = r.pollReplicationHealth(ctx, &plan, waves)
 		logger.V(1).Info("Replication health polled",
 			"totalVGs", len(replicationHealth))
 	}
@@ -436,7 +445,8 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 
 // hasActiveExecution checks whether any non-terminal DRExecution exists for
 // the given plan by querying DRExecutions with the soteria.io/plan-name label.
-// On error, returns false (degrade to polling — safe direction).
+// On error, returns false (degrade to polling — safe direction for read-only
+// operations like health checks).
 func (r *DRPlanReconciler) hasActiveExecution(ctx context.Context, planName string) bool {
 	var execList soteriav1alpha1.DRExecutionList
 	if err := r.List(ctx, &execList,
@@ -450,6 +460,111 @@ func (r *DRPlanReconciler) hasActiveExecution(ctx context.Context, planName stri
 		}
 	}
 	return false
+}
+
+// hasActiveExecutionForMutation is the mutation-safe variant of
+// hasActiveExecution. Returns true on list error so that write operations
+// (VR/VGR createOrUpdate) are skipped when execution state is unknown.
+func (r *DRPlanReconciler) hasActiveExecutionForMutation(ctx context.Context, planName string) bool {
+	var execList soteriav1alpha1.DRExecutionList
+	if err := r.List(ctx, &execList,
+		client.MatchingLabels{soteriav1alpha1.PlanNameLabel: planName}); err != nil {
+		log.FromContext(ctx).Error(err, "Failed to list DRExecutions for VR/VGR mutation gate, skipping mutations")
+		return true
+	}
+	for i := range execList.Items {
+		if !execList.Items[i].Status.IsTerminal() {
+			return true
+		}
+	}
+	return false
+}
+
+// siteReplicationRole returns the replication state that VR/VGR objects on
+// this site should have based on the plan's active site.
+func (r *DRPlanReconciler) siteReplicationRole(plan *soteriav1alpha1.DRPlan) string {
+	activeSite := plan.Status.ActiveSite
+	if activeSite == "" {
+		activeSite = plan.Spec.PrimarySite
+	}
+	if r.LocalSite == activeSite {
+		return drivers.SiteRolePrimary
+	}
+	return drivers.SiteRoleSecondary
+}
+
+// reconcileVolumeReplication ensures VR/VGR objects exist with the correct
+// replicationState for this site. Skipped when no driver registry is
+// configured or during active execution. Returns an error if any VR/VGR
+// createOrUpdate fails so the caller can surface it via events.
+func (r *DRPlanReconciler) reconcileVolumeReplication(
+	ctx context.Context, plan *soteriav1alpha1.DRPlan, waves []soteriav1alpha1.WaveInfo,
+) error {
+	if r.Registry == nil || r.LocalSite == "" {
+		return nil
+	}
+	if r.hasActiveExecutionForMutation(ctx, plan.Name) {
+		return nil
+	}
+
+	logger := log.FromContext(ctx)
+	siteRole := r.siteReplicationRole(plan)
+	driverName := plan.Spec.VolumeReplicationDriver.Type
+	vrClass := plan.Spec.VolumeReplicationDriver.VolumeReplicationClass
+
+	drv, err := r.Registry.GetDriver(driverName)
+	if err != nil {
+		logger.V(1).Info("Could not resolve driver for volume replication createOrUpdate",
+			"driver", driverName, "error", err)
+		return nil
+	}
+
+	var firstErr error
+	for _, wave := range waves {
+		for _, vg := range wave.Groups {
+			var pvcNames []string
+			var resolveFailed bool
+			if r.PVCResolver != nil {
+				for _, vmName := range vg.VMNames {
+					names, resolveErr := r.PVCResolver.ResolvePVCNames(ctx, vmName, vg.Namespace)
+					if resolveErr != nil {
+						logger.V(1).Info("PVC resolution failed, skipping VG",
+							"vg", vg.Name, "vm", vmName, "error", resolveErr)
+						resolveFailed = true
+						break
+					}
+					pvcNames = append(pvcNames, names...)
+				}
+			}
+			if resolveFailed || len(pvcNames) == 0 {
+				continue
+			}
+
+			labels := map[string]string{
+				drivers.SiteRoleLabel: siteRole,
+				drivers.LabelDRPlan:   plan.Name,
+			}
+			if vrClass != "" {
+				labels[drivers.VolumeReplicationClassLabel] = vrClass
+				labels[drivers.VolumeGroupReplicationClassLabel] = vrClass
+			}
+
+			_, createErr := drv.CreateVolumeGroup(ctx, drivers.VolumeGroupSpec{
+				Name:      vg.Name,
+				Namespace: vg.Namespace,
+				PVCNames:  pvcNames,
+				Labels:    labels,
+			})
+			if createErr != nil {
+				logger.Info("CreateOrUpdate VR/VGR failed",
+					"vg", vg.Name, "namespace", vg.Namespace, "error", createErr)
+				if firstErr == nil {
+					firstErr = createErr
+				}
+			}
+		}
+	}
+	return firstErr
 }
 
 // siteDiscoveryField returns "primary" if LocalSite matches the plan's
@@ -529,6 +644,17 @@ func (r *DRPlanReconciler) reconcilePassiveSite(
 
 	logger.V(1).Info("Passive site discovery written",
 		"siteField", siteField, "vmCount", len(discoveredVMs))
+
+	// Create/update VR/VGR objects on the passive site using waves persisted
+	// in plan status by the active site. The passive site always gets secondary
+	// role from siteReplicationRole since LocalSite != ActiveSite.
+	if len(plan.Status.Waves) > 0 {
+		if vrErr := r.reconcileVolumeReplication(ctx, plan, plan.Status.Waves); vrErr != nil {
+			r.event(plan, "Warning", "VolumeReplicationSyncFailed",
+				fmt.Sprintf("Failed to reconcile VR/VGR objects on passive site: %v", vrErr))
+		}
+	}
+
 	return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 }
 

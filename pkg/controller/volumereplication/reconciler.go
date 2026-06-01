@@ -161,7 +161,7 @@ func stateForReplicationState(
 	switch rs {
 	case replicationv1alpha1.Primary:
 		return replicationv1alpha1.PrimaryState, true
-	case replicationv1alpha1.Secondary, replicationv1alpha1.Resync:
+	case replicationv1alpha1.Secondary:
 		return replicationv1alpha1.SecondaryState, false
 	default:
 		return replicationv1alpha1.UnknownState, false

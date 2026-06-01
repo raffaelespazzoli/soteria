@@ -196,7 +196,7 @@ func TestLifecycle_SingleVM(t *testing.T) {
 		Name:      vgName,
 		Namespace: namespace,
 		PVCNames:  []string{"data", "logs"},
-		Labels:    primaryLabels("ceph-rbd"),
+		Labels:    primaryLabels(),
 	})
 	if err != nil {
 		t.Fatalf("CreateVolumeGroup: %v", err)
@@ -276,7 +276,7 @@ func TestLifecycle_MultiVM(t *testing.T) {
 		Name:      vgName,
 		Namespace: namespace,
 		PVCNames:  []string{"pvc-a", "pvc-b"},
-		Labels:    primaryLabels("ceph-rbd"),
+		Labels:    primaryLabels(),
 	})
 	if err != nil {
 		t.Fatalf("CreateVolumeGroup: %v", err)
@@ -501,7 +501,7 @@ func TestCreateVolumeGroup_APIError_VR(t *testing.T) {
 		Name:      "vm-api-err",
 		Namespace: "default",
 		PVCNames:  []string{"data"},
-		Labels:    primaryLabels("ceph-rbd"),
+		Labels:    primaryLabels(),
 	})
 	if err == nil {
 		t.Fatal("expected error for API failure, got nil")
@@ -533,7 +533,7 @@ func TestCreateVolumeGroup_APIError_VGR(t *testing.T) {
 		Name:      "ns-api-err",
 		Namespace: "err-ns",
 		PVCNames:  []string{"pvc-1"},
-		Labels:    primaryLabels("ceph-rbd"),
+		Labels:    primaryLabels(),
 	})
 	if err == nil {
 		t.Fatal("expected error for VGR API failure, got nil")
@@ -579,7 +579,7 @@ func TestExternallyDeleted(t *testing.T) {
 				_, err := drv.CreateVolumeGroup(ctx, drivers.VolumeGroupSpec{
 					Name: vgName, Namespace: ns,
 					PVCNames: []string{"pvc-1"},
-					Labels:   primaryLabels("ceph-rbd"),
+					Labels:   primaryLabels(),
 				})
 				if err != nil {
 					t.Fatalf("CreateVolumeGroup: %v", err)
@@ -591,7 +591,7 @@ func TestExternallyDeleted(t *testing.T) {
 				_, err := drv.CreateVolumeGroup(ctx, drivers.VolumeGroupSpec{
 					Name: vgName, Namespace: "default",
 					PVCNames: []string{"data"},
-					Labels:   primaryLabels("ceph-rbd"),
+					Labels:   primaryLabels(),
 				})
 				if err != nil {
 					t.Fatalf("CreateVolumeGroup: %v", err)
@@ -617,7 +617,7 @@ func TestEmptyStatus_ReturnsUnknown_VR(t *testing.T) {
 		Name:      "vm-empty-status",
 		Namespace: "default",
 		PVCNames:  []string{"data"},
-		Labels:    primaryLabels("ceph-rbd"),
+		Labels:    primaryLabels(),
 	})
 	if err != nil {
 		t.Fatalf("CreateVolumeGroup: %v", err)
@@ -650,7 +650,7 @@ func TestEmptyStatus_ReturnsUnknown_VGR(t *testing.T) {
 		Name:      "ns-empty-status",
 		Namespace: "empty-ns",
 		PVCNames:  []string{"pvc-1"},
-		Labels:    primaryLabels("ceph-rbd"),
+		Labels:    primaryLabels(),
 	})
 	if err != nil {
 		t.Fatalf("CreateVolumeGroup: %v", err)
@@ -683,7 +683,7 @@ func TestConcurrentAccess_CreateAndGet(t *testing.T) {
 		Name:      "vm-concurrent-cg",
 		Namespace: "default",
 		PVCNames:  []string{"data"},
-		Labels:    primaryLabels("ceph-rbd"),
+		Labels:    primaryLabels(),
 	})
 	if err != nil {
 		t.Fatalf("Setup CreateVolumeGroup: %v", err)
@@ -701,7 +701,7 @@ func TestConcurrentAccess_CreateAndGet(t *testing.T) {
 					Name:      "vm-concurrent-cg",
 					Namespace: "default",
 					PVCNames:  []string{"data"},
-					Labels:    primaryLabels("ceph-rbd"),
+					Labels:    primaryLabels(),
 				})
 			} else {
 				_, _ = drv.GetVolumeGroup(ctx, vgID)
@@ -724,7 +724,7 @@ func TestConcurrentAccess_StopAndSetSource(t *testing.T) {
 		Name:      "vm-concurrent-ss",
 		Namespace: "default",
 		PVCNames:  []string{"data", "logs"},
-		Labels:    primaryLabels("ceph-rbd"),
+		Labels:    primaryLabels(),
 	})
 	if err != nil {
 		t.Fatalf("Setup CreateVolumeGroup: %v", err)

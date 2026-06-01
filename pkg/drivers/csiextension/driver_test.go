@@ -58,17 +58,17 @@ func testDriver(t *testing.T, objs ...client.Object) *Driver {
 	return New(c)
 }
 
-func primaryLabels(vrClass string) map[string]string {
+func primaryLabels() map[string]string {
 	return map[string]string{
-		VolumeReplicationClassLabel:      vrClass,
-		VolumeGroupReplicationClassLabel: vrClass + "-group",
+		VolumeReplicationClassLabel:      testVRClass,
+		VolumeGroupReplicationClassLabel: testVRClass + "-group",
 		SiteRoleLabel:                    SiteRolePrimary,
 		LabelDRPlan:                      "test-plan",
 	}
 }
 
-func secondaryLabels(vrClass string) map[string]string {
-	m := primaryLabels(vrClass)
+func secondaryLabels() map[string]string {
+	m := primaryLabels()
 	m[SiteRoleLabel] = SiteRoleSecondary
 	return m
 }
@@ -78,6 +78,8 @@ const (
 	testVGNameNS  = "ns-erp-db"
 	testNamespace = "erp-db"
 	testPVCLogs   = "logs"
+	testPVCData   = "data"
+	testVRClass   = "ceph-rbd"
 )
 
 func makePVC(name string) *corev1.PersistentVolumeClaim {
@@ -401,8 +403,8 @@ func TestCreateVolumeGroup_SingleVM_OnePVC(t *testing.T) {
 	info, err := drv.CreateVolumeGroup(ctx, drivers.VolumeGroupSpec{
 		Name:      testVGNameVM,
 		Namespace: "default",
-		PVCNames:  []string{"data"},
-		Labels:    primaryLabels("ceph-rbd"),
+		PVCNames:  []string{testPVCData},
+		Labels:    primaryLabels(),
 	})
 	if err != nil {
 		t.Fatalf("CreateVolumeGroup: %v", err)
@@ -415,7 +417,7 @@ func TestCreateVolumeGroup_SingleVM_OnePVC(t *testing.T) {
 	if info.Name != testVGNameVM {
 		t.Errorf("Name = %q, want %q", info.Name, testVGNameVM)
 	}
-	if len(info.PVCNames) != 1 || info.PVCNames[0] != "data" {
+	if len(info.PVCNames) != 1 || info.PVCNames[0] != testPVCData {
 		t.Errorf("PVCNames = %v, want [data]", info.PVCNames)
 	}
 
@@ -428,14 +430,14 @@ func TestCreateVolumeGroup_SingleVM_OnePVC(t *testing.T) {
 	}
 
 	vr := vrList.Items[0]
-	if vr.Spec.VolumeReplicationClass != "ceph-rbd" {
-		t.Errorf("VolumeReplicationClass = %q, want %q", vr.Spec.VolumeReplicationClass, "ceph-rbd")
+	if vr.Spec.VolumeReplicationClass != testVRClass {
+		t.Errorf("VolumeReplicationClass = %q, want %q", vr.Spec.VolumeReplicationClass, testVRClass)
 	}
 	if vr.Spec.ReplicationState != replicationv1alpha1.Primary {
 		t.Errorf("ReplicationState = %q, want primary", vr.Spec.ReplicationState)
 	}
-	if vr.Spec.DataSource.Name != "data" {
-		t.Errorf("DataSource.Name = %q, want %q", vr.Spec.DataSource.Name, "data")
+	if vr.Spec.DataSource.Name != testPVCData {
+		t.Errorf("DataSource.Name = %q, want %q", vr.Spec.DataSource.Name, testPVCData)
 	}
 	if vr.Spec.DataSource.Kind != "PersistentVolumeClaim" {
 		t.Errorf("DataSource.Kind = %q, want PersistentVolumeClaim", vr.Spec.DataSource.Kind)
@@ -455,8 +457,8 @@ func TestCreateVolumeGroup_SingleVM_ThreePVCs(t *testing.T) {
 	info, err := drv.CreateVolumeGroup(ctx, drivers.VolumeGroupSpec{
 		Name:      testVGNameVM,
 		Namespace: "default",
-		PVCNames:  []string{"data", "logs", "config"},
-		Labels:    primaryLabels("ceph-rbd"),
+		PVCNames:  []string{testPVCData, "logs", "config"},
+		Labels:    primaryLabels(),
 	})
 	if err != nil {
 		t.Fatalf("CreateVolumeGroup: %v", err)
@@ -480,7 +482,7 @@ func TestCreateVolumeGroup_SingleVM_ThreePVCs(t *testing.T) {
 			t.Errorf("VR %s: label %s = %q", vr.Name, LabelVolumeGroup, vr.Labels[LabelVolumeGroup])
 		}
 	}
-	for _, name := range []string{"data", "logs", "config"} {
+	for _, name := range []string{testPVCData, "logs", "config"} {
 		if !pvcSet[name] {
 			t.Errorf("no VR found for PVC %q", name)
 		}
@@ -494,8 +496,8 @@ func TestCreateVolumeGroup_SingleVM_SecondaryState(t *testing.T) {
 	_, err := drv.CreateVolumeGroup(ctx, drivers.VolumeGroupSpec{
 		Name:      testVGNameVM,
 		Namespace: "default",
-		PVCNames:  []string{"data"},
-		Labels:    secondaryLabels("ceph-rbd"),
+		PVCNames:  []string{testPVCData},
+		Labels:    secondaryLabels(),
 	})
 	if err != nil {
 		t.Fatalf("CreateVolumeGroup: %v", err)
@@ -529,7 +531,7 @@ func TestCreateVolumeGroup_MultiVM_CreatesVGR(t *testing.T) {
 		Name:      testVGNameNS,
 		Namespace: testNamespace,
 		PVCNames:  []string{"pvc-1", "pvc-2", "pvc-3"},
-		Labels:    primaryLabels("ceph-rbd"),
+		Labels:    primaryLabels(),
 	})
 	if err != nil {
 		t.Fatalf("CreateVolumeGroup: %v", err)
@@ -556,9 +558,9 @@ func TestCreateVolumeGroup_MultiVM_CreatesVGR(t *testing.T) {
 		t.Errorf("VolumeGroupReplicationClassName = %q, want %q",
 			vgr.Spec.VolumeGroupReplicationClassName, "ceph-rbd-group")
 	}
-	if vgr.Spec.VolumeReplicationClassName != "ceph-rbd" {
+	if vgr.Spec.VolumeReplicationClassName != testVRClass {
 		t.Errorf("VolumeReplicationClassName = %q, want %q",
-			vgr.Spec.VolumeReplicationClassName, "ceph-rbd")
+			vgr.Spec.VolumeReplicationClassName, testVRClass)
 	}
 	if vgr.Spec.ReplicationState != replicationv1alpha1.Primary {
 		t.Errorf("ReplicationState = %q, want primary", vgr.Spec.ReplicationState)
@@ -600,7 +602,7 @@ func TestCreateVolumeGroup_MultiVM_SecondaryState(t *testing.T) {
 		Name:      testVGNameNS,
 		Namespace: testNamespace,
 		PVCNames:  []string{"pvc-1"},
-		Labels:    secondaryLabels("ceph-rbd"),
+		Labels:    secondaryLabels(),
 	})
 	if err != nil {
 		t.Fatalf("CreateVolumeGroup: %v", err)
@@ -629,8 +631,8 @@ func TestCreateVolumeGroup_Idempotent_VR(t *testing.T) {
 	spec := drivers.VolumeGroupSpec{
 		Name:      testVGNameVM,
 		Namespace: "default",
-		PVCNames:  []string{"data", "logs"},
-		Labels:    primaryLabels("ceph-rbd"),
+		PVCNames:  []string{testPVCData, "logs"},
+		Labels:    primaryLabels(),
 	}
 
 	info1, err := drv.CreateVolumeGroup(ctx, spec)
@@ -667,7 +669,7 @@ func TestCreateVolumeGroup_Idempotent_VGR(t *testing.T) {
 		Name:      testVGNameNS,
 		Namespace: testNamespace,
 		PVCNames:  []string{"pvc-1", "pvc-2"},
-		Labels:    primaryLabels("ceph-rbd"),
+		Labels:    primaryLabels(),
 	}
 
 	info1, err := drv.CreateVolumeGroup(ctx, spec)
@@ -694,6 +696,112 @@ func TestCreateVolumeGroup_Idempotent_VGR(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// CreateOrUpdate — state update tests (Story 13.2, AC5)
+// ---------------------------------------------------------------------------
+
+func TestCreateVolumeGroup_CreateOrUpdate_VR_UpdatesState(t *testing.T) {
+	drv := testDriver(t)
+	ctx := context.Background()
+
+	spec := drivers.VolumeGroupSpec{
+		Name:      testVGNameVM,
+		Namespace: "default",
+		PVCNames:  []string{testPVCData},
+		Labels:    primaryLabels(),
+	}
+
+	_, err := drv.CreateVolumeGroup(ctx, spec)
+	if err != nil {
+		t.Fatalf("first CreateVolumeGroup: %v", err)
+	}
+
+	// Verify initially primary.
+	var vrList replicationv1alpha1.VolumeReplicationList
+	if err := drv.client.List(ctx, &vrList); err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if vrList.Items[0].Spec.ReplicationState != ReplicationStatePrimary {
+		t.Fatalf("initial state = %q, want primary", vrList.Items[0].Spec.ReplicationState)
+	}
+
+	// Call again with secondary — should update state, not create duplicate.
+	spec.Labels = secondaryLabels()
+	_, err = drv.CreateVolumeGroup(ctx, spec)
+	if err != nil {
+		t.Fatalf("second CreateVolumeGroup with secondary: %v", err)
+	}
+
+	var vrList2 replicationv1alpha1.VolumeReplicationList
+	if err := drv.client.List(ctx, &vrList2); err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(vrList2.Items) != 1 {
+		t.Fatalf("expected 1 VR (no duplicate), got %d", len(vrList2.Items))
+	}
+	if vrList2.Items[0].Spec.ReplicationState != ReplicationStateSecondary {
+		t.Errorf("updated state = %q, want secondary", vrList2.Items[0].Spec.ReplicationState)
+	}
+	// Immutable fields should remain unchanged.
+	if vrList2.Items[0].Spec.VolumeReplicationClass != testVRClass {
+		t.Errorf("VolumeReplicationClass changed: %q", vrList2.Items[0].Spec.VolumeReplicationClass)
+	}
+	if vrList2.Items[0].Spec.DataSource.Name != testPVCData {
+		t.Errorf("DataSource.Name changed: %q", vrList2.Items[0].Spec.DataSource.Name)
+	}
+}
+
+func TestCreateVolumeGroup_CreateOrUpdate_VGR_UpdatesState(t *testing.T) {
+	drv := testDriver(t, makePVC("pvc-1"))
+	ctx := context.Background()
+
+	spec := drivers.VolumeGroupSpec{
+		Name:      testVGNameNS,
+		Namespace: testNamespace,
+		PVCNames:  []string{"pvc-1"},
+		Labels:    primaryLabels(),
+	}
+
+	_, err := drv.CreateVolumeGroup(ctx, spec)
+	if err != nil {
+		t.Fatalf("first CreateVolumeGroup: %v", err)
+	}
+
+	// Verify initially primary.
+	var vgrList replicationv1alpha1.VolumeGroupReplicationList
+	if err := drv.client.List(ctx, &vgrList); err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if vgrList.Items[0].Spec.ReplicationState != ReplicationStatePrimary {
+		t.Fatalf("initial state = %q, want primary", vgrList.Items[0].Spec.ReplicationState)
+	}
+
+	// Call again with secondary — should update state, not create duplicate.
+	spec.Labels = secondaryLabels()
+	_, err = drv.CreateVolumeGroup(ctx, spec)
+	if err != nil {
+		t.Fatalf("second CreateVolumeGroup with secondary: %v", err)
+	}
+
+	var vgrList2 replicationv1alpha1.VolumeGroupReplicationList
+	if err := drv.client.List(ctx, &vgrList2); err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(vgrList2.Items) != 1 {
+		t.Fatalf("expected 1 VGR (no duplicate), got %d", len(vgrList2.Items))
+	}
+	if vgrList2.Items[0].Spec.ReplicationState != ReplicationStateSecondary {
+		t.Errorf("updated state = %q, want secondary", vgrList2.Items[0].Spec.ReplicationState)
+	}
+	// Immutable fields should remain unchanged.
+	if vgrList2.Items[0].Spec.VolumeGroupReplicationClassName != "ceph-rbd-group" {
+		t.Errorf("VolumeGroupReplicationClassName changed: %q", vgrList2.Items[0].Spec.VolumeGroupReplicationClassName)
+	}
+	if vgrList2.Items[0].Spec.VolumeReplicationClassName != testVRClass {
+		t.Errorf("VolumeReplicationClassName changed: %q", vgrList2.Items[0].Spec.VolumeReplicationClassName)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // DeleteVolumeGroup tests
 // ---------------------------------------------------------------------------
 
@@ -704,8 +812,8 @@ func TestDeleteVolumeGroup_VR(t *testing.T) {
 	_, err := drv.CreateVolumeGroup(ctx, drivers.VolumeGroupSpec{
 		Name:      testVGNameVM,
 		Namespace: "default",
-		PVCNames:  []string{"data", "logs"},
-		Labels:    primaryLabels("ceph-rbd"),
+		PVCNames:  []string{testPVCData, "logs"},
+		Labels:    primaryLabels(),
 	})
 	if err != nil {
 		t.Fatalf("CreateVolumeGroup: %v", err)
@@ -732,7 +840,7 @@ func TestDeleteVolumeGroup_VGR(t *testing.T) {
 		Name:      testVGNameNS,
 		Namespace: testNamespace,
 		PVCNames:  []string{"pvc-1"},
-		Labels:    primaryLabels("ceph-rbd"),
+		Labels:    primaryLabels(),
 	})
 	if err != nil {
 		t.Fatalf("CreateVolumeGroup: %v", err)
@@ -771,8 +879,8 @@ func TestGetVolumeGroup_VR(t *testing.T) {
 	_, err := drv.CreateVolumeGroup(ctx, drivers.VolumeGroupSpec{
 		Name:      testVGNameVM,
 		Namespace: "default",
-		PVCNames:  []string{"data", "logs"},
-		Labels:    primaryLabels("ceph-rbd"),
+		PVCNames:  []string{testPVCData, "logs"},
+		Labels:    primaryLabels(),
 	})
 	if err != nil {
 		t.Fatalf("CreateVolumeGroup: %v", err)
@@ -806,7 +914,7 @@ func TestGetVolumeGroup_VGR(t *testing.T) {
 		Name:      testVGNameNS,
 		Namespace: testNamespace,
 		PVCNames:  []string{"pvc-1", "pvc-2"},
-		Labels:    primaryLabels("ceph-rbd"),
+		Labels:    primaryLabels(),
 	})
 	if err != nil {
 		t.Fatalf("CreateVolumeGroup: %v", err)
@@ -851,8 +959,8 @@ func TestCreateVolumeGroup_ContextCancelled(t *testing.T) {
 	_, err := drv.CreateVolumeGroup(ctx, drivers.VolumeGroupSpec{
 		Name:      testVGNameVM,
 		Namespace: "default",
-		PVCNames:  []string{"data"},
-		Labels:    primaryLabels("ceph-rbd"),
+		PVCNames:  []string{testPVCData},
+		Labels:    primaryLabels(),
 	})
 	if err == nil {
 		t.Fatal("expected error for cancelled context")
@@ -892,7 +1000,7 @@ func TestCreateVolumeGroup_EmptyPVCNames_ReturnsError(t *testing.T) {
 		Name:      testVGNameVM,
 		Namespace: "default",
 		PVCNames:  nil,
-		Labels:    primaryLabels("ceph-rbd"),
+		Labels:    primaryLabels(),
 	})
 	if err == nil {
 		t.Fatal("expected error for empty PVCNames")
@@ -914,10 +1022,10 @@ func TestStopReplication_StateTransitions(t *testing.T) {
 		wantState replicationv1alpha1.ReplicationState
 	}{
 		{"primary to secondary", ReplicationStatePrimary, ReplicationStateSecondary},
-		{"secondary to primary", ReplicationStateSecondary, ReplicationStatePrimary},
-		{"resync to primary", ReplicationStateResync, ReplicationStatePrimary},
-		{"unknown to primary", replicationv1alpha1.ReplicationState("unknown"), ReplicationStatePrimary},
-		{"empty to primary", replicationv1alpha1.ReplicationState(""), ReplicationStatePrimary},
+		{"secondary stays secondary", ReplicationStateSecondary, ReplicationStateSecondary},
+		{"resync to secondary", ReplicationStateResync, ReplicationStateSecondary},
+		{"unknown to secondary", replicationv1alpha1.ReplicationState("unknown"), ReplicationStateSecondary},
+		{"empty to secondary", replicationv1alpha1.ReplicationState(""), ReplicationStateSecondary},
 	}
 
 	for _, tt := range tests {
@@ -929,10 +1037,10 @@ func TestStopReplication_StateTransitions(t *testing.T) {
 					Labels:    map[string]string{LabelVolumeGroup: testVGNameVM},
 				},
 				Spec: replicationv1alpha1.VolumeReplicationSpec{
-					VolumeReplicationClass: "ceph-rbd",
+					VolumeReplicationClass: testVRClass,
 					ReplicationState:       tt.initial,
 					DataSource: corev1.TypedLocalObjectReference{
-						Kind: "PersistentVolumeClaim", Name: "data",
+						Kind: "PersistentVolumeClaim", Name: testPVCData,
 					},
 				},
 			}
@@ -962,7 +1070,7 @@ func TestStopReplication_StateTransitions(t *testing.T) {
 				},
 				Spec: replicationv1alpha1.VolumeGroupReplicationSpec{
 					VolumeGroupReplicationClassName: "ceph-rbd-group",
-					VolumeReplicationClassName:      "ceph-rbd",
+					VolumeReplicationClassName:      testVRClass,
 					ReplicationState:                tt.initial,
 				},
 			}
@@ -1004,10 +1112,10 @@ func TestSetSource_StateTransitions(t *testing.T) {
 					Labels:    map[string]string{LabelVolumeGroup: testVGNameVM},
 				},
 				Spec: replicationv1alpha1.VolumeReplicationSpec{
-					VolumeReplicationClass: "ceph-rbd",
+					VolumeReplicationClass: testVRClass,
 					ReplicationState:       tt.initial,
 					DataSource: corev1.TypedLocalObjectReference{
-						Kind: "PersistentVolumeClaim", Name: "data",
+						Kind: "PersistentVolumeClaim", Name: testPVCData,
 					},
 				},
 			}
@@ -1037,7 +1145,7 @@ func TestSetSource_StateTransitions(t *testing.T) {
 				},
 				Spec: replicationv1alpha1.VolumeGroupReplicationSpec{
 					VolumeGroupReplicationClassName: "ceph-rbd-group",
-					VolumeReplicationClassName:      "ceph-rbd",
+					VolumeReplicationClassName:      testVRClass,
 					ReplicationState:                tt.initial,
 				},
 			}
@@ -1071,8 +1179,8 @@ func TestStopReplication_MultiplePVCs_AllFlipped(t *testing.T) {
 	_, err := drv.CreateVolumeGroup(ctx, drivers.VolumeGroupSpec{
 		Name:      testVGNameVM,
 		Namespace: "default",
-		PVCNames:  []string{"data", "logs", "config"},
-		Labels:    primaryLabels("ceph-rbd"),
+		PVCNames:  []string{testPVCData, "logs", "config"},
+		Labels:    primaryLabels(),
 	})
 	if err != nil {
 		t.Fatalf("CreateVolumeGroup: %v", err)
@@ -1097,15 +1205,15 @@ func TestStopReplication_MultiplePVCs_AllFlipped(t *testing.T) {
 	}
 }
 
-func TestStopReplication_DoubleFlip_Idempotent(t *testing.T) {
+func TestStopReplication_DoubleCall_Idempotent(t *testing.T) {
 	drv := testDriver(t)
 	ctx := context.Background()
 
 	_, err := drv.CreateVolumeGroup(ctx, drivers.VolumeGroupSpec{
 		Name:      testVGNameVM,
 		Namespace: "default",
-		PVCNames:  []string{"data"},
-		Labels:    primaryLabels("ceph-rbd"),
+		PVCNames:  []string{testPVCData},
+		Labels:    primaryLabels(),
 	})
 	if err != nil {
 		t.Fatalf("CreateVolumeGroup: %v", err)
@@ -1124,8 +1232,8 @@ func TestStopReplication_DoubleFlip_Idempotent(t *testing.T) {
 		t.Fatalf("List: %v", err)
 	}
 	for _, vr := range vrList.Items {
-		if vr.Spec.ReplicationState != ReplicationStatePrimary {
-			t.Errorf("VR %s: state = %q, want primary (double-flip)", vr.Name, vr.Spec.ReplicationState)
+		if vr.Spec.ReplicationState != ReplicationStateSecondary {
+			t.Errorf("VR %s: state = %q, want secondary (idempotent)", vr.Name, vr.Spec.ReplicationState)
 		}
 	}
 }
@@ -1177,27 +1285,6 @@ func TestSetSource_ContextCancelled(t *testing.T) {
 // ---------------------------------------------------------------------------
 // Helper function tests (Story 12.4)
 // ---------------------------------------------------------------------------
-
-func TestFlipReplicationState(t *testing.T) {
-	tests := []struct {
-		name    string
-		current replicationv1alpha1.ReplicationState
-		want    replicationv1alpha1.ReplicationState
-	}{
-		{"primary to secondary", ReplicationStatePrimary, ReplicationStateSecondary},
-		{"secondary to primary", ReplicationStateSecondary, ReplicationStatePrimary},
-		{"resync to primary", ReplicationStateResync, ReplicationStatePrimary},
-		{"unknown to primary", replicationv1alpha1.ReplicationState("unknown"), ReplicationStatePrimary},
-		{"empty to primary", replicationv1alpha1.ReplicationState(""), ReplicationStatePrimary},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := flipReplicationState(tt.current); got != tt.want {
-				t.Errorf("flipReplicationState(%q) = %q, want %q", tt.current, got, tt.want)
-			}
-		})
-	}
-}
 
 func TestCrSet_CurrentState(t *testing.T) {
 	tests := []struct {
@@ -1403,11 +1490,11 @@ func makeVRWithStatus(
 			Labels:    map[string]string{LabelVolumeGroup: vgName},
 		},
 		Spec: replicationv1alpha1.VolumeReplicationSpec{
-			VolumeReplicationClass: "ceph-rbd",
+			VolumeReplicationClass: testVRClass,
 			ReplicationState:       ReplicationStatePrimary,
 			DataSource: corev1.TypedLocalObjectReference{
 				Kind: "PersistentVolumeClaim",
-				Name: "data",
+				Name: testPVCData,
 			},
 		},
 		Status: replicationv1alpha1.VolumeReplicationStatus{
@@ -1602,7 +1689,7 @@ func makeVGRWithStatus(
 		},
 		Spec: replicationv1alpha1.VolumeGroupReplicationSpec{
 			VolumeGroupReplicationClassName: "ceph-rbd-group",
-			VolumeReplicationClassName:      "ceph-rbd",
+			VolumeReplicationClassName:      testVRClass,
 			ReplicationState:                ReplicationStatePrimary,
 		},
 		Status: replicationv1alpha1.VolumeGroupReplicationStatus{
@@ -1764,8 +1851,8 @@ func TestCreateVolumeGroup_PartialRetry_SkipsExisting(t *testing.T) {
 	spec := drivers.VolumeGroupSpec{
 		Name:      testVGNameVM,
 		Namespace: "default",
-		PVCNames:  []string{"data", "logs"},
-		Labels:    primaryLabels("ceph-rbd"),
+		PVCNames:  []string{testPVCData, "logs"},
+		Labels:    primaryLabels(),
 	}
 
 	// Create one VR manually to simulate partial prior run.
@@ -1776,16 +1863,16 @@ func TestCreateVolumeGroup_PartialRetry_SkipsExisting(t *testing.T) {
 			Labels:    map[string]string{LabelVolumeGroup: testVGNameVM},
 		},
 		Spec: replicationv1alpha1.VolumeReplicationSpec{
-			VolumeReplicationClass: "ceph-rbd",
+			VolumeReplicationClass: testVRClass,
 			ReplicationState:       replicationv1alpha1.Primary,
-			DataSource:             corev1.TypedLocalObjectReference{Kind: "PersistentVolumeClaim", Name: "data"},
+			DataSource:             corev1.TypedLocalObjectReference{Kind: "PersistentVolumeClaim", Name: testPVCData},
 		},
 	}
 	if err := drv.client.Create(ctx, vr); err != nil {
 		t.Fatalf("pre-create VR: %v", err)
 	}
 
-	// CreateVolumeGroup should succeed (skip existing "data" VR, create "logs" VR).
+	// CreateVolumeGroup should succeed (skip existing data VR, create logs VR).
 	info, err := drv.CreateVolumeGroup(ctx, spec)
 	if err != nil {
 		t.Fatalf("CreateVolumeGroup after partial: %v", err)

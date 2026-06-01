@@ -27,6 +27,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/soteria-project/soteria/pkg/drivers"
@@ -130,26 +131,26 @@ func (d *Driver) createVRs(
 			ObjectMeta: metav1.ObjectMeta{
 				Name:      vgIDPrefix + spec.Name + "-" + pvcName,
 				Namespace: spec.Namespace,
-				Labels:    crLabels,
-			},
-			Spec: replicationv1alpha1.VolumeReplicationSpec{
-				VolumeReplicationClass: vrClass,
-				ReplicationState:       state,
-				DataSource: corev1.TypedLocalObjectReference{
-					Kind: "PersistentVolumeClaim",
-					Name: pvcName,
-				},
 			},
 		}
-		if err := d.client.Create(ctx, vr); err != nil {
-			if !apierrors.IsAlreadyExists(err) {
-				return drivers.VolumeGroupInfo{}, fmt.Errorf("creating VolumeReplication for PVC %s: %w", pvcName, err)
+		_, err := controllerutil.CreateOrUpdate(ctx, d.client, vr, func() error {
+			vr.Labels = crLabels
+			vr.Spec.ReplicationState = state
+			if vr.CreationTimestamp.IsZero() {
+				vr.Spec.VolumeReplicationClass = vrClass
+				vr.Spec.DataSource = corev1.TypedLocalObjectReference{
+					Kind: "PersistentVolumeClaim",
+					Name: pvcName,
+				}
 			}
-			logger.V(1).Info("VolumeReplication already exists, skipping", "pvc", pvcName)
+			return nil
+		})
+		if err != nil {
+			return drivers.VolumeGroupInfo{}, fmt.Errorf("creating or updating VolumeReplication for PVC %s: %w", pvcName, err)
 		}
 	}
 
-	logger.V(1).Info("Created VolumeReplication CRs", "volumeGroup", spec.Name, "pvcCount", len(spec.PVCNames))
+	logger.V(1).Info("Created/updated VolumeReplication CRs", "volumeGroup", spec.Name, "pvcCount", len(spec.PVCNames))
 	return drivers.VolumeGroupInfo{
 		ID:       vgIDFromNamespace(spec.Namespace, spec.Name),
 		Name:     spec.Name,
@@ -188,29 +189,29 @@ func (d *Driver) createVGR(
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      vgIDPrefix + spec.Name,
 			Namespace: spec.Namespace,
-			Labels:    crLabels,
 		},
-		Spec: replicationv1alpha1.VolumeGroupReplicationSpec{
-			VolumeGroupReplicationClassName: vgrClass,
-			VolumeReplicationClassName:      vrClass,
-			ReplicationState:                state,
-			Source: replicationv1alpha1.VolumeGroupReplicationSource{
+	}
+	_, err := controllerutil.CreateOrUpdate(ctx, d.client, vgr, func() error {
+		vgr.Labels = crLabels
+		vgr.Spec.ReplicationState = state
+		if vgr.CreationTimestamp.IsZero() {
+			vgr.Spec.VolumeGroupReplicationClassName = vgrClass
+			vgr.Spec.VolumeReplicationClassName = vrClass
+			vgr.Spec.Source = replicationv1alpha1.VolumeGroupReplicationSource{
 				Selector: &metav1.LabelSelector{
 					MatchLabels: map[string]string{
 						LabelVolumeGroup: spec.Name,
 					},
 				},
-			},
-		},
-	}
-	if err := d.client.Create(ctx, vgr); err != nil {
-		if !apierrors.IsAlreadyExists(err) {
-			return drivers.VolumeGroupInfo{}, fmt.Errorf("creating VolumeGroupReplication for %s: %w", spec.Name, err)
+			}
 		}
-		logger.V(1).Info("VolumeGroupReplication already exists, skipping", "volumeGroup", spec.Name)
+		return nil
+	})
+	if err != nil {
+		return drivers.VolumeGroupInfo{}, fmt.Errorf("creating or updating VolumeGroupReplication for %s: %w", spec.Name, err)
 	}
 
-	logger.V(1).Info("Created VolumeGroupReplication CR", "volumeGroup", spec.Name, "pvcCount", len(spec.PVCNames))
+	logger.V(1).Info("Created/updated VolumeGroupReplication CR", "volumeGroup", spec.Name, "pvcCount", len(spec.PVCNames))
 	return drivers.VolumeGroupInfo{
 		ID:       vgIDFromNamespace(spec.Namespace, spec.Name),
 		Name:     spec.Name,
@@ -360,7 +361,7 @@ func (d *Driver) StopReplication(ctx context.Context, id drivers.VolumeGroupID) 
 	if err != nil {
 		return err
 	}
-	return d.flipReplicationStates(ctx, set)
+	return d.updateReplicationState(ctx, set, ReplicationStateSecondary)
 }
 
 func (d *Driver) GetReplicationStatus(

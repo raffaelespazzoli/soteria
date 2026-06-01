@@ -72,6 +72,18 @@ const (
 	HealthUnknown ReplicationHealth = "Unknown"
 )
 
+// Label keys propagated in VolumeGroupSpec.Labels by the orchestrator.
+// Drivers use these to set appropriate replication state and ownership metadata.
+const (
+	SiteRoleLabel                    = "soteria.io/site-role"
+	LabelDRPlan                      = "soteria.io/drplan"
+	VolumeReplicationClassLabel      = "soteria.io/volume-replication-class"
+	VolumeGroupReplicationClassLabel = "soteria.io/volume-group-replication-class"
+
+	SiteRolePrimary   = "primary"
+	SiteRoleSecondary = "secondary"
+)
+
 // VolumeGroupSpec describes the desired volume group to create. The orchestrator
 // populates this from PVC references discovered during DRPlan reconciliation.
 type VolumeGroupSpec struct {

@@ -48,17 +48,6 @@ func (s crSet) currentState() replicationv1alpha1.ReplicationState {
 	return ""
 }
 
-// flipReplicationState returns the opposite replication direction.
-// Primary flips to secondary (graceful demote); secondary and resync
-// both flip to primary (promote to make writable). Unknown states
-// default to primary for safety.
-func flipReplicationState(current replicationv1alpha1.ReplicationState) replicationv1alpha1.ReplicationState {
-	if current == ReplicationStatePrimary {
-		return ReplicationStateSecondary
-	}
-	return ReplicationStatePrimary
-}
-
 // listCRsForVG locates the VR or VGR CRs belonging to a volume group
 // by querying for the soteria.io/volume-group label. Returns
 // ErrVolumeGroupNotFound when no matching CRs exist.
@@ -125,40 +114,6 @@ func (d *Driver) updateReplicationState(
 			return fmt.Errorf("updating VolumeGroupReplication %s replication state: %w", set.vgrs[i].Name, err)
 		}
 		logger.V(1).Info("Updated VolumeGroupReplication replication state", "name", set.vgrs[i].Name, "state", target)
-	}
-
-	return nil
-}
-
-// flipReplicationStates flips each CR's replication state individually
-// based on its own current state (primary→secondary, everything
-// else→primary). This per-CR approach handles mixed-state volume groups
-// correctly when a prior partial failure left some CRs already flipped.
-func (d *Driver) flipReplicationStates(ctx context.Context, set crSet) error {
-	logger := log.FromContext(ctx)
-
-	for i := range set.vrs {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		target := flipReplicationState(set.vrs[i].Spec.ReplicationState)
-		set.vrs[i].Spec.ReplicationState = target
-		if err := d.client.Update(ctx, &set.vrs[i]); err != nil {
-			return fmt.Errorf("updating VolumeReplication %s replication state: %w", set.vrs[i].Name, err)
-		}
-		logger.V(1).Info("Flipped VolumeReplication replication state", "name", set.vrs[i].Name, "state", target)
-	}
-
-	for i := range set.vgrs {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		target := flipReplicationState(set.vgrs[i].Spec.ReplicationState)
-		set.vgrs[i].Spec.ReplicationState = target
-		if err := d.client.Update(ctx, &set.vgrs[i]); err != nil {
-			return fmt.Errorf("updating VolumeGroupReplication %s replication state: %w", set.vgrs[i].Name, err)
-		}
-		logger.V(1).Info("Flipped VolumeGroupReplication replication state", "name", set.vgrs[i].Name, "state", target)
 	}
 
 	return nil

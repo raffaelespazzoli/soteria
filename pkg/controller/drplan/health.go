@@ -51,11 +51,13 @@ const (
 // Errors are handled gracefully per-VG rather than failing the entire poll.
 func (r *DRPlanReconciler) pollReplicationHealth(
 	ctx context.Context,
-	driverName string,
+	plan *soteriav1alpha1.DRPlan,
 	waves []soteriav1alpha1.WaveInfo,
 ) []soteriav1alpha1.VolumeGroupHealth {
 	logger := log.FromContext(ctx)
 	now := metav1.Now()
+	driverName := plan.Spec.VolumeReplicationDriver.Type
+	vgLabels := r.volumeGroupLabels(plan)
 
 	var totalVGs int
 	for _, wave := range waves {
@@ -64,7 +66,7 @@ func (r *DRPlanReconciler) pollReplicationHealth(
 	results := make([]soteriav1alpha1.VolumeGroupHealth, 0, totalVGs)
 	for _, wave := range waves {
 		for _, vg := range wave.Groups {
-			health := r.pollSingleVG(ctx, driverName, vg, now)
+			health := r.pollSingleVG(ctx, driverName, vg, vgLabels, now)
 			results = append(results, health)
 			logger.V(1).Info("Polled replication health",
 				"vg", vg.Name, "namespace", vg.Namespace,
@@ -80,6 +82,7 @@ func (r *DRPlanReconciler) pollSingleVG(
 	ctx context.Context,
 	driverName string,
 	vg soteriav1alpha1.VolumeGroupInfo,
+	labels map[string]string,
 	now metav1.Time,
 ) soteriav1alpha1.VolumeGroupHealth {
 	logger := log.FromContext(ctx)
@@ -97,7 +100,7 @@ func (r *DRPlanReconciler) pollSingleVG(
 		}
 	}
 
-	vgID, err := r.resolveVolumeGroupID(ctx, drv, vg)
+	vgID, err := r.resolveVolumeGroupID(ctx, drv, vg, labels)
 	if err != nil {
 		logger.V(1).Info("Could not resolve volume group ID",
 			"vg", vg.Name, "error", err)
@@ -137,11 +140,13 @@ func (r *DRPlanReconciler) resolveDriverForVG(
 
 // resolveVolumeGroupID obtains the driver-level VolumeGroupID via the
 // idempotent CreateVolumeGroup call, following the same pattern as
-// FailoverHandler.resolveVolumeGroupID.
+// FailoverHandler.resolveVolumeGroupID. Labels must include site-role so
+// that the CreateOrUpdate path preserves the correct replicationState.
 func (r *DRPlanReconciler) resolveVolumeGroupID(
 	ctx context.Context,
 	drv drivers.StorageProvider,
 	vg soteriav1alpha1.VolumeGroupInfo,
+	labels map[string]string,
 ) (drivers.VolumeGroupID, error) {
 	var pvcNames []string
 	if r.PVCResolver != nil {
@@ -158,11 +163,28 @@ func (r *DRPlanReconciler) resolveVolumeGroupID(
 		Name:      vg.Name,
 		Namespace: vg.Namespace,
 		PVCNames:  pvcNames,
+		Labels:    labels,
 	})
 	if err != nil {
 		return "", fmt.Errorf("resolving volume group %s: %w", vg.Name, err)
 	}
 	return info.ID, nil
+}
+
+// volumeGroupLabels returns the label set that must be passed to
+// CreateVolumeGroup during health-poll ID resolution so the CreateOrUpdate
+// semantics preserve the correct site-aware replicationState.
+func (r *DRPlanReconciler) volumeGroupLabels(plan *soteriav1alpha1.DRPlan) map[string]string {
+	labels := map[string]string{
+		drivers.SiteRoleLabel: r.siteReplicationRole(plan),
+		drivers.LabelDRPlan:   plan.Name,
+	}
+	vrClass := plan.Spec.VolumeReplicationDriver.VolumeReplicationClass
+	if vrClass != "" {
+		labels[drivers.VolumeReplicationClassLabel] = vrClass
+		labels[drivers.VolumeGroupReplicationClassLabel] = vrClass
+	}
+	return labels
 }
 
 // mapReplicationStatus converts a driver ReplicationStatus into a
