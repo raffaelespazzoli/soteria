@@ -18,11 +18,14 @@ package drexecution
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apiserver/pkg/authentication/user"
 	"k8s.io/apiserver/pkg/endpoints/request"
 
@@ -337,5 +340,145 @@ func TestMatchDRExecution_FieldSelector_PlanName(t *testing.T) {
 	}
 	if matchB {
 		t.Error("exec-b should not match spec.planName=plan-a")
+	}
+}
+
+// --- OwnerReference tests (Story 13.1) ---
+
+// stubPlanGetter implements rest.Getter for testing OwnerReference logic.
+type stubPlanGetter struct {
+	plan *soteriav1alpha1.DRPlan
+	err  error
+}
+
+func (s *stubPlanGetter) Get(_ context.Context, name string, _ *metav1.GetOptions) (runtime.Object, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	if s.plan != nil && s.plan.Name == name {
+		return s.plan, nil
+	}
+	return nil, fmt.Errorf("drplans %q not found", name)
+}
+
+func TestPrepareForCreate_SetsOwnerReference(t *testing.T) {
+	planUID := types.UID("plan-uid-abc-123")
+	Strategy.SetPlanStorage(&stubPlanGetter{
+		plan: &soteriav1alpha1.DRPlan{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "my-plan",
+				UID:  planUID,
+			},
+		},
+	})
+	t.Cleanup(func() { Strategy.SetPlanStorage(nil) })
+
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "exec-owner"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "my-plan",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+	}
+
+	Strategy.PrepareForCreate(context.Background(), exec)
+
+	if len(exec.OwnerReferences) != 1 {
+		t.Fatalf("expected 1 OwnerReference, got %d", len(exec.OwnerReferences))
+	}
+
+	ref := exec.OwnerReferences[0]
+	if ref.APIVersion != soteriav1alpha1.SchemeGroupVersion.String() {
+		t.Errorf("expected APIVersion %q, got %q", soteriav1alpha1.SchemeGroupVersion.String(), ref.APIVersion)
+	}
+	if ref.Kind != "DRPlan" {
+		t.Errorf("expected Kind %q, got %q", "DRPlan", ref.Kind)
+	}
+	if ref.Name != "my-plan" {
+		t.Errorf("expected Name %q, got %q", "my-plan", ref.Name)
+	}
+	if ref.UID != planUID {
+		t.Errorf("expected UID %q, got %q", planUID, ref.UID)
+	}
+}
+
+func TestPrepareForCreate_OwnerReference_ControllerAndBlockOwnerDeletion(t *testing.T) {
+	Strategy.SetPlanStorage(&stubPlanGetter{
+		plan: &soteriav1alpha1.DRPlan{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: "plan-ctrl",
+				UID:  types.UID("uid-ctrl"),
+			},
+		},
+	})
+	t.Cleanup(func() { Strategy.SetPlanStorage(nil) })
+
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "exec-ctrl"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-ctrl",
+			Mode:     soteriav1alpha1.ExecutionModeDisaster,
+		},
+	}
+
+	Strategy.PrepareForCreate(context.Background(), exec)
+
+	if len(exec.OwnerReferences) != 1 {
+		t.Fatalf("expected 1 OwnerReference, got %d", len(exec.OwnerReferences))
+	}
+
+	ref := exec.OwnerReferences[0]
+	if ref.Controller == nil || !*ref.Controller {
+		t.Error("expected Controller=true on OwnerReference")
+	}
+	if ref.BlockOwnerDeletion == nil || !*ref.BlockOwnerDeletion {
+		t.Error("expected BlockOwnerDeletion=true on OwnerReference")
+	}
+}
+
+func TestPrepareForCreate_NilPlanGetter_NoOwnerReference(t *testing.T) {
+	Strategy.SetPlanStorage(nil)
+
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "exec-nil-getter"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-1",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+	}
+
+	Strategy.PrepareForCreate(context.Background(), exec)
+
+	if len(exec.OwnerReferences) != 0 {
+		t.Errorf("expected no OwnerReferences when planGetter is nil, got %d", len(exec.OwnerReferences))
+	}
+	// Verify other PrepareForCreate mutations still applied
+	if exec.Status.Phase != soteriav1alpha1.ExecutionPhasePending {
+		t.Errorf("expected Phase %q, got %q", soteriav1alpha1.ExecutionPhasePending, exec.Status.Phase)
+	}
+}
+
+func TestPrepareForCreate_PlanNotFound_NoOwnerReference(t *testing.T) {
+	Strategy.SetPlanStorage(&stubPlanGetter{
+		err: fmt.Errorf("drplans %q not found", "missing-plan"),
+	})
+	t.Cleanup(func() { Strategy.SetPlanStorage(nil) })
+
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "exec-not-found"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "missing-plan",
+			Mode:     soteriav1alpha1.ExecutionModeReprotect,
+		},
+	}
+
+	Strategy.PrepareForCreate(context.Background(), exec)
+
+	if len(exec.OwnerReferences) != 0 {
+		t.Errorf("expected no OwnerReferences when plan not found, got %d", len(exec.OwnerReferences))
+	}
+	// Verify other PrepareForCreate mutations still applied
+	if exec.Labels[soteriav1alpha1.PlanNameLabel] != "missing-plan" {
+		t.Errorf("expected plan-name label to be set even when OwnerReference fails")
 	}
 }

@@ -25,6 +25,8 @@ import (
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apiserver/pkg/authentication/user"
+	"k8s.io/apiserver/pkg/endpoints/request"
 
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
 )
@@ -223,7 +225,7 @@ func TestValidateAuditDelete_Succeeded_Rejected(t *testing.T) {
 		},
 	}
 
-	err := validateAuditDelete(exec)
+	err := validateAuditDelete(context.Background(), exec)
 	if err == nil {
 		t.Fatal("expected Forbidden error for Succeeded execution")
 	}
@@ -240,7 +242,7 @@ func TestValidateAuditDelete_Failed_Rejected(t *testing.T) {
 		},
 	}
 
-	err := validateAuditDelete(exec)
+	err := validateAuditDelete(context.Background(), exec)
 	if err == nil {
 		t.Fatal("expected Forbidden error for Failed execution")
 	}
@@ -254,7 +256,7 @@ func TestValidateAuditDelete_PartiallySucceeded_Rejected(t *testing.T) {
 		},
 	}
 
-	err := validateAuditDelete(exec)
+	err := validateAuditDelete(context.Background(), exec)
 	if err == nil {
 		t.Fatal("expected Forbidden error for PartiallySucceeded execution")
 	}
@@ -268,9 +270,45 @@ func TestValidateAuditDelete_InProgress_Allowed(t *testing.T) {
 		},
 	}
 
-	err := validateAuditDelete(exec)
+	err := validateAuditDelete(context.Background(), exec)
 	if err != nil {
 		t.Fatalf("expected no error for in-progress execution, got: %v", err)
+	}
+}
+
+func TestValidateAuditDelete_GarbageCollector_AllowsTerminal(t *testing.T) {
+	ctx := request.WithUser(context.Background(), &user.DefaultInfo{
+		Name: gcServiceAccount,
+	})
+
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "exec-gc"},
+		Status: soteriav1alpha1.DRExecutionStatus{
+			Result: soteriav1alpha1.ExecutionResultSucceeded,
+		},
+	}
+
+	err := validateAuditDelete(ctx, exec)
+	if err != nil {
+		t.Fatalf("expected GC to be exempt from audit delete protection, got: %v", err)
+	}
+}
+
+func TestValidateAuditDelete_NonGCUser_RejectsTerminal(t *testing.T) {
+	ctx := request.WithUser(context.Background(), &user.DefaultInfo{
+		Name: "system:serviceaccount:soteria-system:soteria-controller-manager",
+	})
+
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "exec-non-gc"},
+		Status: soteriav1alpha1.DRExecutionStatus{
+			Result: soteriav1alpha1.ExecutionResultFailed,
+		},
+	}
+
+	err := validateAuditDelete(ctx, exec)
+	if err == nil {
+		t.Fatal("expected Forbidden error for non-GC user deleting terminal execution")
 	}
 }
 

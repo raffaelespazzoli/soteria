@@ -25,6 +25,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/duration"
+	"k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/registry/generic"
 	genericregistry "k8s.io/apiserver/pkg/registry/generic/registry"
 	"k8s.io/apiserver/pkg/registry/rest"
@@ -99,21 +100,38 @@ func wrapAuditValidation(deleteValidation rest.ValidateObjectFunc) rest.Validate
 				return err
 			}
 		}
-		return validateAuditDelete(obj)
+		return validateAuditDelete(ctx, obj)
 	})
 }
 
-func validateAuditDelete(obj runtime.Object) error {
+// gcServiceAccount is the identity used by the Kubernetes garbage collector.
+const gcServiceAccount = "system:serviceaccount:kube-system:generic-garbage-collector"
+
+func validateAuditDelete(ctx context.Context, obj runtime.Object) error {
 	exec, ok := obj.(*soteriav1alpha1.DRExecution)
 	if !ok {
 		return nil
 	}
 	if exec.Status.IsTerminal() {
+		if isGarbageCollector(ctx) {
+			return nil
+		}
 		return apierrors.NewForbidden(
 			soteriav1alpha1.Resource("drexecutions"), exec.Name,
 			fmt.Errorf("completed DRExecution audit records cannot be deleted (FR41)"))
 	}
 	return nil
+}
+
+// isGarbageCollector returns true when the request originates from the
+// Kubernetes garbage collector, allowing cascade deletes of terminal
+// DRExecutions when their owning DRPlan is deleted.
+func isGarbageCollector(ctx context.Context) bool {
+	user, ok := request.UserFrom(ctx)
+	if !ok {
+		return false
+	}
+	return user.GetName() == gcServiceAccount
 }
 
 // StatusREST implements the REST endpoint for the DRExecution status subresource.

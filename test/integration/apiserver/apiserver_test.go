@@ -388,6 +388,116 @@ func TestAPIServer_OpenAPI_SoteriaTypesPresent(t *testing.T) {
 	}
 }
 
+func TestAPIServer_DRExecution_OwnerReference(t *testing.T) {
+	client := newDynamicClient(t)
+	ctx := context.Background()
+
+	planName := "owner-ref-plan"
+	createDRPlan(t, ctx, client, planName, soteriav1alpha1.PhaseSteadyState, nil)
+	defer deleteDRPlan(t, ctx, client, planName)
+
+	// Get the plan to know its UID
+	plan, err := client.Resource(drplanGVR()).Get(ctx, planName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Get DRPlan failed: %v", err)
+	}
+	planUID := string(plan.GetUID())
+	if planUID == "" {
+		t.Fatal("DRPlan UID is empty")
+	}
+
+	exec := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "soteria.io/v1alpha1",
+			"kind":       "DRExecution",
+			"metadata":   map[string]any{"name": "exec-with-owner"},
+			"spec": map[string]any{
+				"planName": planName,
+				"mode":     string(soteriav1alpha1.ExecutionModePlannedMigration),
+			},
+		},
+	}
+
+	created, err := client.Resource(drexecutionGVR()).Create(ctx, exec, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Create DRExecution failed: %v", err)
+	}
+
+	ownerRefs := created.GetOwnerReferences()
+	if len(ownerRefs) != 1 {
+		t.Fatalf("expected 1 OwnerReference, got %d", len(ownerRefs))
+	}
+
+	ref := ownerRefs[0]
+	if ref.APIVersion != "soteria.io/v1alpha1" {
+		t.Errorf("expected APIVersion %q, got %q", "soteria.io/v1alpha1", ref.APIVersion)
+	}
+	if ref.Kind != "DRPlan" {
+		t.Errorf("expected Kind %q, got %q", "DRPlan", ref.Kind)
+	}
+	if ref.Name != planName {
+		t.Errorf("expected Name %q, got %q", planName, ref.Name)
+	}
+	if string(ref.UID) != planUID {
+		t.Errorf("expected UID %q, got %q", planUID, ref.UID)
+	}
+	if ref.Controller == nil || !*ref.Controller {
+		t.Error("expected Controller=true")
+	}
+	if ref.BlockOwnerDeletion == nil || !*ref.BlockOwnerDeletion {
+		t.Error("expected BlockOwnerDeletion=true")
+	}
+}
+
+func TestAPIServer_DRExecution_OwnerReference_CascadeDeleteContract(t *testing.T) {
+	client := newDynamicClient(t)
+	ctx := context.Background()
+
+	planName := "cascade-plan"
+	createDRPlan(t, ctx, client, planName, soteriav1alpha1.PhaseSteadyState, nil)
+
+	exec := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "soteria.io/v1alpha1",
+			"kind":       "DRExecution",
+			"metadata":   map[string]any{"name": "cascade-exec"},
+			"spec": map[string]any{
+				"planName": planName,
+				"mode":     string(soteriav1alpha1.ExecutionModeDisaster),
+			},
+		},
+	}
+
+	created, err := client.Resource(drexecutionGVR()).Create(ctx, exec, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Create DRExecution failed: %v", err)
+	}
+
+	// Verify OwnerReference is present (prerequisite for GC cascade delete)
+	ownerRefs := created.GetOwnerReferences()
+	if len(ownerRefs) == 0 {
+		t.Fatal("OwnerReference must be set for cascade delete to work")
+	}
+
+	// Verify the owner UID matches the plan UID (GC uses UID to track ownership)
+	plan, err := client.Resource(drplanGVR()).Get(ctx, planName, metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Get DRPlan failed: %v", err)
+	}
+	if ownerRefs[0].UID != plan.GetUID() {
+		t.Errorf("OwnerReference UID %q does not match DRPlan UID %q — cascade delete would fail",
+			ownerRefs[0].UID, plan.GetUID())
+	}
+
+	// Delete the DRPlan — in a cluster with GC running, this would trigger
+	// cascade deletion of the DRExecution. The test validates the OwnerReference
+	// contract; actual GC behavior is standard Kubernetes functionality.
+	err = client.Resource(drplanGVR()).Delete(ctx, planName, metav1.DeleteOptions{})
+	if err != nil {
+		t.Fatalf("Delete DRPlan failed: %v", err)
+	}
+}
+
 func TestAPIServer_DRPlan_Watch(t *testing.T) {
 	client := newDynamicClient(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)

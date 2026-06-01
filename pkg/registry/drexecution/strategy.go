@@ -18,14 +18,19 @@ package drexecution
 
 import (
 	"context"
+	"fmt"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/validation/field"
 	"k8s.io/apiserver/pkg/endpoints/request"
+	"k8s.io/apiserver/pkg/registry/rest"
 	"k8s.io/apiserver/pkg/storage"
 	"k8s.io/apiserver/pkg/storage/names"
+	"k8s.io/utils/ptr"
+	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	soteriainstall "github.com/soteria-project/soteria/pkg/apis/soteria.io/install"
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
@@ -34,9 +39,19 @@ import (
 type drexecutionStrategy struct {
 	runtime.ObjectTyper
 	names.NameGenerator
+	planGetter rest.Getter
 }
 
-var Strategy = drexecutionStrategy{soteriainstall.Scheme, names.SimpleNameGenerator}
+var Strategy = drexecutionStrategy{
+	ObjectTyper:   soteriainstall.Scheme,
+	NameGenerator: names.SimpleNameGenerator,
+}
+
+// SetPlanStorage injects the DRPlan REST storage so PrepareForCreate can
+// resolve the plan UID for setting OwnerReference on new DRExecutions.
+func (s *drexecutionStrategy) SetPlanStorage(g rest.Getter) {
+	s.planGetter = g
+}
 
 // DRExecution is cluster-scoped: it references a cluster-scoped DRPlan by name,
 // so the execution must also be cluster-scoped to avoid cross-scope references.
@@ -60,6 +75,45 @@ func (drexecutionStrategy) PrepareForCreate(ctx context.Context, obj runtime.Obj
 			exec.Annotations = make(map[string]string)
 		}
 		exec.Annotations[soteriav1alpha1.TriggeredByAnnotation] = user.GetName()
+	}
+
+	setOwnerReference(ctx, exec)
+}
+
+// setOwnerReference resolves the DRPlan UID and sets a controller OwnerReference
+// on the DRExecution. If the plan cannot be fetched (nil getter, not found, or
+// error), it logs a warning and proceeds without the OwnerReference — the
+// execution remains valid via spec.planName and the plan-name label.
+func setOwnerReference(ctx context.Context, exec *soteriav1alpha1.DRExecution) {
+	if Strategy.planGetter == nil {
+		return
+	}
+
+	planObj, err := Strategy.planGetter.Get(ctx, exec.Spec.PlanName, &metav1.GetOptions{})
+	if err != nil {
+		logger := log.FromContext(ctx)
+		logger.Error(err, "Could not fetch DRPlan for OwnerReference, proceeding without it",
+			"planName", exec.Spec.PlanName)
+		return
+	}
+
+	plan, ok := planObj.(*soteriav1alpha1.DRPlan)
+	if !ok {
+		logger := log.FromContext(ctx)
+		logger.Error(nil, "Plan storage returned unexpected type, proceeding without OwnerReference",
+			"planName", exec.Spec.PlanName, "type", fmt.Sprintf("%T", planObj))
+		return
+	}
+
+	exec.OwnerReferences = []metav1.OwnerReference{
+		{
+			APIVersion:         soteriav1alpha1.SchemeGroupVersion.String(),
+			Kind:               "DRPlan",
+			Name:               plan.Name,
+			UID:                plan.UID,
+			Controller:         ptr.To(true),
+			BlockOwnerDeletion: ptr.To(true),
+		},
 	}
 }
 

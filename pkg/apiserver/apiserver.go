@@ -136,6 +136,10 @@ func (c CompletedConfig) New() (*SoteriaServer, error) {
 		c.SoteriaPlugin.SetDRPlanStorage(drplanStore)
 	}
 
+	// Inject DRPlan REST storage into DRExecution strategy so PrepareForCreate
+	// can resolve the plan UID for setting OwnerReference (cascade delete).
+	drexecutionregistry.Strategy.SetPlanStorage(drplanStore)
+
 	drexecStore, drexecStatusStore, err := drexecutionregistry.NewREST(soteriainstall.Scheme, optsGetter)
 	if err != nil {
 		return nil, fmt.Errorf("creating DRExecution storage: %w", err)
