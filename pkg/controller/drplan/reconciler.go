@@ -1299,6 +1299,16 @@ func (r *DRPlanReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			handler.EnqueueRequestsFromMapFunc(r.mapNamespaceToDRPlans),
 			builder.WithPredicates(nsConsistencyAnnotationChangePredicate()),
 		).
+		Watches(
+			&replicationv1alpha1.VolumeReplication{},
+			r.vrEventHandler(),
+			builder.WithPredicates(vrStatusChangePredicate()),
+		).
+		Watches(
+			&replicationv1alpha1.VolumeGroupReplication{},
+			r.vrEventHandler(),
+			builder.WithPredicates(vrStatusChangePredicate()),
+		).
 		Complete(r)
 }
 
@@ -1723,4 +1733,102 @@ func vmRelevantChangePredicate() predicate.Predicate {
 			return true
 		},
 	}
+}
+
+// vrStatusChangePredicate returns a predicate that fires only when a
+// VolumeReplication or VolumeGroupReplication status.state,
+// status.conditions, or status.lastSyncTime change. Create, Delete, and
+// Generic events are suppressed — poll handles those transitions.
+func vrStatusChangePredicate() predicate.Predicate {
+	return predicate.Funcs{
+		CreateFunc:  func(_ event.CreateEvent) bool { return false },
+		DeleteFunc:  func(_ event.DeleteEvent) bool { return false },
+		GenericFunc: func(_ event.GenericEvent) bool { return false },
+		UpdateFunc: func(e event.UpdateEvent) bool {
+			return vrStatusDiffers(e.ObjectOld, e.ObjectNew)
+		},
+	}
+}
+
+// vrStatusDiffers returns true if the replication status (state, conditions,
+// or lastSyncTime) differs between old and new objects. Handles both
+// VolumeReplication and VolumeGroupReplication via type switch.
+func vrStatusDiffers(oldObj, newObj client.Object) bool {
+	switch oldVR := oldObj.(type) {
+	case *replicationv1alpha1.VolumeReplication:
+		newVR, ok := newObj.(*replicationv1alpha1.VolumeReplication)
+		if !ok {
+			return false
+		}
+		if oldVR.Status.State != newVR.Status.State {
+			return true
+		}
+		if !reflect.DeepEqual(oldVR.Status.Conditions, newVR.Status.Conditions) {
+			return true
+		}
+		return !lastSyncTimeEqual(oldVR.Status.LastSyncTime, newVR.Status.LastSyncTime)
+
+	case *replicationv1alpha1.VolumeGroupReplication:
+		newVGR, ok := newObj.(*replicationv1alpha1.VolumeGroupReplication)
+		if !ok {
+			return false
+		}
+		if oldVR.Status.State != newVGR.Status.State {
+			return true
+		}
+		if !reflect.DeepEqual(oldVR.Status.Conditions, newVGR.Status.Conditions) {
+			return true
+		}
+		return !lastSyncTimeEqual(oldVR.Status.LastSyncTime, newVGR.Status.LastSyncTime)
+
+	default:
+		return false
+	}
+}
+
+// lastSyncTimeEqual returns true if both times are nil, or both are non-nil
+// and represent the same instant.
+func lastSyncTimeEqual(a, b *metav1.Time) bool {
+	if a == nil && b == nil {
+		return true
+	}
+	if a == nil || b == nil {
+		return false
+	}
+	return a.Equal(b)
+}
+
+// vrEventHandler returns a handler that enqueues the owning DRPlan when a
+// VR/VGR status change passes the predicate. Both old and new objects are
+// enqueued so that a label change in the same update correctly reconciles
+// both the departing and arriving plan.
+func (r *DRPlanReconciler) vrEventHandler() handler.Funcs {
+	return handler.Funcs{
+		UpdateFunc: func(
+			_ context.Context,
+			e event.TypedUpdateEvent[client.Object],
+			q reqQueue,
+		) {
+			r.enqueueForVR(e.ObjectOld, q)
+			r.enqueueForVR(e.ObjectNew, q)
+		},
+	}
+}
+
+// enqueueForVR reads the soteria.io/drplan label from a VR/VGR object and
+// enqueues a reconcile request for the named plan. DRPlan is cluster-scoped
+// so the namespace is always empty.
+func (r *DRPlanReconciler) enqueueForVR(obj client.Object, q workqueue.TypedRateLimitingInterface[reconcile.Request]) {
+	if obj == nil {
+		return
+	}
+	planName := obj.GetLabels()[csiextension.LabelDRPlan]
+	if planName == "" {
+		return
+	}
+	q.Add(reconcile.Request{
+		NamespacedName: types.NamespacedName{
+			Name: planName,
+		},
+	})
 }

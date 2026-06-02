@@ -20,4 +20,10 @@ limitations under the License.
 // into execution waves based on a configurable wave label and written to the
 // DRPlan's status subresource. The controller uses event-driven reconciliation
 // with a safety-net RequeueAfter fallback to ensure eventual consistency.
+//
+// Secondary watches on VolumeReplication and VolumeGroupReplication CRDs
+// (status-change predicate filtering on status.state, status.conditions, and
+// status.lastSyncTime) enqueue the owning DRPlan via the soteria.io/drplan
+// label. This provides reactive, event-driven replication health updates
+// between poll intervals.
 package drplan

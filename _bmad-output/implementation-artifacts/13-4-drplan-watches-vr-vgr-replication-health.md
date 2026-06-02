@@ -1,6 +1,6 @@
 # Story 13.4: DRPlan Watches VR/VGR for Replication Health
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -41,41 +41,47 @@ This story follows the exact same pattern, adapted for VR/VGR with a status-chan
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create VR/VGR status-change predicate (AC: #1)
-  - [ ] 1.1 Add `vrStatusChangePredicate()` function in `reconciler.go` — returns `predicate.Funcs` that:
+- [x] Task 1: Create VR/VGR status-change predicate (AC: #1)
+  - [x] 1.1 Add `vrStatusChangePredicate()` function in `reconciler.go` — returns `predicate.Funcs` that:
     - Create: returns `false` (new VR/VGR won't have meaningful status yet; poll will pick it up)
     - Delete: returns `false` (deletion is not a status change; poll handles stale health)
     - Update: compares `status.state` and `status.conditions` between old and new; returns `true` only if different
     - Generic: returns `false`
-  - [ ] 1.2 The predicate must type-assert to access `.Status.State` and `.Status.Conditions` since VR/VGR types come from `replicationv1alpha1`
+  - [x] 1.2 The predicate must type-assert to access `.Status.State` and `.Status.Conditions` since VR/VGR types come from `replicationv1alpha1`
 
-- [ ] Task 2: Create VR/VGR event handler (AC: #2)
-  - [ ] 2.1 Add `vrEventHandler()` method on `DRPlanReconciler` — returns `handler.Funcs` with an `UpdateFunc` that calls `r.enqueueForVR(e.ObjectNew, q)`
-  - [ ] 2.2 Add `enqueueForVR(obj client.Object, q reqQueue)` — reads `soteria.io/drplan` label via `csiextension.LabelDRPlan` constant, enqueues reconcile request (same pattern as `enqueueForVM`)
+- [x] Task 2: Create VR/VGR event handler (AC: #2)
+  - [x] 2.1 Add `vrEventHandler()` method on `DRPlanReconciler` — returns `handler.Funcs` with an `UpdateFunc` that calls `r.enqueueForVR(e.ObjectNew, q)`
+  - [x] 2.2 Add `enqueueForVR(obj client.Object, q reqQueue)` — reads `soteria.io/drplan` label via `csiextension.LabelDRPlan` constant, enqueues reconcile request (same pattern as `enqueueForVM`)
 
-- [ ] Task 3: Wire watches in SetupWithManager (AC: #1, #2)
-  - [ ] 3.1 Add two `.Watches()` calls to the controller builder — one for `&replicationv1alpha1.VolumeReplication{}` and one for `&replicationv1alpha1.VolumeGroupReplication{}`
-  - [ ] 3.2 Both use `vrEventHandler()` and `builder.WithPredicates(vrStatusChangePredicate())`
-  - [ ] 3.3 Import `replicationv1alpha1` in reconciler.go
+- [x] Task 3: Wire watches in SetupWithManager (AC: #1, #2)
+  - [x] 3.1 Add two `.Watches()` calls to the controller builder — one for `&replicationv1alpha1.VolumeReplication{}` and one for `&replicationv1alpha1.VolumeGroupReplication{}`
+  - [x] 3.2 Both use `vrEventHandler()` and `builder.WithPredicates(vrStatusChangePredicate())`
+  - [x] 3.3 Import `replicationv1alpha1` in reconciler.go
 
-- [ ] Task 4: Add RBAC markers (AC: #1)
-  - [ ] 4.1 Verify RBAC for VR/VGR watch — the `get;list;watch` verbs on `replication.storage.openshift.io` are already present in `pkg/controller/volumereplication/doc.go`; check if the DRPlan controller also needs its own markers or if the existing ones cover it (they likely do since RBAC is per-ClusterRole, not per-controller)
+- [x] Task 4: Add RBAC markers (AC: #1)
+  - [x] 4.1 Verify RBAC for VR/VGR watch — the `get;list;watch` verbs on `replication.storage.openshift.io` are already present in `pkg/controller/volumereplication/doc.go`; check if the DRPlan controller also needs its own markers or if the existing ones cover it (they likely do since RBAC is per-ClusterRole, not per-controller)
 
-- [ ] Task 5: Unit tests (AC: #5)
-  - [ ] 5.1 Test `vrStatusChangePredicate` — Create returns false, Delete returns false, Generic returns false
-  - [ ] 5.2 Test `vrStatusChangePredicate` — Update with status.state change returns true
-  - [ ] 5.3 Test `vrStatusChangePredicate` — Update with status.conditions change returns true
-  - [ ] 5.4 Test `vrStatusChangePredicate` — Update with spec-only change returns false
-  - [ ] 5.5 Test `vrStatusChangePredicate` — Update with metadata-only change returns false
-  - [ ] 5.6 Test `enqueueForVR` — object with `soteria.io/drplan` label enqueues correct plan
-  - [ ] 5.7 Test `enqueueForVR` — object without label enqueues nothing
-  - [ ] 5.8 Test `enqueueForVR` — object with empty label enqueues nothing
+- [x] Task 5: Unit tests (AC: #5)
+  - [x] 5.1 Test `vrStatusChangePredicate` — Create returns false, Delete returns false, Generic returns false
+  - [x] 5.2 Test `vrStatusChangePredicate` — Update with status.state change returns true
+  - [x] 5.3 Test `vrStatusChangePredicate` — Update with status.conditions change returns true
+  - [x] 5.4 Test `vrStatusChangePredicate` — Update with spec-only change returns false
+  - [x] 5.5 Test `vrStatusChangePredicate` — Update with metadata-only change returns false
+  - [x] 5.6 Test `enqueueForVR` — object with `soteria.io/drplan` label enqueues correct plan
+  - [x] 5.7 Test `enqueueForVR` — object without label enqueues nothing
+  - [x] 5.8 Test `enqueueForVR` — object with empty label enqueues nothing
 
-- [ ] Task 6: Verify (AC: all)
-  - [ ] 6.1 Run `make manifests generate` — regenerate RBAC if markers changed
-  - [ ] 6.2 Run `make test` — all tests pass
-  - [ ] 6.3 Run `make lint-fix && make lint` — zero lint issues
-  - [ ] 6.4 Update `doc.go` with Story 13.4 description (Tier 1 compliance)
+- [x] Task 6: Verify (AC: all)
+  - [x] 6.1 Run `make manifests generate` — regenerate RBAC if markers changed
+  - [x] 6.2 Run `make test` — all tests pass
+  - [x] 6.3 Run `make lint-fix && make lint` — zero lint issues
+  - [x] 6.4 Update `doc.go` with Story 13.4 description (Tier 1 compliance)
+
+### Review Findings
+
+- [x] [Review][Patch] Predicate ignores `LastSyncTime` changes [`pkg/controller/drplan/reconciler.go:1756`]
+- [x] [Review][Patch] Update handler only enqueues the new labeled plan [`pkg/controller/drplan/reconciler.go:1788`]
+- [x] [Review][Patch] Tests do not cover the reactive gaps introduced by the new watch [`pkg/controller/drplan/reconciler_test.go:3087`]
 
 ## Dev Notes
 
@@ -207,12 +213,33 @@ See `_bmad-output/project-context.md` for:
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4.6
 
 ### Debug Log References
 
+No debug issues encountered. Clean implementation following existing VM watch patterns.
+
 ### Completion Notes List
+
+- Implemented `vrStatusChangePredicate()` with `vrStatusDiffers()` helper using type-switch for VR and VGR types
+- Implemented `vrEventHandler()` with UpdateFunc-only (Create/Delete suppressed by predicate)
+- Implemented `enqueueForVR()` reading `csiextension.LabelDRPlan` constant (same pattern as `enqueueForVM`)
+- Wired two `.Watches()` calls in `SetupWithManager` for VolumeReplication and VolumeGroupReplication
+- Verified RBAC markers already present (lines 109-112 of reconciler.go cover VR/VGR with full verbs)
+- Added 13 unit tests: 9 predicate tests (Create/Delete/Generic false, VR state/conditions change true, spec-only/metadata-only false, VGR state/conditions change true) + 4 enqueue tests (with label, without label, empty label, nil object)
+- Updated doc.go with VR/VGR watch description
+- All existing tests pass with zero regressions (87.8% drplan coverage)
+- No new lint issues introduced (5 pre-existing issues from previous stories)
+- Integration tests pass 100%
+- **Review patches applied:** lastSyncTime added to predicate (lastSyncTimeEqual helper), vrEventHandler enqueues both old+new plans (mirrors vmEventHandler), 6 new tests (lastSyncTime VR/VGR, nil-to-set, identical-status negative, dual-enqueue handler wiring)
 
 ### File List
 
+- `pkg/controller/drplan/reconciler.go` — Modified: added `vrStatusChangePredicate()`, `vrStatusDiffers()`, `lastSyncTimeEqual()`, `vrEventHandler()`, `enqueueForVR()`, updated `SetupWithManager` with two new `.Watches()` calls
+- `pkg/controller/drplan/reconciler_test.go` — Modified: added 19 new unit tests for predicate, event handler, and enqueue
+- `pkg/controller/drplan/doc.go` — Modified: added VR/VGR watch description to package documentation
+
 ### Change Log
+
+- 2026-06-01: Implemented Story 13.4 — DRPlan watches VR/VGR for replication health via secondary watches with status-change predicate and label-based event-to-plan mapping
+- 2026-06-02: Review patches — lastSyncTime in predicate, dual-enqueue in handler, 6 new tests

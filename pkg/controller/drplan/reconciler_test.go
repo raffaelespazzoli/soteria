@@ -3082,5 +3082,371 @@ func TestReconcile_DRPlanDeletion_VGR_RemovesSiteFinalizer(t *testing.T) {
 	}
 }
 
+// --- VR/VGR status change predicate tests ---
+
+func TestVRStatusChangePredicate_Create_ReturnsFalse(t *testing.T) {
+	p := vrStatusChangePredicate()
+	if p.Create(event.CreateEvent{}) {
+		t.Error("Create should return false for VR status predicate")
+	}
+}
+
+func TestVRStatusChangePredicate_Delete_ReturnsFalse(t *testing.T) {
+	p := vrStatusChangePredicate()
+	if p.Delete(event.DeleteEvent{}) {
+		t.Error("Delete should return false for VR status predicate")
+	}
+}
+
+func TestVRStatusChangePredicate_Generic_ReturnsFalse(t *testing.T) {
+	p := vrStatusChangePredicate()
+	if p.Generic(event.GenericEvent{}) {
+		t.Error("Generic should return false for VR status predicate")
+	}
+}
+
+func TestVRStatusChangePredicate_Update_StateChange_ReturnsTrue(t *testing.T) {
+	p := vrStatusChangePredicate()
+	old := &replicationv1alpha1.VolumeReplication{
+		Status: replicationv1alpha1.VolumeReplicationStatus{
+			State: replicationv1alpha1.SecondaryState,
+		},
+	}
+	newObj := &replicationv1alpha1.VolumeReplication{
+		Status: replicationv1alpha1.VolumeReplicationStatus{
+			State: replicationv1alpha1.PrimaryState,
+		},
+	}
+	if !p.Update(event.UpdateEvent{ObjectOld: old, ObjectNew: newObj}) {
+		t.Error("Update with status.state change should return true")
+	}
+}
+
+func TestVRStatusChangePredicate_Update_ConditionsChange_ReturnsTrue(t *testing.T) {
+	p := vrStatusChangePredicate()
+	old := &replicationv1alpha1.VolumeReplication{
+		Status: replicationv1alpha1.VolumeReplicationStatus{
+			State: replicationv1alpha1.PrimaryState,
+			Conditions: []metav1.Condition{
+				{Type: "Completed", Status: metav1.ConditionFalse},
+			},
+		},
+	}
+	newObj := &replicationv1alpha1.VolumeReplication{
+		Status: replicationv1alpha1.VolumeReplicationStatus{
+			State: replicationv1alpha1.PrimaryState,
+			Conditions: []metav1.Condition{
+				{Type: "Completed", Status: metav1.ConditionTrue},
+			},
+		},
+	}
+	if !p.Update(event.UpdateEvent{ObjectOld: old, ObjectNew: newObj}) {
+		t.Error("Update with status.conditions change should return true")
+	}
+}
+
+func TestVRStatusChangePredicate_Update_SpecOnlyChange_ReturnsFalse(t *testing.T) {
+	p := vrStatusChangePredicate()
+	old := &replicationv1alpha1.VolumeReplication{
+		ObjectMeta: metav1.ObjectMeta{Name: "vr-1"},
+		Spec: replicationv1alpha1.VolumeReplicationSpec{
+			ReplicationState: replicationv1alpha1.Secondary,
+		},
+		Status: replicationv1alpha1.VolumeReplicationStatus{
+			State: replicationv1alpha1.SecondaryState,
+		},
+	}
+	newObj := &replicationv1alpha1.VolumeReplication{
+		ObjectMeta: metav1.ObjectMeta{Name: "vr-1"},
+		Spec: replicationv1alpha1.VolumeReplicationSpec{
+			ReplicationState: replicationv1alpha1.Primary,
+		},
+		Status: replicationv1alpha1.VolumeReplicationStatus{
+			State: replicationv1alpha1.SecondaryState,
+		},
+	}
+	if p.Update(event.UpdateEvent{ObjectOld: old, ObjectNew: newObj}) {
+		t.Error("Update with spec-only change should return false")
+	}
+}
+
+func TestVRStatusChangePredicate_Update_MetadataOnlyChange_ReturnsFalse(t *testing.T) {
+	p := vrStatusChangePredicate()
+	old := &replicationv1alpha1.VolumeReplication{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "vr-1",
+			Labels: map[string]string{"app": "old"},
+		},
+		Status: replicationv1alpha1.VolumeReplicationStatus{
+			State: replicationv1alpha1.PrimaryState,
+		},
+	}
+	newObj := &replicationv1alpha1.VolumeReplication{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "vr-1",
+			Labels: map[string]string{"app": "new"},
+		},
+		Status: replicationv1alpha1.VolumeReplicationStatus{
+			State: replicationv1alpha1.PrimaryState,
+		},
+	}
+	if p.Update(event.UpdateEvent{ObjectOld: old, ObjectNew: newObj}) {
+		t.Error("Update with metadata-only change should return false")
+	}
+}
+
+func TestVRStatusChangePredicate_Update_VGR_StateChange_ReturnsTrue(t *testing.T) {
+	p := vrStatusChangePredicate()
+	old := &replicationv1alpha1.VolumeGroupReplication{
+		Status: replicationv1alpha1.VolumeGroupReplicationStatus{
+			VolumeReplicationStatus: replicationv1alpha1.VolumeReplicationStatus{
+				State: replicationv1alpha1.SecondaryState,
+			},
+		},
+	}
+	newObj := &replicationv1alpha1.VolumeGroupReplication{
+		Status: replicationv1alpha1.VolumeGroupReplicationStatus{
+			VolumeReplicationStatus: replicationv1alpha1.VolumeReplicationStatus{
+				State: replicationv1alpha1.PrimaryState,
+			},
+		},
+	}
+	if !p.Update(event.UpdateEvent{ObjectOld: old, ObjectNew: newObj}) {
+		t.Error("VGR update with status.state change should return true")
+	}
+}
+
+func TestVRStatusChangePredicate_Update_VGR_ConditionsChange_ReturnsTrue(t *testing.T) {
+	p := vrStatusChangePredicate()
+	old := &replicationv1alpha1.VolumeGroupReplication{
+		Status: replicationv1alpha1.VolumeGroupReplicationStatus{
+			VolumeReplicationStatus: replicationv1alpha1.VolumeReplicationStatus{
+				State: replicationv1alpha1.PrimaryState,
+				Conditions: []metav1.Condition{
+					{Type: "Completed", Status: metav1.ConditionFalse},
+				},
+			},
+		},
+	}
+	newObj := &replicationv1alpha1.VolumeGroupReplication{
+		Status: replicationv1alpha1.VolumeGroupReplicationStatus{
+			VolumeReplicationStatus: replicationv1alpha1.VolumeReplicationStatus{
+				State: replicationv1alpha1.PrimaryState,
+				Conditions: []metav1.Condition{
+					{Type: "Completed", Status: metav1.ConditionTrue},
+				},
+			},
+		},
+	}
+	if !p.Update(event.UpdateEvent{ObjectOld: old, ObjectNew: newObj}) {
+		t.Error("VGR update with status.conditions change should return true")
+	}
+}
+
+func TestVRStatusChangePredicate_Update_LastSyncTimeChange_ReturnsTrue(t *testing.T) {
+	p := vrStatusChangePredicate()
+	now := metav1.Now()
+	later := metav1.NewTime(now.Add(time.Minute))
+	old := &replicationv1alpha1.VolumeReplication{
+		Status: replicationv1alpha1.VolumeReplicationStatus{
+			State:        replicationv1alpha1.PrimaryState,
+			LastSyncTime: &now,
+		},
+	}
+	newObj := &replicationv1alpha1.VolumeReplication{
+		Status: replicationv1alpha1.VolumeReplicationStatus{
+			State:        replicationv1alpha1.PrimaryState,
+			LastSyncTime: &later,
+		},
+	}
+	if !p.Update(event.UpdateEvent{ObjectOld: old, ObjectNew: newObj}) {
+		t.Error("Update with only lastSyncTime change should return true")
+	}
+}
+
+func TestVRStatusChangePredicate_Update_LastSyncTimeNilToSet_ReturnsTrue(t *testing.T) {
+	p := vrStatusChangePredicate()
+	now := metav1.Now()
+	old := &replicationv1alpha1.VolumeReplication{
+		Status: replicationv1alpha1.VolumeReplicationStatus{
+			State:        replicationv1alpha1.PrimaryState,
+			LastSyncTime: nil,
+		},
+	}
+	newObj := &replicationv1alpha1.VolumeReplication{
+		Status: replicationv1alpha1.VolumeReplicationStatus{
+			State:        replicationv1alpha1.PrimaryState,
+			LastSyncTime: &now,
+		},
+	}
+	if !p.Update(event.UpdateEvent{ObjectOld: old, ObjectNew: newObj}) {
+		t.Error("Update with lastSyncTime nil->set should return true")
+	}
+}
+
+func TestVRStatusChangePredicate_Update_VGR_LastSyncTimeChange_ReturnsTrue(t *testing.T) {
+	p := vrStatusChangePredicate()
+	now := metav1.Now()
+	later := metav1.NewTime(now.Add(time.Minute))
+	old := &replicationv1alpha1.VolumeGroupReplication{
+		Status: replicationv1alpha1.VolumeGroupReplicationStatus{
+			VolumeReplicationStatus: replicationv1alpha1.VolumeReplicationStatus{
+				State:        replicationv1alpha1.PrimaryState,
+				LastSyncTime: &now,
+			},
+		},
+	}
+	newObj := &replicationv1alpha1.VolumeGroupReplication{
+		Status: replicationv1alpha1.VolumeGroupReplicationStatus{
+			VolumeReplicationStatus: replicationv1alpha1.VolumeReplicationStatus{
+				State:        replicationv1alpha1.PrimaryState,
+				LastSyncTime: &later,
+			},
+		},
+	}
+	if !p.Update(event.UpdateEvent{ObjectOld: old, ObjectNew: newObj}) {
+		t.Error("VGR update with only lastSyncTime change should return true")
+	}
+}
+
+func TestVRStatusChangePredicate_Update_IdenticalStatus_ReturnsFalse(t *testing.T) {
+	p := vrStatusChangePredicate()
+	now := metav1.Now()
+	old := &replicationv1alpha1.VolumeReplication{
+		Status: replicationv1alpha1.VolumeReplicationStatus{
+			State:        replicationv1alpha1.PrimaryState,
+			LastSyncTime: &now,
+			Conditions: []metav1.Condition{
+				{Type: "Completed", Status: metav1.ConditionTrue},
+			},
+		},
+	}
+	newObj := old.DeepCopy()
+	if p.Update(event.UpdateEvent{ObjectOld: old, ObjectNew: newObj}) {
+		t.Error("Update with identical status should return false")
+	}
+}
+
+// --- VR/VGR enqueueForVR tests ---
+
+func TestEnqueueForVR_WithLabel_EnqueuesCorrectPlan(t *testing.T) {
+	r, _ := newReconciler(nil, &mockVMDiscoverer{})
+
+	q := workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[reconcile.Request]())
+	defer q.ShutDown()
+
+	vr := &replicationv1alpha1.VolumeReplication{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "vr-1",
+			Namespace: "default",
+			Labels:    map[string]string{csiextension.LabelDRPlan: "my-plan"},
+		},
+	}
+
+	r.enqueueForVR(vr, q)
+	if q.Len() != 1 {
+		t.Fatalf("expected 1 request, got %d", q.Len())
+	}
+	item, _ := q.Get()
+	if item.Name != "my-plan" || item.Namespace != "" {
+		t.Errorf("request = %v, want my-plan (cluster-scoped)", item.NamespacedName)
+	}
+}
+
+func TestEnqueueForVR_WithoutLabel_EnqueuesNothing(t *testing.T) {
+	r, _ := newReconciler(nil, &mockVMDiscoverer{})
+
+	q := workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[reconcile.Request]())
+	defer q.ShutDown()
+
+	vr := &replicationv1alpha1.VolumeReplication{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "vr-1",
+			Namespace: "default",
+			Labels:    map[string]string{"app": "unrelated"},
+		},
+	}
+
+	r.enqueueForVR(vr, q)
+	if q.Len() != 0 {
+		t.Errorf("expected 0 requests, got %d", q.Len())
+	}
+}
+
+func TestEnqueueForVR_EmptyLabel_EnqueuesNothing(t *testing.T) {
+	r, _ := newReconciler(nil, &mockVMDiscoverer{})
+
+	q := workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[reconcile.Request]())
+	defer q.ShutDown()
+
+	vr := &replicationv1alpha1.VolumeReplication{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "vr-1",
+			Namespace: "default",
+			Labels:    map[string]string{csiextension.LabelDRPlan: ""},
+		},
+	}
+
+	r.enqueueForVR(vr, q)
+	if q.Len() != 0 {
+		t.Errorf("expected 0 requests for empty label, got %d", q.Len())
+	}
+}
+
+func TestEnqueueForVR_NilObject_EnqueuesNothing(t *testing.T) {
+	r, _ := newReconciler(nil, &mockVMDiscoverer{})
+
+	q := workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[reconcile.Request]())
+	defer q.ShutDown()
+
+	r.enqueueForVR(nil, q)
+	if q.Len() != 0 {
+		t.Errorf("expected 0 requests for nil object, got %d", q.Len())
+	}
+}
+
+func TestVREventHandler_Update_EnqueuesBothOldAndNew(t *testing.T) {
+	r, _ := newReconciler(nil, &mockVMDiscoverer{})
+
+	q := workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[reconcile.Request]())
+	defer q.ShutDown()
+
+	h := r.vrEventHandler()
+
+	oldVR := &replicationv1alpha1.VolumeReplication{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "vr-1",
+			Namespace: "default",
+			Labels:    map[string]string{csiextension.LabelDRPlan: "old-plan"},
+		},
+	}
+	newVR := &replicationv1alpha1.VolumeReplication{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "vr-1",
+			Namespace: "default",
+			Labels:    map[string]string{csiextension.LabelDRPlan: "new-plan"},
+		},
+	}
+
+	h.UpdateFunc(context.Background(), event.TypedUpdateEvent[client.Object]{
+		ObjectOld: oldVR,
+		ObjectNew: newVR,
+	}, q)
+
+	if q.Len() != 2 {
+		t.Fatalf("expected 2 requests (old + new plan), got %d", q.Len())
+	}
+
+	got := map[string]bool{}
+	for range 2 {
+		item, _ := q.Get()
+		got[item.Name] = true
+		q.Done(item)
+	}
+	if !got["old-plan"] || !got["new-plan"] {
+		t.Errorf("expected both old-plan and new-plan enqueued, got %v", got)
+	}
+}
+
 // Ensure reconcile.Reconciler is implemented.
 var _ reconcile.Reconciler = (*DRPlanReconciler)(nil)
