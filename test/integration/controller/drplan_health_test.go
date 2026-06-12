@@ -28,6 +28,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
+	"github.com/soteria-project/soteria/pkg/drivers"
 )
 
 func TestDRPlanReconciler_ReplicationHealth_Populated(t *testing.T) {
@@ -39,6 +40,12 @@ func TestDRPlanReconciler_ReplicationHealth_Populated(t *testing.T) {
 		soteriav1alpha1.DRPlanLabel: "plan-repl-health",
 		"soteria.io/wave":          "1",
 	})
+
+	if _, seedErr := testNoopDrv.CreateVolumeGroup(ctx, drivers.VolumeGroupSpec{
+		Name: "vm-" + ns + "-vm-health-1", Namespace: ns,
+	}); seedErr != nil {
+		t.Fatalf("pre-seeding noop driver: %v", seedErr)
+	}
 
 	createDRPlan(t, ctx, "plan-repl-health")
 
@@ -80,12 +87,17 @@ func TestDRPlanReconciler_ReplicationHealthy_NotReplicatingIsNeutral(t *testing.
 		"soteria.io/wave":          "1",
 	})
 
-	createDRPlan(t, ctx, "plan-repl-cond")
+	// Pre-seed the shared noop driver with the VG so that health polling's
+	// GetVolumeGroup finds it. The noop driver creates VGs with RoleSource,
+	// so GetReplicationStatus returns HealthHealthy.
+	_, err := testNoopDrv.CreateVolumeGroup(ctx, drivers.VolumeGroupSpec{
+		Name: "vm-" + ns + "-vm-cond-1", Namespace: ns,
+	})
+	if err != nil {
+		t.Fatalf("pre-seeding noop driver: %v", err)
+	}
 
-	// The noop driver creates VGs with RoleSource (the default initial
-	// state after CreateVolumeGroup), so GetReplicationStatus returns
-	// HealthHealthy. The aggregate condition is True/AllHealthy.
-	// NotReplicating scenarios are covered by noop driver unit tests.
+	createDRPlan(t, ctx, "plan-repl-cond")
 	plan, err := waitForReplicationHealth(ctx, "plan-repl-cond", 1, testTimeout)
 	if err != nil {
 		t.Fatal(err)

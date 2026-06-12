@@ -70,11 +70,11 @@ func newHealthTestReconciler(
 
 func TestPollReplicationHealth_HealthyVG(t *testing.T) {
 	fakeDriver := fakedrv.New()
-	fakeDriver.OnCreateVolumeGroup().ReturnResult(fakedrv.Response{
-		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1-id", Name: "vm-default-vm-1"},
+	fakeDriver.OnGetVolumeGroup("noop-default/vm-default-vm-1").ReturnResult(fakedrv.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "noop-default/vm-default-vm-1", Name: "vm-default-vm-1"},
 	})
 	now := time.Now()
-	fakeDriver.OnGetReplicationStatus("vg-1-id").ReturnResult(fakedrv.Response{
+	fakeDriver.OnGetReplicationStatus("noop-default/vm-default-vm-1").ReturnResult(fakedrv.Response{
 		ReplicationStatus: &drivers.ReplicationStatus{
 			Role:         drivers.RoleSource,
 			Health:       drivers.HealthHealthy,
@@ -134,10 +134,10 @@ func TestPollReplicationHealth_HealthyVG(t *testing.T) {
 
 func TestPollReplicationHealth_SyncingVG(t *testing.T) {
 	fakeDriver := fakedrv.New()
-	fakeDriver.OnCreateVolumeGroup().ReturnResult(fakedrv.Response{
-		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1-id", Name: "vm-default-vm-1"},
+	fakeDriver.OnGetVolumeGroup("noop-default/vm-default-vm-1").ReturnResult(fakedrv.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "noop-default/vm-default-vm-1", Name: "vm-default-vm-1"},
 	})
-	fakeDriver.OnGetReplicationStatus("vg-1-id").ReturnResult(fakedrv.Response{
+	fakeDriver.OnGetReplicationStatus("noop-default/vm-default-vm-1").ReturnResult(fakedrv.Response{
 		ReplicationStatus: &drivers.ReplicationStatus{
 			Health: drivers.HealthSyncing,
 		},
@@ -171,6 +171,45 @@ func TestPollReplicationHealth_SyncingVG(t *testing.T) {
 	h := updated.Status.ReplicationHealth[0]
 	if h.Health != soteriav1alpha1.HealthStatusSyncing {
 		t.Errorf("Health = %q, want Syncing", h.Health)
+	}
+}
+
+func TestPollReplicationHealth_VolumeGroupNotFound(t *testing.T) {
+	fakeDriver := fakedrv.New()
+	fakeDriver.OnGetVolumeGroup("noop-default/vm-default-vm-1").Return(drivers.ErrVolumeGroupNotFound)
+
+	registry := drivers.NewRegistry()
+	registry.RegisterDriver(noop.PlanDriverName, func() drivers.StorageProvider { return fakeDriver })
+
+	plan := newTestPlan()
+	vms := []engine.VMReference{
+		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+	}
+
+	r, c := newHealthTestReconciler([]client.Object{plan}, &mockVMDiscoverer{vms: vms}, registry)
+
+	_, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "plan-1"},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() error: %v", err)
+	}
+
+	var updated soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &updated); err != nil {
+		t.Fatalf("Failed to get plan: %v", err)
+	}
+
+	if len(updated.Status.ReplicationHealth) != 1 {
+		t.Fatalf("ReplicationHealth entries = %d, want 1", len(updated.Status.ReplicationHealth))
+	}
+
+	h := updated.Status.ReplicationHealth[0]
+	if h.Health != soteriav1alpha1.HealthStatusUnknown {
+		t.Errorf("Health = %q, want Unknown when VG not found", h.Health)
+	}
+	if !contains(h.Message, "VR/VGR not yet created") {
+		t.Errorf("Message = %q, want to mention VR/VGR not yet created", h.Message)
 	}
 }
 
@@ -296,10 +335,10 @@ func TestDetectHealthTransitions_NoChange(t *testing.T) {
 
 func TestReconcile_DegradedHealth_ShorterRequeue(t *testing.T) {
 	fakeDriver := fakedrv.New()
-	fakeDriver.OnCreateVolumeGroup().ReturnResult(fakedrv.Response{
-		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1-id", Name: "vm-default-vm-1"},
+	fakeDriver.OnGetVolumeGroup("noop-default/vm-default-vm-1").ReturnResult(fakedrv.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "noop-default/vm-default-vm-1", Name: "vm-default-vm-1"},
 	})
-	fakeDriver.OnGetReplicationStatus("vg-1-id").ReturnResult(fakedrv.Response{
+	fakeDriver.OnGetReplicationStatus("noop-default/vm-default-vm-1").ReturnResult(fakedrv.Response{
 		ReplicationStatus: &drivers.ReplicationStatus{
 			Health: drivers.HealthDegraded,
 		},
@@ -345,10 +384,10 @@ func TestReconcile_DegradedHealth_ShorterRequeue(t *testing.T) {
 
 func TestReconcile_DriverError_ErrorHealth(t *testing.T) {
 	fakeDriver := fakedrv.New()
-	fakeDriver.OnCreateVolumeGroup().ReturnResult(fakedrv.Response{
-		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1-id", Name: "vm-default-vm-1"},
+	fakeDriver.OnGetVolumeGroup("noop-default/vm-default-vm-1").ReturnResult(fakedrv.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "noop-default/vm-default-vm-1", Name: "vm-default-vm-1"},
 	})
-	fakeDriver.OnGetReplicationStatus("vg-1-id").ReturnResult(fakedrv.Response{
+	fakeDriver.OnGetReplicationStatus("noop-default/vm-default-vm-1").ReturnResult(fakedrv.Response{
 		Err: fmt.Errorf("storage array unreachable"),
 	})
 
@@ -461,10 +500,10 @@ func TestReconcile_ActiveDRExecution_SkipsPolling(t *testing.T) {
 
 func TestReconcile_NoDRExecution_PollsHealth(t *testing.T) {
 	fakeDriver := fakedrv.New()
-	fakeDriver.OnCreateVolumeGroup().ReturnResult(fakedrv.Response{
-		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1-id", Name: "vm-default-vm-1"},
+	fakeDriver.OnGetVolumeGroup("noop-default/vm-default-vm-1").ReturnResult(fakedrv.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "noop-default/vm-default-vm-1", Name: "vm-default-vm-1"},
 	})
-	fakeDriver.OnGetReplicationStatus("vg-1-id").ReturnResult(fakedrv.Response{
+	fakeDriver.OnGetReplicationStatus("noop-default/vm-default-vm-1").ReturnResult(fakedrv.Response{
 		ReplicationStatus: &drivers.ReplicationStatus{
 			Role:   drivers.RoleSource,
 			Health: drivers.HealthHealthy,
@@ -502,10 +541,10 @@ func TestReconcile_NoDRExecution_PollsHealth(t *testing.T) {
 
 func TestReconcile_TerminalDRExecution_PollsHealth(t *testing.T) {
 	fakeDriver := fakedrv.New()
-	fakeDriver.OnCreateVolumeGroup().ReturnResult(fakedrv.Response{
-		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1-id", Name: "vm-default-vm-1"},
+	fakeDriver.OnGetVolumeGroup("noop-default/vm-default-vm-1").ReturnResult(fakedrv.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "noop-default/vm-default-vm-1", Name: "vm-default-vm-1"},
 	})
-	fakeDriver.OnGetReplicationStatus("vg-1-id").ReturnResult(fakedrv.Response{
+	fakeDriver.OnGetReplicationStatus("noop-default/vm-default-vm-1").ReturnResult(fakedrv.Response{
 		ReplicationStatus: &drivers.ReplicationStatus{
 			Role:   drivers.RoleSource,
 			Health: drivers.HealthHealthy,

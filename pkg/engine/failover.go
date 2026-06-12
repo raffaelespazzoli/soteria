@@ -49,6 +49,7 @@ package engine
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -82,33 +83,21 @@ type FailoverHandler struct {
 	Config    FailoverConfig
 }
 
-// resolveVolumeGroupID resolves a VolumeGroupInfo to a driver-level VolumeGroupID
-// by calling CreateVolumeGroup (idempotent — returns existing if matched).
-// When pvcResolver is non-nil it populates PVCNames from the VG's VMs.
+// resolveVolumeGroupID computes a deterministic VolumeGroupID and validates
+// that the VR/VGR exists via GetVolumeGroup. The DRPlan reconciler is
+// responsible for creating VR/VGR (Story 13.2); this path is read-only.
 func resolveVolumeGroupID(
-	ctx context.Context, driver drivers.StorageProvider, vg soteriav1alpha1.VolumeGroupInfo,
-	pvcResolver PVCResolver,
+	ctx context.Context, driver drivers.StorageProvider,
+	driverType string, vg soteriav1alpha1.VolumeGroupInfo,
 ) (drivers.VolumeGroupID, error) {
-	var pvcNames []string
-	if pvcResolver != nil {
-		for _, vmName := range vg.VMNames {
-			names, err := pvcResolver.ResolvePVCNames(ctx, vmName, vg.Namespace)
-			if err != nil {
-				return "", fmt.Errorf("resolving PVC names for VM %s/%s: %w", vg.Namespace, vmName, err)
-			}
-			pvcNames = append(pvcNames, names...)
+	vgID := drivers.VolumeGroupIDFor(driverType, vg.Namespace, vg.Name)
+	if _, err := driver.GetVolumeGroup(ctx, vgID); err != nil {
+		if errors.Is(err, drivers.ErrVolumeGroupNotFound) {
+			return "", fmt.Errorf("VR/VGR not yet created by DRPlan reconciler for volume group %s: %w", vg.Name, err)
 		}
-	}
-
-	info, err := driver.CreateVolumeGroup(ctx, drivers.VolumeGroupSpec{
-		Name:      vg.Name,
-		Namespace: vg.Namespace,
-		PVCNames:  pvcNames,
-	})
-	if err != nil {
 		return "", fmt.Errorf("resolving volume group %s: %w", vg.Name, err)
 	}
-	return info.ID, nil
+	return vgID, nil
 }
 
 // PreExecute runs Step 0 — the global pre-execution phase that must complete
@@ -172,7 +161,7 @@ func (h *FailoverHandler) ExecuteGroup(ctx context.Context, group ExecutionGroup
 		}
 
 		driver := group.DriverForVG(vg.Name)
-		vgID, err := resolveVolumeGroupID(ctx, driver, vg, group.PVCResolver)
+		vgID, err := resolveVolumeGroupID(ctx, driver, group.DriverType, vg)
 		if err != nil {
 			return &GroupError{StepName: StepStopReplication, Target: vg.Name, Err: err}
 		}
@@ -230,7 +219,7 @@ func (h *FailoverHandler) ExecuteGroupWithSteps(
 			return steps, ctx.Err()
 		}
 		driver := group.DriverForVG(vg.Name)
-		vgID, err := resolveVolumeGroupID(ctx, driver, vg, group.PVCResolver)
+		vgID, err := resolveVolumeGroupID(ctx, driver, group.DriverType, vg)
 		if err != nil {
 			recordStep(StepStopReplication, "Failed", err.Error())
 			return steps, &GroupError{StepName: StepStopReplication, Target: vg.Name, Err: err}

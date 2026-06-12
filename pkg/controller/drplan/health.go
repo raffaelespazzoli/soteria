@@ -26,6 +26,7 @@ package drplan
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -57,7 +58,6 @@ func (r *DRPlanReconciler) pollReplicationHealth(
 	logger := log.FromContext(ctx)
 	now := metav1.Now()
 	driverName := plan.Spec.VolumeReplicationDriver.Type
-	vgLabels := r.volumeGroupLabels(plan)
 
 	var totalVGs int
 	for _, wave := range waves {
@@ -66,7 +66,7 @@ func (r *DRPlanReconciler) pollReplicationHealth(
 	results := make([]soteriav1alpha1.VolumeGroupHealth, 0, totalVGs)
 	for _, wave := range waves {
 		for _, vg := range wave.Groups {
-			health := r.pollSingleVG(ctx, driverName, vg, vgLabels, now)
+			health := r.pollSingleVG(ctx, driverName, vg, now)
 			results = append(results, health)
 			logger.V(1).Info("Polled replication health",
 				"vg", vg.Name, "namespace", vg.Namespace,
@@ -82,7 +82,6 @@ func (r *DRPlanReconciler) pollSingleVG(
 	ctx context.Context,
 	driverName string,
 	vg soteriav1alpha1.VolumeGroupInfo,
-	labels map[string]string,
 	now metav1.Time,
 ) soteriav1alpha1.VolumeGroupHealth {
 	logger := log.FromContext(ctx)
@@ -100,7 +99,7 @@ func (r *DRPlanReconciler) pollSingleVG(
 		}
 	}
 
-	vgID, err := r.resolveVolumeGroupID(ctx, drv, vg, labels)
+	vgID, err := r.resolveVolumeGroupID(ctx, drv, driverName, vg)
 	if err != nil {
 		logger.V(1).Info("Could not resolve volume group ID",
 			"vg", vg.Name, "error", err)
@@ -138,53 +137,23 @@ func (r *DRPlanReconciler) resolveDriverForVG(
 	return r.Registry.GetDriver(driverName)
 }
 
-// resolveVolumeGroupID obtains the driver-level VolumeGroupID via the
-// idempotent CreateVolumeGroup call, following the same pattern as
-// FailoverHandler.resolveVolumeGroupID. Labels must include site-role so
-// that the CreateOrUpdate path preserves the correct replicationState.
+// resolveVolumeGroupID computes a deterministic VolumeGroupID and validates
+// that the VR/VGR exists via GetVolumeGroup. The DRPlan reconciler's
+// ensureVolumeGroupReplication owns creation; health polling is read-only.
 func (r *DRPlanReconciler) resolveVolumeGroupID(
 	ctx context.Context,
 	drv drivers.StorageProvider,
+	driverName string,
 	vg soteriav1alpha1.VolumeGroupInfo,
-	labels map[string]string,
 ) (drivers.VolumeGroupID, error) {
-	var pvcNames []string
-	if r.PVCResolver != nil {
-		for _, vmName := range vg.VMNames {
-			names, err := r.PVCResolver.ResolvePVCNames(ctx, vmName, vg.Namespace)
-			if err != nil {
-				return "", fmt.Errorf("resolving PVC names for VM %s/%s: %w", vg.Namespace, vmName, err)
-			}
-			pvcNames = append(pvcNames, names...)
+	vgID := drivers.VolumeGroupIDFor(driverName, vg.Namespace, vg.Name)
+	if _, err := drv.GetVolumeGroup(ctx, vgID); err != nil {
+		if errors.Is(err, drivers.ErrVolumeGroupNotFound) {
+			return "", fmt.Errorf("VR/VGR not yet created by DRPlan reconciler for volume group %s: %w", vg.Name, err)
 		}
-	}
-
-	info, err := drv.CreateVolumeGroup(ctx, drivers.VolumeGroupSpec{
-		Name:      vg.Name,
-		Namespace: vg.Namespace,
-		PVCNames:  pvcNames,
-		Labels:    labels,
-	})
-	if err != nil {
 		return "", fmt.Errorf("resolving volume group %s: %w", vg.Name, err)
 	}
-	return info.ID, nil
-}
-
-// volumeGroupLabels returns the label set that must be passed to
-// CreateVolumeGroup during health-poll ID resolution so the CreateOrUpdate
-// semantics preserve the correct site-aware replicationState.
-func (r *DRPlanReconciler) volumeGroupLabels(plan *soteriav1alpha1.DRPlan) map[string]string {
-	labels := map[string]string{
-		drivers.SiteRoleLabel: r.siteReplicationRole(plan),
-		drivers.LabelDRPlan:   plan.Name,
-	}
-	vrClass := plan.Spec.VolumeReplicationDriver.VolumeReplicationClass
-	if vrClass != "" {
-		labels[drivers.VolumeReplicationClassLabel] = vrClass
-		labels[drivers.VolumeGroupReplicationClassLabel] = vrClass
-	}
-	return labels
+	return vgID, nil
 }
 
 // mapReplicationStatus converts a driver ReplicationStatus into a

@@ -18,6 +18,7 @@ package drexecution
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -32,6 +33,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
+	"github.com/soteria-project/soteria/pkg/drivers"
+	fakedrv "github.com/soteria-project/soteria/pkg/drivers/fake"
 	"github.com/soteria-project/soteria/pkg/engine"
 )
 
@@ -1633,4 +1636,37 @@ func TestDRExecutionReconciler_ReprotectOwnership(t *testing.T) {
 	}
 
 	reconcileAndAssertStartTime(t, cl, r, "exec-reprotect", false)
+}
+
+func TestBuildVolumeGroupEntries_VolumeGroupNotFound(t *testing.T) {
+	fakeDriver := fakedrv.New()
+	vgID := drivers.VolumeGroupIDFor("noop", "default", "vg-db")
+	fakeDriver.OnGetVolumeGroup(vgID).Return(drivers.ErrVolumeGroupNotFound)
+
+	registry := drivers.NewRegistry()
+	registry.RegisterDriver("noop", func() drivers.StorageProvider { return fakeDriver })
+
+	plan := newSiteAwarePlan("plan-1", "dc-primary", "dc-secondary", soteriav1alpha1.PhaseFailedOver)
+	plan.Status.Waves = []soteriav1alpha1.WaveInfo{
+		{
+			Groups: []soteriav1alpha1.VolumeGroupInfo{
+				{Name: "vg-db", Namespace: "default"},
+			},
+		},
+	}
+
+	r := &DRExecutionReconciler{
+		WaveExecutor: &engine.WaveExecutor{Registry: registry},
+	}
+
+	_, err := r.buildVolumeGroupEntries(context.Background(), plan)
+	if err == nil {
+		t.Fatal("buildVolumeGroupEntries should fail when GetVolumeGroup returns ErrVolumeGroupNotFound")
+	}
+	if !strings.Contains(err.Error(), "VR/VGR not yet created by DRPlan reconciler") {
+		t.Fatalf("error %q should mention DRPlan-created VR/VGR", err)
+	}
+	if !strings.Contains(err.Error(), "vg-db") {
+		t.Fatalf("error %q should mention the missing volume group", err)
+	}
 }

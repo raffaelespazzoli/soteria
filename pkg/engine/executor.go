@@ -128,6 +128,7 @@ type ExecutionGroup struct {
 	Driver       drivers.StorageProvider
 	Drivers      map[string]drivers.StorageProvider
 	WaveIndex    int
+	DriverType   string
 	StepRecorder StepRecorder
 	PVCResolver  PVCResolver
 	DriverLabels map[string]string
@@ -489,6 +490,7 @@ func (e *WaveExecutor) executeGroup(
 		Driver:       fallbackDriver,
 		Drivers:      driverMap,
 		WaveIndex:    waveIdx,
+		DriverType:   driverName,
 		StepRecorder: noopStepRecorder{},
 		PVCResolver:  e.PVCResolver,
 		DriverLabels: e.DriverLabels,
@@ -1019,6 +1021,7 @@ func (e *WaveExecutor) BuildExecutionGroups(
 				Driver:       fallbackDriver,
 				Drivers:      driverMap,
 				WaveIndex:    waveIdx,
+				DriverType:   driverName,
 				PVCResolver:  e.PVCResolver,
 				DriverLabels: drvLabels,
 			})
@@ -1273,6 +1276,7 @@ func (e *WaveExecutor) executeRetryGroup(
 		Driver:       fallbackDriver,
 		Drivers:      driverMap,
 		WaveIndex:    target.WaveIndex,
+		DriverType:   driverName,
 		StepRecorder: noopStepRecorder{},
 		PVCResolver:  e.PVCResolver,
 		DriverLabels: e.DriverLabels,

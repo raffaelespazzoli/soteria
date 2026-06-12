@@ -1347,8 +1347,22 @@ func TestWaveExecutor_StepRecorder_NoopBehavior(t *testing.T) {
 		Config:    FailoverConfig{GracefulShutdown: false},
 	}
 
-	executor := newTestExecutor(cl, &mockVMDiscoverer{vms: vms},
-		&mockNamespaceLookup{levels: map[string]soteriav1alpha1.ConsistencyLevel{"ns-1": soteriav1alpha1.ConsistencyLevelVM}})
+	noopDrv := noop.New()
+	_, _ = noopDrv.CreateVolumeGroup(context.Background(), drivers.VolumeGroupSpec{
+		Name: "vm-ns-1-vm-1", Namespace: "ns-1",
+	})
+	seededReg := drivers.NewRegistry()
+	seededReg.SetFallbackDriver(func() drivers.StorageProvider { return noopDrv })
+
+	nsLevels := map[string]soteriav1alpha1.ConsistencyLevel{
+		"ns-1": soteriav1alpha1.ConsistencyLevelVM,
+	}
+	executor := &WaveExecutor{
+		Client:          cl,
+		VMDiscoverer:    &mockVMDiscoverer{vms: vms},
+		NamespaceLookup: &mockNamespaceLookup{levels: nsLevels},
+		Registry:        seededReg,
+	}
 
 	err := executor.Execute(context.Background(), ExecuteInput{
 		Execution: exec,

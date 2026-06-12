@@ -109,8 +109,9 @@ func makeExecutionGroup(
 			VMs:          vms,
 			VolumeGroups: vgs,
 		},
-		Driver:    drv,
-		WaveIndex: wave,
+		Driver:     drv,
+		WaveIndex:  wave,
+		DriverType: "noop",
 	}
 }
 
@@ -141,8 +142,8 @@ func disasterConfig() FailoverConfig {
 
 func TestFailoverHandler_Graceful_FullSuccess(t *testing.T) {
 	drv := fake.New()
-	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
-		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
+	drv.OnGetVolumeGroup("noop-ns1/vg-db").ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "noop-ns1/vg-db", Name: "vg-db"},
 	})
 
 	vm := newMockVMManager()
@@ -213,8 +214,8 @@ func TestFailoverHandler_Graceful_Step0_StopVMFails(t *testing.T) {
 
 func TestFailoverHandler_Graceful_PerGroup_UnifiedPath(t *testing.T) {
 	drv := fake.New()
-	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
-		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
+	drv.OnGetVolumeGroup("noop-ns1/vg-db").ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "noop-ns1/vg-db", Name: "vg-db"},
 	})
 
 	vm := newMockVMManager()
@@ -246,8 +247,8 @@ func TestFailoverHandler_Graceful_PerGroup_UnifiedPath(t *testing.T) {
 
 func TestFailoverHandler_Graceful_PerGroup_StartVMFails(t *testing.T) {
 	drv := fake.New()
-	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
-		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
+	drv.OnGetVolumeGroup("noop-ns1/vg-db").ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "noop-ns1/vg-db", Name: "vg-db"},
 	})
 
 	vm := newMockVMManager()
@@ -273,8 +274,8 @@ func TestFailoverHandler_Graceful_PerGroup_StartVMFails(t *testing.T) {
 
 func TestFailoverHandler_Graceful_PerGroup_StepStatusRecorded(t *testing.T) {
 	drv := fake.New()
-	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
-		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
+	drv.OnGetVolumeGroup("noop-ns1/vg-db").ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "noop-ns1/vg-db", Name: "vg-db"},
 	})
 	vm := newMockVMManager()
 	handler := &FailoverHandler{
@@ -422,7 +423,7 @@ func TestFailoverHandler_Graceful_Step0_DeduplicatesVMs(t *testing.T) {
 	}
 
 	// PreExecute should not call any driver methods.
-	if drv.Called("StopReplication") || drv.Called("CreateVolumeGroup") {
+	if drv.Called("StopReplication") || drv.Called("GetVolumeGroup") {
 		t.Error("PreExecute should not call storage driver methods")
 	}
 }
@@ -456,8 +457,8 @@ func TestFailoverHandler_DisasterConfig_NoStep0(t *testing.T) {
 
 func TestFailoverHandler_DisasterConfig_StopReplicationAndStartVM(t *testing.T) {
 	drv := fake.New()
-	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
-		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
+	drv.OnGetVolumeGroup("noop-ns1/vg-db").ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "noop-ns1/vg-db", Name: "vg-db"},
 	})
 
 	vm := newMockVMManager()
@@ -494,8 +495,8 @@ func TestFailoverHandler_DisasterConfig_StopReplicationAndStartVM(t *testing.T) 
 
 func TestFailoverHandler_DisasterConfig_NoSetSource(t *testing.T) {
 	drv := fake.New()
-	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
-		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
+	drv.OnGetVolumeGroup("noop-ns1/vg-db").ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "noop-ns1/vg-db", Name: "vg-db"},
 	})
 
 	vm := newMockVMManager()
@@ -521,11 +522,11 @@ func TestFailoverHandler_DisasterConfig_NoSetSource(t *testing.T) {
 
 func TestFailover_Disaster_FullSuccess(t *testing.T) {
 	drv := fake.New()
-	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
-		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
+	drv.OnGetVolumeGroup("noop-ns1/vg-db").ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "noop-ns1/vg-db", Name: "vg-db"},
 	})
-	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
-		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-2", Name: "vg-app"},
+	drv.OnGetVolumeGroup("noop-ns1/vg-app").ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "noop-ns1/vg-app", Name: "vg-app"},
 	})
 
 	vm := newMockVMManager()
@@ -585,10 +586,10 @@ func TestFailover_Disaster_FullSuccess(t *testing.T) {
 
 func TestFailover_Disaster_StopReplicationFails(t *testing.T) {
 	drv := fake.New()
-	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
-		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
+	drv.OnGetVolumeGroup("noop-ns1/vg-db").ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "noop-ns1/vg-db", Name: "vg-db"},
 	})
-	drv.OnStopReplication("vg-1").Return(errors.New("force stop failed: storage backend error"))
+	drv.OnStopReplication("noop-ns1/vg-db").Return(errors.New("force stop failed: storage backend error"))
 
 	vm := newMockVMManager()
 	handler := &FailoverHandler{
@@ -625,8 +626,8 @@ func TestFailover_Disaster_StopReplicationFails(t *testing.T) {
 
 func TestFailover_Disaster_StartVMFails(t *testing.T) {
 	drv := fake.New()
-	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
-		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
+	drv.OnGetVolumeGroup("noop-ns1/vg-db").ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "noop-ns1/vg-db", Name: "vg-db"},
 	})
 
 	vm := newMockVMManager()
@@ -663,11 +664,11 @@ func TestFailover_Disaster_StartVMFails(t *testing.T) {
 
 func TestFailover_Disaster_StepStatusRecorded(t *testing.T) {
 	drv := fake.New()
-	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
-		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
+	drv.OnGetVolumeGroup("noop-ns1/vg-db").ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "noop-ns1/vg-db", Name: "vg-db"},
 	})
-	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
-		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-2", Name: "vg-app"},
+	drv.OnGetVolumeGroup("noop-ns1/vg-app").ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "noop-ns1/vg-app", Name: "vg-app"},
 	})
 
 	vm := newMockVMManager()
@@ -754,8 +755,8 @@ func TestFailover_Disaster_EmptyGroup(t *testing.T) {
 
 func TestFailover_Disaster_ContextCancelled(t *testing.T) {
 	drv := fake.New()
-	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
-		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
+	drv.OnGetVolumeGroup("noop-ns1/vg-db").ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "noop-ns1/vg-db", Name: "vg-db"},
 	})
 
 	vm := newMockVMManager()
@@ -787,8 +788,8 @@ func TestFailover_Disaster_ContextCancelled(t *testing.T) {
 
 func TestFailover_Disaster_NoSetSource(t *testing.T) {
 	drv := fake.New()
-	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
-		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
+	drv.OnGetVolumeGroup("noop-ns1/vg-db").ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "noop-ns1/vg-db", Name: "vg-db"},
 	})
 
 	vm := newMockVMManager()
@@ -810,8 +811,8 @@ func TestFailover_Disaster_NoSetSource(t *testing.T) {
 	}
 
 	drv.Reset()
-	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
-		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
+	drv.OnGetVolumeGroup("noop-ns1/vg-db").ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "noop-ns1/vg-db", Name: "vg-db"},
 	})
 
 	handler2 := &FailoverHandler{
@@ -829,14 +830,14 @@ func TestFailover_Disaster_NoSetSource(t *testing.T) {
 
 func TestFailover_Disaster_MultipleVolumeGroups(t *testing.T) {
 	drv := fake.New()
-	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
-		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
+	drv.OnGetVolumeGroup("noop-ns1/vg-db").ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "noop-ns1/vg-db", Name: "vg-db"},
 	})
-	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
-		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-2", Name: "vg-logs"},
+	drv.OnGetVolumeGroup("noop-ns1/vg-logs").ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "noop-ns1/vg-logs", Name: "vg-logs"},
 	})
-	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
-		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-3", Name: "vg-config"},
+	drv.OnGetVolumeGroup("noop-ns1/vg-config").ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "noop-ns1/vg-config", Name: "vg-config"},
 	})
 
 	vm := newMockVMManager()
@@ -889,8 +890,8 @@ func TestFailover_Disaster_MultipleVolumeGroups(t *testing.T) {
 
 func TestFailover_Disaster_PreExecute_NoGracefulShutdown(t *testing.T) {
 	drv := fake.New()
-	drv.OnCreateVolumeGroup().ReturnResult(fake.Response{
-		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "vg-1", Name: "vg-db"},
+	drv.OnGetVolumeGroup("noop-ns1/vg-db").ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "noop-ns1/vg-db", Name: "vg-db"},
 	})
 
 	vm := newMockVMManager()
@@ -924,7 +925,33 @@ func TestFailover_Disaster_PreExecute_NoGracefulShutdown(t *testing.T) {
 	if drv.Called("GetReplicationStatus") {
 		t.Error("GetReplicationStatus should not be called during PreExecute for disaster")
 	}
-	if drv.Called("CreateVolumeGroup") {
-		t.Error("CreateVolumeGroup should not be called during PreExecute for disaster")
+	if drv.Called("GetVolumeGroup") {
+		t.Error("GetVolumeGroup should not be called during PreExecute for disaster")
+	}
+}
+
+func TestFailover_ResolveVolumeGroupNotFound(t *testing.T) {
+	drv := fake.New()
+	drv.OnGetVolumeGroup("noop-ns1/vg-db").Return(drivers.ErrVolumeGroupNotFound)
+
+	vm := newMockVMManager()
+	handler := &FailoverHandler{
+		VMManager: vm,
+		Config:    disasterConfig(),
+	}
+
+	vms := []VMReference{{Name: "vm-db01", Namespace: "ns1"}}
+	vgs := []soteriav1alpha1.VolumeGroupInfo{makeVolumeGroupInfo("vg-db", "ns1", "vm-db01")}
+	group := makeExecutionGroup("wave-1-group-0", vms, vgs, drv, 0)
+
+	err := handler.ExecuteGroup(context.Background(), group)
+	if err == nil {
+		t.Fatal("ExecuteGroup should fail when VG not found")
+	}
+	if !strings.Contains(err.Error(), "VR/VGR not yet created by DRPlan reconciler") {
+		t.Errorf("Error should mention DRPlan reconciler, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "vg-db") {
+		t.Errorf("Error should mention volume group name, got: %v", err)
 	}
 }

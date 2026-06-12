@@ -39,6 +39,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/events"
+	replicationv1alpha1 "github.com/csi-addons/kubernetes-csi-addons/api/replication.storage/v1alpha1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -60,6 +61,7 @@ var (
 	testEnv       *envtest.Environment
 	testClientset *kubernetes.Clientset
 	cancelFunc    context.CancelFunc
+	testNoopDrv   *noop.Driver
 )
 
 func TestMain(m *testing.M) {
@@ -70,6 +72,7 @@ func TestMain(m *testing.M) {
 	_ = soteriav1alpha1.AddToScheme(testScheme)
 	_ = kubevirtv1.AddToScheme(testScheme)
 	_ = apiextensionsv1.AddToScheme(testScheme)
+	_ = replicationv1alpha1.AddToScheme(testScheme)
 
 	testEnv = &envtest.Environment{
 		Scheme: testScheme,
@@ -78,6 +81,8 @@ func TestMain(m *testing.M) {
 				drplanCRD(),
 				drexecutionCRD(),
 				virtualMachineCRD(),
+				volumeReplicationCRD(),
+				volumeGroupReplicationCRD(),
 			},
 		},
 		BinaryAssetsDirectory: os.Getenv("KUBEBUILDER_ASSETS"),
@@ -286,6 +291,84 @@ func virtualMachineCRD() *apiextensionsv1.CustomResourceDefinition {
 				Name:    "v1",
 				Served:  true,
 				Storage: true,
+				Schema: &apiextensionsv1.CustomResourceValidation{
+					OpenAPIV3Schema: &apiextensionsv1.JSONSchemaProps{
+						Type: "object",
+						Properties: map[string]apiextensionsv1.JSONSchemaProps{
+							"spec": {
+								Type:                   "object",
+								XPreserveUnknownFields: boolPtr(true),
+							},
+							"status": {
+								Type:                   "object",
+								XPreserveUnknownFields: boolPtr(true),
+							},
+						},
+					},
+				},
+			}},
+		},
+	}
+}
+
+func volumeReplicationCRD() *apiextensionsv1.CustomResourceDefinition {
+	return &apiextensionsv1.CustomResourceDefinition{
+		ObjectMeta: metav1.ObjectMeta{Name: "volumereplications.replication.storage.openshift.io"},
+		Spec: apiextensionsv1.CustomResourceDefinitionSpec{
+			Group: "replication.storage.openshift.io",
+			Names: apiextensionsv1.CustomResourceDefinitionNames{
+				Plural:   "volumereplications",
+				Singular: "volumereplication",
+				Kind:     "VolumeReplication",
+				ListKind: "VolumeReplicationList",
+			},
+			Scope: apiextensionsv1.NamespaceScoped,
+			Versions: []apiextensionsv1.CustomResourceDefinitionVersion{{
+				Name:    "v1alpha1",
+				Served:  true,
+				Storage: true,
+				Subresources: &apiextensionsv1.CustomResourceSubresources{
+					Status: &apiextensionsv1.CustomResourceSubresourceStatus{},
+				},
+				Schema: &apiextensionsv1.CustomResourceValidation{
+					OpenAPIV3Schema: &apiextensionsv1.JSONSchemaProps{
+						Type: "object",
+						Properties: map[string]apiextensionsv1.JSONSchemaProps{
+							"spec": {
+								Type:                   "object",
+								XPreserveUnknownFields: boolPtr(true),
+							},
+							"status": {
+								Type:                   "object",
+								XPreserveUnknownFields: boolPtr(true),
+							},
+						},
+					},
+				},
+			}},
+		},
+	}
+}
+
+func volumeGroupReplicationCRD() *apiextensionsv1.CustomResourceDefinition {
+	return &apiextensionsv1.CustomResourceDefinition{
+		ObjectMeta: metav1.ObjectMeta{Name: "volumegroupreplications.replication.storage.openshift.io"},
+		Spec: apiextensionsv1.CustomResourceDefinitionSpec{
+			Group: "replication.storage.openshift.io",
+			Names: apiextensionsv1.CustomResourceDefinitionNames{
+				Plural:   "volumegroupreplications",
+				Singular: "volumegroupreplication",
+				Kind:     "VolumeGroupReplication",
+				ListKind: "VolumeGroupReplicationList",
+			},
+			Scope: apiextensionsv1.NamespaceScoped,
+			Versions: []apiextensionsv1.CustomResourceDefinitionVersion{{
+				Name:    "v1alpha1",
+				Served:  true,
+				Storage: true,
+				Subresources: &apiextensionsv1.CustomResourceSubresources{
+					Status: &apiextensionsv1.CustomResourceSubresourceStatus{},
+				},
 				Schema: &apiextensionsv1.CustomResourceValidation{
 					OpenAPIV3Schema: &apiextensionsv1.JSONSchemaProps{
 						Type: "object",
@@ -536,8 +619,9 @@ func patchSiteDiscoveryWithRetry(t *testing.T, ctx context.Context, name string,
 // registered and set as the fallback. Reusable across suite setup and
 // individual test reconcilers.
 func newNoopRegistry() *drivers.Registry {
+	testNoopDrv = noop.New()
 	reg := drivers.NewRegistry()
-	reg.RegisterDriver(noop.ProvisionerName, func() drivers.StorageProvider { return noop.New() })
-	reg.SetFallbackDriver(func() drivers.StorageProvider { return noop.New() })
+	reg.RegisterDriver(noop.ProvisionerName, func() drivers.StorageProvider { return testNoopDrv })
+	reg.SetFallbackDriver(func() drivers.StorageProvider { return testNoopDrv })
 	return reg
 }

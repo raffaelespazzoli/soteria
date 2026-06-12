@@ -1,6 +1,6 @@
 # Story 13.5: Remove CreateVolumeGroup from Engine, Reprotect & Health Paths
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -62,6 +62,11 @@ Additionally, all three functions resolve PVC names via `PVCResolver` before cal
 - [ ] Task 6: Verify (AC: all)
   - [ ] 6.1 Run `make test` — all tests pass
   - [ ] 6.2 Run `make lint-fix && make lint` — zero lint issues
+
+### Review Findings
+
+- [x] [Review][Patch] Reusing `GetVolumeGroup` with the default noop registry breaks noop plans because each lookup returns a fresh in-memory driver [`pkg/drivers/registry.go:96`]
+- [x] [Review][Patch] Add a DRExecution regression test for `resolveVGID` and `buildVolumeGroupEntries` when `GetVolumeGroup` returns `ErrVolumeGroupNotFound` [`pkg/controller/drexecution/reconciler.go:795`]
 
 ## Dev Notes
 

@@ -29,13 +29,14 @@ package drexecution
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -125,7 +126,7 @@ func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	// Fetch the referenced DRPlan early — needed for site-aware role gating.
 	var plan soteriav1alpha1.DRPlan
 	if err := r.Get(ctx, client.ObjectKey{Name: exec.Spec.PlanName}, &plan); err != nil {
-		if errors.IsNotFound(err) {
+		if apierrors.IsNotFound(err) {
 			logger.Info("Referenced DRPlan not found", "plan", exec.Spec.PlanName)
 			return r.failExecution(ctx, &exec, "PlanNotFound",
 				fmt.Sprintf("DRPlan %q not found", exec.Spec.PlanName))
@@ -718,8 +719,8 @@ func (r *DRExecutionReconciler) reconcileReprotect(
 
 // buildVolumeGroupEntries collects all volume groups from the plan's wave
 // status, resolves a driver per VG, and resolves VolumeGroupIDs via
-// CreateVolumeGroup (idempotent). This gives the ReprotectHandler everything
-// it needs without depending on the wave executor.
+// GetVolumeGroup. This gives the ReprotectHandler everything it needs
+// without depending on the wave executor.
 func (r *DRExecutionReconciler) buildVolumeGroupEntries(
 	ctx context.Context, plan *soteriav1alpha1.DRPlan,
 ) ([]engine.VolumeGroupEntry, error) {
@@ -727,6 +728,7 @@ func (r *DRExecutionReconciler) buildVolumeGroupEntries(
 		return nil, fmt.Errorf("WaveExecutor required for VG resolution")
 	}
 
+	driverType := plan.Spec.VolumeReplicationDriver.Type
 	var entries []engine.VolumeGroupEntry
 	seen := make(map[string]bool)
 
@@ -738,12 +740,12 @@ func (r *DRExecutionReconciler) buildVolumeGroupEntries(
 			}
 			seen[key] = true
 
-			drv, err := r.WaveExecutor.ResolveVGDriver(ctx, plan.Spec.VolumeReplicationDriver.Type)
+			drv, err := r.WaveExecutor.ResolveVGDriver(ctx, driverType)
 			if err != nil {
 				return nil, fmt.Errorf("resolving driver for volume group %s: %w", vg.Name, err)
 			}
 
-			vgID, err := r.resolveVGID(ctx, drv, vg)
+			vgID, err := r.resolveVGID(ctx, drv, driverType, vg)
 			if err != nil {
 				return nil, fmt.Errorf("resolving volume group ID for %s: %w", vg.Name, err)
 			}
@@ -787,31 +789,20 @@ func (r *DRExecutionReconciler) reconcileReprotectResume(
 	return r.reconcileReprotect(ctx, exec, plan)
 }
 
-// resolveVGID resolves a VolumeGroupInfo to a driver-level VolumeGroupID
-// via CreateVolumeGroup (idempotent).
+// resolveVGID computes a deterministic VolumeGroupID and validates that the
+// VR/VGR exists via GetVolumeGroup. The DRPlan reconciler owns VR/VGR
+// creation; this path is read-only.
 func (r *DRExecutionReconciler) resolveVGID(
-	ctx context.Context, drv drivers.StorageProvider, vg soteriav1alpha1.VolumeGroupInfo,
+	ctx context.Context, drv drivers.StorageProvider, driverType string, vg soteriav1alpha1.VolumeGroupInfo,
 ) (drivers.VolumeGroupID, error) {
-	var pvcNames []string
-	if r.WaveExecutor != nil && r.WaveExecutor.PVCResolver != nil {
-		for _, vmName := range vg.VMNames {
-			names, err := r.WaveExecutor.PVCResolver.ResolvePVCNames(ctx, vmName, vg.Namespace)
-			if err != nil {
-				return "", fmt.Errorf("resolving PVC names for VM %s/%s: %w", vg.Namespace, vmName, err)
-			}
-			pvcNames = append(pvcNames, names...)
+	vgID := drivers.VolumeGroupIDFor(driverType, vg.Namespace, vg.Name)
+	if _, err := drv.GetVolumeGroup(ctx, vgID); err != nil {
+		if errors.Is(err, drivers.ErrVolumeGroupNotFound) {
+			return "", fmt.Errorf("VR/VGR not yet created by DRPlan reconciler for volume group %s: %w", vg.Name, err)
 		}
-	}
-
-	info, err := drv.CreateVolumeGroup(ctx, drivers.VolumeGroupSpec{
-		Name:      vg.Name,
-		Namespace: vg.Namespace,
-		PVCNames:  pvcNames,
-	})
-	if err != nil {
 		return "", fmt.Errorf("resolving volume group %s: %w", vg.Name, err)
 	}
-	return info.ID, nil
+	return vgID, nil
 }
 
 // reconcileResume handles the resume path for in-progress executions after
@@ -1245,7 +1236,7 @@ func (r *DRExecutionReconciler) verifyExclusiveExecution(
 		// cache is stale. Return a conflict error to trigger ScyllaRetry
 		// backoff rather than falsely declaring exclusivity.
 		if !selfVisible {
-			return errors.NewConflict(
+			return apierrors.NewConflict(
 				soteriav1alpha1.Resource("drexecutions"), exec.Name,
 				fmt.Errorf("self not visible in label-filtered list; cache may be stale"))
 		}

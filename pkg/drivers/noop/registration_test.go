@@ -17,6 +17,7 @@ limitations under the License.
 package noop
 
 import (
+	"context"
 	"testing"
 
 	"github.com/soteria-project/soteria/pkg/drivers"
@@ -39,5 +40,39 @@ func TestGetDriver_ProvisionerName(t *testing.T) {
 	}
 	if drv == nil {
 		t.Fatalf("GetDriver(%q) returned nil provider", ProvisionerName)
+	}
+}
+
+func TestGetDriver_DefaultRegistry_SharesStateAcrossLookups(t *testing.T) {
+	t.Helper()
+
+	creator, err := drivers.GetDriver(PlanDriverName)
+	if err != nil {
+		t.Fatalf("GetDriver(%q) returned error: %v", PlanDriverName, err)
+	}
+
+	reader, err := drivers.GetDriver(PlanDriverName)
+	if err != nil {
+		t.Fatalf("second GetDriver(%q) returned error: %v", PlanDriverName, err)
+	}
+
+	spec := drivers.VolumeGroupSpec{
+		Name:      "shared-state-" + t.Name(),
+		Namespace: "default",
+	}
+	info, err := creator.CreateVolumeGroup(context.Background(), spec)
+	if err != nil {
+		t.Fatalf("CreateVolumeGroup returned error: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = creator.DeleteVolumeGroup(context.Background(), info.ID)
+	})
+
+	got, err := reader.GetVolumeGroup(context.Background(), info.ID)
+	if err != nil {
+		t.Fatalf("GetVolumeGroup returned error: %v", err)
+	}
+	if got.ID != info.ID {
+		t.Fatalf("GetVolumeGroup returned ID %q, want %q", got.ID, info.ID)
 	}
 }

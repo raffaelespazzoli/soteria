@@ -117,7 +117,7 @@ lint-config: golangci-lint ## Verify golangci-lint linter configuration
 .PHONY: integration
 integration: setup-envtest ## Run integration tests (envtest for controller, ScyllaDB for API server).
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
-	go test -tags=integration ./test/integration/... -v -count=1
+	go test -tags=integration -p 1 ./test/integration/... -v -count=1
 
 .PHONY: helmchart
 helmchart: manifests kustomize ## Render Helm chart from kustomize manifests

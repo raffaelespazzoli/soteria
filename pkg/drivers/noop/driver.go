@@ -21,7 +21,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/google/uuid"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	"github.com/soteria-project/soteria/pkg/drivers"
@@ -73,7 +72,7 @@ func (d *Driver) CreateVolumeGroup(ctx context.Context, spec drivers.VolumeGroup
 		}
 	}
 
-	vgID := drivers.VolumeGroupID("noop-" + uuid.NewString())
+	vgID := drivers.VolumeGroupID("noop-" + spec.Namespace + "/" + spec.Name)
 	info := drivers.VolumeGroupInfo{
 		ID:       vgID,
 		Name:     spec.Name,
@@ -221,16 +220,21 @@ func copyInfo(src drivers.VolumeGroupInfo) drivers.VolumeGroupInfo {
 }
 
 func init() {
+	// The default registry must reuse a single in-memory noop driver instance.
+	// Story 13.5 switches failover/reprotect/health paths to GetVolumeGroup,
+	// which means volume groups created on one lookup must be visible to later
+	// read-only lookups in the same process.
+	shared := New()
 	drivers.RegisterDriver(ProvisionerName, func() drivers.StorageProvider {
-		return New()
+		return shared
 	})
 	drivers.RegisterDriver(PlanDriverName, func() drivers.StorageProvider {
-		return New()
+		return shared
 	})
 	// The noop driver is the catch-all: any CSI provisioner not claimed by a
 	// real DR storage driver falls through to noop (no storage-level
 	// replication actions). This removes the need for an explicit flag.
 	drivers.SetFallbackDriver(func() drivers.StorageProvider {
-		return New()
+		return shared
 	})
 }
