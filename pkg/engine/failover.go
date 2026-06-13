@@ -26,21 +26,18 @@ limitations under the License.
 //   planned_migration → {GracefulShutdown: true}
 //   disaster          → {GracefulShutdown: false}
 //
-// The failover handler only moves volumes to NonReplicated and starts VMs.
-// Re-establishing replication (SetSource) is the reprotect handler's job.
+// Per-group execution promotes the target volume to writable and starts VMs:
 //
-// Per-group execution is a single unified path for both planned and disaster:
+//	SetSource → StartVM
 //
-//	StopReplication → StartVM
-//
-// StopReplication is idempotent — in the planned case, Step 0 already stopped
-// origin VMs, and per-group StopReplication transitions volumes to
-// NonReplicated. In the disaster case, StopReplication breaks the replication
-// link and promotes target disks to writable.
+// SetSource sets spec.replicationState = primary (writable). After Story 13.2,
+// StopReplication always sets secondary (read-only), so the per-group path
+// must use SetSource to make the target volume writable before starting VMs.
 //
 // When GracefulShutdown=true (planned migration), PreExecute runs Step 0:
 //
-//	Stop all origin VMs (graceful shutdown).
+//  1. Stop all origin VMs (graceful shutdown).
+//  2. Demote origin VR/VGR to secondary via StopReplication (read-only).
 //
 // When GracefulShutdown=false (disaster), PreExecute is a no-op because the
 // origin site may be unreachable.
@@ -60,18 +57,19 @@ import (
 )
 
 const (
-	StepStopReplication = "StopReplication"
-	StepStartVM         = "StartVM"
-	StepWaitVMReady     = "WaitVMReady"
+	StepSetSource   = "SetSource"
+	StepStartVM     = "StartVM"
+	StepWaitVMReady = "WaitVMReady"
 )
 
 // FailoverConfig drives FailoverHandler behavior without mode-string switching.
 type FailoverConfig struct {
-	// GracefulShutdown enables Step 0 (stop VMs).
-	// When true (planned migration), PreExecute stops all origin VMs.
+	// GracefulShutdown enables Step 0 (stop VMs + demote source to secondary).
+	// When true (planned migration), PreExecute stops all origin VMs and
+	// calls StopReplication to demote source VR/VGR to secondary (read-only).
 	// When false (disaster), PreExecute is a no-op because the origin site
 	// may be unreachable. Per-group execution is identical in both modes:
-	// StopReplication → StartVM.
+	// SetSource → StartVM.
 	GracefulShutdown bool
 }
 
@@ -108,7 +106,10 @@ func resolveVolumeGroupID(
 //
 // When GracefulShutdown=true (planned migration):
 //
-//	Stop all origin VMs (graceful shutdown).
+//  1. Stop all origin VMs (graceful shutdown).
+//  2. Demote all source VR/VGR to secondary (read-only) via StopReplication.
+//     Both resolve and StopReplication failures fail the execution to
+//     preserve the AC5 rest-state invariant (no dual-primary).
 func (h *FailoverHandler) PreExecute(ctx context.Context, groups []ExecutionGroup) error {
 	if !h.Config.GracefulShutdown {
 		return nil
@@ -143,15 +144,42 @@ func (h *FailoverHandler) PreExecute(ctx context.Context, groups []ExecutionGrou
 		}
 	}
 
+	// Demote source VR/VGR to secondary (read-only) after VMs are stopped.
+	type vgKey struct{ name, namespace string }
+	seenVG := make(map[vgKey]bool)
+	for _, g := range groups {
+		for _, vg := range g.Chunk.VolumeGroups {
+			k := vgKey{name: vg.Name, namespace: vg.Namespace}
+			if seenVG[k] {
+				continue
+			}
+			seenVG[k] = true
+
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+
+			driver := g.DriverForVG(vg.Name)
+			vgID, err := resolveVolumeGroupID(ctx, driver, g.DriverType, vg)
+			if err != nil {
+				return fmt.Errorf("resolving volume group %s in Step 0: %w", vg.Name, err)
+			}
+
+			if err := driver.StopReplication(ctx, vgID); err != nil {
+				return fmt.Errorf("demoting volume group %s to secondary in Step 0: %w", vg.Name, err)
+			}
+		}
+	}
+
 	return nil
 }
 
 // ExecuteGroup implements DRGroupHandler for a single DRGroup within a wave.
 // Returns *GroupError for step failures to enable structured error propagation.
 //
-// Unified path for both planned and disaster: StopReplication → StartVM.
-// StopReplication is idempotent — when Step 0 has already moved volumes to
-// NonReplicated (planned), it is a no-op.
+// Unified path for both planned and disaster: SetSource → StartVM.
+// SetSource promotes the target VR/VGR to primary (writable) so VMs can
+// start on writable volumes.
 func (h *FailoverHandler) ExecuteGroup(ctx context.Context, group ExecutionGroup) error {
 	logger := log.FromContext(ctx)
 
@@ -163,13 +191,13 @@ func (h *FailoverHandler) ExecuteGroup(ctx context.Context, group ExecutionGroup
 		driver := group.DriverForVG(vg.Name)
 		vgID, err := resolveVolumeGroupID(ctx, driver, group.DriverType, vg)
 		if err != nil {
-			return &GroupError{StepName: StepStopReplication, Target: vg.Name, Err: err}
+			return &GroupError{StepName: StepSetSource, Target: vg.Name, Err: err}
 		}
 
-		logger.V(1).Info("Stopping replication for DRGroup volume group",
+		logger.V(1).Info("Promoting volume group to primary (SetSource)",
 			"volumeGroup", vg.Name, "wave", group.WaveIndex)
-		if err := driver.StopReplication(ctx, vgID); err != nil {
-			return &GroupError{StepName: StepStopReplication, Target: vg.Name, Err: err}
+		if err := driver.SetSource(ctx, vgID); err != nil {
+			return &GroupError{StepName: StepSetSource, Target: vg.Name, Err: err}
 		}
 	}
 
@@ -221,17 +249,17 @@ func (h *FailoverHandler) ExecuteGroupWithSteps(
 		driver := group.DriverForVG(vg.Name)
 		vgID, err := resolveVolumeGroupID(ctx, driver, group.DriverType, vg)
 		if err != nil {
-			recordStep(StepStopReplication, "Failed", err.Error())
-			return steps, &GroupError{StepName: StepStopReplication, Target: vg.Name, Err: err}
+			recordStep(StepSetSource, "Failed", err.Error())
+			return steps, &GroupError{StepName: StepSetSource, Target: vg.Name, Err: err}
 		}
-		logger.V(1).Info("Stopping replication for DRGroup volume group",
+		logger.V(1).Info("Promoting volume group to primary (SetSource)",
 			"volumeGroup", vg.Name, "wave", group.WaveIndex)
-		if err := driver.StopReplication(ctx, vgID); err != nil {
-			recordStep(StepStopReplication, "Failed",
-				fmt.Sprintf("Failed to stop replication for volume group %s: %v", vg.Name, err))
-			return steps, &GroupError{StepName: StepStopReplication, Target: vg.Name, Err: err}
+		if err := driver.SetSource(ctx, vgID); err != nil {
+			recordStep(StepSetSource, "Failed",
+				fmt.Sprintf("Failed to set source for volume group %s: %v", vg.Name, err))
+			return steps, &GroupError{StepName: StepSetSource, Target: vg.Name, Err: err}
 		}
-		recordStep(StepStopReplication, "Succeeded", fmt.Sprintf("Stopped replication for volume group %s", vg.Name))
+		recordStep(StepSetSource, "Succeeded", fmt.Sprintf("Set source for volume group %s", vg.Name))
 	}
 
 	for _, vm := range group.Chunk.VMs {

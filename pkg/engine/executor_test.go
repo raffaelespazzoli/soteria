@@ -1047,7 +1047,7 @@ func TestWaveExecutor_PartialFailure_ReportsPartiallySucceeded(t *testing.T) {
 	handler := &mockHandler{
 		failOn: map[string]error{
 			"wave-alpha-group-1": &GroupError{
-				StepName: StepStopReplication,
+				StepName: StepSetSource,
 				Target:   "ns-erp-db",
 				Err:      fmt.Errorf("replication state transition invalid"),
 			},
@@ -1077,7 +1077,7 @@ func TestWaveExecutor_PartialFailure_ReportsPartiallySucceeded(t *testing.T) {
 				if g.Error == "" {
 					t.Error("failed group should have Error set")
 				}
-				if !strings.Contains(g.Error, "StopReplication") {
+				if !strings.Contains(g.Error, "SetSource") {
 					t.Errorf("Error should contain step name, got: %s", g.Error)
 				}
 				if !strings.Contains(g.Error, "ns-erp-db") {

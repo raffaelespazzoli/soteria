@@ -47,7 +47,7 @@ limitations under the License.
 //     discover → group → chunk pipeline at execution time, then executing waves
 //     sequentially with DRGroup chunks within each wave also executing
 //     sequentially. VM-level parallelism within each chunk is preserved by the
-//     handler's internal goroutines (StopReplication per VG, StartVM per VM).
+//     handler's internal goroutines (SetSource per VG, StartVM per VM).
 //     The DRGroupHandler interface abstracts per-group workflow steps; a
 //     NoOpHandler (handler_noop.go) enables testing the executor loop without
 //     real storage operations. The executor uses fail-forward semantics: a failed
@@ -66,14 +66,16 @@ limitations under the License.
 //     — not the execution mode string. The controller maps mode → config:
 //     planned_migration → {GracefulShutdown: true}
 //     disaster          → {GracefulShutdown: false}
-//     When GracefulShutdown=true, PreExecute runs Step 0 (stop all origin VMs).
-//     When GracefulShutdown=false (disaster), PreExecute is a no-op because the
-//     origin site may be unreachable. Per-group execution is a single unified path
-//     for both modes: StopReplication → StartVM. StopReplication is idempotent —
-//     after planned Step 0 it is a no-op; in disaster it breaks the replication
-//     link and promotes target disks to writable. The same handler handles both
-//     failover (from SteadyState) and failback (from DRedSteadyState) — direction
-//     is encoded in state machine phases, not handler logic.
+//     When GracefulShutdown=true, PreExecute runs Step 0: (1) stop all origin VMs,
+//     then (2) StopReplication on each source VR/VGR to demote to secondary
+//     (read-only). Step 0 fails the execution if any demotion fails, preserving
+//     the rest-state invariant (no dual-primary). When GracefulShutdown=false (disaster),
+//     PreExecute is a no-op because the origin site may be unreachable.
+//     Per-group execution is a single unified path for both modes:
+//     SetSource → StartVM. SetSource promotes the target VR/VGR to primary
+//     (writable) so VMs can start on writable volumes. The same handler handles
+//     both failover (from SteadyState) and failback (from DRedSteadyState) —
+//     direction is encoded in state machine phases, not handler logic.
 //
 //   - VMManager interface (vm.go): abstracts KubeVirt VM lifecycle control for
 //     stopping origin VMs (Step 0) and starting target VMs (per-DRGroup).
