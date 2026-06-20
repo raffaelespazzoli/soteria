@@ -29,3 +29,8 @@ go.work
 
 # Kubeconfig might contain secrets
 *.kubeconfig
+
+# AI agent skills and cursor artifacts
+.agents/
+.cursor/skills/
+skills-lock.json
