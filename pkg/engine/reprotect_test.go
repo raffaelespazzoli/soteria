@@ -107,65 +107,14 @@ func TestReprotect_FullSuccess(t *testing.T) {
 		t.Error("expected no timeout")
 	}
 
-	if !d.Called("StopReplication") {
-		t.Error("expected StopReplication to be called")
-	}
 	if !d.Called("SetSource") {
 		t.Error("expected SetSource to be called")
 	}
-	if d.CallCount("StopReplication") != 2 {
-		t.Errorf("expected 2 StopReplication calls, got %d", d.CallCount("StopReplication"))
+	if d.Called("StopReplication") {
+		t.Error("reprotect should not call StopReplication")
 	}
 	if d.CallCount("SetSource") != 2 {
 		t.Errorf("expected 2 SetSource calls, got %d", d.CallCount("SetSource"))
-	}
-}
-
-func TestReprotect_StopReplicationFails_Tolerated(t *testing.T) {
-	d := fake.New()
-	d.OnStopReplication("vg-1").Return(errors.New("site unreachable"))
-	d.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
-		ReplicationStatus: &drivers.ReplicationStatus{Health: drivers.HealthHealthy},
-	})
-
-	cp := &NoOpCheckpointer{}
-	h := &ReprotectHandler{
-		Checkpointer:       cp,
-		HealthPollInterval: 10 * time.Millisecond,
-		HealthTimeout:      1 * time.Second,
-	}
-
-	vgs := []VolumeGroupEntry{makeVGEntry("vg-1", d, "vg-1")}
-
-	result, err := h.Execute(context.Background(), newReprotectInput(vgs))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result.Result() != soteriav1alpha1.ExecutionResultSucceeded {
-		t.Errorf("expected Succeeded despite StopReplication failure, got %s", result.Result())
-	}
-	if result.SetupSucceeded != 1 {
-		t.Errorf("expected 1 succeeded, got %d", result.SetupSucceeded)
-	}
-
-	// Verify StopReplication was called and SetSource proceeded.
-	if d.CallCount("StopReplication") != 1 {
-		t.Errorf("expected 1 StopReplication call, got %d", d.CallCount("StopReplication"))
-	}
-	if d.CallCount("SetSource") != 1 {
-		t.Errorf("expected 1 SetSource call, got %d", d.CallCount("SetSource"))
-	}
-
-	// Verify a warning step was recorded for StopReplication.
-	var foundWarning bool
-	for _, step := range result.Steps {
-		if step.Name == StepReprotectStopReplication && step.Status == reprotectStatusWarning {
-			foundWarning = true
-			break
-		}
-	}
-	if !foundWarning {
-		t.Error("expected a Warning step for StopReplication failure")
 	}
 }
 
@@ -321,8 +270,8 @@ func TestReprotect_HealthMonitoringCompletes(t *testing.T) {
 
 func TestReprotect_ResumeFromHealthMonitoring(t *testing.T) {
 	// Simulate a resume scenario: role setup already done, VGs are already
-	// Source. StopReplication and SetSource are idempotent — calling them
-	// again succeeds. The handler should proceed to health monitoring.
+	// Source. SetSource is idempotent — calling it again succeeds. The
+	// handler should proceed to health monitoring.
 	d := fake.New()
 	d.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
 		ReplicationStatus: &drivers.ReplicationStatus{Health: drivers.HealthHealthy},
@@ -373,10 +322,10 @@ func TestReprotect_CheckpointWrittenPerPoll(t *testing.T) {
 		t.Errorf("expected Succeeded, got %s", result.Result())
 	}
 
-	// Checkpoints: 1 after role setup + 2 during health monitoring (one per poll).
+	// Checkpoints: 1 after SetSource + 2 during health monitoring (one per poll).
 	calls := cp.GetCalls()
 	if len(calls) < 3 {
-		t.Errorf("expected at least 3 checkpoint writes (1 role setup + 2 health polls), got %d", len(calls))
+		t.Errorf("expected at least 3 checkpoint writes (1 SetSource + 2 health polls), got %d", len(calls))
 	}
 }
 
@@ -428,9 +377,9 @@ func TestReprotect_StepStatusRecorded(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Should have: StopReplication(Succeeded), SetSource(Succeeded), HealthMonitoring(Succeeded).
-	if len(result.Steps) < 3 {
-		t.Fatalf("expected at least 3 steps, got %d", len(result.Steps))
+	// Should have: SetSource(Succeeded), HealthMonitoring(Succeeded).
+	if len(result.Steps) < 2 {
+		t.Fatalf("expected at least 2 steps, got %d", len(result.Steps))
 	}
 
 	stepNames := make(map[string]string)
@@ -438,9 +387,6 @@ func TestReprotect_StepStatusRecorded(t *testing.T) {
 		stepNames[s.Name] = s.Status
 	}
 
-	if stepNames[StepReprotectStopReplication] != reprotectStatusSucceeded {
-		t.Errorf("expected StopReplication Succeeded, got %q", stepNames[StepReprotectStopReplication])
-	}
 	if stepNames[StepReprotectSetSource] != reprotectStatusSucceeded {
 		t.Errorf("expected SetSource Succeeded, got %q", stepNames[StepReprotectSetSource])
 	}
@@ -491,9 +437,8 @@ func TestReprotect_DriverCallsMade(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	stopCalls := d.CallsTo("StopReplication")
-	if len(stopCalls) != 1 {
-		t.Fatalf("expected 1 StopReplication call, got %d", len(stopCalls))
+	if d.Called("StopReplication") {
+		t.Error("reprotect should not call StopReplication")
 	}
 
 	srcCalls := d.CallsTo("SetSource")

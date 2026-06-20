@@ -293,6 +293,13 @@ func schema_pkg_apis_soteriaio_v1alpha1_DRExecutionStatus(ref common.ReferenceCa
 							Ref:         ref(v1.Time{}.OpenAPIModelName()),
 						},
 					},
+					"duration": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Duration is the human-readable execution duration, set when the execution reaches a terminal state (Succeeded, PartiallySucceeded, Failed). Persisted so it is available via both the aggregated API server and CRD-based kubectl output.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
 					"conditions": {
 						SchemaProps: spec.SchemaProps{
 							Description: "Conditions represent the latest observations.",

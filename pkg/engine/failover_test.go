@@ -1298,19 +1298,19 @@ func TestStateTableInvariant_FullCycle(t *testing.T) {
 	assertCumulativeCounts(t, "after Phase1", 1, 1, 1, 1)
 
 	// Phase 2: Reprotect (FailedOver → DRedSteadyState)
-	// StopReplication(+1=2), SetSource(+1=2), no VMs
+	// SetSource(+1=2), no StopReplication (reprotect skips it), no VMs
 	runReprotect(t, "Phase2_Reprotect")
-	assertCumulativeCounts(t, "after Phase2", 2, 2, 1, 1)
+	assertCumulativeCounts(t, "after Phase2", 1, 2, 1, 1)
 
 	// Phase 3: Failback (DRedSteadyState → FailedBack)
-	// Step0: StopReplication(+1=3), Per-group: SetSource(+1=3), StopVM(+1=2), StartVM(+1=2)
+	// Step0: StopReplication(+1=2), Per-group: SetSource(+1=3), StopVM(+1=2), StartVM(+1=2)
 	runPlannedFailover(t, "Phase3_Failback")
-	assertCumulativeCounts(t, "after Phase3", 3, 3, 2, 2)
+	assertCumulativeCounts(t, "after Phase3", 2, 3, 2, 2)
 
 	// Phase 4: Restore (FailedBack → SteadyState)
-	// StopReplication(+1=4), SetSource(+1=4), no VMs
+	// SetSource(+1=4), no StopReplication (reprotect skips it), no VMs
 	runReprotect(t, "Phase4_Restore")
-	assertCumulativeCounts(t, "after Phase4", 4, 4, 2, 2)
+	assertCumulativeCounts(t, "after Phase4", 2, 4, 2, 2)
 }
 
 func TestStateTableInvariant_DisasterFailover(t *testing.T) {

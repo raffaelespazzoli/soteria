@@ -29,10 +29,13 @@ limitations under the License.
 //
 // Workflow:
 //
-//	Phase 1 — Role setup: for each VG, StopReplication then SetSource.
-//	  StopReplication failures are tolerated (old active site may be
-//	  unreachable). SetSource failures mark the VG as failed; if ALL VGs
-//	  fail SetSource, the execution fails.
+//	Phase 1 — Role setup: for each VG, call SetSource to set the local VR
+//	  to primary (writable). StopReplication is NOT called here because the
+//	  local VR is already in the correct state (secondary) after failover;
+//	  flipping to secondary then immediately to primary creates an
+//	  unnecessary race with the noop controller's status reconciler.
+//	  SetSource failures mark the VG as failed; if ALL VGs fail SetSource,
+//	  the execution fails.
 //
 //	Phase 2 — Health monitoring: poll GetReplicationStatus at configurable
 //	  intervals until all VGs report HealthHealthy or the timeout expires.
@@ -56,7 +59,6 @@ import (
 )
 
 const (
-	StepReprotectStopReplication  = "StopReplication"
 	StepReprotectSetSource        = "SetSource"
 	StepReprotectHealthMonitoring = "HealthMonitoring"
 
@@ -155,7 +157,10 @@ func (h *ReprotectHandler) Execute(ctx context.Context, input ReprotectInput) (*
 		return result, nil
 	}
 
-	// Phase 1: Role setup — StopReplication + SetSource per VG.
+	// Phase 1: Role setup — SetSource per VG. StopReplication is not called
+	// because the local VR is already secondary after failover; the double-flip
+	// (secondary→secondary→primary) creates an unnecessary race with the noop
+	// controller's status reconciler. SetSource alone flips secondary→primary.
 	var successfulVGs []VolumeGroupEntry
 	var failedVGNames []string
 	var steps []soteriav1alpha1.StepStatus
@@ -165,32 +170,8 @@ func (h *ReprotectHandler) Execute(ctx context.Context, input ReprotectInput) (*
 			return nil, ctx.Err()
 		}
 
-		stopErr := vg.Driver.StopReplication(ctx, vg.VGID)
-		now := metav1.Now()
-		if stopErr != nil {
-			logger.V(1).Info("StopReplication failed for volume group, proceeding",
-				"vg", vg.Info.Name, "error", stopErr)
-			steps = append(steps, soteriav1alpha1.StepStatus{
-				Name:      StepReprotectStopReplication,
-				Status:    reprotectStatusWarning,
-				Message:   fmt.Sprintf("StopReplication failed for %s (tolerated): %v", vg.Info.Name, stopErr),
-				Timestamp: &now,
-			})
-		} else {
-			logger.Info("StopReplication completed", "vg", vg.Info.Name)
-			steps = append(steps, soteriav1alpha1.StepStatus{
-				Name:      StepReprotectStopReplication,
-				Status:    reprotectStatusSucceeded,
-				Message:   fmt.Sprintf("Stopped replication for %s", vg.Info.Name),
-				Timestamp: &now,
-			})
-		}
-
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
-		}
 		setErr := vg.Driver.SetSource(ctx, vg.VGID)
-		now = metav1.Now()
+		now := metav1.Now()
 		if setErr != nil {
 			logger.Info("SetSource failed for volume group",
 				"vg", vg.Info.Name, "error", setErr)

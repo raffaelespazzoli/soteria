@@ -21,6 +21,7 @@ import (
 	"fmt"
 
 	replicationv1alpha1 "github.com/csi-addons/kubernetes-csi-addons/api/replication.storage/v1alpha1"
+	"k8s.io/client-go/util/retry"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -82,7 +83,9 @@ func (d *Driver) listCRsForVG(ctx context.Context, id drivers.VolumeGroupID) (cr
 
 // updateReplicationState sets all CRs in the set to the target state,
 // skipping any CR that is already in that state (idempotent). Each CR
-// is updated individually via client.Update.
+// is updated with retry.RetryOnConflict to handle concurrent status
+// updates from the noop controller (which bumps resourceVersion via
+// Status().Update, causing 409 Conflict on our spec Update).
 func (d *Driver) updateReplicationState(
 	ctx context.Context, set crSet, target replicationv1alpha1.ReplicationState,
 ) error {
@@ -95,11 +98,22 @@ func (d *Driver) updateReplicationState(
 		if set.vrs[i].Spec.ReplicationState == target {
 			continue
 		}
-		set.vrs[i].Spec.ReplicationState = target
-		if err := d.client.Update(ctx, &set.vrs[i]); err != nil {
-			return fmt.Errorf("updating VolumeReplication %s replication state: %w", set.vrs[i].Name, err)
+		name := set.vrs[i].Name
+		key := client.ObjectKeyFromObject(&set.vrs[i])
+		if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			var fresh replicationv1alpha1.VolumeReplication
+			if err := d.client.Get(ctx, key, &fresh); err != nil {
+				return err
+			}
+			if fresh.Spec.ReplicationState == target {
+				return nil
+			}
+			fresh.Spec.ReplicationState = target
+			return d.client.Update(ctx, &fresh)
+		}); err != nil {
+			return fmt.Errorf("updating VolumeReplication %s replication state: %w", name, err)
 		}
-		logger.V(1).Info("Updated VolumeReplication replication state", "name", set.vrs[i].Name, "state", target)
+		logger.V(1).Info("Updated VolumeReplication replication state", "name", name, "state", target)
 	}
 
 	for i := range set.vgrs {
@@ -109,11 +123,22 @@ func (d *Driver) updateReplicationState(
 		if set.vgrs[i].Spec.ReplicationState == target {
 			continue
 		}
-		set.vgrs[i].Spec.ReplicationState = target
-		if err := d.client.Update(ctx, &set.vgrs[i]); err != nil {
-			return fmt.Errorf("updating VolumeGroupReplication %s replication state: %w", set.vgrs[i].Name, err)
+		name := set.vgrs[i].Name
+		key := client.ObjectKeyFromObject(&set.vgrs[i])
+		if err := retry.RetryOnConflict(retry.DefaultRetry, func() error {
+			var fresh replicationv1alpha1.VolumeGroupReplication
+			if err := d.client.Get(ctx, key, &fresh); err != nil {
+				return err
+			}
+			if fresh.Spec.ReplicationState == target {
+				return nil
+			}
+			fresh.Spec.ReplicationState = target
+			return d.client.Update(ctx, &fresh)
+		}); err != nil {
+			return fmt.Errorf("updating VolumeGroupReplication %s replication state: %w", name, err)
 		}
-		logger.V(1).Info("Updated VolumeGroupReplication replication state", "name", set.vgrs[i].Name, "state", target)
+		logger.V(1).Info("Updated VolumeGroupReplication replication state", "name", name, "state", target)
 	}
 
 	return nil

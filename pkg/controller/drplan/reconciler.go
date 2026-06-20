@@ -1612,7 +1612,7 @@ func (r *DRPlanReconciler) updateStatus(
 		if replCond := computeReplicationCondition(replicationHealth, plan.Generation); replCond != nil {
 			meta.SetStatusCondition(&plan.Status.Conditions, *replCond)
 		}
-	} else if plan.Status.ReplicationHealth != nil {
+	} else {
 		plan.Status.ReplicationHealth = nil
 		meta.RemoveStatusCondition(&plan.Status.Conditions, conditionTypeReplicationHealthy)
 	}

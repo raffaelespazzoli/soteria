@@ -216,6 +216,9 @@ func execToRow(exec *soteriav1alpha1.DRExecution) metav1.TableRow {
 }
 
 func execDuration(exec *soteriav1alpha1.DRExecution) string {
+	if exec.Status.Duration != "" {
+		return exec.Status.Duration
+	}
 	if exec.Status.StartTime == nil || exec.Status.CompletionTime == nil {
 		return ""
 	}

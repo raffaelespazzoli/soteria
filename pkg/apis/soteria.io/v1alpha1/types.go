@@ -475,6 +475,12 @@ type DRExecutionStatus struct {
 	StartTime *metav1.Time `json:"startTime,omitempty"`
 	// CompletionTime is when execution finished.
 	CompletionTime *metav1.Time `json:"completionTime,omitempty"`
+	// Duration is the human-readable execution duration, set when the
+	// execution reaches a terminal state (Succeeded, PartiallySucceeded,
+	// Failed). Persisted so it is available via both the aggregated API
+	// server and CRD-based kubectl output.
+	// +optional
+	Duration string `json:"duration,omitempty"`
 	// Conditions represent the latest observations.
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }

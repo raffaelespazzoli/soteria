@@ -646,6 +646,10 @@ func (r *DRExecutionReconciler) reconcileReprotect(
 	exec.Status.Phase = soteriav1alpha1.ResultToPhase(execResult)
 	exec.Status.IsActive = false
 	exec.Status.CompletionTime = &now
+	if exec.Status.StartTime != nil {
+		exec.Status.Duration = exec.Status.CompletionTime.Sub(exec.Status.StartTime.Time).
+			Truncate(time.Second).String()
+	}
 
 	condStatus := metav1.ConditionTrue
 	condReason := "ReprotectSucceeded"
@@ -952,6 +956,8 @@ func (r *DRExecutionReconciler) failExecution(
 		exec.Status.StartTime = &now
 	}
 	exec.Status.CompletionTime = &now
+	exec.Status.Duration = exec.Status.CompletionTime.Sub(exec.Status.StartTime.Time).
+		Truncate(time.Second).String()
 	meta.SetStatusCondition(&exec.Status.Conditions, metav1.Condition{
 		Type:               "Ready",
 		Status:             metav1.ConditionFalse,
