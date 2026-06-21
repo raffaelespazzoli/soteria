@@ -440,6 +440,10 @@ func TestDRExecutionReconciler_SiteAware_OnlyTargetOwns(t *testing.T) {
 		Handler:        &engine.NoOpHandler{},
 		ResumeAnalyzer: &engine.ResumeAnalyzer{},
 		LocalSite:      "west",
+		WaveExecutor: &engine.WaveExecutor{
+			Client:       testClient,
+			VMDiscoverer: engine.NewTypedVMDiscoverer(testClient),
+		},
 	}
 	deadline := time.Now().Add(execTestTimeout)
 	for time.Now().Before(deadline) {
