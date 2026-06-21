@@ -1,6 +1,6 @@
 # Story 14.1: Kind Cluster Provisioning with Cilium Cluster Mesh
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -48,24 +48,34 @@ And all scripts are CI-friendly (no hardcoded paths, configurable via env vars)
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create `hack/multisite/` directory structure (AC: 6)
-  - [ ] 1.1: Create `hack/multisite/kind-east.yaml` — Kind config with `disableDefaultCNI: true`, 1 control-plane + 3 workers, `extraMounts` for Rook OSD raw block paths, unique pod/service CIDRs
-  - [ ] 1.2: Create `hack/multisite/kind-west.yaml` — Same structure as east with non-overlapping pod/service CIDRs
-- [ ] Task 2: Create `hack/multisite/setup-clusters.sh` (AC: 1, 2, 3, 4, 5)
-  - [ ] 2.1: Env var configuration block (cluster names, kubeconfig paths, Cilium version)
-  - [ ] 2.2: Prerequisite check (kind, cilium CLI, docker/podman)
-  - [ ] 2.3: Idempotent Kind cluster creation (check if exists before create)
-  - [ ] 2.4: Cilium install on both clusters with unique `cluster.id` and `cluster.name`
-  - [ ] 2.5: Cluster Mesh enable with `--service-type NodePort` (required for Kind)
-  - [ ] 2.6: Cluster Mesh connect between east and west
-  - [ ] 2.7: Wait for Cluster Mesh health on both clusters
-  - [ ] 2.8: Cross-cluster connectivity smoke test (deploy test pods, verify bidirectional)
-  - [ ] 2.9: Print kubeconfig access instructions on completion
-- [ ] Task 3: Create `hack/multisite/teardown.sh` (AC: 5)
-  - [ ] 3.1: Delete both Kind clusters (tolerant of missing clusters)
-  - [ ] 3.2: Clean up any generated kubeconfig files
-- [ ] Task 4: Create `hack/multisite/README.md` (AC: 6)
-  - [ ] 4.1: Prerequisites, usage, env var reference, troubleshooting
+- [x] Task 1: Create `hack/multisite/` directory structure (AC: 6)
+  - [x] 1.1: Create `hack/multisite/kind-east.yaml` — Kind config with `disableDefaultCNI: true`, 1 control-plane + 3 workers, `extraMounts` for Rook OSD raw block paths, unique pod/service CIDRs
+  - [x] 1.2: Create `hack/multisite/kind-west.yaml` — Same structure as east with non-overlapping pod/service CIDRs
+- [x] Task 2: Create `hack/multisite/setup-clusters.sh` (AC: 1, 2, 3, 4, 5)
+  - [x] 2.1: Env var configuration block (cluster names, kubeconfig paths, Cilium version)
+  - [x] 2.2: Prerequisite check (kind, cilium CLI, docker/podman)
+  - [x] 2.3: Idempotent Kind cluster creation (check if exists before create)
+  - [x] 2.4: Cilium install on both clusters with unique `cluster.id` and `cluster.name`
+  - [x] 2.5: Cluster Mesh enable with `--service-type NodePort` (required for Kind)
+  - [x] 2.6: Cluster Mesh connect between east and west
+  - [x] 2.7: Wait for Cluster Mesh health on both clusters
+  - [x] 2.8: Cross-cluster connectivity smoke test (deploy test pods, verify bidirectional)
+  - [x] 2.9: Print kubeconfig access instructions on completion
+- [x] Task 3: Create `hack/multisite/teardown.sh` (AC: 5)
+  - [x] 3.1: Delete both Kind clusters (tolerant of missing clusters)
+  - [x] 3.2: Clean up any generated kubeconfig files
+- [x] Task 4: Create `hack/multisite/README.md` (AC: 6)
+  - [x] 4.1: Prerequisites, usage, env var reference, troubleshooting
+
+### Review Findings
+
+- [x] [Review][Patch] Guard `KUBECONFIG_DIR` teardown so it only removes generated kubeconfig files instead of recursively deleting an arbitrary env-supplied directory [`hack/multisite/teardown.sh:67`]
+- [x] [Review][Patch] Validate `EAST_CLUSTER_NAME` and `WEST_CLUSTER_NAME` are distinct before provisioning or meshing clusters [`hack/multisite/setup-clusters.sh:38`]
+- [x] [Review][Patch] Make Podman support real instead of advisory-only, since preflight currently accepts Podman but cluster creation still assumes Kind's default provider behavior [`hack/multisite/setup-clusters.sh:73`]
+- [x] [Review][Patch] Stop masking probe creation failures with `|| true`, which currently hides real `kubectl run` errors during the connectivity smoke test [`hack/multisite/setup-clusters.sh:177`]
+- [x] [Review][Patch] Ensure the connectivity smoke test cleans up its temporary namespace on failure/interruption, not only on the success path [`hack/multisite/setup-clusters.sh:167`]
+- [x] [Review][Patch] Add the missing disk-space preflight check required by the story's prerequisite constraints [`hack/multisite/setup-clusters.sh:66`]
+- [x] [Review][Patch] Exercise the Cilium global-service path in the smoke test, not just direct pod-IP reachability, to match the story's specified downstream networking validation [`hack/multisite/setup-clusters.sh:189`]
 
 ## Dev Notes
 
@@ -226,8 +236,34 @@ No Go tests for this story — validation is via the smoke test in AC4 (cross-cl
 
 ### Agent Model Used
 
+Claude Opus 4.6
+
 ### Debug Log References
+
+- Fixed pre-existing integration test failure (TestDRExecutionReconciler_SiteAware_OnlyTargetOwns) before starting story — test was missing WaveExecutor on its targetReconciler, causing infinite loop in resume path with 0-VM plan
 
 ### Completion Notes List
 
+- Created `hack/multisite/` directory with 5 files (2 Kind configs, 2 scripts, 1 README)
+- Kind configs use non-overlapping CIDRs (east: 10.1.0.0/16 + 10.11.0.0/16, west: 10.2.0.0/16 + 10.12.0.0/16)
+- Each cluster has 1 control-plane + 3 workers with `extraMounts` for Rook-Ceph OSDs (cluster-prefixed host paths)
+- Setup script follows `hack/stretched-local-test.sh` conventions (env-var config, colored output, idempotent operations)
+- Cilium installed with unique `cluster.id`/`cluster.name` per cluster
+- Cluster Mesh uses `--service-type NodePort` (required for Kind — no cloud LB)
+- Connectivity smoke test deploys busybox probes and verifies bidirectional pod-to-pod ping
+- Teardown tolerates missing clusters (`kind get clusters | grep -qx` before delete)
+- Kubeconfigs exported to `.kubeconfigs/` directory (gitignored by convention)
+- README documents prerequisites, usage, env vars, troubleshooting, and downstream dependencies
+- No Go tests (as specified in Dev Notes — validation is via AC4 smoke test built into setup script)
+
 ### File List
+
+- hack/multisite/kind-east.yaml (new)
+- hack/multisite/kind-west.yaml (new)
+- hack/multisite/setup-clusters.sh (new)
+- hack/multisite/teardown.sh (new)
+- hack/multisite/README.md (new)
+
+### Change Log
+
+- 2026-06-21: Story implemented — all 4 tasks complete, 5 new files in hack/multisite/

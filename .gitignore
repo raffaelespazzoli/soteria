@@ -30,6 +30,10 @@ go.work
 # Kubeconfig might contain secrets
 *.kubeconfig
 
+# Downloaded tool binaries and local data for hack scripts
+hack/multisite/.bin/
+hack/multisite/.data/
+
 # AI agent skills and cursor artifacts
 .agents/
 .cursor/skills/

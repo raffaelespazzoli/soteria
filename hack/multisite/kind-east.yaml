@@ -1,0 +1,23 @@
+# Kind cluster configuration for the "east" site.
+# Non-overlapping CIDRs are mandatory for Cilium Cluster Mesh.
+# NOTE: hostPath values use __DATA_DIR__ placeholder — resolved by setup-clusters.sh.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+networking:
+  disableDefaultCNI: true
+  podSubnet: "10.1.0.0/16"
+  serviceSubnet: "10.11.0.0/16"
+nodes:
+  - role: control-plane
+  - role: worker
+    extraMounts:
+      - hostPath: __DATA_DIR__/east/osd0
+        containerPath: /var/lib/rook/osd0
+  - role: worker
+    extraMounts:
+      - hostPath: __DATA_DIR__/east/osd1
+        containerPath: /var/lib/rook/osd1
+  - role: worker
+    extraMounts:
+      - hostPath: __DATA_DIR__/east/osd2
+        containerPath: /var/lib/rook/osd2
