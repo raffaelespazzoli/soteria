@@ -293,3 +293,110 @@ Redeployed to etl6 and etl7 via `rollout restart`. Executed a complete 4-transit
 UAT-13.005 (checkpoint write conflicts) and UAT-13.006 (immutability violation after completion) share a root cause: the peer site reconciles DRExecutions it does not own due to `LocalSite==""` bypass and stale informer reads from ScyllaDB eventual consistency. These are functionally harmless but produce persistent log noise.
 
 **Disposition:** Deferred to [Story 13.7: Peer-Site Reconcile Guard for DRExecution](13-7-peer-site-reconcile-guard-for-drexecution.md) — fresh-read terminal guard + mandatory `--site-name` validation.
+
+---
+
+## Story 13.7 Fix Verification
+
+**Date:** 2026-06-21
+**Image:** quay.io/raffaelespazzoli/soteria:latest (rebuilt with Story 13.7, commit 4da7ec3, 2026-06-21 ~10:30 UTC)
+
+### Changes Applied
+
+Story 13.7 adds three guards to the DRExecution reconciler:
+
+1. **Mandatory `--site-name` for multi-site plans (AC1):** When the DRPlan has both PrimarySite and SecondarySite set but `LocalSite` is empty, the reconciler logs an error and skips reconciliation. Prevents the root cause of UAT-13.005/006.
+
+2. **Fresh-read terminal guard (AC2):** Before entering `dispatchByRole`, the reconciler performs a fresh `Get()` via APIReader (bypasses informer cache) when the execution appears non-terminal. If the fresh read reveals a terminal result, reconciliation is skipped. Closes the ScyllaDB CDC stale-read window.
+
+3. **Peer-site skip for rest-state plans (AC3):** When `LocalSite` is set and the DRPlan is in a rest state with a reprotect execution, the peer site (where `LocalSite != ActiveSite`) skips reconciliation.
+
+### Deployment Notes
+
+Deployment required resolving a cert-manager CA rotation issue:
+- cert-manager on each cluster uses an independent self-signed CA (`CN=soteria-ca`) — the two CAs have different key pairs
+- After `kustomize build | apply`, cert-manager regenerated all certificates with the local CA
+- ScyllaDB inter-node encryption and client authentication required cross-cluster CA trust
+- Fix: created `soteria-cross-cluster-ca` secret (combined CA bundle) and `scylladb-combined-ca` ConfigMap with both CAs; updated `scylla-config` ConfigMap to use combined CA for both `server_encryption_options.truststore` and `client_encryption_options.truststore`
+
+### Pre-Test Sanity
+
+| # | Check | Expected | Actual | Status |
+|---|-------|----------|--------|--------|
+| S1 | APIService v1alpha1.soteria.io available | True on both | True on both | PASS |
+| S2 | DRPlan phase | DRedSteadyState (from prior run) | DRedSteadyState | PASS |
+| S3 | DRPlan activeSite | etl7 | etl7 | PASS |
+| S4 | Conditions: Ready | True (VMsDiscovered) | True (VMsDiscovered) | PASS |
+| S5 | Conditions: SitesInSync | True (VMsAgreed) | True (VMsAgreed) | PASS |
+| S6 | Conditions: DisksConsistent | True (DisksAgreed) | True (DisksAgreed) | PASS |
+| S7 | Conditions: ReplicationHealthy | True (AllHealthy) | True (AllHealthy) | PASS |
+| S8 | Conditions: Replicating | 6/6 healthy | 6/6 healthy | PASS |
+| S9 | etl7 VR CRs (active) | 6 primary | 6 primary | PASS |
+| S10 | etl6 VR CRs (passive) | 6 secondary | 6 secondary | PASS |
+| S11 | etl7 VMs | 6 Running | 6 Running | PASS |
+| S12 | etl6 VMs | 0 (stopped) | 0 | PASS |
+
+### Live Verification — Full Lifecycle
+
+Executed a complete 4-transition lifecycle starting from DRedSteadyState (activeSite=etl7):
+
+| # | Transition | Mode | Execution | From → To | Result |
+|---|-----------|------|-----------|-----------|--------|
+| T1 | DRedSteadyState → FailedBack | planned_migration | uat13-s137-pm-01 | etl7 → etl6 | **Succeeded** (55s) |
+| T2 | FailedBack → SteadyState | reprotect | uat13-s137-rp-01 | — | **Succeeded** (41s) |
+| T3 | SteadyState → FailedOver | planned_migration | uat13-s137-pm-02 | etl6 → etl7 | **Succeeded** (1m10s) |
+| T4 | FailedOver → DRedSteadyState | reprotect | uat13-s137-rp-02 | — | **Succeeded** (40s) |
+
+### Results
+
+All 4 transitions completed as **Succeeded** with no anomalies:
+
+- **UAT-13.005 RESOLVED:** Zero checkpoint write conflicts in controller logs on both clusters. The peer-site skip guard prevents cross-site reconcile contention entirely.
+- **UAT-13.006 RESOLVED:** Zero immutability violations in controller logs on both clusters. The fresh-read terminal guard closes the stale-read window.
+- **Peer-site guard active:** Confirmed via DEBUG log — etl6 correctly skipped reconciling `uat13-s137-rp-02` (owned by etl7) with message: "Skipping reconcile, not the owning site".
+- **No ERROR logs** on either cluster (excluding pre-startup ScyllaDB connection retries during deployment).
+
+### Prior Fix Verification (Still Holding)
+
+- **UAT-13.001:** Both reprotects returned Succeeded (6/6 role setup, no SetSource conflicts)
+- **UAT-13.002:** All VR CRs on active site are primary after reprotect (6/6 correct)
+- **UAT-13.003:** Replicating condition shows 6/6 (not 5/5)
+- **UAT-13.004:** Duration field populated for all new executions (55s, 41s, 1m10s, 40s)
+
+### Final State Verification
+
+| Check | Expected | Actual | Status |
+|-------|----------|--------|--------|
+| DRPlan phase | DRedSteadyState | DRedSteadyState | PASS |
+| DRPlan activeSite | etl7 | etl7 | PASS |
+| Ready | True (VMsDiscovered) | True (VMsDiscovered) | PASS |
+| SitesInSync | True (VMsAgreed) | True (VMsAgreed) | PASS |
+| DisksConsistent | True (DisksAgreed) | True (DisksAgreed) | PASS |
+| Replicating | 6/6 healthy | 6/6 healthy | PASS |
+| ReplicationHealthy | True (AllHealthy) | True (AllHealthy) | PASS |
+| etl7 VR CRs (active) | all primary | all primary | PASS |
+| etl6 VR CRs (passive) | all secondary | all secondary | PASS |
+| etl7 VMs | all Running | all Running | PASS |
+| etl6 VMs | none | none | PASS |
+| Checkpoint conflicts | 0 | 0 | PASS |
+| Immutability violations | 0 | 0 | PASS |
+| Duration field | populated | populated | PASS |
+
+---
+
+## Epic 13 Final Acceptance Summary
+
+All 6 original anomalies from the initial UAT are resolved:
+
+| Anomaly | Severity | Status | Fix |
+|---------|----------|--------|-----|
+| UAT-13.001 | Major | **RESOLVED** | Removed StopReplication from reprotect + retry-on-conflict |
+| UAT-13.002 | Major | **RESOLVED** | Same fix as 001 — no double-flip means no VR stuck in wrong state |
+| UAT-13.003 | Minor | **RESOLVED** | Fixed stale ReplicationHealthy condition (else-if → else) |
+| UAT-13.004 | Minor | **RESOLVED** | Added persisted Duration field to DRExecutionStatus |
+| UAT-13.005 | Minor | **RESOLVED** | Story 13.7: peer-site reconcile guard eliminates cross-site contention |
+| UAT-13.006 | Minor | **RESOLVED** | Story 13.7: fresh-read terminal guard closes stale-read window |
+
+**Overall:** Epic 13 is complete. All 7 stories implemented and verified. Full lifecycle (4 transitions) executes cleanly with zero anomalies. Planned migrations succeed in ~55-70s, reprotects in ~40s. All DRPlan conditions healthy, all VR CRs correctly oriented, all VMs in expected states.
+
+**No new anomalies discovered.**

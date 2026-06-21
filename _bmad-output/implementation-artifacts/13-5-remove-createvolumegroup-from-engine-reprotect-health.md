@@ -266,10 +266,35 @@ make lint-fix && make lint
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+Claude Opus 4.6
 
 ### Debug Log References
 
+No debug issues encountered. Straightforward refactoring with mechanical test stub replacements.
+
 ### Completion Notes List
 
+- AC1: `resolveVolumeGroupID` in `pkg/engine/failover.go` switched from `driver.CreateVolumeGroup` to deterministic `VolumeGroupIDFor` computation + `driver.GetVolumeGroup` validation; `ErrVolumeGroupNotFound` propagated with descriptive message ("VR/VGR not yet created by DRPlan reconciler")
+- AC2: `resolveVGID` in `pkg/controller/drexecution/reconciler.go` switched from `drv.CreateVolumeGroup` to `drivers.VolumeGroupIDFor` + `drv.GetVolumeGroup`; PVCResolver usage removed
+- AC3: `resolveVolumeGroupID` in `pkg/controller/drplan/health.go` switched from `drv.CreateVolumeGroup` to `drivers.VolumeGroupIDFor` + `drv.GetVolumeGroup`; PVCResolver usage removed
+- AC4: PVCResolver calls removed from all three resolve paths — VG ID computed deterministically from driver type + namespace + name
+- AC5: ~15 `OnCreateVolumeGroup` test stubs replaced with `OnGetVolumeGroup` across failover, health, and DRExecution test files; new `ErrVolumeGroupNotFound` tests added
+- New shared helper `VolumeGroupIDFor(driverType, namespace, name)` added in `pkg/drivers/id.go` — encodes driver-specific ID format (`csi-ext-<ns>/<name>` for csi-extension, `noop-<name>` for noop)
+- Review patch: noop registry `GetDriver` returns fresh in-memory driver per call — fixed to work correctly with `GetVolumeGroup` lookups
+- Review patch: DRExecution regression test added for `resolveVGID` + `buildVolumeGroupEntries` when `GetVolumeGroup` returns `ErrVolumeGroupNotFound`
+
 ### File List
+
+- `pkg/engine/failover.go` — Modified: `resolveVolumeGroupID` refactored to deterministic ID + `GetVolumeGroup` validation; PVCResolver parameter removed
+- `pkg/controller/drexecution/reconciler.go` — Modified: `resolveVGID` refactored to deterministic ID + `GetVolumeGroup`; PVCResolver usage removed
+- `pkg/controller/drplan/health.go` — Modified: `resolveVolumeGroupID` refactored to deterministic ID + `GetVolumeGroup`; PVCResolver usage removed
+- `pkg/drivers/id.go` — New: `VolumeGroupIDFor` shared helper for deterministic VG ID computation
+- `pkg/engine/failover_test.go` — Modified: ~15 `OnCreateVolumeGroup` → `OnGetVolumeGroup` replacements + `ErrVolumeGroupNotFound` test
+- `pkg/controller/drplan/health_test.go` — Modified: `OnCreateVolumeGroup` → `OnGetVolumeGroup` replacements + not-found test
+- `pkg/controller/drexecution/reconciler_test.go` — Modified: VG resolution stubs updated + regression test for `ErrVolumeGroupNotFound`
+
+### Change Log
+
+- **2026-06-01:** Story created — developer guide for removing CreateVolumeGroup from resolve paths
+- **2026-06-08:** Implemented removal of CreateVolumeGroup from engine, reprotect, and health resolve paths (Story 13.5)
+- **2026-06-21:** Completion notes backfilled during Epic 13 retrospective

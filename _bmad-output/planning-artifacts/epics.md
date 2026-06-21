@@ -4,8 +4,8 @@ workflowCompleted: true
 completedAt: '2026-04-06'
 project_name: 'dr-orchestrator'
 user_name: 'Raffa'
-totalEpics: 13
-totalStories: 64
+totalEpics: 14
+totalStories: 71
 totalFRsCovered: 44
 totalNFRsAddressed: 19
 totalUXDRsCovered: 20
@@ -3026,3 +3026,417 @@ So that the replication direction follows the VM migration: `primary` on the sit
 - Story 13.5 must land first so resolve paths use `GetVolumeGroup` (read-only)
 - A table-driven integration test covering the full 8-phase cycle validates the invariant
 - Scope: ~3 modified prod files (`failover.go`, `failover_test.go`, `doc.go`), ~4 modified test files
+
+## Epic 14: Multi-Site Integration Testing with Real Storage
+
+Validates Soteria's full DR lifecycle against real Ceph RBD volume replication on two Kind clusters connected via Cilium Cluster Mesh. Uses the same ScyllaDB cross-DC deployment pattern from `hack/stretched-local-test.sh`, adapted for Kind + Cilium (replacing Submariner MCS) + Rook-Ceph (replacing ontap-san). Two Kind clusters (east and west) simulate the multi-site topology. Cilium Cluster Mesh provides cross-cluster pod networking (replacing Submariner). Rook-Ceph provides RBD storage with image-level mirroring and VolumeReplication CRDs via CSI Addons. ScyllaDB uses Rook-Ceph for its PVCs and Cilium for cross-DC gossip. KubeVirt runs VMs with emulation fallback. The lifecycle test mirrors the UAT-13 4-transition cycle (planned migration → reprotect → failback → reprotect) as the first test in a multi-site integration test suite. CI workflow deferred to a future epic.
+
+Dependency graph:
+```
+14.1 (Kind+Cilium) → 14.2 (Rook-Ceph) → 14.4 (ScyllaDB on Rook+Cilium)  → 14.6 (Soteria) → 14.7 (Test)
+       ↓                    ↓                                                   ↑
+       → 14.3 (Dashboard)  → 14.5 (KubeVirt on Rook)  ─────────────────────────┘
+```
+
+### Story 14.1: Kind Cluster Provisioning with Cilium Cluster Mesh
+
+As a platform engineer,
+I want two Kind clusters (east and west) with Cilium Cluster Mesh providing cross-cluster networking,
+So that I have the foundational multi-site topology for integration testing.
+
+#### Acceptance Criteria
+
+**AC1: Kind cluster creation**
+**Given** the `hack/multisite/` directory with Kind cluster configs
+**When** `setup-clusters.sh` is executed
+**Then** two Kind clusters named `east` and `west` are created with `disableDefaultCNI: true`
+**And** each cluster has at least 3 worker nodes (for Rook-Ceph OSD placement)
+**And** worker nodes have `extraMounts` for Rook-Ceph raw block OSD paths
+
+**AC2: Cilium deployment**
+**Given** both Kind clusters are running without a CNI
+**When** the setup script installs Cilium
+**Then** Cilium is deployed as the CNI on both clusters
+**And** Cilium agents are healthy on all nodes
+
+**AC3: Cluster Mesh enablement**
+**Given** Cilium is running on both clusters
+**When** the setup script enables Cluster Mesh
+**Then** Cluster Mesh is connected between east and west
+**And** `cilium clustermesh status` shows healthy on both clusters
+
+**AC4: Cross-cluster connectivity smoke test**
+**Given** Cluster Mesh is connected
+**When** a test pod on east curls/pings a test pod on west (and vice versa)
+**Then** cross-cluster pod-to-pod connectivity succeeds
+
+**AC5: Idempotent setup and teardown**
+**Given** the setup and teardown scripts
+**When** `setup-clusters.sh` is run multiple times
+**Then** it is idempotent (safe to re-run)
+**And** `teardown.sh` cleanly removes both Kind clusters
+
+**AC6: Script structure**
+**Given** the `hack/multisite/` directory
+**When** scripts are created
+**Then** cluster configs live in `hack/multisite/kind-east.yaml` and `hack/multisite/kind-west.yaml`
+**And** all scripts are CI-friendly (no hardcoded paths, configurable via env vars)
+
+#### Technical Notes
+
+- Cilium's official docs have a Kind-specific guide for Cluster Mesh setup
+- The `cilium` CLI handles Cluster Mesh enablement between clusters
+- Each cluster needs `cluster.id` and `cluster.name` set to unique values for Cluster Mesh
+- Kind config needs `kubeadmConfigPatches` to disable default CNI
+- Minimum 1 control-plane + 3 worker nodes per cluster for Rook-Ceph OSD anti-affinity
+- Scope: `hack/multisite/` directory (~5 files: 2 Kind configs, setup script, teardown script, README)
+
+### Story 14.2: Rook-Ceph Deployment with RBD Volume Replication
+
+As a platform engineer,
+I want Rook-Ceph deployed on both Kind clusters with RBD mirroring and VolumeReplication CRDs,
+So that real storage replication is available for Soteria's CSI Extension driver.
+
+#### Acceptance Criteria
+
+**AC1: Rook operator deployment**
+**Given** both Kind clusters from Story 14.1
+**When** `setup-rook-ceph.sh` is executed
+**Then** the Rook operator is deployed on both clusters
+**And** operator pods are running and healthy
+
+**AC2: CephCluster creation**
+**Given** the Rook operator is running
+**When** CephCluster CRs are applied
+**Then** Ceph clusters are created on both Kind clusters using loopback/raw-file OSDs (Kind-compatible)
+**And** Ceph health is OK on both clusters (`ceph status` via toolbox)
+
+**AC3: RBD mirroring configuration**
+**Given** Ceph clusters are healthy
+**When** CephBlockPool is configured with `mirroring.enabled: true, mode: image`
+**Then** RBD mirroring is enabled on both clusters
+**And** CephRBDMirror daemons are deployed on both clusters
+**And** bootstrap peer tokens are exchanged between east and west
+**And** `rbd mirror pool status` shows healthy peering
+
+**AC4: CSI Addons deployment**
+**Given** Rook-Ceph is running with RBD mirroring
+**When** CSI Addons (Volume Replication Operator) is deployed
+**Then** VolumeReplication and VolumeGroupReplication CRDs are available on both clusters
+**And** CSI Addons controller pods are running
+
+**AC5: VolumeReplicationClass creation**
+**Given** CSI Addons is deployed
+**When** VolumeReplicationClass is created with provisioner `rook-ceph.rbd.csi.ceph.com`
+**Then** the VolumeReplicationClass is available on both clusters
+**And** a StorageClass `rook-ceph-block` is created for RBD volumes
+
+**AC6: Replication smoke test**
+**Given** the full Rook-Ceph + mirroring stack is deployed
+**When** a test PVC is created on east with a VolumeReplication CR attached
+**Then** the VolumeReplication status shows replication is active (state `replaying` or `syncing`)
+**And** the PVC binds successfully on the Rook-Ceph StorageClass
+
+#### Technical Notes
+
+- Rook-Ceph on Kind requires raw block files or loopback devices for OSDs — use `extraMounts` in Kind config (from 14.1) with raw files in `/var/lib/rook/`
+- Each cluster needs minimum 3 OSDs for Ceph health (one per worker node)
+- RBD mirroring bootstrap: generate token on east, import on west (and vice versa for bidirectional)
+- CSI Addons is the component that reconciles VolumeReplication CRs into actual Ceph RBD mirror operations — this replaces the noop controller from Epics 12-13
+- The VolumeReplicationClass name is what gets referenced in the DRPlan's `volumeReplicationDriver.volumeReplicationClass` field
+- Scope: `hack/multisite/setup-rook-ceph.sh` + Rook manifests/values
+
+### Story 14.3: Kubernetes Dashboard Deployment
+
+As a platform engineer,
+I want the Kubernetes Dashboard deployed on both Kind clusters,
+So that I can visually troubleshoot pods, services, PVCs, and other resources during integration testing.
+
+#### Acceptance Criteria
+
+**AC1: Dashboard deployment**
+**Given** both Kind clusters from Story 14.1
+**When** the dashboard setup script or section is executed
+**Then** the Kubernetes Dashboard is deployed on both east and west clusters
+
+**AC2: Admin access configuration**
+**Given** the Dashboard is deployed
+**When** an admin ServiceAccount and ClusterRoleBinding are created
+**Then** the Dashboard is accessible with full cluster-admin privileges for development use
+**And** an access token is generated or skip-login is configured
+
+**AC3: Access documentation**
+**Given** the Dashboard is running
+**When** the user follows the documented access pattern
+**Then** the Dashboard UI is accessible via `kubectl proxy` or `kubectl port-forward`
+**And** the setup script prints access instructions (URL and token)
+
+**AC4: Smoke test**
+**Given** the Dashboard is deployed and accessible
+**When** navigating to the Dashboard UI
+**Then** pods, services, and PVCs are visible across namespaces
+
+#### Technical Notes
+
+- The standard Kubernetes Dashboard (kubernetes/dashboard) deploys via Helm or static manifests
+- For Kind local development, `kubectl port-forward` to the dashboard service is the simplest access method
+- Admin RBAC is acceptable for local development — not for production
+- This is a troubleshooting aid, not a testing dependency — other stories do not depend on this
+- Scope: small addition to setup scripts or a standalone `setup-dashboard.sh`
+
+### Story 14.4: ScyllaDB Cross-DC Deployment on Rook-Ceph
+
+As a platform engineer,
+I want ScyllaDB deployed as a cross-DC cluster on both Kind clusters using Rook-Ceph storage and Cilium Cluster Mesh for inter-node communication,
+So that Soteria has its shared state store for the integration test environment.
+
+#### Acceptance Criteria
+
+**AC1: cert-manager deployment**
+**Given** both Kind clusters
+**When** the ScyllaDB setup script is executed
+**Then** cert-manager is deployed on both clusters
+**And** a self-signed CA issuer is created for Soteria TLS certificates
+
+**AC2: scylla-operator deployment**
+**Given** cert-manager is running
+**When** the scylla-operator is deployed
+**Then** the ScyllaCluster CRD is available on both clusters
+**And** scylla-operator pods are running
+
+**AC3: ScyllaCluster creation with Rook-Ceph storage**
+**Given** the scylla-operator and Rook-Ceph are running
+**When** ScyllaCluster CRs are applied
+**Then** ScyllaDB is deployed on both clusters with datacenter names `east` and `west`
+**And** ScyllaDB PVCs use the Rook-Ceph block StorageClass
+**And** developer-mode resource requests are used (reduced from production sizing)
+
+**AC4: Cross-DC discovery via Cilium Cluster Mesh**
+**Given** Cilium Cluster Mesh is connected between east and west
+**When** the ScyllaDB headless service on east is annotated with `io.cilium/global-service: "true"`
+**Then** west's ScyllaDB can discover east's seed nodes via the normal service FQDN
+**And** `externalSeeds` in west's ScyllaCluster uses the standard service FQDN (not `clusterset.local`)
+
+**AC5: mTLS configuration**
+**Given** cert-manager is running on both clusters
+**When** TLS certificates are created following the `stretched-local-test.sh` pattern
+**Then** ScyllaDB inter-node and client communication uses mTLS
+**And** a combined CA trust bundle is created (same pattern as `create_combined_ca` in existing script)
+
+**AC6: Kustomize overlays**
+**Given** the existing overlay structure in `hack/overlays/`
+**When** new overlays are created
+**Then** `hack/multisite/overlays/{base,east,west}/` mirror the `hack/overlays/{base,etl6,etl7}/` structure
+**And** Cilium global service annotation replaces Submariner ServiceExport
+**And** Rook-Ceph StorageClass replaces `ontap-san-xfs`
+
+**AC7: Multi-DC convergence smoke test**
+**Given** ScyllaDB is deployed on both clusters
+**When** the seed cluster (east) is deployed first and west joins
+**Then** `nodetool status` shows all nodes in UN (Up Normal) state across both DCs
+**And** a CQL write on east is readable on west (cross-DC replication verified)
+
+#### Technical Notes
+
+- Follows the deployment pattern from `hack/stretched-local-test.sh` — same ScyllaCluster CR structure, cert-manager TLS, combined-CA approach
+- Key difference: Cilium global service replaces Submariner MCS ServiceExport for cross-cluster ScyllaDB gossip
+- Key difference: Rook-Ceph block StorageClass replaces `ontap-san-xfs` for ScyllaDB PVCs
+- ScyllaDB developer mode: single member per rack, reduced CPU/memory requests for Kind
+- East is the seed cluster (no externalSeeds); west joins via externalSeeds referencing east's service
+- Highest-risk story in the epic — scylla-operator's topology assumptions may require workarounds in Kind
+- Scope: `hack/multisite/setup-scylladb.sh` + `hack/multisite/overlays/` directory
+
+### Story 14.5: KubeVirt Deployment
+
+As a platform engineer,
+I want KubeVirt deployed on both Kind clusters with Rook-Ceph as the VM storage backend,
+So that virtual machines can be created with PVC-backed disks on real replicated storage.
+
+#### Acceptance Criteria
+
+**AC1: KubeVirt operator deployment**
+**Given** both Kind clusters with Rook-Ceph running
+**When** the KubeVirt setup script is executed
+**Then** the KubeVirt operator and CR are deployed on both clusters following the [KubeVirt Kind quickstart](https://kubevirt.io/quickstart_kind/)
+
+**AC2: Emulation fallback**
+**Given** KubeVirt is deployed
+**When** `/dev/kvm` is not available on the host
+**Then** KubeVirt emulation mode is enabled (`useEmulation: true`)
+**And** VMs can still run (with reduced performance)
+
+**AC3: KubeVirt health**
+**Given** KubeVirt is deployed
+**When** checking KubeVirt status
+**Then** KubeVirt phase is `Deployed` on both clusters
+**And** all KubeVirt pods are running (virt-operator, virt-api, virt-controller, virt-handler)
+
+**AC4: Container disk smoke test**
+**Given** KubeVirt is deployed
+**When** a minimal test VMI with a container disk (e.g., `quay.io/kubevirt/cirros-container-disk-demo`) is created
+**Then** the VMI starts and reaches `Running` state
+
+**AC5: PVC-backed disk smoke test**
+**Given** KubeVirt and Rook-Ceph are running
+**When** a test VM with a Rook-Ceph PVC-backed disk is created
+**Then** the PVC binds on the Rook-Ceph StorageClass
+**And** the VM starts and reaches `Running` state
+
+**AC6: virtctl installation**
+**Given** KubeVirt is deployed
+**When** the setup script completes
+**Then** `virtctl` is available for VM console access and lifecycle operations
+
+#### Technical Notes
+
+- KubeVirt Kind quickstart: https://kubevirt.io/quickstart_kind/
+- Emulation mode patch: `kubectl -n kubevirt patch kubevirt kubevirt --type=merge --patch '{"spec":{"configuration":{"developerConfiguration":{"useEmulation":true}}}}'`
+- KubeVirt needs `/dev/kvm` for hardware acceleration — Linux hosts with KVM support get native performance; other hosts fall back to emulation
+- PVC-backed VMs use the Rook-Ceph StorageClass — this is the disk that gets volume-replicated
+- Container disks (for boot images) don't use PVCs — they are pulled as container images
+- Scope: `hack/multisite/setup-kubevirt.sh`
+
+### Story 14.6: Soteria Operator Deployment
+
+As a platform engineer,
+I want Soteria deployed on both Kind clusters with the real Ceph VolumeReplicationClass,
+So that the operator manages DR plans against real storage replication.
+
+#### Acceptance Criteria
+
+**AC1: Soteria operator deployment**
+**Given** ScyllaDB and KubeVirt are running on both clusters
+**When** the Soteria deployment script is executed
+**Then** Soteria operator (API server + controller) is deployed on both clusters
+**And** console plugin is excluded (Kind has no OCP Console)
+
+**AC2: Site-name configuration**
+**Given** the Soteria deployment
+**When** the controller manager starts
+**Then** east cluster runs with `--site-name=east` and `--scylladb-local-dc=east`
+**And** west cluster runs with `--site-name=west` and `--scylladb-local-dc=west`
+
+**AC3: VolumeReplicationClass reference**
+**Given** the Rook-Ceph VolumeReplicationClass from Story 14.2
+**When** DRPlans are created
+**Then** they reference `volumeReplicationDriver: {type: csi-extension, volumeReplicationClass: <rook-ceph-vrc-name>}`
+
+**AC4: APIService availability smoke test**
+**Given** Soteria is deployed
+**When** checking APIService status
+**Then** `v1alpha1.soteria.io` is Available on both clusters
+
+**AC5: Cross-DC replication smoke test**
+**Given** Soteria is running with ScyllaDB cross-DC
+**When** a test resource is created via the Soteria API on east
+**Then** it is visible on west after ScyllaDB replication delay
+
+#### Technical Notes
+
+- Deployment follows the `hack/stretched-local-test.sh` pattern minus console plugin
+- Uses the `hack/multisite/overlays/` created in Story 14.4 (ScyllaDB overlays) with Soteria additions
+- The noop VR controller from Epic 12 is NOT deployed — real CSI Addons sidecar handles VR reconciliation
+- Soteria image must be built and loaded into Kind clusters (either via registry or `kind load docker-image`)
+- Scope: `hack/multisite/deploy-soteria.sh` + overlay additions
+
+### Story 14.7: Test Scenario Setup + Full Lifecycle Integration Test
+
+As a platform engineer,
+I want the same test scenario from `hack/stretched-local-test.sh` deployed in the Kind environment and an automated full lifecycle test validating 4 DR transitions with real storage,
+So that the platform is proven to work with real Ceph RBD volume replication.
+
+#### Acceptance Criteria
+
+**AC1: Test namespace and VM creation**
+**Given** Soteria and KubeVirt are running on both clusters
+**When** the test setup runs (either via script or Go test `BeforeSuite`)
+**Then** namespace `soteria-dr-test` is created on both clusters
+**And** 6 test VMs are created following the `stretched-local-test.sh` wave structure:
+  - Wave 1: `fedora-db`
+  - Wave 2: `fedora-appserver-1`, `fedora-appserver-2`
+  - Wave 3: `fedora-webserver-1`, `fedora-webserver-2`, `fedora-webserver-3`
+**And** east VMs have `runStrategy: Always`, west VMs have `runStrategy: Halted`
+**And** VMs use container disk for boot + Rook-Ceph PVC for data disk (PVC is what gets volume-replicated)
+**And** VMs are labeled with `soteria.io/drplan: fedora-app` and `soteria.io/wave: "<N>"`
+
+**AC2: DRPlan creation**
+**Given** VMs are deployed
+**When** the DRPlan `fedora-app` is created on both clusters
+**Then** `primarySite: east, secondarySite: west, maxConcurrentFailovers: 2`
+**And** `volumeReplicationDriver: {type: csi-extension, volumeReplicationClass: <rook-ceph-vrc-name>}`
+
+**AC3: Pre-test sanity verification**
+**Given** the test scenario is deployed
+**When** the test verifies initial state (mirrors UAT-13 sanity checks)
+**Then** DRPlan phase = SteadyState, activeSite = east
+**And** Conditions: Ready=True, SitesInSync=True, DisksConsistent=True, ReplicationHealthy=True
+**And** VR CRs on east = primary, on west = secondary
+**And** East VMs running, west VMs stopped
+
+**AC4: Planned migration east → west (T1: SteadyState → FailedOver)**
+**Given** the system is in SteadyState
+**When** a planned_migration DRExecution is created
+**Then** the execution completes with result = Succeeded
+**And** DRPlan phase = FailedOver, activeSite = west
+**And** VR CRs on west = primary, on east = secondary
+**And** West VMs running, east VMs stopped
+
+**AC5: Reprotect (T2: FailedOver → DRedSteadyState)**
+**Given** the system is in FailedOver
+**When** a reprotect DRExecution is created
+**Then** the execution completes with result = Succeeded
+**And** DRPlan phase = DRedSteadyState
+
+**AC6: Planned migration west → east (T3: DRedSteadyState → FailedBack)**
+**Given** the system is in DRedSteadyState
+**When** a planned_migration DRExecution is created
+**Then** the execution completes with result = Succeeded
+**And** DRPlan phase = FailedBack, activeSite = east
+**And** VR CRs on east = primary, on west = secondary
+**And** East VMs running, west VMs stopped
+
+**AC7: Reprotect (T4: FailedBack → SteadyState)**
+**Given** the system is in FailedBack
+**When** a reprotect DRExecution is created
+**Then** the execution completes with result = Succeeded
+**And** DRPlan phase = SteadyState, activeSite = east
+
+**AC8: Per-transition assertions**
+**Given** each transition completes
+**When** the test validates post-transition state
+**Then** DRExecution Duration field is populated
+**And** all conditions remain healthy (Ready, SitesInSync, DisksConsistent, ReplicationHealthy)
+**And** no checkpoint conflicts in controller logs
+**And** no immutability violations in controller logs
+
+**AC9: Real-storage assertions**
+**Given** real Ceph RBD mirroring is in use (not noop)
+**When** the test checks replication state
+**Then** VolumeReplication status shows non-zero `lastSyncTime` delta between primary and secondary
+**And** measurable RPO from actual Ceph mirroring lag (not noop-instant)
+
+**AC10: Post-lifecycle verification**
+**Given** the full 4-transition lifecycle is complete
+**When** the test verifies final state
+**Then** the system is back to its initial state (SteadyState, activeSite=east, all conditions healthy)
+
+**AC11: Test infrastructure**
+**Given** the test suite
+**When** implemented
+**Then** Go test code lives in `test/multisite/` using Ginkgo/Gomega
+**And** `suite_test.go` bootstraps the Ginkgo suite
+**And** `setup_test.go` handles `BeforeSuite` (scenario setup) and `AfterSuite` (cleanup)
+**And** `lifecycle_test.go` contains the 4-transition lifecycle test
+**And** kubeconfigs are configurable via env vars (`EAST_KUBECONFIG`, `WEST_KUBECONFIG`)
+**And** timeouts are configurable for real-storage timing variability
+
+#### Technical Notes
+
+- Test scenario mirrors `hack/stretched-local-test.sh` lines 420-514 (VM creation, wave structure, DRPlan)
+- VM images: container disk for boot (no CDI dependency), Rook-Ceph PVC for data disk (this is what gets volume-replicated)
+- `BeforeSuite` deploys the scenario; `AfterSuite` cleans up — test is self-contained
+- Per-transition polling needs realistic timeouts: UAT-13 took 40-70s against noop; real Ceph may be longer
+- Log scanning: capture controller logs during lifecycle, assert no unexpected ERROR entries
+- This is the first test of a multi-site integration test suite — structured for extensibility (future tests: disaster failover, partial failure, concurrent plans)
+- CI-friendly structure (env var config, no hardcoded paths) but CI workflow deferred to future epic
+- Scope: `test/multisite/` directory (~3 Go files), test scenario setup (Go or shell)
