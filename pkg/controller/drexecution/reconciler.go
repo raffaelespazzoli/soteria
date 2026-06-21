@@ -89,6 +89,11 @@ type DRExecutionReconciler struct {
 	// (Owner/Step0/None) for each DRExecution based on the transition phase
 	// and the plan's primarySite/secondarySite.
 	LocalSite string
+	// APIReader bypasses the informer cache, reading directly from the API
+	// server (aggregated API → ScyllaDB). Used by the fresh-read terminal
+	// guard to close the stale-read window from ScyllaDB CDC eventual
+	// consistency. When nil, the guard is skipped (backward compat for tests).
+	APIReader client.Reader
 }
 
 func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -134,11 +139,53 @@ func (r *DRExecutionReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		return ctrl.Result{}, err
 	}
 
+	// AC2 (Story 13.7): Fresh-read terminal guard — close the ScyllaDB CDC
+	// stale-read window. The informer cache may hold a stale copy (Result="")
+	// even after the owner site wrote a terminal result. A direct API server
+	// read reflects the latest ScyllaDB state.
+	if r.APIReader != nil && !exec.Status.IsTerminal() {
+		var fresh soteriav1alpha1.DRExecution
+		if err := r.APIReader.Get(ctx, req.NamespacedName, &fresh); err != nil {
+			if apierrors.IsNotFound(err) {
+				logger.V(1).Info("Fresh read returned NotFound, execution deleted")
+				return ctrl.Result{}, nil
+			}
+			logger.V(1).Info("Fresh read failed, proceeding with cached state", "error", err)
+		} else {
+			if fresh.Status.IsTerminal() {
+				logger.V(1).Info("Fresh read reveals terminal execution, skipping stale reconcile",
+					"result", fresh.Status.Result)
+				return ctrl.Result{}, nil
+			}
+			exec = fresh
+		}
+	}
+
 	// Site-aware reconcile ownership: compute the role and dispatch.
 	if r.LocalSite != "" {
 		if result, done, err := r.dispatchByRole(ctx, &exec, &plan); done || err != nil {
-			return result, err
+			// For new executions where no site has a valid target (EffectivePhase
+			// returns the rest state for unsupported mode/phase combinations),
+			// fall through so setup can validate and reject the transition
+			// instead of both sites silently skipping.
+			effectivePhase := engine.EffectivePhase(plan.Status.Phase, exec.Spec.Mode)
+			if exec.Status.StartTime == nil && err == nil && effectivePhase == plan.Status.Phase {
+				// Fall through — setup will validate and fail the transition.
+			} else {
+				return result, err
+			}
 		}
+	} else if plan.Spec.PrimarySite != "" && plan.Spec.SecondarySite != "" {
+		// AC1 (Story 13.7): Mandatory --site-name for multi-site deployments.
+		// Without LocalSite the controller cannot determine ownership and both
+		// sites would race on Status().Update(), causing checkpoint write
+		// conflicts (UAT-13.005) and immutability violations (UAT-13.006).
+		logger.Error(nil, "LocalSite not configured for multi-site plan, skipping reconciliation",
+			"plan", plan.Name, "primarySite", plan.Spec.PrimarySite,
+			"secondarySite", plan.Spec.SecondarySite)
+		r.event(&exec, corev1.EventTypeWarning, "SiteConfigMissing", "Validation",
+			fmt.Sprintf("--site-name not configured; cannot reconcile multi-site plan %s", plan.Name))
+		return ctrl.Result{}, nil
 	}
 
 	// Resume path: in-progress execution needs resume after restart.

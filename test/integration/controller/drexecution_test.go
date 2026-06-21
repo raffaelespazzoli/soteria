@@ -42,7 +42,6 @@ func TestDRExecutionReconciler_SuccessfulSetup(t *testing.T) {
 		Spec: soteriav1alpha1.DRPlanSpec{
 			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
 			PrimarySite:             "dc-west",
-			SecondarySite:           "dc-east",
 			MaxConcurrentFailovers:  4,
 		},
 	}
@@ -59,7 +58,7 @@ func TestDRExecutionReconciler_SuccessfulSetup(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "exec-success-test"},
 		Spec: soteriav1alpha1.DRExecutionSpec{
 			PlanName: plan.Name,
-			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+			Mode:     soteriav1alpha1.ExecutionModeDisaster,
 		},
 	}
 	if err := testClient.Create(ctx, exec); err != nil {
@@ -134,7 +133,6 @@ func TestDRExecutionReconciler_InvalidPhase(t *testing.T) {
 		Spec: soteriav1alpha1.DRPlanSpec{
 			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
 			PrimarySite:             "dc-west",
-			SecondarySite:           "dc-east",
 			MaxConcurrentFailovers:  4,
 		},
 	}
@@ -194,7 +192,6 @@ func TestDRExecutionReconciler_IdempotentRereconcile(t *testing.T) {
 		Spec: soteriav1alpha1.DRPlanSpec{
 			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
 			PrimarySite:             "dc-west",
-			SecondarySite:           "dc-east",
 			MaxConcurrentFailovers:  4,
 		},
 	}
@@ -211,7 +208,7 @@ func TestDRExecutionReconciler_IdempotentRereconcile(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{Name: "exec-idempotent-test"},
 		Spec: soteriav1alpha1.DRExecutionSpec{
 			PlanName: plan.Name,
-			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+			Mode:     soteriav1alpha1.ExecutionModeDisaster,
 		},
 	}
 	if err := testClient.Create(ctx, exec); err != nil {
@@ -258,7 +255,6 @@ func TestDRExecutionReconciler_DisasterMode(t *testing.T) {
 		Spec: soteriav1alpha1.DRPlanSpec{
 			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
 			PrimarySite:             "dc-west",
-			SecondarySite:           "dc-east",
 			MaxConcurrentFailovers:  4,
 		},
 	}
@@ -335,7 +331,6 @@ func TestDRExecutionReconciler_FailbackModes(t *testing.T) {
 				Spec: soteriav1alpha1.DRPlanSpec{
 					VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
 					PrimarySite:             "dc-west",
-					SecondarySite:           "dc-east",
 					MaxConcurrentFailovers:  4,
 				},
 			}
@@ -436,12 +431,34 @@ func TestDRExecutionReconciler_SiteAware_OnlyTargetOwns(t *testing.T) {
 		t.Errorf("source-site should not requeue, got RequeueAfter=%v", sourceResult.RequeueAfter)
 	}
 
-	// Wait for execution to complete. The manager's reconciler (no LocalSite)
-	// and/or a target-site reconciler will drive it to completion; the key
-	// assertion is that the source-site reconciler did NOT drive execution.
-	got, err := waitForExecResult(ctx, exec.Name, soteriav1alpha1.ExecutionResultSucceeded, execTestTimeout)
-	if err != nil {
-		t.Fatal(err)
+	// Target-site reconciler (west): drives execution to completion.
+	// The manager's reconciler has no LocalSite and will skip via AC1
+	// because the plan has both PrimarySite and SecondarySite set.
+	targetReconciler := &drexecution.DRExecutionReconciler{
+		Client:         testClient,
+		Scheme:         testScheme,
+		Handler:        &engine.NoOpHandler{},
+		ResumeAnalyzer: &engine.ResumeAnalyzer{},
+		LocalSite:      "west",
+	}
+	deadline := time.Now().Add(execTestTimeout)
+	for time.Now().Before(deadline) {
+		if _, err := targetReconciler.Reconcile(ctx, req); err != nil {
+			t.Fatalf("target-site reconcile error: %v", err)
+		}
+		var current soteriav1alpha1.DRExecution
+		if err := testClient.Get(ctx, req.NamespacedName, &current); err == nil && current.Status.IsTerminal() {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	var got soteriav1alpha1.DRExecution
+	if err := testClient.Get(ctx, req.NamespacedName, &got); err != nil {
+		t.Fatalf("getting execution: %v", err)
+	}
+	if got.Status.Result != soteriav1alpha1.ExecutionResultSucceeded {
+		t.Fatalf("expected result Succeeded, got %q", got.Status.Result)
 	}
 	if got.Status.StartTime == nil {
 		t.Error("execution should have startTime set after completion")

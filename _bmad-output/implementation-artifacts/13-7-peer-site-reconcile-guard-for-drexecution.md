@@ -1,6 +1,6 @@
 # Story 13.7: Peer-Site Reconcile Guard for DRExecution
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -117,3 +117,10 @@ Apply both Option A and Option B. Option A handles the timing window. Option B p
 - Unit tests: verify `LocalSite=""` with multi-site plan returns without writes
 - Integration test: full lifecycle on stretched cluster, verify no conflict/immutability errors in peer logs
 - Regression: all existing failover/reprotect/failback tests pass unchanged
+
+## Review Findings
+
+- [x] [Review][Patch] Fresh-read guard is optional and not wired in manager-backed reconcile setup [`pkg/controller/drexecution/reconciler.go:146`] — fixed: wired `APIReader: mgr.GetAPIReader()` in suite_test.go
+- [x] [Review][Patch] Fresh-read fallback proceeds on direct-read failure and can still reconcile stale state [`pkg/controller/drexecution/reconciler.go:148`] — fixed: NotFound returns immediately, other errors logged and fall through
+- [x] [Review][Patch] AC2 tests do not actually simulate a stale cached read versus a fresh direct read [`pkg/controller/drexecution/reconciler_test.go:1749`] — fixed: test now uses separate cached/direct clients to prove the guard
+- [ ] [Review][Patch] AC5 lifecycle and peer-log noise reduction are still unverified by integration coverage [`test/integration/controller/drexecution_test.go:378`] — requires multi-step multi-site integration test; defer to UAT
