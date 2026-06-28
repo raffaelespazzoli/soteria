@@ -5,7 +5,7 @@ Status: ready-for-dev
 ## Story
 
 As a platform engineer,
-I want the same test scenario from `hack/stretched-local-test.sh` deployed in the Kind environment and an automated full lifecycle test validating 4 DR transitions with real storage,
+I want the same test scenario from `hack/stretched-local-test.sh` deployed in the Minikube KVM2 environment and an automated full lifecycle test validating 4 DR transitions with real storage,
 so that the platform is proven to work with real Ceph RBD volume replication.
 
 ## Acceptance Criteria
@@ -97,7 +97,7 @@ And timeouts are configurable for real-storage timing variability
 
 - [ ] Task 1: Create test suite scaffold `test/multisite/` (AC: 11)
   - [ ] 1.1: Create `test/multisite/suite_test.go` — Ginkgo `TestMultisite` entry with `//go:build multisite` build tag, `RegisterFailHandler(Fail)`, `RunSpecs(t, "Multisite Integration Suite")`
-  - [ ] 1.2: Create configurable env vars: `EAST_KUBECONFIG` (default `~/.kube/config`), `WEST_KUBECONFIG` (default `~/.kube/config`), `EAST_CONTEXT` (default `kind-east`), `WEST_CONTEXT` (default `kind-west`), `DR_TEST_NS` (default `soteria-dr-test`), `TRANSITION_TIMEOUT` (default `5m`), `SETUP_TIMEOUT` (default `10m`)
+  - [ ] 1.2: Create configurable env vars: `EAST_KUBECONFIG` (default `~/.kube/config`), `WEST_KUBECONFIG` (default `~/.kube/config`), `EAST_CONTEXT` (default `east`), `WEST_CONTEXT` (default `west`), `DR_TEST_NS` (default `soteria-dr-test`), `TRANSITION_TIMEOUT` (default `5m`), `SETUP_TIMEOUT` (default `10m`)
   - [ ] 1.3: Build two `client.Client` instances (east + west) from the respective kubeconfigs/contexts with Soteria + KubeVirt + CSI Addons schemes registered
 
 - [ ] Task 2: Create `test/multisite/setup_test.go` — `BeforeSuite` / `AfterSuite` (AC: 1, 2)
@@ -141,16 +141,18 @@ This is the **final story in Epic 14** — the capstone integration test that va
 
 No shell scripts, no Kustomize files, no operator code changes. This is purely test code exercising the infrastructure built by Stories 14.1-14.6.
 
-### Critical: VM Specification for Kind + Rook-Ceph (NOT Stretched Cluster)
+### Critical: VM Specification for Minikube KVM2 + Rook-Ceph (NOT Stretched Cluster)
 
-The existing `hack/stretched-local-test.sh` VM spec uses `dataVolumeTemplates` with `sourceRef` pointing to `openshift-virtualization-os-images` — this is an OpenShift-specific mechanism (CDI/DataSource). In Kind without OpenShift Virtualization:
+The existing `hack/stretched-local-test.sh` VM spec uses `dataVolumeTemplates` with `sourceRef` pointing to `openshift-virtualization-os-images` — this is an OpenShift-specific mechanism (CDI/DataSource). In Minikube without OpenShift Virtualization:
 
-- **Boot disk:** Use a container disk (`containerDisk` volume) instead of DataVolume/DataSource. Container disks don't use PVCs — the VM image is pulled as a container image at boot. Use `quay.io/containerdisks/fedora:latest` or `quay.io/kubevirt/cirros-container-disk-demo` (lighter, faster for tests).
+- **Boot disk:** Use a container disk (`containerDisk` volume) instead of DataVolume/DataSource. Container disks don't use PVCs — the VM image is pulled as a container image at boot. Use `quay.io/containerdisks/fedora:latest` (pre-cached in Story 14.4) or `quay.io/kubevirt/cirros-container-disk-demo` (lighter, faster for tests).
 - **Data disk:** Use a separate PVC on `rook-ceph-block` StorageClass. This is the disk that gets volume-replicated. Create the PVC first (or use `dataVolumeTemplates` with `source: blank`), then reference it in the VM spec as a `persistentVolumeClaim` volume.
 
 **The data disk PVC is what Soteria volume-replicates.** The boot disk (container disk) is NOT replicated — it's identical on both sides.
 
-VM spec structure for Kind:
+**Note:** The Fedora container disk image should already be cached on all nodes from Story 14.4 (Fedora VM Validation). This eliminates the ~2-3 minute image pull time per VM during test setup.
+
+VM spec structure for Minikube KVM2:
 ```yaml
 apiVersion: kubevirt.io/v1
 kind: VirtualMachine
@@ -236,7 +238,7 @@ exec := &soteriav1alpha1.DRExecution{
 
 ### Critical: Build Tag and Test Isolation
 
-Use `//go:build multisite` build tag on ALL test files. These tests require real Kind clusters with real infrastructure — they must NOT run in CI or during `make test`. They are separate from:
+Use `//go:build multisite` build tag on ALL test files. These tests require real Minikube KVM2 clusters with real infrastructure — they must NOT run in CI or during `make test`. They are separate from:
 - Unit tests (no build tag, `make test`)
 - Integration tests (`//go:build integration`, `make integration`)
 - E2E tests (`//go:build e2e`, `test/e2e/`)
@@ -263,7 +265,7 @@ eastClient, _ := client.New(eastCfg, client.Options{Scheme: scheme})
 // same for west
 ```
 
-If `EAST_KUBECONFIG` and `WEST_KUBECONFIG` point to the same file (common with Kind), differentiate via context.
+With Minikube, each profile has its own kubeconfig at `~/.minikube/profiles/<name>/config`. Alternatively, use the merged kubeconfig with context overrides (`EAST_CONTEXT=east`, `WEST_CONTEXT=west`).
 
 ### Critical: Timeout Calibration for Real Storage
 
@@ -303,10 +305,11 @@ Do NOT assert VM state changes after reprotect — only VR state and DRPlan phas
 
 | Dependency | Story | What's Needed |
 |------------|-------|---------------|
-| Kind clusters + Cilium | 14.1 | Both `east` and `west` clusters running with Cluster Mesh |
+| Minikube KVM2 clusters + Cilium | 14.1 | Both `east` and `west` clusters running with Cluster Mesh |
 | Rook-Ceph | 14.2 | StorageClass `rook-ceph-block`, VolumeReplicationClass `rook-ceph-rbd-vrc`, CSI Addons running |
-| ScyllaDB | 14.4 | Cross-DC ScyllaDB cluster running on both clusters |
-| KubeVirt | 14.5 | KubeVirt Deployed on both clusters with emulation fallback |
+| KubeVirt + CDI | 14.3 | KubeVirt Deployed on both clusters with nested virtualization, CDI for DataVolume support |
+| Fedora image cached | 14.4 | Fedora container disk pre-pulled on all nodes, node sizing validated |
+| ScyllaDB | 14.5 | Cross-DC ScyllaDB cluster running on both clusters |
 | Soteria | 14.6 | Soteria operator deployed on both clusters with `--site-name=east/west` |
 
 ### Existing Test Patterns to Follow
@@ -411,9 +414,11 @@ All files use `package multisite_test` and `//go:build multisite` tag.
 - [Source: test/integration/controller/suite_test.go] — polling helpers (waitForCondition, waitForExecResult, waitForPlanPhase), test plan factory
 - [Source: test/e2e/e2e_suite_test.go] — Ginkgo suite scaffold, build tag pattern
 - [Source: pkg/apis/soteria.io/v1alpha1/types.go] — DRPlanSpec (VolumeReplicationDriverConfig), DRExecutionSpec, ExecutionResult, ExecutionPhase
-- [Source: Story 14.1] — Kind cluster contexts (`kind-east`, `kind-west`), cluster names (`east`, `west`)
+- [Source: Story 14.1] — Minikube KVM2 cluster contexts (`east`, `west`)
 - [Source: Story 14.2] — VolumeReplicationClass `rook-ceph-rbd-vrc`, StorageClass `rook-ceph-block`
-- [Source: Story 14.5] — KubeVirt deployment, container disk + PVC-backed disk pattern
+- [Source: Story 14.3] — KubeVirt + CDI deployment with nested virtualization
+- [Source: Story 14.4] — Fedora VM validation, pre-cached container disk image, node sizing
+- [Source: Story 14.5] — ScyllaDB cross-DC deployment
 - [Source: Story 14.6] — Soteria deployment, DRPlan spec with csi-extension driver, cross-DC smoke test pattern
 - [Source: project-context.md] — DRPlan 8-phase lifecycle, site-aware reconciliation, unified handler model, testing pyramid
 

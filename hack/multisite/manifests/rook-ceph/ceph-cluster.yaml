@@ -1,0 +1,59 @@
+# CephCluster CR for Minikube KVM2 clusters with raw block device OSDs.
+#
+# Each Minikube worker node has an extra disk (/dev/vdb) provisioned via
+# --extra-disks=1. Rook discovers these disks using the deviceFilter.
+#
+# No template variables are needed — Rook auto-discovers /dev/vdb on all
+# worker nodes that have the device available.
+apiVersion: ceph.rook.io/v1
+kind: CephCluster
+metadata:
+  name: rook-ceph
+  namespace: rook-ceph
+spec:
+  network:
+    provider: host  
+    # ### Enable multiClusterService to export the Services between peer clusters
+    # multiClusterService:
+    #   enabled: true
+    #   clusterID: ${CLUSTER_ID}
+  cephVersion:
+    image: quay.io/ceph/ceph:v19
+    allowUnsupported: true
+  dataDirHostPath: /var/lib/rook
+  mon:
+    count: 1
+    allowMultiplePerNode: true
+  mgr:
+    count: 1
+    allowMultiplePerNode: true
+    modules:
+      - name: pg_autoscaler
+        enabled: true
+  dashboard:
+    enabled: false
+  monitoring:
+    enabled: false
+  storage:
+    useAllNodes: true
+    useAllDevices: false
+    deviceFilter: "^vdb$"
+  resources:
+    mon:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        memory: "512Mi"
+    osd:
+      requests:
+        cpu: "100m"
+        memory: "512Mi"
+      limits:
+        memory: "2Gi"
+    mgr:
+      requests:
+        cpu: "100m"
+        memory: "256Mi"
+      limits:
+        memory: "512Mi"

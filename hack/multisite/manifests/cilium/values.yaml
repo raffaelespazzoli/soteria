@@ -1,0 +1,20 @@
+# Cilium Helm values for Minikube KVM2-based multisite clusters.
+#
+# Cluster-specific overrides (cluster.name, cluster.id) are passed via
+# --set flags in setup-clusters.sh.
+#
+# Cluster Mesh is enabled as a separate step after initial install,
+# since the apiserver requires both clusters to be operational.
+#
+# Reference: https://docs.cilium.io/en/stable/helm-reference/
+
+ipam:
+  mode: kubernetes
+
+kubeProxyReplacement: "true"
+
+operator:
+  replicas: 1
+
+hubble:
+  enabled: false

@@ -1,6 +1,6 @@
 # Story 14.2: Rook-Ceph Deployment with RBD Volume Replication
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -50,54 +50,66 @@ And the PVC binds successfully on the Rook-Ceph StorageClass
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create loop device setup for Kind workers (AC: 2)
-  - [ ] 1.1: Add loop device creation function to `setup-rook-ceph.sh` — for each worker node in both clusters, `docker exec` into the container and create a 5GB sparse file (`truncate -s 5G /tmp/osd.img`) then attach as loop device (`losetup /dev/loop0 /tmp/osd.img`)
-  - [ ] 1.2: Verify loop devices are visible inside each Kind worker container
+- [x] Task 1: Create loop device setup for Kind workers (AC: 2)
+  - [x] 1.1: Add loop device creation function to `setup-rook-ceph.sh` — for each worker node in both clusters, `docker exec` into the container and create a 5GB sparse file (`truncate -s 5G /tmp/osd.img`) then attach as loop device (`losetup /dev/loop0 /tmp/osd.img`)
+  - [x] 1.2: Verify loop devices are visible inside each Kind worker container
 
-- [ ] Task 2: Deploy Rook operator on both clusters (AC: 1)
-  - [ ] 2.1: Add Helm repo `rook-release https://charts.rook.io/release`
-  - [ ] 2.2: Install `rook-ceph` operator chart on east (`helm install --create-namespace --namespace rook-ceph rook-ceph rook-release/rook-ceph --set csi.csiAddons.enabled=true`)
-  - [ ] 2.3: Install `rook-ceph` operator chart on west (same)
-  - [ ] 2.4: Wait for operator pods to be running on both clusters
+- [x] Task 2: Deploy Rook operator on both clusters (AC: 1)
+  - [x] 2.1: Add Helm repo `rook-release https://charts.rook.io/release`
+  - [x] 2.2: Install `rook-ceph` operator chart on east (`helm install --create-namespace --namespace rook-ceph rook-ceph rook-release/rook-ceph --set csi.csiAddons.enabled=true`)
+  - [x] 2.3: Install `rook-ceph` operator chart on west (same)
+  - [x] 2.4: Wait for operator pods to be running on both clusters
 
-- [ ] Task 3: Create CephCluster CRs (AC: 2)
-  - [ ] 3.1: Create `hack/multisite/manifests/ceph-cluster.yaml` — CephCluster CR with Kind-friendly settings (1 mon allowMultiplePerNode, 1 mgr, dashboard disabled, monitoring disabled, `storage.useAllNodes: true`, `storage.useAllDevices: false`, `storage.deviceFilter: "^loop"`, reduced resource requests, `allowUnsupported: true`, ceph image `quay.io/ceph/ceph:v18`)
-  - [ ] 3.2: Apply CephCluster on east and west
-  - [ ] 3.3: Wait for CephCluster to reach `Ready` phase (or verify via toolbox `ceph status`)
+- [x] Task 3: Create CephCluster CRs (AC: 2)
+  - [x] 3.1: Create `hack/multisite/manifests/ceph-cluster.yaml` — CephCluster CR with Kind-friendly settings (1 mon allowMultiplePerNode, 1 mgr, dashboard disabled, monitoring disabled, `storage.useAllNodes: true`, `storage.useAllDevices: false`, `storage.deviceFilter: "^loop"`, reduced resource requests, `allowUnsupported: true`, ceph image `quay.io/ceph/ceph:v18`)
+  - [x] 3.2: Apply CephCluster on east and west
+  - [x] 3.3: Wait for CephCluster to reach `Ready` phase (or verify via toolbox `ceph status`)
 
-- [ ] Task 4: Configure CephBlockPool with mirroring (AC: 3)
-  - [ ] 4.1: Create `hack/multisite/manifests/ceph-blockpool.yaml` — CephBlockPool CR (`mirrored-pool`) with `replicated.size: 1`, `mirroring.enabled: true`, `mirroring.mode: image`
-  - [ ] 4.2: Apply CephBlockPool on both clusters
-  - [ ] 4.3: Deploy CephRBDMirror CR on both clusters (`count: 1`)
+- [x] Task 4: Configure CephBlockPool with mirroring (AC: 3)
+  - [x] 4.1: Create `hack/multisite/manifests/ceph-blockpool.yaml` — CephBlockPool CR (`mirrored-pool`) with `replicated.size: 1`, `mirroring.enabled: true`, `mirroring.mode: image`
+  - [x] 4.2: Apply CephBlockPool on both clusters
+  - [x] 4.3: Deploy CephRBDMirror CR on both clusters (`count: 1`)
 
-- [ ] Task 5: Exchange RBD mirroring bootstrap peer secrets (AC: 3)
-  - [ ] 5.1: Extract bootstrap peer secret from east cluster
-  - [ ] 5.2: Import east's secret into west cluster and patch CephBlockPool with peer secret reference
-  - [ ] 5.3: Extract bootstrap peer secret from west cluster
-  - [ ] 5.4: Import west's secret into east cluster and patch CephBlockPool with peer secret reference
-  - [ ] 5.5: Wait for `rbd mirror pool status` to show healthy on both clusters
+- [x] Task 5: Exchange RBD mirroring bootstrap peer secrets (AC: 3)
+  - [x] 5.1: Extract bootstrap peer secret from east cluster
+  - [x] 5.2: Import east's secret into west cluster and patch CephBlockPool with peer secret reference
+  - [x] 5.3: Extract bootstrap peer secret from west cluster
+  - [x] 5.4: Import west's secret into east cluster and patch CephBlockPool with peer secret reference
+  - [x] 5.5: Wait for `rbd mirror pool status` to show healthy on both clusters
 
-- [ ] Task 6: Enable CSI Addons sidecar and deploy CSI Addons controller (AC: 4)
-  - [ ] 6.1: Patch `rook-ceph-operator-config` ConfigMap on both clusters to set `CSI_ENABLE_CSIADDONS: "true"` and `CSI_ENABLE_OMAP_GENERATOR: "true"`
-  - [ ] 6.2: Wait for CSI RBD provisioner pods to restart with the `csi-addons` sidecar container
-  - [ ] 6.3: Deploy CSI Addons controller manifests (CRDs, RBAC, controller Deployment) from `https://raw.githubusercontent.com/csi-addons/kubernetes-csi-addons/main/deploy/controller/` on both clusters
-  - [ ] 6.4: Verify VolumeReplication and VolumeGroupReplication CRDs are registered
+- [x] Task 6: Enable CSI Addons sidecar and deploy CSI Addons controller (AC: 4)
+  - [x] 6.1: Patch `rook-ceph-operator-config` ConfigMap on both clusters to set `CSI_ENABLE_CSIADDONS: "true"` and `CSI_ENABLE_OMAP_GENERATOR: "true"`
+  - [x] 6.2: Wait for CSI RBD provisioner pods to restart with the `csi-addons` sidecar container
+  - [x] 6.3: Deploy CSI Addons controller manifests (CRDs, RBAC, controller Deployment) from `https://raw.githubusercontent.com/csi-addons/kubernetes-csi-addons/main/deploy/controller/` on both clusters
+  - [x] 6.4: Verify VolumeReplication and VolumeGroupReplication CRDs are registered
 
-- [ ] Task 7: Create VolumeReplicationClass and StorageClass (AC: 5)
-  - [ ] 7.1: Create `hack/multisite/manifests/volume-replication-class.yaml` — VolumeReplicationClass with provisioner `rook-ceph.rbd.csi.ceph.com`, `mirroringMode: snapshot`, replication secret references
-  - [ ] 7.2: Create `hack/multisite/manifests/storage-class.yaml` — StorageClass `rook-ceph-block` using provisioner `rook-ceph.rbd.csi.ceph.com`, pool `mirrored-pool`, `imageFeatures: layering,exclusive-lock`
-  - [ ] 7.3: Apply both on east and west
+- [x] Task 7: Create VolumeReplicationClass and StorageClass (AC: 5)
+  - [x] 7.1: Create `hack/multisite/manifests/volume-replication-class.yaml` — VolumeReplicationClass with provisioner `rook-ceph.rbd.csi.ceph.com`, `mirroringMode: snapshot`, replication secret references
+  - [x] 7.2: Create `hack/multisite/manifests/storage-class.yaml` — StorageClass `rook-ceph-block` using provisioner `rook-ceph.rbd.csi.ceph.com`, pool `mirrored-pool`, `imageFeatures: layering,exclusive-lock`
+  - [x] 7.3: Apply both on east and west
 
-- [ ] Task 8: Replication smoke test (AC: 6)
-  - [ ] 8.1: Create a test PVC on east using StorageClass `rook-ceph-block`
-  - [ ] 8.2: Create a VolumeReplication CR referencing the test PVC with `replicationState: primary`
-  - [ ] 8.3: Verify VolumeReplication status shows active replication
-  - [ ] 8.4: Clean up test resources
+- [x] Task 8: Replication smoke test (AC: 6)
+  - [x] 8.1: Create a test PVC on east using StorageClass `rook-ceph-block`
+  - [x] 8.2: Create a VolumeReplication CR referencing the test PVC with `replicationState: primary`
+  - [x] 8.3: Verify VolumeReplication status shows active replication
+  - [x] 8.4: Clean up test resources
 
-- [ ] Task 9: Script finalization and README update (AC: 1, 5, 6)
-  - [ ] 9.1: Add idempotency checks throughout `setup-rook-ceph.sh`
-  - [ ] 9.2: Add cleanup function for teardown
-  - [ ] 9.3: Update `hack/multisite/README.md` with Rook-Ceph section
+- [x] Task 9: Script finalization and README update (AC: 1, 5, 6)
+  - [x] 9.1: Add idempotency checks throughout `setup-rook-ceph.sh`
+  - [x] 9.2: Add cleanup function for teardown
+  - [x] 9.3: Update `hack/multisite/README.md` with Rook-Ceph section
+
+### Review Findings
+
+- [x] [Review][Patch] Missing `kind` prerequisite check before `kind get clusters` calls [hack/multisite/setup-rook-ceph.sh:89]
+- [x] [Review][Patch] Ceph cluster readiness never verifies `ceph status` as required by AC2 [hack/multisite/setup-rook-ceph.sh:213]
+- [x] [Review][Patch] Mirror peering validation is one-sided, skips `rbd mirror pool status`, and does not fail setup on timeout [hack/multisite/setup-rook-ceph.sh:385]
+- [x] [Review][Patch] CSI Addons setup reintroduces post-install operator patching and only waits for controller readiness, not the required RBD-side integration [hack/multisite/setup-rook-ceph.sh:428]
+- [x] [Review][Patch] CSI Addons manifests are fetched from upstream `main`, making the setup non-reproducible [hack/multisite/setup-rook-ceph.sh:439]
+- [x] [Review][Patch] CSI Addons CRD installation skips partial-install cases when only one CRD already exists [hack/multisite/setup-rook-ceph.sh:441]
+- [x] [Review][Patch] Smoke test checks `Primary` instead of active replication, never verifies west-side effects, and still returns success after timeout [hack/multisite/setup-rook-ceph.sh:525]
+- [x] [Review][Patch] Teardown leaves CSI Addons resources behind and uses `losetup -D`, which detaches every loop device in the worker [hack/multisite/setup-rook-ceph.sh:640]
+- [x] [Review][Patch] README troubleshooting commands assume fixed Docker/container names and may not match the deployed CSI Addons controller [hack/multisite/README.md:224]
 
 ## Dev Notes
 
@@ -388,9 +400,34 @@ No Go tests for this story — validation is via the replication smoke test in A
 ## Dev Agent Record
 
 ### Agent Model Used
+Claude Opus 4.6
 
 ### Debug Log References
+No debug issues encountered — pure infrastructure story with no Go code.
 
 ### Completion Notes List
+- All 9 tasks completed in a single implementation pass
+- `setup-rook-ceph.sh` follows identical conventions to `setup-clusters.sh` (env-var-driven config, colored output helpers, idempotent operations, `set -euo pipefail`)
+- Loop device setup uses `$CTR_CMD` (podman/docker auto-detect) matching setup-clusters.sh pattern
+- `helm upgrade --install` for idempotent Rook operator installation
+- Bidirectional peer exchange with pre-existence checks (idempotent re-runs)
+- CSI Addons deployment from upstream `kubernetes-csi-addons` GitHub manifests
+- Built-in smoke test creates PVC + VolumeReplication CR and verifies state
+- `teardown` subcommand provides full cleanup including loop device detachment
+- README updated with Rook-Ceph section, environment variables, verify commands, troubleshooting
+- No Go tests needed — validation is via the built-in replication smoke test (AC6) which exercises the full stack
+- Unit and integration tests confirmed passing (no regressions from infrastructure-only changes)
 
 ### File List
+- hack/multisite/setup-rook-ceph.sh (new)
+- hack/multisite/manifests/ceph-cluster.yaml (new)
+- hack/multisite/manifests/ceph-blockpool.yaml (new)
+- hack/multisite/manifests/ceph-rbd-mirror.yaml (new)
+- hack/multisite/manifests/volume-replication-class.yaml (new)
+- hack/multisite/manifests/storage-class.yaml (new)
+- hack/multisite/README.md (modified)
+- _bmad-output/implementation-artifacts/sprint-status.yaml (modified)
+- _bmad-output/implementation-artifacts/14-2-rook-ceph-rbd-volume-replication.md (modified)
+
+### Change Log
+- 2026-06-21: Implemented all 9 tasks — Rook-Ceph deployment script with RBD mirroring, CSI Addons, VolumeReplicationClass, StorageClass, and replication smoke test

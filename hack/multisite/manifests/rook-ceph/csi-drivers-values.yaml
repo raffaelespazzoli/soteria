@@ -1,0 +1,35 @@
+# Rook-compatible values for the ceph-csi-drivers Helm chart.
+#
+# This chart creates OperatorConfig and Driver CRs that the ceph-csi-operator
+# uses to deploy the actual RBD and CephFS CSI provisioner/node plugin pods.
+#
+# Reference: https://rook.io/docs/rook/v1.20/Helm-Charts/csi-drivers-chart/
+
+operatorConfig:
+  namespace: rook-ceph
+  driverSpecDefaults:
+    deployCsiAddons: true
+    generateOMapInfo: true
+    imageSet:
+      name: rook-csi-operator-image-set-configmap
+    nodePlugin:
+      priorityClassName: system-node-critical
+    controllerPlugin:
+      priorityClassName: system-cluster-critical
+
+drivers:
+  rbd:
+    enabled: true
+    name: rook-ceph.rbd.csi.ceph.com
+    deployCsiAddons: true
+    generateOMapInfo: true
+  cephfs:
+    enabled: true
+    name: rook-ceph.cephfs.csi.ceph.com
+    deployCsiAddons: true
+  nfs:
+    enabled: false
+    name: rook-ceph.nfs.csi.ceph.com
+  nvmeof:
+    enabled: false
+    name: rook-ceph.nvmeof.csi.ceph.com

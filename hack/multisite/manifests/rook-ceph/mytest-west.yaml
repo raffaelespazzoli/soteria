@@ -1,0 +1,71 @@
+kind: Namespace
+apiVersion: v1
+metadata:
+  name: replicated-pvc-test
+  labels:
+    kubernetes.io/metadata.name: replicated-pvc-test
+---
+# Pre-provisioned PV pointing to the replicated RBD image on the west cluster.
+# This PV is "dormant" — it references the same image that east is replicating.
+# On failover, the VolumeReplication CR promotes this image to primary, making
+# the PVC writable.
+#
+# IMPORTANT: The volumeHandle encodes the pool ID. Pool IDs may differ between
+# clusters. Use: ceph osd pool ls detail --format json | jq '.[] | select(.pool_name=="mirrored-pool") | .pool_id'
+# to find the correct pool ID, then format as 16-hex-char zero-padded value.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pvc-831d725c-f977-46ce-8af9-29a6ebf5eabe
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: rook-ceph-block
+  volumeMode: Filesystem
+  csi:
+    driver: rook-ceph.rbd.csi.ceph.com
+    volumeHandle: 0001-0009-rook-ceph-0000000000000002-56423728-814b-48ea-a6e0-61dc52030d3a
+    volumeAttributes:
+      clusterID: rook-ceph
+      imageFeatures: "layering,exclusive-lock"
+      imageFormat: "2"
+      imageName: csi-vol-56423728-814b-48ea-a6e0-61dc52030d3a
+      journalPool: mirrored-pool
+      pool: mirrored-pool
+    nodeStageSecretRef:
+      name: rook-csi-rbd-node
+      namespace: rook-ceph
+    controllerExpandSecretRef:
+      name: rook-csi-rbd-provisioner
+      namespace: rook-ceph
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: test-pvc
+  namespace: replicated-pvc-test
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: rook-ceph-block
+  volumeName: pvc-831d725c-f977-46ce-8af9-29a6ebf5eabe
+---
+# VolumeReplication in secondary state — receives replicated data from east.
+# On failover, change replicationState to "primary" to promote this image.
+apiVersion: replication.storage.openshift.io/v1alpha1
+kind: VolumeReplication
+metadata:
+  name: test-vr
+  namespace: replicated-pvc-test
+spec:
+  volumeReplicationClass: rook-ceph-rbd-vrc
+  replicationState: secondary
+  dataSource:
+    kind: PersistentVolumeClaim
+    name: test-pvc

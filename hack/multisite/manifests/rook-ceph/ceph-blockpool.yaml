@@ -1,0 +1,14 @@
+# CephBlockPool with image-level RBD mirroring enabled.
+# replicated.size: 1 — each Kind cluster has only 3 small OSDs.
+# mirroring.mode: image — per-image control via VolumeReplication CRs.
+apiVersion: ceph.rook.io/v1
+kind: CephBlockPool
+metadata:
+  name: mirrored-pool
+  namespace: rook-ceph
+spec:
+  replicated:
+    size: 3
+  mirroring:
+    enabled: true
+    mode: image

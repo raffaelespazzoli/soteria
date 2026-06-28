@@ -1,0 +1,9 @@
+# CephRBDMirror deploys the rbd-mirror daemon for asynchronous
+# image-level replication between the east and west Ceph clusters.
+apiVersion: ceph.rook.io/v1
+kind: CephRBDMirror
+metadata:
+  name: rbd-mirror
+  namespace: rook-ceph
+spec:
+  count: 1

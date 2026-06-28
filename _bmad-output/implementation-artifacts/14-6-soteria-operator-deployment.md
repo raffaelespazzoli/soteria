@@ -5,16 +5,16 @@ Status: ready-for-dev
 ## Story
 
 As a platform engineer,
-I want Soteria deployed on both Kind clusters with the real Ceph VolumeReplicationClass,
+I want Soteria deployed on both Minikube KVM2 clusters with the real Ceph VolumeReplicationClass,
 so that the operator manages DR plans against real storage replication.
 
 ## Acceptance Criteria
 
 **AC1: Soteria operator deployment**
-Given ScyllaDB and KubeVirt are running on both clusters
+Given ScyllaDB and KubeVirt are running on both Minikube clusters
 When the Soteria deployment script is executed
 Then Soteria operator (API server + controller) is deployed on both clusters
-And console plugin is excluded (Kind has no OCP Console)
+And console plugin is excluded (Minikube has no OCP Console)
 
 **AC2: Site-name configuration**
 Given the Soteria deployment
@@ -39,13 +39,13 @@ Then it is visible on west after ScyllaDB replication delay
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Build Soteria container image and load into Kind (AC: 1)
+- [ ] Task 1: Build Soteria container image and load into Minikube (AC: 1)
   - [ ] 1.1: Build operator image via `make docker-build IMG=localhost/soteria:dev CONTAINER_TOOL=podman`
-  - [ ] 1.2: Load image into both Kind clusters via `kind load docker-image localhost/soteria:dev --name east` and `--name west`
-  - [ ] 1.3: Verify image is available in both clusters (`docker exec kind-east-control-plane crictl images | grep soteria`)
+  - [ ] 1.2: Load image into both Minikube clusters via `minikube image load localhost/soteria:dev -p east` and `-p west`
+  - [ ] 1.3: Verify image is available in both clusters (`minikube ssh -p east -- "sudo crictl images | grep soteria"`)
 
-- [ ] Task 2: Create Kustomize overlays for Kind multisite deployment (AC: 1, 2)
-  - [ ] 2.1: Create `hack/multisite/overlays/base/manager-args-patch.yaml` — ScyllaDB connection args adapted for Kind (contact-points uses `soteria-scylladb-client.soteria.svc:9142`, `--scylladb-dc-replication=east:1,west:1`, TLS cert paths, apiserver TLS, disable admission plugins)
+- [ ] Task 2: Create Kustomize overlays for Minikube multisite deployment (AC: 1, 2)
+  - [ ] 2.1: Create `hack/multisite/overlays/base/manager-args-patch.yaml` — ScyllaDB connection args adapted for Minikube (contact-points uses `soteria-scylladb-client.soteria.svc:9142`, `--scylladb-dc-replication=east:1,west:1`, TLS cert paths, apiserver TLS, disable admission plugins)
   - [ ] 2.2: Create `hack/multisite/overlays/base/manager-scylladb-patch.yaml` — volume mounts for apiserver-tls and scylladb-client-tls secrets (mirrors `hack/overlays/base/manager-scylladb-patch.yaml`)
   - [ ] 2.3: Create `hack/multisite/overlays/base/apiserver-rbac.yaml` — auth-delegation, admission, flowcontrol RBAC (mirrors `hack/overlays/base/apiserver-rbac.yaml`)
   - [ ] 2.4: Create `hack/multisite/overlays/base/apiserver-cert.yaml` — Certificate for the apiserver service TLS (mirrors `hack/overlays/base/apiserver-cert.yaml`)
@@ -57,7 +57,7 @@ Then it is visible on west after ScyllaDB replication delay
 
 - [ ] Task 3: Create `hack/multisite/deploy-soteria.sh` (AC: 1, 2, 4, 5)
   - [ ] 3.1: Env-var configuration block (IMG, EAST_CONTEXT, WEST_CONTEXT, NAMESPACE, KUSTOMIZE path)
-  - [ ] 3.2: Prerequisite checks (kubectl, kustomize, Kind clusters running, ScyllaDB ready on both, KubeVirt Deployed on both, image loaded in Kind)
+  - [ ] 3.2: Prerequisite checks (kubectl, kustomize, Minikube clusters running, ScyllaDB ready on both, KubeVirt Deployed on both, image loaded in Minikube)
   - [ ] 3.3: Set image in kustomize: `cd config/manager && kustomize edit set image controller=${IMG}`
   - [ ] 3.4: Build east overlay and apply: `kustomize build hack/multisite/overlays/east | kubectl --context=kind-east apply --server-side --force-conflicts -f -`
   - [ ] 3.5: Wait for Soteria controller-manager deployment rollout on east (timeout 5m)
@@ -88,20 +88,20 @@ Soteria is the DR orchestration operator. It runs as a single binary (API server
 
 ### Critical: Image Build and Load Strategy
 
-Soteria is NOT available from a public registry in the integration test environment. The image must be built locally and loaded into the Kind clusters:
+Soteria is NOT available from a public registry in the integration test environment. The image must be built locally and loaded into the Minikube clusters:
 
 ```bash
 IMG="localhost/soteria:dev"
 make docker-build IMG="${IMG}" CONTAINER_TOOL=podman
-kind load docker-image "${IMG}" --name east
-kind load docker-image "${IMG}" --name west
+minikube image load "${IMG}" -p east
+minikube image load "${IMG}" -p west
 ```
 
-The `kind load docker-image` command copies the image from the local container runtime (podman/docker) into the Kind node containers. After loading, the image is available with `imagePullPolicy: IfNotPresent` (which is the default for non-`latest` tags).
+The `minikube image load` command copies the image from the local container runtime into the Minikube node's container image cache. After loading, the image is available with `imagePullPolicy: IfNotPresent`.
 
 **Important:** The `config/manager/manager.yaml` uses `imagePullPolicy: Always` by default. The Kustomize overlay must either:
-- Override `imagePullPolicy` to `IfNotPresent` (preferred for Kind), OR
-- Use a tag other than `latest` (e.g., `localhost/soteria:dev`) which Kind nodes can satisfy from local cache
+- Override `imagePullPolicy` to `IfNotPresent` (preferred for Minikube), OR
+- Use a tag other than `latest` (e.g., `localhost/soteria:dev`) which Minikube nodes can satisfy from local cache
 
 Add an image pull policy patch to the overlay:
 ```yaml
@@ -113,12 +113,12 @@ Add an image pull policy patch to the overlay:
 ### Critical: Overlay Architecture Adaptation
 
 The existing `hack/overlays/` structure deploys Soteria on real OpenShift clusters (etl6/etl7) with:
-- Submariner MCS for cross-cluster connectivity → replaced by Cilium global services (already handled in 14.4)
+- Submariner MCS for cross-cluster connectivity → replaced by Cilium global services (already handled in 14.5)
 - `ontap-san-xfs` StorageClass → replaced by `rook-ceph-block`
-- `soteria-internal` cert-manager Issuer → same (created in 14.4)
+- `soteria-internal` cert-manager Issuer → same (created in 14.5)
 - ScyllaDB 2 members/rack → 1 member/rack (developer mode)
 
-The `hack/multisite/overlays/` structure ALREADY has ScyllaDB overlays from Story 14.4. This story **adds** Soteria-specific patches to the existing overlay structure rather than duplicating the full base. The key additions:
+The `hack/multisite/overlays/` structure ALREADY has ScyllaDB overlays from Story 14.5. This story **adds** Soteria-specific patches to the existing overlay structure rather than duplicating the full base. The key additions:
 - Manager args patch (ScyllaDB connection + API server TLS + admission disabling)
 - Manager volume mounts (TLS secrets)
 - API server RBAC (auth-delegation)
@@ -136,16 +136,16 @@ With Cilium global services (from Story 14.4), the same FQDN is used (`svc.clust
 
 ### Critical: DC Replication Factor
 
-The existing deployment uses `--scylladb-dc-replication=etl6:2,etl7:2` (RF=2 per DC with 2 members). For Kind, use `--scylladb-dc-replication=east:1,west:1` (RF=1 per DC with 1 member in developer mode).
+The existing deployment uses `--scylladb-dc-replication=etl6:2,etl7:2` (RF=2 per DC with 2 members). For Minikube, use `--scylladb-dc-replication=east:1,west:1` (RF=1 per DC with 1 member in developer mode).
 
 ### Critical: Console Plugin Exclusion
 
-Kind clusters don't have OCP Console. The deployment must NOT include:
+Minikube clusters don't have OCP Console. The deployment must NOT include:
 - Console plugin Deployment
 - ConsolePlugin CR
 - Console-related RBAC
 
-The existing `hack/overlays/base/console-plugin.yaml` is deployed separately in the stretched-local-test.sh script. For the Kind deployment, simply don't reference it in the overlay or the deploy script.
+The existing `hack/overlays/base/console-plugin.yaml` is deployed separately in the stretched-local-test.sh script. For the Minikube deployment, simply don't reference it in the overlay or the deploy script.
 
 ### Critical: No Noop VR Controller
 
@@ -163,22 +163,22 @@ kustomize build --load-restrictor LoadRestrictionsNone hack/multisite/overlays/e
 
 | Dependency | Story | What's Needed |
 |------------|-------|---------------|
-| Kind clusters + Cilium | 14.1 | Both `east` and `west` clusters running with Cluster Mesh |
+| Minikube KVM2 clusters + Cilium | 14.1 | Both `east` and `west` clusters running with Cluster Mesh |
 | Rook-Ceph | 14.2 | StorageClass `rook-ceph-block`, VolumeReplicationClass `rook-ceph-rbd-vrc`, CSI Addons running |
-| ScyllaDB | 14.4 | Cross-DC ScyllaDB cluster running on both clusters with mTLS, cert-manager Issuer `soteria-internal` in `soteria` namespace |
-| KubeVirt | 14.5 | KubeVirt Deployed on both clusters (VM webhook requires KubeVirt CRDs) |
+| KubeVirt | 14.3 | KubeVirt Deployed on both clusters (VM webhook requires KubeVirt CRDs) |
+| ScyllaDB | 14.5 | Cross-DC ScyllaDB cluster running on both clusters with mTLS, cert-manager Issuer `soteria-internal` in `soteria` namespace |
 
 ### Existing Deployment Pattern Comparison
 
 | Aspect | Existing (etl6/etl7) | This Story (east/west) |
 |--------|----------------------|------------------------|
-| Image source | Registry (`quay.io/raffaelespazzoli/soteria:latest`) | Local build + `kind load` |
+| Image source | Registry (`quay.io/raffaelespazzoli/soteria:latest`) | Local build + `minikube image load` |
 | ScyllaDB contact | `soteria-scylladb-client.soteria.svc:9142` | Same (Cilium handles cross-cluster) |
 | DC replication | `etl6:2,etl7:2` | `east:1,west:1` |
 | Site names | `etl6` / `etl7` | `east` / `west` |
 | TLS | cert-manager `soteria-internal` Issuer | Same (created in 14.4) |
-| Console plugin | Deployed (ConsolePlugin CR) | **NOT deployed** (no OCP Console) |
-| Image pull | `Always` (from registry) | `IfNotPresent` (local Kind cache) |
+| Console plugin | Deployed (ConsolePlugin CR) | **NOT deployed** (no OCP Console in Minikube) |
+| Image pull | `Always` (from registry) | `IfNotPresent` (local Minikube cache) |
 | APIServer | Port 6443, TLS cert | Same |
 | Cross-cluster | Submariner MCS | Cilium global services |
 
@@ -188,28 +188,30 @@ Follow the same conventions from Stories 14.1-14.5:
 
 - `set -euo pipefail` at top
 - Env-var-driven configuration block at top of script
-- `kctl_east()` / `kctl_west()` helpers with explicit `--context`
-- Consistent cluster naming: `east` and `west` (contexts `kind-east` and `kind-west`)
+- `keast()` / `kwest()` helpers with explicit `--context`
+- Cluster profiles: `east` and `west` (contexts match profile names)
 - Idempotent operations (`kubectl apply --server-side --force-conflicts`)
-- Status messages for each step
+- Status messages via `info()`, `warn()`, `error()`, `fatal()` helpers
 - Prerequisite checks at script start
-- `SCRIPT_ROOT` derived from script location
+- `SCRIPT_DIR` derived from script location
 
 ### Kubeconfig / Context Pattern
 
 ```bash
-EAST_CONTEXT="${EAST_CONTEXT:-kind-east}"
-WEST_CONTEXT="${WEST_CONTEXT:-kind-west}"
+EAST_CLUSTER_NAME="${EAST_CLUSTER_NAME:-east}"
+WEST_CLUSTER_NAME="${WEST_CLUSTER_NAME:-west}"
+EAST_CONTEXT="${EAST_CLUSTER_NAME}"
+WEST_CONTEXT="${WEST_CLUSTER_NAME}"
 NAMESPACE="${NAMESPACE:-soteria}"
 IMG="${IMG:-localhost/soteria:dev}"
 
-kctl_east() { kubectl --context "${EAST_CONTEXT}" "$@"; }
-kctl_west() { kubectl --context "${WEST_CONTEXT}" "$@"; }
+keast() { kubectl --context "${EAST_CONTEXT}" "$@"; }
+kwest() { kubectl --context "${WEST_CONTEXT}" "$@"; }
 ```
 
 ### Deploy Sequence
 
-1. Verify prerequisites (Kind clusters, ScyllaDB ready, KubeVirt Deployed, image loaded)
+1. Verify prerequisites (Minikube clusters, ScyllaDB ready, KubeVirt Deployed, image loaded)
 2. Set image in kustomize config
 3. Build and apply east overlay (Soteria deploys, connects to east ScyllaDB DC)
 4. Wait for controller-manager rollout on east
@@ -270,7 +272,7 @@ done
 
 ### Potential Failure Modes
 
-1. **Image not found** — `kind load docker-image` must run BEFORE deploy. Error manifests as `ImagePullBackOff` on the pod.
+1. **Image not found** — `minikube image load` must run BEFORE deploy. Error manifests as `ImagePullBackOff` on the pod.
 2. **ScyllaDB connection timeout** — Soteria pod won't become Ready if it can't connect to ScyllaDB. Check that `soteria-scylladb-client.soteria.svc:9142` resolves and TLS certs are valid.
 3. **APIService stays Unavailable** — Typically means the pod isn't Ready (readiness probe fails on `/readyz`). Check pod logs: `kubectl -n soteria logs deployment/soteria-controller-manager -c manager`
 4. **TLS cert not found** — cert-manager must have issued `soteria-apiserver-tls` and `soteria-scylladb-client-tls` secrets. These are issued by the `soteria-internal` Issuer created in Story 14.4.
@@ -300,9 +302,9 @@ hack/multisite/
 │       └── scyllacluster-patch.yaml     # From Story 14.4
 ├── setup-clusters.sh                    # From Story 14.1
 ├── setup-rook-ceph.sh                   # From Story 14.2
-├── setup-dashboard.sh                   # From Story 14.3
-├── setup-scylladb.sh                    # From Story 14.4
-├── setup-kubevirt.sh                    # From Story 14.5
+├── setup-kubevirt.sh                    # From Story 14.3
+├── validate-fedora-vm.sh               # From Story 14.4
+├── setup-scylladb.sh                    # From Story 14.5
 ├── manifests/                           # From Story 14.2
 ├── teardown.sh                          # From Story 14.1
 └── README.md                            # Updated with Soteria section
@@ -322,7 +324,7 @@ The following files from `hack/overlays/` should be adapted for `hack/multisite/
 | `hack/overlays/etl7/manager-dc-patch.yaml` | Change `etl7` → `west` |
 | `hack/overlays/base/serviceexport.yaml` | NOT NEEDED — Cilium replaces Submariner |
 | `hack/overlays/base/storageclass-xfs.yaml` | NOT NEEDED — Rook-Ceph SC already exists from 14.2 |
-| `hack/overlays/base/console-plugin.yaml` | NOT NEEDED — no OCP Console in Kind |
+| `hack/overlays/base/console-plugin.yaml` | NOT NEEDED — no OCP Console in Minikube |
 | `hack/overlays/base/scylladb-tls-config.yaml` | Already handled in 14.4 overlays |
 | `hack/overlays/base/scylladb-tls-patch.yaml` | Already handled in 14.4 overlays |
 
@@ -361,17 +363,22 @@ No Go tests for this story — validation is via the deploy script's built-in ve
 
 ### Previous Story Intelligence
 
-**From Story 14.1 (Kind Cluster Provisioning):**
-- Cluster contexts are `kind-east` and `kind-west`
-- Kind cluster names are `east` and `west`
-- 3 worker nodes per cluster (for Rook OSDs)
+**From Story 14.1 (Minikube KVM2 Cluster Provisioning):**
+- Cluster profiles/contexts are `east` and `west`
+- 4 nodes per cluster (1 CP + 3 workers)
+- MetalLB for LoadBalancer IPs
 
 **From Story 14.2 (Rook-Ceph Deployment):**
 - VolumeReplicationClass `rook-ceph-rbd-vrc` available on both clusters
 - StorageClass `rook-ceph-block` for PVCs
 - CSI Addons controller running (reconciles VR/VGR CRs)
 
-**From Story 14.4 (ScyllaDB Deployment):**
+**From Story 14.3 (KubeVirt Deployment):**
+- KubeVirt Deployed on both clusters with nested virtualization (KVM)
+- CDI deployed for DataVolume support
+- `kubevirt.io/v1` VirtualMachine CRD available (required for Soteria's VM webhook)
+
+**From Story 14.5 (ScyllaDB Deployment):**
 - ScyllaDB deployed in `soteria` namespace on both clusters
 - cert-manager installed with `soteria-internal` Issuer in `soteria` namespace
 - `hack/multisite/overlays/{base,east,west}/` structure created with ScyllaDB resources
@@ -379,17 +386,12 @@ No Go tests for this story — validation is via the deploy script's built-in ve
 - Cilium global service annotation (`service.cilium.io/global: "true"`) for cross-cluster discovery
 - Kustomize build uses `--load-restrictor LoadRestrictionsNone`
 
-**From Story 14.5 (KubeVirt Deployment):**
-- KubeVirt Deployed on both clusters
-- `kubevirt.io/v1` VirtualMachine CRD available (required for Soteria's VM webhook)
-- Container disk + PVC-backed disk patterns validated
-
 **From existing `hack/stretched-local-test.sh`:**
 - Soteria deployment via kustomize build + apply --server-side --force-conflicts
 - APIService verification pattern (`get apiservice v1alpha1.soteria.io`)
 - Deployment rollout status wait pattern
 - DRPlan creation with site topology fields
-- Console plugin deployment is a separate step (skip for Kind)
+- Console plugin deployment is a separate step (skip for Minikube)
 
 ### Project Structure Notes
 
@@ -411,8 +413,8 @@ No Go tests for this story — validation is via the deploy script's built-in ve
 - [Source: config/default/kustomization.yaml] — default kustomize base (includes all operator resources)
 - [Source: pkg/apis/soteria.io/v1alpha1/types.go] — VolumeReplicationDriverConfig struct (type + volumeReplicationClass)
 - [Source: Story 14.2] — VolumeReplicationClass `rook-ceph-rbd-vrc`
-- [Source: Story 14.4] — ScyllaDB overlays, cert-manager setup, Cilium global services
-- [Source: Story 14.5] — KubeVirt deployment, prerequisites for VM webhook
+- [Source: Story 14.3] — KubeVirt deployment with nested virtualization, CDI
+- [Source: Story 14.5] — ScyllaDB overlays, cert-manager setup, Cilium global services
 - [Source: project-context.md] — Soteria architecture, single binary, aggregated API server, site-aware reconciliation
 
 ## Dev Agent Record

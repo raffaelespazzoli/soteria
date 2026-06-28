@@ -1,0 +1,13 @@
+# ServiceExport template for Rook-Ceph multi-cluster service support.
+#
+# This template is applied once per mon/OSD service to export it via
+# the Multi-Cluster Services API (MCS-API). The exported service becomes
+# accessible as <service>.rook-ceph.svc.clusterset.local from peer clusters.
+#
+# Template variables (substituted by envsubst):
+#   ${SERVICE_NAME} — name of the mon or OSD service to export
+apiVersion: multicluster.x-k8s.io/v1alpha1
+kind: ServiceExport
+metadata:
+  name: ${SERVICE_NAME}
+  namespace: rook-ceph

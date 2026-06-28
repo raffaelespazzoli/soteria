@@ -1,0 +1,15 @@
+# Test VolumeReplication CR for the replication smoke test.
+#
+# Template variables (substituted by envsubst):
+#   ${TEST_NAMESPACE} — namespace for the test resources
+apiVersion: replication.storage.openshift.io/v1alpha1
+kind: VolumeReplication
+metadata:
+  name: test-vr
+  namespace: ${TEST_NAMESPACE}
+spec:
+  volumeReplicationClass: rook-ceph-rbd-vrc
+  replicationState: primary
+  dataSource:
+    kind: PersistentVolumeClaim
+    name: test-pvc

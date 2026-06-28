@@ -1,0 +1,30 @@
+kind: Namespace
+apiVersion: v1
+metadata:
+  name: replicated-pvc-test
+  labels:
+    kubernetes.io/metadata.name: replicated-pvc-test
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: test-pvc
+  namespace: replicated-pvc-test
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: rook-ceph-block
+---
+apiVersion: replication.storage.openshift.io/v1alpha1
+kind: VolumeReplication
+metadata:
+  name: test-vr
+  namespace: replicated-pvc-test
+spec:
+  volumeReplicationClass: rook-ceph-rbd-vrc
+  replicationState: primary
+  dataSource:
+    kind: PersistentVolumeClaim
+    name: test-pvc  

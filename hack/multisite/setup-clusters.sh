@@ -14,17 +14,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Creates two Kind clusters (east and west) with Cilium Cluster Mesh
+# Creates two Minikube KVM2 clusters (east and west) with Cilium Cluster Mesh
 # for cross-cluster pod-to-pod networking. This is the foundation for
 # the multi-site integration test stack (Epic 14).
+#
+# Each cluster has 1 control-plane + 3 worker nodes backed by real VMs with
+# an extra raw block disk per node for Rook-Ceph OSDs.
 #
 # Usage:
 #   ./hack/multisite/setup-clusters.sh
 #
 # Environment Variables:
-#   EAST_CLUSTER_NAME   Name of the east Kind cluster (default: east)
-#   WEST_CLUSTER_NAME   Name of the west Kind cluster (default: west)
-#   CILIUM_VERSION      Cilium version to install (default: auto-detect from CLI)
+#   EAST_CLUSTER_NAME   Name of the east cluster profile (default: east)
+#   WEST_CLUSTER_NAME   Name of the west cluster profile (default: west)
+#   CILIUM_VERSION      Cilium Helm chart version to install (default: latest)
+#   NODE_CPUS           vCPUs per node (default: 2)
+#   NODE_MEMORY         Memory per node in MB (default: 4096)
+#   DISK_SIZE           Disk size per node — applies to both system and extra disks (default: 30g)
 #   KUBECONFIG_DIR      Directory for generated kubeconfigs (default: ./hack/multisite/.kubeconfigs)
 #   CONNECTIVITY_TEST   Set to "0" to skip the cross-cluster connectivity smoke test
 
@@ -38,16 +44,23 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 EAST_CLUSTER_NAME="${EAST_CLUSTER_NAME:-east}"
 WEST_CLUSTER_NAME="${WEST_CLUSTER_NAME:-west}"
 CILIUM_VERSION="${CILIUM_VERSION:-}"
+NODE_CPUS="${NODE_CPUS:-2}"
+NODE_MEMORY="${NODE_MEMORY:-4096}"
+DISK_SIZE="${DISK_SIZE:-30g}"
 KUBECONFIG_DIR="${KUBECONFIG_DIR:-${SCRIPT_DIR}/.kubeconfigs}"
 CONNECTIVITY_TEST="${CONNECTIVITY_TEST:-1}"
 
 BIN_DIR="${SCRIPT_DIR}/.bin"
-DATA_DIR="${SCRIPT_DIR}/.data"
-EAST_CONFIG="${SCRIPT_DIR}/kind-east.yaml"
-WEST_CONFIG="${SCRIPT_DIR}/kind-west.yaml"
+MANIFESTS_DIR="${SCRIPT_DIR}/manifests"
 
-EAST_CONTEXT="kind-${EAST_CLUSTER_NAME}"
-WEST_CONTEXT="kind-${WEST_CLUSTER_NAME}"
+EAST_CONTEXT="${EAST_CLUSTER_NAME}"
+WEST_CONTEXT="${WEST_CLUSTER_NAME}"
+
+# Non-overlapping CIDRs required for Cluster Mesh
+EAST_POD_CIDR="10.10.0.0/16"
+WEST_POD_CIDR="10.20.0.0/16"
+EAST_SERVICE_CIDR="10.96.0.0/16"
+WEST_SERVICE_CIDR="10.97.0.0/16"
 
 # Validate cluster names are distinct
 if [[ "${EAST_CLUSTER_NAME}" == "${WEST_CLUSTER_NAME}" ]]; then
@@ -71,13 +84,40 @@ fatal() { error "$@"; exit 1; }
 # ---------------------------------------------------------------------------
 # Binary download helpers
 # ---------------------------------------------------------------------------
+ensure_minikube() {
+  if command -v minikube &>/dev/null; then
+    return 0
+  fi
+
+  if [[ -x "${BIN_DIR}/minikube" ]]; then
+    export PATH="${BIN_DIR}:${PATH}"
+    return 0
+  fi
+
+  info "minikube not found — downloading to ${BIN_DIR}/..."
+  mkdir -p "${BIN_DIR}"
+
+  local os arch
+  os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+  arch="$(uname -m)"
+  case "${arch}" in
+    x86_64)  arch="amd64" ;;
+    aarch64) arch="arm64" ;;
+  esac
+
+  curl -fsSL "https://storage.googleapis.com/minikube/releases/latest/minikube-${os}-${arch}" \
+    -o "${BIN_DIR}/minikube"
+  chmod +x "${BIN_DIR}/minikube"
+
+  export PATH="${BIN_DIR}:${PATH}"
+  info "minikube installed: $(minikube version --short 2>/dev/null)"
+}
+
 ensure_cilium_cli() {
-  # If cilium is already on PATH, nothing to do
   if command -v cilium &>/dev/null; then
     return 0
   fi
 
-  # If we previously downloaded it into .bin/, add to PATH
   if [[ -x "${BIN_DIR}/cilium" ]]; then
     export PATH="${BIN_DIR}:${PATH}"
     return 0
@@ -101,7 +141,6 @@ ensure_cilium_cli() {
   curl -fsSL "${release_url}/${tarball}" -o "${BIN_DIR}/${tarball}"
   curl -fsSL "${release_url}/${checksum_file}" -o "${BIN_DIR}/${checksum_file}"
 
-  # Verify checksum
   (cd "${BIN_DIR}" && sha256sum --check "${checksum_file}") || fatal "cilium CLI checksum verification failed"
 
   tar -xzf "${BIN_DIR}/${tarball}" -C "${BIN_DIR}"
@@ -118,112 +157,151 @@ ensure_cilium_cli() {
 check_prerequisites() {
   info "Checking prerequisites..."
 
-  command -v kind &>/dev/null || fatal "kind CLI not found. Install: https://kind.sigs.k8s.io/docs/user/quick-start/#installation"
+  ensure_minikube
+  command -v minikube &>/dev/null || fatal "minikube not available after download attempt"
   command -v kubectl &>/dev/null || fatal "kubectl not found. Install: https://kubernetes.io/docs/tasks/tools/"
+  command -v helm &>/dev/null || fatal "helm not found. Install: https://helm.sh/docs/intro/install/"
 
-  # Container runtime — prefer podman over docker
-  if command -v podman &>/dev/null && podman info &>/dev/null 2>&1; then
-    info "Container runtime: podman"
-    export KIND_EXPERIMENTAL_PROVIDER="${KIND_EXPERIMENTAL_PROVIDER:-podman}"
-    info "Set KIND_EXPERIMENTAL_PROVIDER=${KIND_EXPERIMENTAL_PROVIDER}"
-  elif command -v docker &>/dev/null && docker info &>/dev/null 2>&1; then
-    info "Container runtime: docker"
-  else
-    fatal "Neither podman nor docker is running. Kind requires a container runtime."
+  # Verify KVM is available
+  if [[ ! -e /dev/kvm ]]; then
+    fatal "/dev/kvm not found. Install: sudo dnf install qemu-kvm && sudo modprobe kvm"
+  fi
+  if [[ ! -r /dev/kvm ]] || [[ ! -w /dev/kvm ]]; then
+    fatal "/dev/kvm not accessible. Ensure your user is in the appropriate group ($(stat -c '%G' /dev/kvm))"
   fi
 
-  # Download cilium CLI if missing
   ensure_cilium_cli
   command -v cilium &>/dev/null || fatal "cilium CLI not available after download attempt"
-
-  local cilium_ver
-  cilium_ver="$(cilium version --client 2>/dev/null | grep -oP 'cilium-cli: v\K[0-9]+\.[0-9]+' || echo "0.0")"
-  local major minor
-  major="${cilium_ver%%.*}"
-  minor="${cilium_ver#*.}"
-  if (( major == 0 && minor < 15 )); then
-    warn "cilium CLI version ${cilium_ver} detected; v0.15.0+ recommended"
-  fi
-
-  # Disk space check — 20 GB minimum for 8 containers + images
-  local avail_kb
-  avail_kb="$(df --output=avail / 2>/dev/null | tail -1 | tr -d ' ')" || avail_kb=0
-  if [[ -n "${avail_kb}" ]] && (( avail_kb < 20971520 )); then
-    warn "Less than 20 GB free disk space detected ($(( avail_kb / 1048576 )) GB available). Setup may fail."
-  fi
-
-  # inotify limits — multi-node Kind clusters need many inotify instances.
-  # Each Kind node container runs kubelet + containerd + cAdvisor, each consuming
-  # inotify instances. Default of 128 is exhausted with 8 containers.
-  local max_instances
-  max_instances="$(cat /proc/sys/fs/inotify/max_user_instances 2>/dev/null)" || max_instances=0
-  if (( max_instances < 512 )); then
-    info "fs.inotify.max_user_instances is ${max_instances} (need ≥512 for 8 Kind nodes)..."
-    if sysctl -w fs.inotify.max_user_instances=1024 &>/dev/null; then
-      info "Increased via sysctl (running as root)"
-    elif podman run --rm --privileged alpine sysctl -w fs.inotify.max_user_instances=1024 &>/dev/null 2>&1; then
-      info "Increased via privileged podman container"
-    elif docker run --rm --privileged alpine sysctl -w fs.inotify.max_user_instances=1024 &>/dev/null 2>&1; then
-      info "Increased via privileged docker container"
-    else
-      warn "Could not increase inotify limits automatically."
-      warn "Worker kubelets will likely fail with 'too many open files'."
-      warn "Fix manually:  sudo sysctl -w fs.inotify.max_user_instances=1024"
-      warn "Or persist:    echo 'fs.inotify.max_user_instances=1024' | sudo tee /etc/sysctl.d/99-kind.conf && sudo sysctl --system"
-      fatal "Cannot proceed with fs.inotify.max_user_instances=${max_instances}"
-    fi
-  fi
 
   info "All prerequisites satisfied"
 }
 
 # ---------------------------------------------------------------------------
-# Kind cluster creation (idempotent)
+# Minikube cluster creation (idempotent)
 # ---------------------------------------------------------------------------
 create_cluster() {
-  local name="$1" config="$2"
+  local name="$1" pod_cidr="$2" service_cidr="$3"
 
-  if kind get clusters 2>/dev/null | grep -qx "${name}"; then
-    info "Kind cluster '${name}' already exists, skipping creation"
+  if minikube status -p "${name}" &>/dev/null 2>&1; then
+    info "Minikube cluster '${name}' already exists, skipping creation"
     return 0
   fi
 
-  # Create OSD host directories so extraMounts can bind them
-  mkdir -p "${DATA_DIR}/${name}/osd0" "${DATA_DIR}/${name}/osd1" "${DATA_DIR}/${name}/osd2"
+  info "Creating Minikube KVM2 cluster '${name}' (4 nodes, ${NODE_CPUS} vCPU, ${NODE_MEMORY}MB RAM, ${DISK_SIZE} disk + extra disk)..."
 
-  # Resolve __DATA_DIR__ placeholder in the Kind config template
-  local resolved_config
-  resolved_config="$(mktemp)"
-  sed "s|__DATA_DIR__|${DATA_DIR}|g" "${config}" > "${resolved_config}"
+  minikube start \
+    --profile "${name}" \
+    --driver=kvm2 \
+    --nodes=4 \
+    --kvm-network=default \
+    --network=soteria-network \
+    --cpus="${NODE_CPUS}" \
+    --memory="${NODE_MEMORY}" \
+    --disk-size="${DISK_SIZE}" \
+    --extra-disks=1 \
+    --cni=false \
+    --extra-config=kubeadm.pod-network-cidr="${pod_cidr}" \
+    --service-cluster-ip-range="${service_cidr}"
 
-  info "Creating Kind cluster '${name}'..."
-  kind create cluster --name "${name}" --config "${resolved_config}"
-  rm -f "${resolved_config}"
-  info "Kind cluster '${name}' created"
+  info "Minikube cluster '${name}' created"
 }
 
 # ---------------------------------------------------------------------------
-# Cilium installation
+# Cilium installation via Helm
 # ---------------------------------------------------------------------------
 install_cilium() {
   local context="$1" cluster_name="$2" cluster_id="$3"
 
-  info "Installing Cilium on '${cluster_name}' (cluster.id=${cluster_id})..."
+  info "Installing Cilium via Helm on '${cluster_name}' (cluster.id=${cluster_id})..."
+
+  helm repo add cilium https://helm.cilium.io/ 2>/dev/null || true
+  helm repo update cilium
 
   local version_args=()
   if [[ -n "${CILIUM_VERSION}" ]]; then
     version_args=(--version "${CILIUM_VERSION}")
   fi
 
-  cilium install --context "${context}" \
+  helm upgrade --install --namespace kube-system \
+    cilium cilium/cilium \
+    --kube-context "${context}" \
+    --values "${MANIFESTS_DIR}/cilium/values.yaml" \
     --set cluster.name="${cluster_name}" \
     --set cluster.id="${cluster_id}" \
-    "${version_args[@]+"${version_args[@]}"}"
+    --set clustermesh.mcsapi.enabled=true \
+    --set clustermesh.enableEndpointSliceSynchronization=true \
+    --set clustermesh.mcsapi.corednsAutoConfigure.enabled=true \
+    "${version_args[@]+"${version_args[@]}"}" \
+    --wait --timeout 10m
 
   info "Waiting for Cilium readiness on '${cluster_name}'..."
   cilium status --wait --context "${context}"
   info "Cilium healthy on '${cluster_name}'"
 }
+
+# ---------------------------------------------------------------------------
+# MetalLB (LoadBalancer IPs for Cluster Mesh apiserver)
+# ---------------------------------------------------------------------------
+deploy_metallb() {
+  local cluster_name="$1"
+
+  info "Intsalling MetalLB on '${cluster_name}'..."
+  kubectl --context "${cluster_name}" apply -f https://raw.githubusercontent.com/metallb/metallb/v0.16.1/config/manifests/metallb-native.yaml
+
+  info "Waiting for MetalLB to be ready on '${cluster_name}'..."
+  kubectl --context "${cluster_name}" wait --for=condition=ready pod -l app=metallb -n metallb-system --timeout=180s
+
+  # Derive an IP range from the cluster's node IP subnet.
+  # Minikube's private network assigns IPs in a /24; we reserve .200-.220 for LBs.
+  local subnet_prefix
+  subnet_prefix="192.168.122"
+  local lb_start_east="${subnet_prefix}.230"
+  local lb_end_east="${subnet_prefix}.254"  
+  local lb_start_west="${subnet_prefix}.215"
+  local lb_end_west="${subnet_prefix}.229"
+
+  info "Configuring MetalLB on '${cluster_name}' with range ${lb_start_east}-${lb_end_east} and ${lb_start_west}-${lb_end_west}..."
+
+
+
+if [[ "${cluster_name}" == "${EAST_CLUSTER_NAME}" ]]; then
+  kubectl --context "${cluster_name}" apply -f - <<EOF
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: default-pool
+  namespace: metallb-system
+spec:
+  addresses:
+    - ${lb_start_east}-${lb_end_east}
+EOF
+else
+  kubectl --context "${cluster_name}" apply -f - <<EOF
+apiVersion: metallb.io/v1beta1
+kind: IPAddressPool
+metadata:
+  name: default-pool
+  namespace: metallb-system
+spec:
+  addresses:
+    - ${lb_start_west}-${lb_end_west}
+EOF
+fi
+
+kubectl --context "${cluster_name}" apply -f - <<EOF
+apiVersion: metallb.io/v1beta1
+kind: L2Advertisement
+metadata:
+  name: default-l2
+  namespace: metallb-system
+spec:
+  ipAddressPools:
+    - default-pool
+EOF
+
+  info "MetalLB configured on '${cluster_name}'"
+}
+
 
 # ---------------------------------------------------------------------------
 # Cluster Mesh
@@ -232,16 +310,15 @@ enable_cluster_mesh() {
   local context="$1" cluster_name="$2"
 
   info "Enabling Cluster Mesh on '${cluster_name}'..."
-  cilium clustermesh enable --context "${context}" --service-type NodePort
+  cilium clustermesh enable --context "${context}" --service-type LoadBalancer
+
+  info "Waiting for clustermesh-apiserver readiness on '${cluster_name}'..."
+  kubectl --context "${context}" -n kube-system rollout status deployment/clustermesh-apiserver \
+    --timeout=180s
   info "Cluster Mesh enabled on '${cluster_name}'"
 }
 
 connect_cluster_mesh() {
-  # Wait for clustermesh-apiserver to be fully ready on both clusters
-  info "Waiting for clustermesh-apiserver readiness..."
-  kubectl --context "${EAST_CONTEXT}" -n kube-system rollout status deployment/clustermesh-apiserver --timeout=120s
-  kubectl --context "${WEST_CONTEXT}" -n kube-system rollout status deployment/clustermesh-apiserver --timeout=120s
-
   info "Connecting Cluster Mesh: ${EAST_CLUSTER_NAME} <-> ${WEST_CLUSTER_NAME}..."
   cilium clustermesh connect \
     --context "${EAST_CONTEXT}" \
@@ -258,7 +335,7 @@ connect_cluster_mesh() {
 }
 
 # ---------------------------------------------------------------------------
-# Cross-cluster connectivity smoke test (AC4)
+# Cross-cluster connectivity smoke test
 # ---------------------------------------------------------------------------
 connectivity_smoke_test() {
   if [[ "${CONNECTIVITY_TEST}" == "0" ]]; then
@@ -268,7 +345,6 @@ connectivity_smoke_test() {
 
   local test_ns="cilium-test-connectivity"
 
-  # Ensure cleanup on failure or interruption
   cleanup_smoke_test() {
     kubectl --context "${EAST_CONTEXT}" delete namespace "${test_ns}" --ignore-not-found 2>/dev/null
     kubectl --context "${WEST_CONTEXT}" delete namespace "${test_ns}" --ignore-not-found 2>/dev/null
@@ -277,13 +353,11 @@ connectivity_smoke_test() {
 
   info "Running cross-cluster connectivity smoke test..."
 
-  # Create test namespace on both clusters
   kubectl --context "${EAST_CONTEXT}" create namespace "${test_ns}" --dry-run=client -o yaml | \
     kubectl --context "${EAST_CONTEXT}" apply -f -
   kubectl --context "${WEST_CONTEXT}" create namespace "${test_ns}" --dry-run=client -o yaml | \
     kubectl --context "${WEST_CONTEXT}" apply -f -
 
-  # Deploy test pods (tolerate AlreadyExists from prior incomplete runs)
   if ! kubectl --context "${EAST_CONTEXT}" -n "${test_ns}" get pod east-probe &>/dev/null; then
     kubectl --context "${EAST_CONTEXT}" -n "${test_ns}" run east-probe \
       --image=busybox:1.36 --restart=Never --overrides='{"spec":{"terminationGracePeriodSeconds":0}}' \
@@ -295,18 +369,15 @@ connectivity_smoke_test() {
       --command -- sleep 300
   fi
 
-  # Wait for pods to be ready
   kubectl --context "${EAST_CONTEXT}" -n "${test_ns}" wait --for=condition=Ready pod/east-probe --timeout=60s
   kubectl --context "${WEST_CONTEXT}" -n "${test_ns}" wait --for=condition=Ready pod/west-probe --timeout=60s
 
-  # Get pod IPs
   local east_ip west_ip
   east_ip="$(kubectl --context "${EAST_CONTEXT}" -n "${test_ns}" get pod east-probe -o jsonpath='{.status.podIP}')"
   west_ip="$(kubectl --context "${WEST_CONTEXT}" -n "${test_ns}" get pod west-probe -o jsonpath='{.status.podIP}')"
 
   info "East pod IP: ${east_ip}, West pod IP: ${west_ip}"
 
-  # --- Direct pod-IP reachability (basic L3 check) ---
   info "Testing east -> west pod-IP connectivity..."
   kubectl --context "${EAST_CONTEXT}" -n "${test_ns}" exec east-probe -- \
     ping -c 3 -W 5 "${west_ip}" || fatal "East -> West pod-IP connectivity FAILED"
@@ -317,13 +388,11 @@ connectivity_smoke_test() {
     ping -c 3 -W 5 "${east_ip}" || fatal "West -> East pod-IP connectivity FAILED"
   info "West -> East pod-IP: OK"
 
-  # --- Verify Cluster Mesh status programmatically ---
   info "Verifying Cluster Mesh connectivity report..."
   cilium clustermesh status --context "${EAST_CONTEXT}" --wait 2>&1 | grep -q "connected" \
     || fatal "Cluster Mesh not reporting connected state after pod-to-pod test passed"
   info "Cluster Mesh status: connected"
 
-  # Cleanup
   cleanup_smoke_test
   trap - EXIT
 
@@ -336,8 +405,8 @@ connectivity_smoke_test() {
 export_kubeconfigs() {
   mkdir -p "${KUBECONFIG_DIR}"
 
-  kind get kubeconfig --name "${EAST_CLUSTER_NAME}" > "${KUBECONFIG_DIR}/east.kubeconfig"
-  kind get kubeconfig --name "${WEST_CLUSTER_NAME}" > "${KUBECONFIG_DIR}/west.kubeconfig"
+  minikube -p "${EAST_CLUSTER_NAME}" kubectl -- config view --flatten > "${KUBECONFIG_DIR}/east.kubeconfig"
+  minikube -p "${WEST_CLUSTER_NAME}" kubectl -- config view --flatten > "${KUBECONFIG_DIR}/west.kubeconfig"
 
   info "Kubeconfigs exported to ${KUBECONFIG_DIR}/"
 }
@@ -346,22 +415,27 @@ export_kubeconfigs() {
 # Main
 # ---------------------------------------------------------------------------
 main() {
-  info "=== Multisite Kind Cluster Setup ==="
+  info "=== Multisite Minikube KVM2 Cluster Setup ==="
   info "East cluster: ${EAST_CLUSTER_NAME}"
   info "West cluster: ${WEST_CLUSTER_NAME}"
+  info "Resources per node: ${NODE_CPUS} vCPU, ${NODE_MEMORY}MB RAM, ${DISK_SIZE} disk + 1 extra disk"
   echo
 
   check_prerequisites
 
-  # Create clusters (idempotent)
-  create_cluster "${EAST_CLUSTER_NAME}" "${EAST_CONFIG}"
-  create_cluster "${WEST_CLUSTER_NAME}" "${WEST_CONFIG}"
+  # Create clusters with non-overlapping CIDRs (idempotent)
+  create_cluster "${EAST_CLUSTER_NAME}" "${EAST_POD_CIDR}" "${EAST_SERVICE_CIDR}"
+  create_cluster "${WEST_CLUSTER_NAME}" "${WEST_POD_CIDR}" "${WEST_SERVICE_CIDR}"
 
   # Install Cilium with unique cluster IDs
   install_cilium "${EAST_CONTEXT}" "${EAST_CLUSTER_NAME}" 1
   install_cilium "${WEST_CONTEXT}" "${WEST_CLUSTER_NAME}" 2
 
-  # Enable and connect Cluster Mesh
+  # Deploy MetalLB for LoadBalancer service support (needed by Cluster Mesh)
+  deploy_metallb "${EAST_CLUSTER_NAME}"
+  deploy_metallb "${WEST_CLUSTER_NAME}"
+
+  # Enable Cluster Mesh and connect
   enable_cluster_mesh "${EAST_CONTEXT}" "${EAST_CLUSTER_NAME}"
   enable_cluster_mesh "${WEST_CONTEXT}" "${WEST_CLUSTER_NAME}"
   connect_cluster_mesh
@@ -386,6 +460,8 @@ main() {
   info "Cluster Mesh status:"
   info "  cilium clustermesh status --context ${EAST_CONTEXT}"
   info "  cilium clustermesh status --context ${WEST_CONTEXT}"
+  info ""
+  info "Extra disks for Rook-Ceph OSDs appear as /dev/vdb on each node (${DISK_SIZE} each)."
 }
 
 main "$@"

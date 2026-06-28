@@ -1,17 +1,17 @@
-# Story 14.4: ScyllaDB Cross-DC Deployment on Rook-Ceph
+# Story 14.5: ScyllaDB Cross-DC Deployment on Rook-Ceph
 
 Status: ready-for-dev
 
 ## Story
 
 As a platform engineer,
-I want ScyllaDB deployed as a cross-DC cluster on both Kind clusters using Rook-Ceph storage and Cilium Cluster Mesh for inter-node communication,
+I want ScyllaDB deployed as a cross-DC cluster on both Minikube KVM2 clusters using Rook-Ceph storage and Cilium Cluster Mesh for inter-node communication,
 so that Soteria has its shared state store for the integration test environment.
 
 ## Acceptance Criteria
 
 **AC1: cert-manager deployment**
-Given both Kind clusters
+Given both Minikube KVM2 clusters
 When the ScyllaDB setup script is executed
 Then cert-manager is deployed on both clusters
 And a self-signed CA issuer is created for Soteria TLS certificates
@@ -25,7 +25,7 @@ And scylla-operator pods are running
 **AC3: ScyllaCluster creation with Rook-Ceph storage**
 Given the scylla-operator and Rook-Ceph are running
 When ScyllaCluster CRs are applied
-Then ScyllaDB is deployed on both clusters with datacenter names `east` and `west`
+Then ScyllaDB is deployed on both Minikube clusters with datacenter names `east` and `west`
 And ScyllaDB PVCs use the XFS-formatted Rook-Ceph StorageClass (`rook-ceph-block-xfs`)
 And developer-mode resource requests are used (reduced from production sizing)
 
@@ -47,6 +47,8 @@ When new overlays are created
 Then `hack/multisite/overlays/{base,east,west}/` mirror the `hack/overlays/{base,etl6,etl7}/` structure
 And Cilium global service annotation replaces Submariner ServiceExport
 And a Rook-Ceph XFS StorageClass (`rook-ceph-block-xfs`) replaces `ontap-san-xfs` for ScyllaDB volumes
+
+**Note:** Minikube KVM2 VMs typically include `xfsprogs`. If PVCs fail to mount with an XFS error, install it via `minikube ssh -p <profile> -- "sudo dnf install -y xfsprogs"` on each node.
 
 **AC7: Multi-DC convergence smoke test**
 Given ScyllaDB is deployed on both clusters
@@ -72,7 +74,7 @@ And a CQL write on east is readable on west (cross-DC replication verified)
   - [ ] 2.3: Wait for scylla-operator Deployment and webhook-server Deployment rollout on both clusters
   - [ ] 2.4: Verify ScyllaCluster CRD is available (`kubectl get crd scyllaclusters.scylla.scylladb.com`)
 
-- [ ] Task 3: Create Kustomize overlays for Kind environment (AC: 6)
+- [ ] Task 3: Create Kustomize overlays for Minikube environment (AC: 6)
   - [ ] 3.1: Create `hack/multisite/overlays/base/kustomization.yaml` — references ScyllaCluster CR, TLS config, global service annotation, manager patches (mirrors `hack/overlays/base/kustomization.yaml`)
   - [ ] 3.2: Create `hack/multisite/overlays/base/scylladb-tls-config.yaml` — cert-manager Certificate + Secret for ScyllaDB serving TLS (mirrors `hack/overlays/base/scylladb-tls-config.yaml`)
   - [ ] 3.3: Create `hack/multisite/overlays/base/scylladb-tls-patch.yaml` — ScyllaCluster strategic merge patch adding TLS options (mirrors `hack/overlays/base/scylladb-tls-patch.yaml`)
@@ -164,19 +166,19 @@ reclaimPolicy: Delete
 allowVolumeExpansion: true
 ```
 
-This keeps the original `rook-ceph-block` (ext4) for other workloads (KubeVirt VMs in Story 14.5) while providing XFS for ScyllaDB. The existing `hack/overlays/base/storageclass-xfs.yaml` in the production overlays follows the same pattern — a dedicated XFS StorageClass for ScyllaDB.
+This keeps the original `rook-ceph-block` (ext4) for other workloads (KubeVirt VMs in Story 14.3) while providing XFS for ScyllaDB. The existing `hack/overlays/base/storageclass-xfs.yaml` in the production overlays follows the same pattern — a dedicated XFS StorageClass for ScyllaDB.
 
-**Note:** Kind worker nodes must have `xfsprogs` installed for XFS formatting to work. Most base images include it, but if PVCs fail to mount with an XFS error, `docker exec` into the worker and run `apt-get install -y xfsprogs` (or equivalent).
+**Note:** Minikube KVM2 VMs typically include `xfsprogs` in their base image. If PVCs fail to mount with an XFS error, install it via `minikube ssh -p <profile> -- "sudo dnf install -y xfsprogs"` on each node.
 
 ### Critical: scylla-operator Helm Limitations for Multi-DC
 
-The scylla-operator Helm chart docs state: "The Helm installation path supports single-datacenter deployments only." However, this refers to the `scylla/scylla` chart for deploying ScyllaCluster — not the operator itself. Our approach deploys one ScyllaCluster per Kind cluster (each is a single DC) and connects them via `externalSeeds`. The operator is installed via Helm; the ScyllaCluster CRs are applied via Kustomize overlays.
+The scylla-operator Helm chart docs state: "The Helm installation path supports single-datacenter deployments only." However, this refers to the `scylla/scylla` chart for deploying ScyllaCluster — not the operator itself. Our approach deploys one ScyllaCluster per Minikube cluster (each is a single DC) and connects them via `externalSeeds`. The operator is installed via Helm; the ScyllaCluster CRs are applied via Kustomize overlays.
 
 ### Critical: ScyllaDB Version and Developer Mode
 
 Use `developerMode: true` on the ScyllaCluster spec. This:
-- Lowers resource requirements (critical for Kind)
-- Relaxes tuning checks (required since Kind workers lack real hardware tuning)
+- Lowers resource requirements (critical for Minikube)
+- Relaxes tuning checks (required since Minikube nodes lack real hardware tuning)
 - Is NOT for production — acceptable for integration testing
 
 ScyllaDB version: `2026.1.3` (latest stable per operator docs). scylla-operator v1.21 (latest stable, released 2026-05-20).
@@ -185,23 +187,23 @@ ScyllaDB version: `2026.1.3` (latest stable per operator docs). scylla-operator 
 
 | Dependency | Story | What's Needed |
 |------------|-------|---------------|
-| Kind clusters | 14.1 | Both `east` and `west` clusters running with Cilium Cluster Mesh |
+| Minikube KVM2 clusters | 14.1 | Both `east` and `west` clusters running with Cilium Cluster Mesh |
 | Rook-Ceph | 14.2 | StorageClass `rook-ceph-block` available on both clusters (used as base for `rook-ceph-block-xfs`) |
 | Cilium Cluster Mesh | 14.1 | Cross-cluster pod-to-pod connectivity for ScyllaDB gossip |
 
-This story does NOT depend on 14.3 (Dashboard) or 14.5 (KubeVirt).
+This story does NOT depend on 14.4 (Fedora VM Validation). It depends on 14.3 (KubeVirt) only because KubeVirt is deployed first in the sequence, but has no functional dependency on it.
 
 ### Existing Deployment Pattern: `hack/stretched-local-test.sh`
 
-The existing script deploys ScyllaDB on real OpenShift clusters (etl6/etl7) using Submariner MCS. This story adapts the same pattern for Kind + Cilium + Rook-Ceph.
+The existing script deploys ScyllaDB on real OpenShift clusters (etl6/etl7) using Submariner MCS. This story adapts the same pattern for Minikube KVM2 + Cilium + Rook-Ceph.
 
 | Aspect | Existing (etl6/etl7) | This Story (east/west) |
 |--------|----------------------|------------------------|
-| Clusters | Real OpenShift | Kind clusters from 14.1 |
+| Clusters | Real OpenShift | Minikube KVM2 clusters from 14.1 |
 | Cross-DC gossip | Submariner MCS (ServiceExport → `clusterset.local`) | Cilium global service (`service.cilium.io/global` → `cluster.local`) |
 | Storage | `ontap-san-xfs` (NetApp Trident, XFS) | `rook-ceph-block-xfs` (Rook-Ceph from 14.2, XFS-formatted) |
 | Datacenter names | `etl6` / `etl7` | `east` / `west` |
-| Members per rack | 2 | 1 (developer mode, resource-constrained) |
+| Members per rack | 2 | 1 (developer mode, resource-conscious for Minikube) |
 | cert-manager | Pre-installed (prerequisite) | Installed by this script |
 | scylla-operator | Pre-installed (OperatorHub) | Installed by this script (Helm) |
 | TLS | mTLS with STS patching workaround | Same mTLS + STS patching pattern |
@@ -271,7 +273,7 @@ kubectl -n scylla-operator rollout status --timeout=5m deployment.apps/scylla-op
 kubectl -n scylla-operator rollout status --timeout=5m deployment.apps/webhook-server
 ```
 
-### ScyllaCluster CR for Kind (Developer Mode)
+### ScyllaCluster CR for Minikube (Developer Mode)
 
 The base ScyllaCluster CR structure (before per-DC patches):
 
@@ -302,10 +304,10 @@ spec:
 ```
 
 Key settings:
-- `developerMode: true` — required for Kind (relaxes hardware tuning requirements)
+- `developerMode: true` — required for Minikube (relaxes hardware tuning requirements)
 - `members: 1` — single member per rack, conserves resources
 - `storageClassName: rook-ceph-block-xfs` — XFS-formatted Rook-Ceph volume (ScyllaDB requires XFS)
-- Reduced resource requests — Kind workers are resource-constrained
+- Reduced resource requests — Minikube nodes are resource-conscious
 - Cluster name `soteria-scylladb` — must be identical on both clusters for multi-DC gossip
 
 ### Per-DC Overlay Patches
@@ -445,26 +447,28 @@ This mirrors the `hack/overlays/{base,etl6,etl7}/` structure from the existing d
 
 ### Script Conventions to Follow
 
-Follow the same conventions from `hack/stretched-local-test.sh` and Stories 14.1/14.2/14.3:
+Follow the same conventions from Stories 14.1/14.2/14.3:
 
 - `set -euo pipefail` at top
 - Env-var-driven configuration block at top of script
-- `kctl_east()` / `kctl_west()` helpers with explicit `--context`
-- Consistent cluster naming: `east` and `west` (contexts `kind-east` and `kind-west`)
+- `keast()` / `kwest()` helpers with explicit `--context`
+- Cluster profiles: `east` and `west` (contexts match profile names)
 - Idempotent operations (`helm upgrade --install`, `kubectl apply`, check-before-create)
-- Status messages for each step
+- Status messages via `info()`, `warn()`, `error()`, `fatal()` helpers
 - Prerequisite checks
 - `NAMESPACE="${NAMESPACE:-soteria}"` consistent with existing script
 
-### Kubeconfig / Context Pattern
+### Context Pattern (from setup-clusters.sh / setup-rook-ceph.sh)
 
 ```bash
-EAST_CONTEXT="${EAST_CONTEXT:-kind-east}"
-WEST_CONTEXT="${WEST_CONTEXT:-kind-west}"
+EAST_CLUSTER_NAME="${EAST_CLUSTER_NAME:-east}"
+WEST_CLUSTER_NAME="${WEST_CLUSTER_NAME:-west}"
+EAST_CONTEXT="${EAST_CLUSTER_NAME}"
+WEST_CONTEXT="${WEST_CLUSTER_NAME}"
 NAMESPACE="${NAMESPACE:-soteria}"
 
-kctl_east() { kubectl --context "${EAST_CONTEXT}" "$@"; }
-kctl_west() { kubectl --context "${WEST_CONTEXT}" "$@"; }
+keast() { kubectl --context "${EAST_CONTEXT}" "$@"; }
+kwest() { kubectl --context "${WEST_CONTEXT}" "$@"; }
 ```
 
 ### Idempotency
@@ -478,7 +482,7 @@ kctl_west() { kubectl --context "${WEST_CONTEXT}" "$@"; }
 
 ### Downstream Impact
 
-Story 14.6 (Soteria Operator Deployment) depends on this story:
+Story 14.6 (Soteria Operator Deployment) depends on this story (14.5):
 - Uses the ScyllaDB cluster deployed here as Soteria's state store
 - Soteria's `--scylladb-local-dc` flag maps to the datacenter names set here (`east`/`west`)
 - Soteria's `--site-name` flag maps to the same values
@@ -488,7 +492,7 @@ Story 14.7 (Lifecycle Test) depends on ScyllaDB being operational for cross-DC s
 
 ### Potential Failure Modes
 
-1. **ScyllaDB pods OOMKilled** — developerMode reduces but doesn't eliminate memory needs. If Kind workers are severely constrained, reduce ScyllaDB memory limits or add memory to Kind nodes
+1. **ScyllaDB pods OOMKilled** — developerMode reduces but doesn't eliminate memory needs. If Minikube nodes are resource-constrained, increase `NODE_MEMORY` and recreate clusters
 2. **externalSeeds resolution fails** — Cilium global service annotation not applied to east's headless service before west starts. Ensure the annotation is applied AFTER east's service exists but BEFORE west's ScyllaCluster is created
 3. **cert-manager webhook not ready** — cert-manager webhook takes ~30s to become ready. Wait for webhook pod before creating Certificate resources
 4. **scylla-operator webhook not ready** — Same timing issue. Wait for `webhook-server` deployment rollout before applying ScyllaCluster CRs
@@ -496,7 +500,7 @@ Story 14.7 (Lifecycle Test) depends on ScyllaDB being operational for cross-DC s
 6. **STS patching reverted by operator** — scylla-operator may reconcile the STS and remove patches. If this happens, the TLS volumes need to be re-added after each operator reconciliation. The existing `hack/stretched-local-test.sh` has this same workaround and it persists in practice
 7. **Rook-Ceph PVC binding timeout** — If Rook-Ceph OSDs are not ready or the StorageClass is misconfigured, ScyllaDB PVCs will remain Pending. Verify `kubectl get sc rook-ceph-block` exists and Ceph health is OK before running this script
 8. **CQL smoke test fails with "No hosts available"** — ScyllaDB may need additional time after UN status for CQL to be fully operational. Add retry logic to the CQL test
-9. **XFS format fails — xfsprogs not installed** — If PVC mounting fails with an XFS-related error, `xfsprogs` is missing from the Kind worker node image. Fix with `docker exec <worker-node> apt-get install -y xfsprogs` on each worker, then delete and re-create the PVC
+9. **XFS format fails — xfsprogs not installed** — If PVC mounting fails with an XFS-related error, `xfsprogs` is missing from the Minikube node. Fix with `minikube ssh -p <profile> -- "sudo dnf install -y xfsprogs"` on each node, then delete and re-create the PVC
 
 ### Timing and Resource Expectations
 
@@ -527,7 +531,7 @@ hack/multisite/
 │       └── scyllacluster-patch.yaml
 ├── setup-clusters.sh                    # From Story 14.1
 ├── setup-rook-ceph.sh                   # From Story 14.2
-├── setup-dashboard.sh                   # From Story 14.3
+├── setup-kubevirt.sh                    # From Story 14.3
 ├── teardown.sh                          # From Story 14.1
 ├── manifests/                           # From Story 14.2
 │   └── storage-class-xfs.yaml           # XFS StorageClass for ScyllaDB (NEW — this story)
@@ -540,22 +544,23 @@ No Go tests for this story — validation is via the multi-DC convergence smoke 
 
 ### Previous Story Intelligence
 
-**From Story 14.1 (Kind Cluster Provisioning):**
-- Cluster contexts are `kind-east` and `kind-west`
-- Cilium Cluster Mesh is enabled with `--service-type NodePort` (Kind has no cloud LB)
-- Workers have `extraMounts` for Rook-Ceph OSDs
-- `setup-clusters.sh` establishes the `kctl_east()`/`kctl_west()` helper pattern
+**From Story 14.1 (Minikube KVM2 Cluster Provisioning):**
+- Cluster profiles/contexts are `east` and `west`
+- Cilium Cluster Mesh enabled with MetalLB for LoadBalancer IPs
+- Each node has an extra raw block disk (`/dev/vdb`) for Rook-Ceph OSDs
+- `setup-clusters.sh` establishes the `keast()`/`kwest()` helper pattern
+- `--driver=kvm2`, `--nodes=4`, `--extra-disks=1`
 
 **From Story 14.2 (Rook-Ceph Deployment):**
 - StorageClass `rook-ceph-block` is available on both clusters
 - CephBlockPool `mirrored-pool` has `mirroring.enabled: true, mode: image`
-- Rook-Ceph uses loop devices inside Kind worker containers
+- Rook-Ceph uses the extra block disk (`/dev/vdb`) as OSD
 - `setup-rook-ceph.sh` follows the same script conventions
 
-**From Story 14.3 (Kubernetes Dashboard):**
-- Confirmed Helm chart repo URL change pattern (old URLs can break)
-- `helm upgrade --install` for idempotency
-- Dashboard is independent — no interaction with this story
+**From Story 14.3 (KubeVirt Deployment):**
+- KubeVirt Deployed with hardware KVM acceleration (nested virt)
+- CDI deployed for DataVolume support
+- Container disk + PVC-backed disk patterns validated
 
 **From existing `hack/stretched-local-test.sh`:**
 - `create_combined_ca` helper pattern — critical for mTLS
@@ -565,7 +570,7 @@ No Go tests for this story — validation is via the multi-DC convergence smoke 
 - Multi-DC convergence check via `nodetool status` counting UN nodes
 - Namespace is `soteria`
 - ScyllaCluster name is `soteria-scylladb`
-- Members per rack: 2 on real clusters → 1 for Kind (developer mode)
+- Members per rack: 2 on real clusters → 1 for Minikube (developer mode)
 
 ### Project Structure Notes
 
@@ -576,14 +581,14 @@ No Go tests for this story — validation is via the multi-DC convergence smoke 
 
 ### References
 
-- [Source: epics.md#Story 14.4] — acceptance criteria and technical notes
+- [Source: epics.md#Story 14.5 (was 14.4)] — acceptance criteria and technical notes
 - [Source: hack/stretched-local-test.sh] — existing multi-site deployment pattern (ScyllaDB + cert-manager + TLS)
 - [Source: hack/overlays/] — existing Kustomize overlay structure for etl6/etl7 deployments
 - [Source: project-context.md#ScyllaDB Storage Layer] — ScyllaDB configuration requirements (mTLS, NTS topology)
 - [Source: architecture.md#Data Architecture] — ScyllaDB deployment via scylla-operator, mTLS, NTS DC1:2 DC2:2
-- [Source: Story 14.1] — Kind cluster provisioning with Cilium Cluster Mesh
+- [Source: Story 14.1] — Minikube KVM2 cluster provisioning with Cilium Cluster Mesh
 - [Source: Story 14.2] — Rook-Ceph deployment with StorageClass `rook-ceph-block`
-- [Source: Story 14.3] — Dashboard script conventions (helm upgrade --install, kctl helpers)
+- [Source: Story 14.3] — KubeVirt + CDI deployment with nested virtualization
 - [Source: scylla-operator docs] — https://operator.docs.scylladb.com/stable/ (v1.21, ScyllaDB 2026.1.3)
 - [Source: cert-manager docs] — https://cert-manager.io/docs/installation/helm/ (v1.20.2, OCI registry)
 - [Source: Cilium global services] — https://docs.cilium.io/en/stable/network/clustermesh/services/ (`service.cilium.io/global`)

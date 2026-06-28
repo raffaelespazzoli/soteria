@@ -1,0 +1,7 @@
+# Rook-Ceph operator Helm values for Minikube KVM2-based multisite clusters.
+#
+# Reference: https://rook.io/docs/rook/v1.20/Helm-Charts/operator-chart/
+#
+# Note: CSI driver configuration (including CSI Addons sidecars) is managed by
+# the ceph-csi-operator via the ceph-csi-drivers Helm chart. See
+# csi-drivers-values.yaml for those settings.

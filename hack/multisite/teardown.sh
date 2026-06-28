@@ -14,8 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Tears down the multisite Kind cluster environment. Tolerant of missing
-# clusters (safe to run even if setup was incomplete or already torn down).
+# Tears down the multisite Minikube KVM2 cluster environment. Tolerant of
+# missing clusters (safe to run even if setup was incomplete or already
+# torn down).
 #
 # Usage:
 #   ./hack/multisite/teardown.sh
@@ -42,29 +43,29 @@ info() { echo -e "${GREEN}[INFO]${NC}  $*"; }
 warn() { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 
 # ---------------------------------------------------------------------------
+# Cluster deletion
+# ---------------------------------------------------------------------------
+delete_cluster() {
+  local name="$1"
+
+  if minikube status -p "${name}" &>/dev/null 2>&1; then
+    info "Deleting Minikube cluster '${name}'..."
+    minikube delete -p "${name}"
+    info "Cluster '${name}' deleted"
+  else
+    warn "Cluster '${name}' not found or already stopped, skipping"
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
-info "=== Multisite Kind Cluster Teardown ==="
+info "=== Multisite Minikube Cluster Teardown ==="
 
-# Delete east cluster (tolerant of missing)
-if kind get clusters 2>/dev/null | grep -qx "${EAST_CLUSTER_NAME}"; then
-  info "Deleting Kind cluster '${EAST_CLUSTER_NAME}'..."
-  kind delete cluster --name "${EAST_CLUSTER_NAME}"
-  info "Cluster '${EAST_CLUSTER_NAME}' deleted"
-else
-  warn "Cluster '${EAST_CLUSTER_NAME}' not found, skipping"
-fi
+delete_cluster "${EAST_CLUSTER_NAME}"
+delete_cluster "${WEST_CLUSTER_NAME}"
 
-# Delete west cluster (tolerant of missing)
-if kind get clusters 2>/dev/null | grep -qx "${WEST_CLUSTER_NAME}"; then
-  info "Deleting Kind cluster '${WEST_CLUSTER_NAME}'..."
-  kind delete cluster --name "${WEST_CLUSTER_NAME}"
-  info "Cluster '${WEST_CLUSTER_NAME}' deleted"
-else
-  warn "Cluster '${WEST_CLUSTER_NAME}' not found, skipping"
-fi
-
-# Clean up generated kubeconfig files (only the known files we created)
+# Clean up generated kubeconfig files
 for f in "${KUBECONFIG_DIR}/east.kubeconfig" "${KUBECONFIG_DIR}/west.kubeconfig"; do
   if [[ -f "${f}" ]]; then
     rm -f "${f}"
