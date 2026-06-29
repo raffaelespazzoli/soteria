@@ -1,0 +1,35 @@
+# Base ScyllaCluster CR for Minikube multi-DC deployment.
+# Per-DC overlays (east/, west/) patch datacenter name and externalSeeds.
+apiVersion: scylla.scylladb.com/v1
+kind: ScyllaCluster
+metadata:
+  name: soteria-scylladb
+  namespace: soteria
+spec:
+  version: "2026.1.3"
+  developerMode: true
+  exposeOptions:
+    broadcastOptions:
+      nodes:
+        type: PodIP
+      clients:
+        type: PodIP
+    nodeService:
+      type: ClusterIP
+      annotations:
+        service.cilium.io/global: "true"
+  datacenter:
+    name: REPLACED_BY_OVERLAY
+    racks:
+      - name: rack1
+        members: 1
+        storage:
+          capacity: 5Gi
+          storageClassName: rook-ceph-block-xfs
+        resources:
+          requests:
+            cpu: 100m
+            memory: 512Mi
+          limits:
+            cpu: "1"
+            memory: 1Gi

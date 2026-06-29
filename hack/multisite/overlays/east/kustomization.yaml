@@ -1,0 +1,15 @@
+# East cluster overlay — seed DC (no externalSeeds).
+# Deploy this cluster first; west joins via externalSeeds.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../base
+
+patches:
+  - path: scyllacluster-patch.yaml
+    target:
+      group: scylla.scylladb.com
+      version: v1
+      kind: ScyllaCluster
+      name: soteria-scylladb

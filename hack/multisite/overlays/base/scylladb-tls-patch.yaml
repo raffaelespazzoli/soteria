@@ -1,0 +1,34 @@
+# Patch ScyllaCluster to enable mTLS via cert-manager certs.
+# NOTE: The operator (v1.21) does NOT propagate rack-level
+# volumes/volumeMounts to the StatefulSet. The setup-scylladb.sh
+# script patches the STS directly as a post-deploy step.
+- op: add
+  path: /spec/datacenter/racks/0/scyllaConfig
+  value: scylla-config
+- op: add
+  path: /spec/datacenter/racks/0/volumes
+  value:
+    - name: certmanager-serving
+      secret:
+        secretName: scylladb-serving-tls
+    - name: certmanager-ca
+      secret:
+        secretName: scylladb-serving-tls
+        items:
+          - key: ca.crt
+            path: ca-bundle.crt
+    - name: combined-ca
+      configMap:
+        name: scylladb-combined-ca
+- op: add
+  path: /spec/datacenter/racks/0/volumeMounts
+  value:
+    - name: certmanager-serving
+      mountPath: /etc/scylla/certmanager-tls
+      readOnly: true
+    - name: certmanager-ca
+      mountPath: /etc/scylla/certmanager-ca
+      readOnly: true
+    - name: combined-ca
+      mountPath: /etc/scylla/combined-ca
+      readOnly: true

@@ -1,0 +1,23 @@
+# XFS-formatted StorageClass for ScyllaDB on Rook-Ceph RBD.
+# Clone of rook-ceph-block (from Story 14.2) with XFS filesystem type.
+# ScyllaDB requires XFS; other workloads (KubeVirt VMs) continue to
+# use the default rook-ceph-block (ext4).
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: rook-ceph-block-xfs
+provisioner: rook-ceph.rbd.csi.ceph.com
+parameters:
+  clusterID: rook-ceph
+  pool: mirrored-pool
+  imageFormat: "2"
+  imageFeatures: layering,exclusive-lock
+  csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
+  csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
+  csi.storage.k8s.io/fstype: xfs
+reclaimPolicy: Delete
+allowVolumeExpansion: true

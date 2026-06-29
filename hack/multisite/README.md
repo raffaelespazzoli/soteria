@@ -103,21 +103,35 @@ hack/multisite/
 ├── setup-rook-ceph.sh                  # Deploys Rook-Ceph + RBD mirroring + CSI Addons
 ├── setup-kubevirt.sh                   # Deploys KubeVirt + CDI + virtctl
 ├── validate-fedora-vm.sh              # Fedora VM validation + node sizing report
+├── setup-scylladb.sh                   # Deploys ScyllaDB cross-DC + cert-manager + mTLS
 ├── fix-ceph-osd-auth.sh               # Recovers Ceph OSDs after mon database reset
 ├── teardown.sh                         # Deletes clusters + cleans kubeconfigs
 ├── manifests/
 │   ├── cilium/
 │   │   └── values.yaml                 # Cilium Helm chart values
-│   └── rook-ceph/
-│       ├── operator-values.yaml        # Rook operator Helm values
-│       ├── ceph-cluster.yaml           # CephCluster CR (deviceFilter: ^vdb$)
-│       ├── ceph-blockpool.yaml         # CephBlockPool with image-mode mirroring
-│       ├── ceph-rbd-mirror.yaml        # CephRBDMirror daemon CR
-│       ├── peer-secret.yaml            # Template: bootstrap peer secret
-│       ├── volume-replication-class.yaml  # VolumeReplicationClass for Soteria
-│       ├── storage-class.yaml          # StorageClass rook-ceph-block
-│       ├── test-pvc.yaml               # Template: smoke test PVC
-│       └── test-volume-replication.yaml # Template: smoke test VolumeReplication
+│   ├── rook-ceph/
+│   │   ├── operator-values.yaml        # Rook operator Helm values
+│   │   ├── ceph-cluster.yaml           # CephCluster CR (deviceFilter: ^vdb$)
+│   │   ├── ceph-blockpool.yaml         # CephBlockPool with image-mode mirroring
+│   │   ├── ceph-rbd-mirror.yaml        # CephRBDMirror daemon CR
+│   │   ├── peer-secret.yaml            # Template: bootstrap peer secret
+│   │   ├── volume-replication-class.yaml  # VolumeReplicationClass for Soteria
+│   │   ├── storage-class.yaml          # StorageClass rook-ceph-block
+│   │   ├── test-pvc.yaml               # Template: smoke test PVC
+│   │   └── test-volume-replication.yaml # Template: smoke test VolumeReplication
+│   └── storage-class-xfs.yaml          # XFS StorageClass for ScyllaDB (rook-ceph-block-xfs)
+├── overlays/                           # Kustomize overlays for ScyllaDB
+│   ├── base/
+│   │   ├── kustomization.yaml          # Shared resources + TLS patches
+│   │   ├── scyllacluster.yaml          # Base ScyllaCluster CR
+│   │   ├── scylladb-tls-config.yaml    # ScyllaDB mTLS scylla.yaml ConfigMap
+│   │   └── scylladb-tls-patch.yaml     # ScyllaCluster TLS volumes patch
+│   ├── east/
+│   │   ├── kustomization.yaml          # Inherits base, DC = east (seed)
+│   │   └── scyllacluster-patch.yaml    # datacenter.name: east
+│   └── west/
+│       ├── kustomization.yaml          # Inherits base, DC = west (joining)
+│       └── scyllacluster-patch.yaml    # datacenter.name: west + externalSeeds
 ├── .bin/                               # Auto-downloaded tool binaries (gitignored)
 ├── .kubeconfigs/                       # Exported kubeconfigs (gitignored)
 └── README.md                           # This file
@@ -444,6 +458,120 @@ The capacity check will report this. Resize clusters with recommended sizing abo
 **Guest agent not detected:**
 Container disk images may not have `qemu-guest-agent` pre-installed.
 Reaching Running state is sufficient validation that the boot + storage path works.
+
+## ScyllaDB Cross-DC Deployment (Story 14.5)
+
+After KubeVirt and Rook-Ceph are deployed, install ScyllaDB as a cross-DC cluster
+using Rook-Ceph storage and Cilium Cluster Mesh for inter-node gossip:
+
+```bash
+./hack/multisite/setup-scylladb.sh
+```
+
+This deploys:
+- cert-manager (Helm OCI, v1.20.2) on both clusters
+- **Shared CA**: east generates the self-signed CA; its key-pair is copied to west
+  so both clusters issue certificates from the same root (avoids cross-CA trust)
+- scylla-operator (Helm, v1.21) on both clusters
+- XFS-formatted StorageClass `rook-ceph-block-xfs` for ScyllaDB PVCs
+- ScyllaCluster `soteria-scylladb` on east (seed DC) and west (joining DC) with
+  `broadcastOptions.nodes.type: PodIP` for cross-cluster internode routing
+- Cilium `service.cilium.io/global: "true"` annotation on headless services
+  for cross-cluster seed discovery via normal `svc.cluster.local` FQDN
+- mTLS via cert-manager certificates + StatefulSet volume patching workaround
+- Combined CA trust bundle (cert-manager CA + operator internal client CA)
+- Multi-DC convergence verification (nodetool status + CQL cross-DC read)
+
+### Prerequisites
+
+- Minikube KVM2 clusters running (Story 14.1)
+- Rook-Ceph deployed with `rook-ceph-block` StorageClass (Story 14.2)
+- Cilium Cluster Mesh connected between east and west (Story 14.1)
+
+### ScyllaDB Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `EAST_CLUSTER_NAME` | `east` | Name of the east Minikube profile |
+| `WEST_CLUSTER_NAME` | `west` | Name of the west Minikube profile |
+| `NAMESPACE` | `soteria` | Namespace for ScyllaDB deployment |
+| `CERT_MANAGER_VERSION` | `v1.20.2` | cert-manager Helm chart version |
+| `SCYLLA_OPERATOR_NS` | `scylla-operator` | scylla-operator namespace |
+| `SMOKE_TEST` | `1` | Set to `0` to skip convergence smoke test |
+| `MEMBERS_PER_RACK` | `1` | ScyllaDB members per rack (1 for dev mode) |
+
+### Verify ScyllaDB
+
+```bash
+# ScyllaCluster status
+kubectl --context east -n soteria get scyllaclusters
+kubectl --context west -n soteria get scyllaclusters
+
+# Multi-DC cluster status
+kubectl --context east -n soteria exec -it <pod> -c scylla -- nodetool status
+
+# CQL access
+kubectl --context east -n soteria exec -it <pod> -c scylla -- cqlsh
+
+# Combined CA trust bundle
+kubectl --context east -n soteria get configmap scylladb-combined-ca
+```
+
+### ScyllaDB Troubleshooting
+
+**ScyllaDB pods OOMKilled:**
+Developer mode reduces but doesn't eliminate memory needs. If Minikube nodes
+are resource-constrained, increase `NODE_MEMORY` and recreate clusters:
+```bash
+./hack/multisite/teardown.sh
+NODE_CPUS=4 WORKER_MEMORY=6144 MASTER_MEMORY=7168 ./hack/multisite/setup-clusters.sh
+```
+
+**West can't discover east seeds (externalSeeds resolution fails):**
+Cilium global service annotation must be applied to east's headless service
+before west starts. Verify:
+```bash
+kubectl --context east -n soteria get svc soteria-scylladb-client -o yaml | grep cilium
+cilium clustermesh status --context east
+```
+
+**Cross-DC TLS "error while extracting certificate DN strings":**
+Both clusters must share the same CA for internode mTLS. The script copies east's
+CA to west automatically. If you see this error, verify CAs match:
+```bash
+# Both fingerprints must be identical
+kubectl --context east -n soteria get secret soteria-ca-key-pair -o jsonpath='{.data.ca\.crt}' | base64 -d | openssl x509 -fingerprint -noout
+kubectl --context west -n soteria get secret soteria-ca-key-pair -o jsonpath='{.data.ca\.crt}' | base64 -d | openssl x509 -fingerprint -noout
+```
+
+**West gossiper stuck "not ready" (internode addresses unreachable):**
+ScyllaDB must use PodIP broadcast (`exposeOptions.broadcastOptions.nodes.type: PodIP`)
+so advertised addresses are routable cross-cluster via Cilium. The base overlay
+includes this. If you changed it to ServiceClusterIP, per-pod ClusterIPs are
+cluster-local and won't work cross-DC.
+
+**cert-manager webhook not ready:**
+cert-manager webhook takes ~30s to become ready. The script waits for the
+webhook deployment rollout before creating Certificate resources.
+
+**scylla-operator webhook not ready:**
+Same timing issue. The script waits for `webhook-server` deployment rollout
+before applying ScyllaCluster CRs.
+
+**STS TLS volumes reverted by operator:**
+scylla-operator may reconcile the STS and remove patches. Re-run the script
+to re-apply. The patching is idempotent (checks before patching).
+
+**PVC binding timeout (XFS):**
+ScyllaDB requires XFS. If PVCs fail to mount, `xfsprogs` may be missing:
+```bash
+minikube ssh -p east -- "sudo dnf install -y xfsprogs"
+minikube ssh -p west -- "sudo dnf install -y xfsprogs"
+```
+
+**CQL smoke test fails with "No hosts available":**
+ScyllaDB may need additional time after nodetool shows UN. The script retries
+CQL reads with 5s intervals.
 
 ## Downstream Dependencies
 

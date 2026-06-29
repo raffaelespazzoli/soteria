@@ -1,0 +1,19 @@
+# Base overlay for ScyllaDB on Minikube multi-DC environment.
+# Per-DC overlays (east/, west/) patch datacenter name and externalSeeds.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: soteria
+
+resources:
+  - scyllacluster.yaml
+  - scylladb-tls-config.yaml
+
+patches:
+  # ScyllaDB mTLS: scyllaConfig + rack-level volumes/volumeMounts
+  - path: scylladb-tls-patch.yaml
+    target:
+      group: scylla.scylladb.com
+      version: v1
+      kind: ScyllaCluster
+      name: soteria-scylladb
