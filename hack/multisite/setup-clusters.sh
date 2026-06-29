@@ -29,7 +29,8 @@
 #   WEST_CLUSTER_NAME   Name of the west cluster profile (default: west)
 #   CILIUM_VERSION      Cilium Helm chart version to install (default: latest)
 #   NODE_CPUS           vCPUs per node (default: 2)
-#   NODE_MEMORY         Memory per node in MB (default: 4096)
+#   MASTER_MEMORY       Memory for control-plane node in MB (default: 7168)
+#   WORKER_MEMORY       Memory for worker nodes in MB (default: 5120)
 #   DISK_SIZE           Disk size per node — applies to both system and extra disks (default: 30g)
 #   KUBECONFIG_DIR      Directory for generated kubeconfigs (default: ./hack/multisite/.kubeconfigs)
 #   CONNECTIVITY_TEST   Set to "0" to skip the cross-cluster connectivity smoke test
@@ -45,7 +46,8 @@ EAST_CLUSTER_NAME="${EAST_CLUSTER_NAME:-east}"
 WEST_CLUSTER_NAME="${WEST_CLUSTER_NAME:-west}"
 CILIUM_VERSION="${CILIUM_VERSION:-}"
 NODE_CPUS="${NODE_CPUS:-2}"
-NODE_MEMORY="${NODE_MEMORY:-4096}"
+MASTER_MEMORY="${MASTER_MEMORY:-7168}"
+WORKER_MEMORY="${WORKER_MEMORY:-5120}"
 DISK_SIZE="${DISK_SIZE:-30g}"
 KUBECONFIG_DIR="${KUBECONFIG_DIR:-${SCRIPT_DIR}/.kubeconfigs}"
 CONNECTIVITY_TEST="${CONNECTIVITY_TEST:-1}"
@@ -187,8 +189,9 @@ create_cluster() {
     return 0
   fi
 
-  info "Creating Minikube KVM2 cluster '${name}' (4 nodes, ${NODE_CPUS} vCPU, ${NODE_MEMORY}MB RAM, ${DISK_SIZE} disk + extra disk)..."
+  info "Creating Minikube KVM2 cluster '${name}' (4 nodes, ${NODE_CPUS} vCPU, master=${MASTER_MEMORY}MB / workers=${WORKER_MEMORY}MB RAM, ${DISK_SIZE} disk + extra disk)..."
 
+  # Create with worker memory; control-plane node is resized after creation
   minikube start \
     --profile "${name}" \
     --driver=kvm2 \
@@ -196,12 +199,22 @@ create_cluster() {
     --kvm-network=default \
     --network=soteria-network \
     --cpus="${NODE_CPUS}" \
-    --memory="${NODE_MEMORY}" \
+    --memory="${WORKER_MEMORY}" \
     --disk-size="${DISK_SIZE}" \
     --extra-disks=1 \
     --cni=false \
     --extra-config=kubeadm.pod-network-cidr="${pod_cidr}" \
     --service-cluster-ip-range="${service_cidr}"
+
+  # Resize control-plane node to MASTER_MEMORY if different from workers
+  if [[ "${MASTER_MEMORY}" != "${WORKER_MEMORY}" ]]; then
+    info "Resizing control-plane node '${name}' to ${MASTER_MEMORY}MB RAM..."
+    local domain="${name}"
+    minikube stop -p "${name}" --keep-context-active
+    virsh setmaxmem "${domain}" "${MASTER_MEMORY}M" --config
+    virsh setmem "${domain}" "${MASTER_MEMORY}M" --config
+    minikube start -p "${name}" --no-kubernetes
+  fi
 
   info "Minikube cluster '${name}' created"
 }
@@ -418,7 +431,7 @@ main() {
   info "=== Multisite Minikube KVM2 Cluster Setup ==="
   info "East cluster: ${EAST_CLUSTER_NAME}"
   info "West cluster: ${WEST_CLUSTER_NAME}"
-  info "Resources per node: ${NODE_CPUS} vCPU, ${NODE_MEMORY}MB RAM, ${DISK_SIZE} disk + 1 extra disk"
+  info "Resources: ${NODE_CPUS} vCPU, master=${MASTER_MEMORY}MB / workers=${WORKER_MEMORY}MB RAM, ${DISK_SIZE} disk + 1 extra disk"
   echo
 
   check_prerequisites

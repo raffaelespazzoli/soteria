@@ -101,6 +101,7 @@ cilium clustermesh status --context west
 hack/multisite/
 ├── setup-clusters.sh                   # Creates Minikube VMs + Cilium (Helm) + Cluster Mesh
 ├── setup-rook-ceph.sh                  # Deploys Rook-Ceph + RBD mirroring + CSI Addons
+├── setup-kubevirt.sh                   # Deploys KubeVirt + CDI + virtctl
 ├── teardown.sh                         # Deletes clusters + cleans kubeconfigs
 ├── manifests/
 │   ├── cilium/
@@ -228,13 +229,110 @@ kubectl --context east -n rook-ceph get cephblockpool mirrored-pool -o yaml
 kubectl --context east -n csi-addons-system logs deployment/csi-addons-controller-manager --tail=50
 ```
 
+## KubeVirt with CDI (Story 14.3)
+
+After clusters and Rook-Ceph are deployed, install KubeVirt with hardware-accelerated
+KVM and CDI (Containerized Data Importer):
+
+```bash
+./hack/multisite/setup-kubevirt.sh
+```
+
+This deploys:
+- KubeVirt operator and CR with hardware KVM acceleration (no emulation fallback)
+- CDI operator and CR for DataVolume and StorageProfile support
+- `virtctl` binary in `hack/multisite/.bin/`
+- Validates via container disk and PVC-backed disk smoke tests
+
+### Prerequisites
+
+- Minikube KVM2 clusters running (Story 14.1)
+- Rook-Ceph deployed with `rook-ceph-block` StorageClass (Story 14.2)
+- **Nested virtualization** enabled on the host:
+  - Intel: `cat /sys/module/kvm_intel/parameters/nested` → `Y`
+  - AMD: `cat /sys/module/kvm_amd/parameters/nested` → `1`
+
+### KubeVirt Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `EAST_CLUSTER_NAME` | `east` | Name of the east Minikube profile |
+| `WEST_CLUSTER_NAME` | `west` | Name of the west Minikube profile |
+| `KUBEVIRT_VERSION` | *(latest stable)* | KubeVirt release to deploy |
+| `CDI_VERSION` | *(latest stable)* | CDI release to deploy |
+| `SMOKE_TEST` | `1` | Set to `0` to skip smoke tests |
+
+### Verify KubeVirt
+
+```bash
+# KubeVirt status
+kubectl --context east -n kubevirt get kubevirt
+kubectl --context west -n kubevirt get kubevirt
+
+# KubeVirt pods
+kubectl --context east -n kubevirt get pods
+kubectl --context west -n kubevirt get pods
+
+# CDI status
+kubectl --context east -n cdi get cdi
+kubectl --context west -n cdi get cdi
+
+# StorageProfile
+kubectl --context east get storageprofile rook-ceph-block
+
+# virtctl
+./hack/multisite/.bin/virtctl version --client
+```
+
+### KubeVirt Troubleshooting
+
+**Nested virtualization not available:**
+```bash
+# Verify on the host
+cat /sys/module/kvm_intel/parameters/nested  # Should be Y (Intel)
+cat /sys/module/kvm_amd/parameters/nested    # Should be 1 (AMD)
+
+# Enable it:
+# Intel:
+echo 'options kvm_intel nested=1' | sudo tee /etc/modprobe.d/kvm.conf
+sudo modprobe -r kvm_intel && sudo modprobe kvm_intel
+# AMD:
+echo 'options kvm_amd nested=1' | sudo tee /etc/modprobe.d/kvm.conf
+sudo modprobe -r kvm_amd && sudo modprobe kvm_amd
+```
+
+**KubeVirt stuck in Deploying phase:**
+virt-handler cannot access `/dev/kvm`. Since emulation is disabled, this surfaces
+as a hard failure. Verify nested virt inside the Minikube node:
+```bash
+minikube ssh -p east -- test -c /dev/kvm && echo "OK"
+```
+
+**virt-handler CrashLoopBackOff:**
+```bash
+kubectl --context east -n kubevirt logs -l kubevirt.io=virt-handler --tail=30
+minikube ssh -p east -- lsmod | grep kvm
+```
+
+**CDI StorageProfile empty:**
+CDI could not detect `rook-ceph-block` capabilities. Check CSI driver:
+```bash
+kubectl --context east get storageprofile rook-ceph-block -o yaml
+```
+
+**Container disk image pull failure:**
+Verify `quay.io/kubevirt/cirros-container-disk-demo` is pullable from inside nodes:
+```bash
+minikube ssh -p east -- sudo crictl pull quay.io/kubevirt/cirros-container-disk-demo
+```
+
 ## Downstream Dependencies
 
 This environment is the foundation for the full Epic 14 stack:
 
 1. **Story 14.2** — Rook-Ceph uses extra VM disks (`/dev/vdb`) for OSD storage
-2. **Story 14.3** — Kubernetes Dashboard deployment
-3. **Story 14.4** — ScyllaDB uses Cilium global services for cross-DC gossip
-4. **Story 14.5** — KubeVirt deployment with emulation fallback
+2. **Story 14.3** — KubeVirt deployment with hardware KVM acceleration
+3. **Story 14.4** — Fedora VM validation (depends on KubeVirt + CDI)
+4. **Story 14.5** — ScyllaDB cross-DC deployment
 5. **Story 14.6** — Soteria operator deployment
 6. **Story 14.7** — Full lifecycle integration test

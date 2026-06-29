@@ -1,6 +1,6 @@
 # Story 14.3: KubeVirt Deployment with Nested Virtualization
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -57,45 +57,57 @@ Then `virtctl` is available for VM console access and lifecycle operations
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create `hack/multisite/setup-kubevirt.sh` (AC: 1, 2, 3, 4, 7)
-  - [ ] 1.1: Env-var configuration block (KUBEVIRT_VERSION, CDI_VERSION, cluster profiles, consistent with other scripts)
-  - [ ] 1.2: Prerequisite checks (kubectl, minikube clusters running, Rook-Ceph StorageClass `rook-ceph-block` available)
-  - [ ] 1.3: **Nested virtualization check:** `minikube ssh -p <profile> -- test -c /dev/kvm` on each node — **hard fail** if unavailable
-  - [ ] 1.4: Fetch latest stable KubeVirt version via `curl -s https://storage.googleapis.com/kubevirt-prow/release/kubevirt/kubevirt/stable.txt`
-  - [ ] 1.5: Deploy KubeVirt operator on both clusters (`kubectl apply --server-side -f kubevirt-operator.yaml`)
-  - [ ] 1.6: Deploy KubeVirt CR on both clusters — NO `useEmulation` (hardware KVM required)
-  - [ ] 1.7: Wait for KubeVirt phase to reach `Deployed` on both clusters
-  - [ ] 1.8: Verify virt-handler pods can access `/dev/kvm` (check pod logs or node capabilities)
-  - [ ] 1.9: Wait for all KubeVirt pods to be Running (virt-operator, virt-api, virt-controller, virt-handler)
+- [x] Task 1: Create `hack/multisite/setup-kubevirt.sh` (AC: 1, 2, 3, 4, 7)
+  - [x] 1.1: Env-var configuration block (KUBEVIRT_VERSION, CDI_VERSION, cluster profiles, consistent with other scripts)
+  - [x] 1.2: Prerequisite checks (kubectl, minikube clusters running, Rook-Ceph StorageClass `rook-ceph-block` available)
+  - [x] 1.3: **Nested virtualization check:** `minikube ssh -p <profile> -- test -c /dev/kvm` on each node — **hard fail** if unavailable
+  - [x] 1.4: Fetch latest stable KubeVirt version via `curl -s https://storage.googleapis.com/kubevirt-prow/release/kubevirt/kubevirt/stable.txt`
+  - [x] 1.5: Deploy KubeVirt operator on both clusters (`kubectl apply --server-side -f kubevirt-operator.yaml`)
+  - [x] 1.6: Deploy KubeVirt CR on both clusters — NO `useEmulation` (hardware KVM required)
+  - [x] 1.7: Wait for KubeVirt phase to reach `Deployed` on both clusters
+  - [x] 1.8: Verify virt-handler pods can access `/dev/kvm` (check pod logs or node capabilities)
+  - [x] 1.9: Wait for all KubeVirt pods to be Running (virt-operator, virt-api, virt-controller, virt-handler)
 
-- [ ] Task 2: Deploy CDI for DataVolume support (AC: 3)
-  - [ ] 2.1: Fetch latest stable CDI version from `https://github.com/kubevirt/containerized-data-importer/releases`
-  - [ ] 2.2: Deploy CDI operator and CR on both clusters
-  - [ ] 2.3: Wait for CDI to reach `Deployed` phase
-  - [ ] 2.4: Verify StorageProfile for `rook-ceph-block` is populated (CDI auto-detects SC capabilities)
+- [x] Task 2: Deploy CDI for DataVolume support (AC: 3)
+  - [x] 2.1: Fetch latest stable CDI version from `https://github.com/kubevirt/containerized-data-importer/releases`
+  - [x] 2.2: Deploy CDI operator and CR on both clusters
+  - [x] 2.3: Wait for CDI to reach `Deployed` phase
+  - [x] 2.4: Verify StorageProfile for `rook-ceph-block` is populated (CDI auto-detects SC capabilities)
 
-- [ ] Task 3: Install virtctl (AC: 7)
-  - [ ] 3.1: Download virtctl binary matching deployed KubeVirt version from GitHub releases
-  - [ ] 3.2: Install to `./hack/multisite/.bin/virtctl`
-  - [ ] 3.3: Verify `virtctl version` succeeds against both clusters
+- [x] Task 3: Install virtctl (AC: 7)
+  - [x] 3.1: Download virtctl binary matching deployed KubeVirt version from GitHub releases
+  - [x] 3.2: Install to `./hack/multisite/.bin/virtctl`
+  - [x] 3.3: Verify `virtctl version` succeeds against both clusters
 
-- [ ] Task 4: Container disk smoke test (AC: 5)
-  - [ ] 4.1: Create a test VMI on east using `quay.io/kubevirt/cirros-container-disk-demo` container disk
-  - [ ] 4.2: Wait for VMI to reach `Running` phase
-  - [ ] 4.3: Verify KVM acceleration (check QEMU command line or VMI annotations for `kvm` hint)
-  - [ ] 4.4: Delete the test VMI after verification
-  - [ ] 4.5: Repeat on west cluster
+- [x] Task 4: Container disk smoke test (AC: 5)
+  - [x] 4.1: Create a test VMI on east using `quay.io/kubevirt/cirros-container-disk-demo` container disk
+  - [x] 4.2: Wait for VMI to reach `Running` phase
+  - [x] 4.3: Verify KVM acceleration (check QEMU command line or VMI annotations for `kvm` hint)
+  - [x] 4.4: Delete the test VMI after verification
+  - [x] 4.5: Repeat on west cluster
 
-- [ ] Task 5: PVC-backed disk smoke test (AC: 6)
-  - [ ] 5.1: Create a test PVC on east with StorageClass `rook-ceph-block` (1Gi)
-  - [ ] 5.2: Create a test VM on east with PVC-backed disk + container disk for boot
-  - [ ] 5.3: Wait for PVC to bind and VM to reach `Running` state
-  - [ ] 5.4: Delete test VM and PVC after verification
-  - [ ] 5.5: Repeat on west cluster
+- [x] Task 5: PVC-backed disk smoke test (AC: 6)
+  - [x] 5.1: Create a test PVC on east with StorageClass `rook-ceph-block` (1Gi)
+  - [x] 5.2: Create a test VM on east with PVC-backed disk + container disk for boot
+  - [x] 5.3: Wait for PVC to bind and VM to reach `Running` state
+  - [x] 5.4: Delete test VM and PVC after verification
+  - [x] 5.5: Repeat on west cluster
 
-- [ ] Task 6: README and finalization
-  - [ ] 6.1: Update `hack/multisite/README.md` with KubeVirt section (prerequisites, nested virt requirements, usage, troubleshooting)
-  - [ ] 6.2: Add idempotency checks throughout script
+- [x] Task 6: README and finalization
+  - [x] 6.1: Update `hack/multisite/README.md` with KubeVirt section (prerequisites, nested virt requirements, usage, troubleshooting)
+  - [x] 6.2: Add idempotency checks throughout script
+
+### Review Findings
+
+- [x] [Review][Patch] Skip `minikube node list` headers and fail cleanly when no nodes are returned [hack/multisite/setup-kubevirt.sh:105]
+- [x] [Review][Patch] Wait for KubeVirt and CDI CRDs to be established before applying their custom resources [hack/multisite/setup-kubevirt.sh:138]
+- [x] [Review][Patch] Prevent `wait_kubevirt_pods()` from exiting under `set -euo pipefail` when all pods are already ready [hack/multisite/setup-kubevirt.sh:207]
+- [x] [Review][Patch] Positively verify `/dev/kvm` access for each `virt-handler` pod instead of only grepping logs [hack/multisite/setup-kubevirt.sh:178]
+- [x] [Review][Patch] Fail if the `rook-ceph-block` `StorageProfile` never populates instead of warning and continuing [hack/multisite/setup-kubevirt.sh:278]
+- [x] [Review][Patch] Verify `virtctl` against both clusters instead of only running `version --client` [hack/multisite/setup-kubevirt.sh:334]
+- [x] [Review][Patch] Make the container-disk smoke test fail when KVM acceleration cannot be proven [hack/multisite/setup-kubevirt.sh:398]
+- [x] [Review][Patch] Wait for smoke-test VMI/VM/PVC cleanup to complete before reporting success [hack/multisite/setup-kubevirt.sh:413]
+- [x] [Review][Patch] Update the README troubleshooting command to avoid assuming Docker is the Minikube node runtime [hack/multisite/README.md:323]
 
 ## Dev Notes
 
@@ -394,8 +406,29 @@ No Go tests for this story — validation is via the smoke tests in AC5 and AC6.
 
 ### Agent Model Used
 
+Claude Opus 4.6
+
 ### Debug Log References
+
+None — pure infrastructure story, no debugging required.
 
 ### Completion Notes List
 
+- Created `hack/multisite/setup-kubevirt.sh` — full KubeVirt + CDI deployment script
+- Script follows established conventions from setup-clusters.sh and setup-rook-ceph.sh (keast/kwest helpers, info/fatal log functions, env-var config block, idempotent operations)
+- Nested virtualization verification hard-fails with clear remediation instructions for Intel/AMD
+- KubeVirt CR deployed WITHOUT `useEmulation` — enforces hardware KVM acceleration
+- CDI deployed for DataVolume/StorageProfile support, with auto-detection verification
+- virtctl installed to `.bin/` with version-based skip for idempotency
+- Container disk smoke test creates cirros VMI, verifies Running state and KVM accel
+- PVC-backed disk smoke test creates a VM with Rook-Ceph PVC, verifies binding and Running
+- Both smoke tests run on east and west, clean up after themselves
+- README updated with KubeVirt section: prerequisites, env vars, verification commands, troubleshooting
+- File structure section updated in README
+- Downstream dependencies list corrected to reflect new story ordering
+- All idempotency patterns: `kubectl apply --server-side --force-conflicts`, check-before-download for virtctl, cleanup-before-create for smoke tests
+
 ### File List
+
+- hack/multisite/setup-kubevirt.sh (NEW)
+- hack/multisite/README.md (MODIFIED)
