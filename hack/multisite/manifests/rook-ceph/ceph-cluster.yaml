@@ -3,6 +3,10 @@
 # Each Minikube worker node has an extra disk (/dev/vdb) provisioned via
 # --extra-disks=1. Rook discovers these disks using the deviceFilter.
 #
+# dataDirHostPath is set to /data/rook (persistent across minikube stop/start)
+# instead of /var/lib/rook (tmpfs, lost on restart). The /data path is backed
+# by /dev/vda1 on all Minikube KVM2 nodes.
+#
 # No template variables are needed — Rook auto-discovers /dev/vdb on all
 # worker nodes that have the device available.
 apiVersion: ceph.rook.io/v1
@@ -20,7 +24,7 @@ spec:
   cephVersion:
     image: quay.io/ceph/ceph:v19
     allowUnsupported: true
-  dataDirHostPath: /var/lib/rook
+  dataDirHostPath: /data/rook
   mon:
     count: 1
     allowMultiplePerNode: true

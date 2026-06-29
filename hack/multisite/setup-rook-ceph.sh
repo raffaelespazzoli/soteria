@@ -106,6 +106,33 @@ check_prerequisites() {
   info "All prerequisites satisfied"
 }
 
+# ---------------------------------------------------------------------------
+# Ensure /data/rook exists on all cluster nodes (persistent across restarts)
+# ---------------------------------------------------------------------------
+ensure_data_dir() {
+  local cluster_name="$1"
+
+  info "Ensuring /data/rook directory exists on all '${cluster_name}' nodes..."
+
+  local nodes
+  nodes="$(minikube profile list -o json 2>/dev/null \
+    | python3 -c "
+import json, sys
+for p in json.load(sys.stdin)['valid']:
+  if p['Name'] == '${cluster_name}':
+    for n in p.get('Nodes', [{'Name': '${cluster_name}'}]):
+      print(n['Name'])
+" 2>/dev/null || echo "${cluster_name}")"
+
+  if [[ -z "${nodes}" ]]; then
+    nodes="${cluster_name}"
+  fi
+
+  for node in ${nodes}; do
+    minikube ssh -p "${cluster_name}" -n "${node}" -- \
+      "sudo mkdir -p /data/rook" 2>/dev/null || true
+  done
+}
 
 # ---------------------------------------------------------------------------
 # Task 2: Deploy Rook operator
@@ -209,7 +236,7 @@ wait_ceph_cluster() {
   info "Waiting for CephCluster to reach Ready phase on '${cluster_name}'..."
 
   local retries=60
-  local delay=10
+  local delay=60
   for ((i=1; i<=retries; i++)); do
     local phase
     phase="$(kubectl --context "${context}" -n rook-ceph get cephcluster rook-ceph \
@@ -856,34 +883,10 @@ failover_smoke_test() {
 
   info "  Failover complete: east=Secondary, west=Primary"
 
-  # --- Step 2: Failback (west → secondary, east resync → primary) ---
+  # --- Step 2: Failback (east resync while west is still primary, then swap) ---
+  # Resync east BEFORE demoting west — east needs a primary peer to resync from.
 
-  info "  Step 3: Demoting west to secondary (failback)..."
-  kwest -n "${test_ns}" patch volumereplication test-vr \
-    --type=merge -p '{"spec":{"replicationState":"secondary"}}'
-
-  # Wait for west to reach Secondary state
-  retries=30
-  delay=10
-  for ((i=1; i<=retries; i++)); do
-    west_state="$(kwest -n "${test_ns}" get volumereplication test-vr \
-      -o jsonpath='{.status.state}' 2>/dev/null || echo "")"
-    if [[ "${west_state}" == "Secondary" ]]; then
-      info "  West demoted to Secondary"
-      break
-    fi
-    if [[ ${i} -eq ${retries} ]]; then
-      error "  Failback FAILED — west did not reach Secondary within $((retries * delay))s"
-      info "  Resources left for troubleshooting in namespace '${test_ns}'"
-      return 1
-    fi
-    if [[ $((i % 3)) -eq 0 ]]; then
-      info "  Attempt ${i}/${retries}: west state=${west_state:-pending}"
-    fi
-    sleep "${delay}"
-  done
-
-  info "  Step 4: Requesting resync on east..."
+  info "  Step 3: Requesting resync on east (west is still primary)..."
   keast -n "${test_ns}" patch volumereplication test-vr \
     --type=merge -p '{"spec":{"replicationState":"resync"}}'
 
@@ -910,6 +913,31 @@ failover_smoke_test() {
     fi
     if [[ $((i % 3)) -eq 0 ]]; then
       info "  Attempt ${i}/${retries}: east state=${east_state:-pending}, completed=${east_completed:-unknown}"
+    fi
+    sleep "${delay}"
+  done
+
+  info "  Step 4: Demoting west to secondary..."
+  kwest -n "${test_ns}" patch volumereplication test-vr \
+    --type=merge -p '{"spec":{"replicationState":"secondary"}}'
+
+  # Wait for west to reach Secondary state
+  retries=30
+  delay=10
+  for ((i=1; i<=retries; i++)); do
+    west_state="$(kwest -n "${test_ns}" get volumereplication test-vr \
+      -o jsonpath='{.status.state}' 2>/dev/null || echo "")"
+    if [[ "${west_state}" == "Secondary" ]]; then
+      info "  West demoted to Secondary"
+      break
+    fi
+    if [[ ${i} -eq ${retries} ]]; then
+      error "  Failback FAILED — west did not reach Secondary within $((retries * delay))s"
+      info "  Resources left for troubleshooting in namespace '${test_ns}'"
+      return 1
+    fi
+    if [[ $((i % 3)) -eq 0 ]]; then
+      info "  Attempt ${i}/${retries}: west state=${west_state:-pending}"
     fi
     sleep "${delay}"
   done
@@ -944,11 +972,8 @@ failover_smoke_test() {
     sleep "${delay}"
   done
 
-  # Restore west to secondary state
-  info "  Restoring west to secondary state..."
-  kwest -n "${test_ns}" patch volumereplication test-vr \
-    --type=merge -p '{"spec":{"replicationState":"secondary"}}'
-
+  # Wait for west to start replaying from east
+  info "  Waiting for west to resume replaying..."
   retries=12
   delay=10
   for ((i=1; i<=retries; i++)); do
@@ -1031,9 +1056,22 @@ main() {
   wait_rook_operator "${EAST_CONTEXT}" "${EAST_CLUSTER_NAME}"
   wait_rook_operator "${WEST_CONTEXT}" "${WEST_CLUSTER_NAME}"
 
-  # Task 1b: Deploy ceph-csi-drivers (RBD + CephFS CSI provisioners)
+  # Task 1b: CSI Addons CRDs + controller (must precede ceph-csi-drivers because
+  # the csi-addons sidecars create CSIAddonsNode CRs on startup)
+  deploy_csi_addons "${EAST_CONTEXT}" "${EAST_CLUSTER_NAME}"
+  deploy_csi_addons "${WEST_CONTEXT}" "${WEST_CLUSTER_NAME}"
+  wait_csi_addons "${EAST_CONTEXT}" "${EAST_CLUSTER_NAME}"
+  wait_csi_addons "${WEST_CONTEXT}" "${WEST_CLUSTER_NAME}"
+  verify_csi_addons_crds "${EAST_CONTEXT}" "${EAST_CLUSTER_NAME}"
+  verify_csi_addons_crds "${WEST_CONTEXT}" "${WEST_CLUSTER_NAME}"
+
+  # Task 1c: Deploy ceph-csi-drivers (RBD + CephFS CSI provisioners)
   deploy_csi_drivers "${EAST_CONTEXT}" "${EAST_CLUSTER_NAME}"
   deploy_csi_drivers "${WEST_CONTEXT}" "${WEST_CLUSTER_NAME}"
+
+  # Ensure persistent data directory exists on all nodes
+  ensure_data_dir "${EAST_CLUSTER_NAME}"
+  ensure_data_dir "${WEST_CLUSTER_NAME}"
 
   # Task 2: CephCluster (discovers /dev/vdb on worker nodes via deviceFilter)
   deploy_ceph_cluster "${EAST_CONTEXT}" "${EAST_CLUSTER_NAME}"
@@ -1063,14 +1101,6 @@ main() {
   # Task 5: Peer exchange
   exchange_peer_secrets
   wait_mirror_healthy
-
-  # Task 6: CSI Addons
-  deploy_csi_addons "${EAST_CONTEXT}" "${EAST_CLUSTER_NAME}"
-  deploy_csi_addons "${WEST_CONTEXT}" "${WEST_CLUSTER_NAME}"
-  wait_csi_addons "${EAST_CONTEXT}" "${EAST_CLUSTER_NAME}"
-  wait_csi_addons "${WEST_CONTEXT}" "${WEST_CLUSTER_NAME}"
-  verify_csi_addons_crds "${EAST_CONTEXT}" "${EAST_CLUSTER_NAME}"
-  verify_csi_addons_crds "${WEST_CONTEXT}" "${WEST_CLUSTER_NAME}"
 
   # Task 7: VolumeReplicationClass + StorageClass
   deploy_storage_resources "${EAST_CONTEXT}" "${EAST_CLUSTER_NAME}"

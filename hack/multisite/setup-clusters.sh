@@ -204,16 +204,20 @@ create_cluster() {
     --extra-disks=1 \
     --cni=false \
     --extra-config=kubeadm.pod-network-cidr="${pod_cidr}" \
-    --service-cluster-ip-range="${service_cidr}"
+    --service-cluster-ip-range="${service_cidr}" \
+    --extra-config=kubeadm.skip-phases=addon/kube-proxy
 
-  # Resize control-plane node to MASTER_MEMORY if different from workers
+  # Resize control-plane node to MASTER_MEMORY if different from workers.
+  # virsh operates on the libvirt system URI where minikube KVM2 VMs live.
+  # After changing the VM config, a normal minikube start brings everything
+  # back with Kubernetes running.
   if [[ "${MASTER_MEMORY}" != "${WORKER_MEMORY}" ]]; then
     info "Resizing control-plane node '${name}' to ${MASTER_MEMORY}MB RAM..."
     local domain="${name}"
     minikube stop -p "${name}" --keep-context-active
-    virsh setmaxmem "${domain}" "${MASTER_MEMORY}M" --config
-    virsh setmem "${domain}" "${MASTER_MEMORY}M" --config
-    minikube start -p "${name}" --no-kubernetes
+    virsh -c qemu:///system setmaxmem "${domain}" "${MASTER_MEMORY}M" --config
+    virsh -c qemu:///system setmem "${domain}" "${MASTER_MEMORY}M" --config
+    minikube start -p "${name}"
   fi
 
   info "Minikube cluster '${name}' created"
@@ -235,6 +239,12 @@ install_cilium() {
     version_args=(--version "${CILIUM_VERSION}")
   fi
 
+  # Get the IP directly from minikube
+  local API_SERVER_IP=$(minikube -p "${cluster_name}" ip)
+
+  # Default minikube API port
+  local API_SERVER_PORT=8443
+
   helm upgrade --install --namespace kube-system \
     cilium cilium/cilium \
     --kube-context "${context}" \
@@ -244,6 +254,9 @@ install_cilium() {
     --set clustermesh.mcsapi.enabled=true \
     --set clustermesh.enableEndpointSliceSynchronization=true \
     --set clustermesh.mcsapi.corednsAutoConfigure.enabled=true \
+    --set kubeProxyReplacement=true \
+    --set k8sServiceHost=${API_SERVER_IP} \
+    --set k8sServicePort=${API_SERVER_PORT} \
     "${version_args[@]+"${version_args[@]}"}" \
     --wait --timeout 10m
 

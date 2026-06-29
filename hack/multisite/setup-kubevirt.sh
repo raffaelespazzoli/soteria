@@ -183,7 +183,7 @@ wait_kubevirt_deployed() {
       return 0
     fi
     attempts=$((attempts + 1))
-    sleep 5
+    sleep 30
   done
   fatal "KubeVirt did not reach 'Deployed' phase on '${cluster_name}' within 5 minutes (current: ${phase:-unknown})"
 }

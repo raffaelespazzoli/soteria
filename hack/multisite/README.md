@@ -102,6 +102,8 @@ hack/multisite/
 ├── setup-clusters.sh                   # Creates Minikube VMs + Cilium (Helm) + Cluster Mesh
 ├── setup-rook-ceph.sh                  # Deploys Rook-Ceph + RBD mirroring + CSI Addons
 ├── setup-kubevirt.sh                   # Deploys KubeVirt + CDI + virtctl
+├── validate-fedora-vm.sh              # Fedora VM validation + node sizing report
+├── fix-ceph-osd-auth.sh               # Recovers Ceph OSDs after mon database reset
 ├── teardown.sh                         # Deletes clusters + cleans kubeconfigs
 ├── manifests/
 │   ├── cilium/
@@ -141,6 +143,23 @@ If Cilium pods are stuck in CrashLoopBackOff, verify CNI is disabled in Minikube
 ```bash
 minikube ssh -p east -- ls /etc/cni/net.d/
 # Should only show Cilium-managed configs
+```
+
+### Ceph OSDs down after cluster restart
+
+If Ceph OSDs are "down" after a `minikube stop/start` cycle, it may indicate
+the mon database was reset and OSD auth keys no longer match. Run:
+
+```bash
+./hack/multisite/fix-ceph-osd-auth.sh east
+./hack/multisite/fix-ceph-osd-auth.sh west
+```
+
+The `dataDirHostPath` is set to `/data/rook` (backed by persistent `/dev/vda1`)
+to prevent this. If you see this issue, check that `/data/rook` still exists:
+
+```bash
+minikube ssh -p east -- ls -la /data/rook/
 ```
 
 ### Extra disk not visible
@@ -325,6 +344,106 @@ Verify `quay.io/kubevirt/cirros-container-disk-demo` is pullable from inside nod
 ```bash
 minikube ssh -p east -- sudo crictl pull quay.io/kubevirt/cirros-container-disk-demo
 ```
+
+## Fedora VM Validation & Node Sizing (Story 14.4)
+
+After KubeVirt and CDI are deployed, validate that a Fedora VM boots successfully
+with Rook-Ceph storage and calculate node sizing for the full 6-VM integration test:
+
+```bash
+./hack/multisite/validate-fedora-vm.sh
+```
+
+This validates:
+- Fedora container disk image (`quay.io/containerdisks/fedora:latest`) pre-cached on all nodes
+- Single Fedora VM boots with container disk + Rook-Ceph PVC data disk
+- VM runs stably at 256Mi memory (integration test resource profile)
+- Guest OS responsiveness (via guest agent or Running state confirmation)
+- Node capacity sufficient for full 6-VM integration test
+- Node sizing recommendations for `setup-clusters.sh`
+
+### Fedora VM Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `EAST_CLUSTER_NAME` | `east` | Name of the east Minikube profile |
+| `WEST_CLUSTER_NAME` | `west` | Name of the west Minikube profile |
+| `FEDORA_IMAGE` | `quay.io/containerdisks/fedora:latest` | Fedora container disk image |
+| `CIRROS_IMAGE` | `quay.io/kubevirt/cirros-container-disk-demo` | Cirros image (also pre-cached) |
+| `VM_MEMORY` | `256Mi` | Memory for the test VM |
+| `VM_BOOT_TIMEOUT` | `300` | Timeout in seconds for VM to reach Running |
+| `GUEST_AGENT_TIMEOUT` | `300` | Timeout in seconds for guest agent check |
+| `SKIP_CLEANUP` | `0` | Set to `1` to keep test resources after validation |
+
+### Node Sizing Recommendations
+
+The full 6-VM integration test (Story 14.7) requires sufficient resources for
+VMs, KubeVirt, Rook-Ceph, ScyllaDB, Cilium, and the Soteria operator.
+
+**Total per-cluster requirements (3 workers, 6 VMs):**
+
+| Category | Memory | CPU |
+|----------|--------|-----|
+| Node overhead (3 x 1536Mi) | 4608Mi | 900m |
+| VM workloads (6 x 384Mi) | 2304Mi | 1200m |
+| Shared components | ~3200Mi | ~1350m |
+| **Total** | **~10.1 GiB** | **~4.5 cores** |
+
+**Recommended node sizing:**
+
+```bash
+NODE_CPUS=4          # 4 vCPUs per node
+WORKER_MEMORY=6144   # 6 GiB per worker node
+MASTER_MEMORY=7168   # 7 GiB for control-plane node
+```
+
+This provides ~50% headroom over calculated minimums.
+
+**To resize clusters:**
+
+```bash
+# 1. Tear down existing clusters
+./hack/multisite/teardown.sh
+
+# 2. Recreate with recommended sizing
+NODE_CPUS=4 WORKER_MEMORY=6144 MASTER_MEMORY=7168 ./hack/multisite/setup-clusters.sh
+```
+
+### Verify Fedora VM Validation
+
+```bash
+# Check if test resources were cleaned up
+kubectl --context east get vm,pvc -n default | grep fedora-validation
+kubectl --context west get vm,pvc -n default | grep fedora-validation
+# Should return nothing (resources cleaned up)
+```
+
+### Fedora VM Troubleshooting
+
+**Fedora image pull timeout:**
+The image is ~700MB. Pre-pulling via `crictl pull` on all nodes mitigates this:
+```bash
+minikube ssh -p east -- sudo crictl pull quay.io/containerdisks/fedora:latest
+```
+
+**VM OOMKilled with 256Mi:**
+Fedora cloud image may need more RAM for initial boot. Try increasing:
+```bash
+VM_MEMORY=512Mi ./hack/multisite/validate-fedora-vm.sh
+```
+
+**PVC not binding:**
+Check Rook-Ceph health:
+```bash
+kubectl --context east -n rook-ceph exec deploy/rook-ceph-tools -- ceph status
+```
+
+**Scheduling failure (insufficient resources):**
+The capacity check will report this. Resize clusters with recommended sizing above.
+
+**Guest agent not detected:**
+Container disk images may not have `qemu-guest-agent` pre-installed.
+Reaching Running state is sufficient validation that the boot + storage path works.
 
 ## Downstream Dependencies
 
