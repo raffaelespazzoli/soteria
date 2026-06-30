@@ -3440,3 +3440,528 @@ So that the platform is proven to work with real Ceph RBD volume replication.
 - This is the first test of a multi-site integration test suite — structured for extensibility (future tests: disaster failover, partial failure, concurrent plans)
 - CI-friendly structure (env var config, no hardcoded paths) but CI workflow deferred to future epic
 - Scope: `test/multisite/` directory (~3 Go files), test scenario setup (Go or shell)
+
+### Story 14.8: Full Environment Orchestration Script
+
+As a platform engineer,
+I want a single script that provisions the entire multi-site test infrastructure in sequence,
+So that the complete environment can be set up with one command.
+
+#### Acceptance Criteria
+
+**AC1: Sequential execution**
+**Given** the `hack/multisite/` directory with individual setup scripts
+**When** `setup-all.sh` is executed
+**Then** it calls the following scripts in order:
+  1. `setup-clusters.sh` — Minikube KVM2 clusters + Cilium Cluster Mesh
+  2. `setup-rook-ceph.sh` — Rook-Ceph + RBD mirroring
+  3. `setup-kubevirt.sh` — KubeVirt + CDI
+  4. `validate-fedora-vm.sh` — Fedora VM validation + node sizing
+  5. `setup-scylladb.sh` — ScyllaDB cross-DC deployment
+
+**AC2: Fail-fast behavior**
+**Given** the orchestration script is running
+**When** any individual setup script exits with a non-zero code
+**Then** execution halts immediately with a clear error message indicating which step failed
+**And** the exit code is propagated
+
+**AC3: Skip support**
+**Given** the orchestration script
+**When** invoked with `--skip <script-name>` flags (e.g., `--skip clusters --skip rook-ceph`)
+**Then** the specified steps are skipped
+**And** remaining steps execute in order
+
+**AC4: Teardown support**
+**Given** the orchestration script
+**When** invoked with `teardown` subcommand
+**Then** teardown is performed in reverse order (ScyllaDB → KubeVirt → Rook-Ceph → clusters)
+**And** each teardown step tolerates partial state
+
+**AC5: Timing and summary**
+**Given** the orchestration script completes
+**When** all steps succeed
+**Then** a summary is printed showing each step name and elapsed time
+**And** total elapsed time is displayed
+
+**AC6: Idempotent**
+**Given** the orchestration script
+**When** run multiple times
+**Then** it is idempotent (each underlying script is already idempotent)
+
+#### Technical Notes
+
+- Does NOT include `deploy-soteria.sh` — Soteria deployment belongs in the e2e test `BeforeSuite` because the operator image may be recompiled last-minute
+- All underlying scripts are already idempotent from Stories 14.1–14.5
+- `set -euo pipefail` for fail-fast
+- Scope: `hack/multisite/setup-all.sh` (~80-120 lines)
+
+---
+
+## Epic 15: Real-Storage Orchestration Correctness & Cross-Cluster PV Management
+
+Addresses three categories of insights discovered during Epic 14 integration testing with real Ceph RBD mirroring:
+
+1. **Resync guard for planned failover**: Asynchronous replication has a lag window. Before promoting the target to primary, the orchestrator must request a resync and wait for completion (state=Secondary, Completed=True) to guarantee zero data loss. This only applies to planned migrations where the source is healthy and reachable. The implementation uses an event-driven watch (no polling) — the DRExecution controller watches VR/VGR status changes and proceeds when the resync completes, with a `RequeueAfter` timeout as safety net.
+
+2. **ShadowPV CRD for cross-cluster PV provisioning**: Ceph RBD mirroring replicates the image but not the Kubernetes PV metadata. The target cluster needs a pre-provisioned PV referencing the mirrored image (with pool-ID adjustment for the local Ceph cluster). ShadowPV is a cluster-scoped resource (stored in ScyllaDB like DRPlan) that shares PV manifests between clusters. A publisher controller discovers PVs backing replicated volumes; a consumer controller creates local PVs from remote entries.
+
+3. **Console plugin standalone mode**: The OCP console plugin cannot run in Minikube (no OCP Console host). A standalone SPA wrapper with direct K8s API access enables the same UI for the multi-site dev/test environment.
+
+4. **Full lifecycle E2E test** (moved from Epic 14 Story 14-7): Validates all orchestration logic from Epics 13–15 against real Ceph RBD replication.
+
+Dependency graph:
+```
+15-1 (ResyncVolume method) → 15-2 (Planned Failover Resync Guard) → 15-3 (Reprotect Simplification)
+15-4 (ShadowPV CRD) → 15-5 (Publisher Controller) → 15-6 (Consumer Controller)
+15-7 (Console Standalone) — independent
+15-8 (E2E Test) — depends on all others
+```
+
+Depends on Epic 13 (VolumeReplication lifecycle) and Epic 14 (multi-site infrastructure).
+
+### Story 15.1: ResyncVolume Driver Method & CSI Extension Implementation
+
+As a developer,
+I want a `ResyncVolume` method on the StorageProvider interface that sets a VR/VGR to resync state,
+So that the orchestrator can request data synchronization from the current primary before a planned failover promotion.
+
+#### Acceptance Criteria
+
+**AC1: StorageProvider interface extension**
+**Given** the current 6-method StorageProvider interface
+**When** the `ResyncVolume` method is added
+**Then** the interface has 7 methods
+**And** the signature is `ResyncVolume(ctx context.Context, id VolumeGroupID) error`
+**And** the method sets `spec.replicationState = resync` on the target VR/VGR
+
+**AC2: CSI Extension implementation**
+**Given** the CSI Extension driver in `pkg/drivers/csiextension/`
+**When** `ResyncVolume` is called with a valid VolumeGroupID
+**Then** the corresponding VR or VGR CR has its `spec.replicationState` patched to `resync`
+**And** the operation is idempotent (no error if already in resync state)
+
+**AC3: Noop driver passthrough**
+**Given** the noop driver
+**When** `ResyncVolume` is called
+**Then** it returns nil immediately (no-op behavior, consistent with other noop methods)
+
+**AC4: Fake driver support**
+**Given** the fake driver for unit testing
+**When** `ResyncVolume` is called
+**Then** it supports the same `On*/Return` programmable API as other methods
+**And** call recording captures the invocation
+
+**AC5: Conformance test**
+**Given** the conformance test suite in `pkg/drivers/conformance/`
+**When** `RunConformance` is executed
+**Then** a `ResyncVolume` lifecycle test is included (create VG → resync → verify state)
+**And** idempotency test (resync when already resyncing → no error)
+**And** not-found test (resync non-existent VG → ErrVolumeGroupNotFound)
+
+**AC6: Context cancellation**
+**Given** a `ResyncVolume` call in progress
+**When** the context is cancelled
+**Then** the operation respects `ctx.Err()` and returns the cancellation error
+
+#### Technical Notes
+
+- `resync` is an existing VolumeReplication spec state in the CSI Addons specification
+- The CSI Extension implementation follows the same pattern as `StopReplication` (patch `spec.replicationState`) and `SetSource` (patch `spec.replicationState`)
+- The Ceph behavior: when a secondary VR is set to `resync`, it pulls any un-replicated data from the peer primary and transitions to `status.state=Secondary, Completed=True` when fully synced
+- Scope: ~1 new method per driver file, ~1 conformance test, ~1 fake method (~5 modified files, ~1 new test file section)
+
+### Story 15.2: Planned Failover Resync Guard (Event-Driven)
+
+As a developer,
+I want the planned failover Step 0 to request a resync on the target VR/VGR and wait (event-driven) for completion before proceeding,
+So that zero data loss is guaranteed during planned migrations with asynchronous replication.
+
+#### Acceptance Criteria
+
+**AC1: ResyncVolume call in Step 0**
+**Given** a planned failover (GracefulShutdown=true)
+**When** PreExecute runs Step 0
+**Then** after stopping all origin VMs, `ResyncVolume` is called on each target VG
+**And** `StopReplication` (demote source) is NOT called until resync completes
+
+**AC2: Event-driven resync wait**
+**Given** ResyncVolume has been called on target VGs
+**When** the DRExecution reconciler returns
+**Then** the DRExecution has a `ResyncPending=True` condition
+**And** no `RequeueAfter` polling loop is used for checking resync state
+**And** the DRExecution controller has a `.Watches()` for VolumeReplication/VolumeGroupReplication with a status predicate
+
+**AC3: VR/VGR status watch on DRExecution controller**
+**Given** the DRExecution controller's `SetupWithManager`
+**When** the controller is initialized
+**Then** it watches VR and VGR resources with a predicate filtering on `status.state` and `status.conditions[Completed]` changes
+**And** the event handler maps VR/VGR → DRExecution via the `soteria.io/drplan` label (find active DRExecution for that plan)
+
+**AC4: Reconciler gate on resync completion**
+**Given** the DRExecution has `ResyncPending=True` and reconciliation is triggered by a VR status change
+**When** all target VRs have `status.state=Secondary && conditions[Completed].status=True`
+**Then** the `ResyncPending` condition is removed
+**And** `StopReplication` is called on each source VG (demote to secondary)
+**And** wave execution proceeds (SetSource + StartVM on target)
+
+**AC5: Timeout safety net**
+**Given** the DRExecution has `ResyncPending=True`
+**When** `RequeueAfter(resyncTimeout)` fires (configurable, default 10m)
+**And** the target VRs have NOT completed resync
+**Then** the execution fails with a clear error message indicating resync timeout
+**And** no partial promotion occurs (AC5 rest-state invariant preserved)
+
+**AC6: Disaster failover unchanged**
+**Given** a disaster failover (GracefulShutdown=false)
+**When** PreExecute runs
+**Then** no ResyncVolume call is made (source unreachable)
+**And** per-group execution proceeds immediately (SetSource + StartVM)
+
+**AC7: Checkpoint compatibility**
+**Given** the DRExecution with ResyncPending state
+**When** a checkpoint is written
+**Then** the resync-wait state is captured
+**And** on resume after crash, the reconciler re-evaluates VR status (does not re-call ResyncVolume if already in resync)
+
+#### Technical Notes
+
+- Pattern mirrors Story 5.6 (Event-Driven Wave Gate with VM Readiness Verification): set condition → watch fires → reconciler checks → proceed or wait
+- The VR/VGR → DRExecution mapping uses the same `soteria.io/drplan` label lookup as `vrEventHandler` in Story 13.4, extended to find the active DRExecution for that plan
+- `ResyncPending` condition goes on DRExecution (not DRPlan) — it's execution-scoped
+- The resync timeout should be configurable via DRPlanSpec (or a default constant) since Ceph resync time depends on data volume
+- Scope: ~3 modified prod files (`failover.go`, `drexecution/reconciler.go`, `drexecution/setup.go`), ~3 modified test files
+
+### Story 15.3: Reprotect Handler Simplification for Real Storage
+
+As a developer,
+I want the reprotect handler to skip the `SetSource` call (which incorrectly promotes to primary) and instead just verify the secondary state and perform health monitoring,
+So that reprotect works correctly with real Ceph where mirroring is automatic once roles are set.
+
+#### Acceptance Criteria
+
+**AC1: Remove SetSource from reprotect Phase 1**
+**Given** the reprotect handler in `pkg/engine/reprotect.go`
+**When** Phase 1 executes
+**Then** `SetSource` is NOT called (the old primary is already secondary after failover Step 0)
+**And** Phase 1 is replaced with a state verification: confirm each VG's VR is in `secondary` state
+
+**AC2: State verification (idempotent)**
+**Given** Phase 1 runs state verification
+**When** the VR is already in `secondary` state (expected after failover)
+**Then** verification passes and health monitoring begins
+**And** no state mutations are performed
+
+**AC3: Post-disaster reprotect handles stale primary**
+**Given** a disaster failover occurred (source was unreachable)
+**When** the old primary comes back online with its VR still in `primary` state
+**And** reprotect is initiated
+**Then** Phase 1 detects the stale `primary` state
+**And** calls `ResyncVolume` on the old primary to transition it to resyncing from the new primary
+**And** does NOT wait for resync completion (reprotect is fire-and-forget for sync)
+**And** health monitoring begins immediately
+
+**AC4: Health monitoring unchanged**
+**Given** Phase 1 completes (verification or resync kick-off)
+**When** Phase 2 executes
+**Then** health monitoring behavior is unchanged (poll GetReplicationStatus, report Replicating condition)
+**And** execution succeeds once health monitoring is kicked off (does not wait for full sync)
+
+**AC5: Backward compatibility with noop driver**
+**Given** the noop driver
+**When** reprotect runs
+**Then** state verification passes (noop always reports correct state)
+**And** health monitoring completes immediately (noop reports HealthHealthy)
+**And** existing unit tests continue to pass
+
+#### Technical Notes
+
+- The current `SetSource` call (line 173 of `reprotect.go`) promotes VR to primary — this creates dual-primary with real Ceph and must be removed
+- After planned failover: east VR is already secondary (set in Step 0) → reprotect = pure health monitoring
+- After disaster failover: east VR may still think it's primary (never received demotion) → reprotect = ResyncVolume(east) + health monitoring
+- The distinction is detectable by checking VR `status.state`: if Secondary → just monitor; if Primary → needs resync
+- Scope: ~1 modified prod file (`reprotect.go`), ~1 modified test file, ~1 modified doc file
+
+### Story 15.4: ShadowPV CRD Definition & ScyllaDB Storage
+
+As a developer,
+I want a cluster-scoped ShadowPV CRD stored in ScyllaDB (same backend as DRPlan/DRExecution),
+So that PV manifests can be shared between clusters for cross-site volume provisioning.
+
+#### Acceptance Criteria
+
+**AC1: ShadowPV API type**
+**Given** the `pkg/apis/soteria.io/v1alpha1/` package
+**When** the ShadowPV type is defined
+**Then** it is cluster-scoped (`+kubebuilder:resource:scope=Cluster`)
+**And** the spec contains:
+```go
+type ShadowPVSpec struct {
+    PVs []ShadowPVEntry `json:"pvs"`
+}
+
+type ShadowPVEntry struct {
+    ClusterName string                    `json:"clusterName"`
+    PV          corev1.PersistentVolumeSpec `json:"pv"`
+    PVName      string                    `json:"pvName"`
+}
+```
+
+**AC2: DRPlan OwnerReference**
+**Given** a ShadowPV is created
+**When** it is associated with a DRPlan
+**Then** it has an OwnerReference to the DRPlan (Controller=true, BlockOwnerDeletion=true)
+**And** deleting the DRPlan cascades to delete the ShadowPV
+
+**AC3: ScyllaDB storage registration**
+**Given** the aggregated API server
+**When** ShadowPV storage is registered
+**Then** it uses the same ScyllaDB-backed REST storage as DRPlan and DRExecution
+**And** CRUD operations, watch, and list work correctly
+**And** cross-site replication via ScyllaDB CDC is automatic
+
+**AC4: Label indexing**
+**Given** ShadowPV resources
+**When** queried by label
+**Then** the `soteria.io/drplan` label is indexed for efficient lookup
+**And** ShadowPVs for a given DRPlan can be listed via label selector
+
+**AC5: Printer columns**
+**Given** the ShadowPV custom TableConvertor
+**When** `kubectl get shadowpvs` is run
+**Then** columns show: NAME, PLAN, PV-COUNT, AGE
+
+**AC6: Validation**
+**Given** a ShadowPV create/update request
+**When** validation runs
+**Then** `spec.pvs[].clusterName` is required and non-empty
+**And** `spec.pvs[].pvName` is required and non-empty
+**And** no duplicate `(clusterName, pvName)` pairs within a single ShadowPV
+
+#### Technical Notes
+
+- ShadowPV is named after the DRPlan + VolumeGroup it represents (e.g., `<plan-name>-<vg-name>`)
+- Uses `corev1.PersistentVolumeSpec` (not full PV) to avoid storing unnecessary metadata
+- The PVName field stores the desired PV name for creation on remote clusters
+- Cluster-scoped because PVs are cluster-scoped
+- ScyllaDB storage follows the same pattern as `pkg/registry/drplan/` and `pkg/registry/drexecution/`
+- Scope: ~2 new type files, ~1 new registry package, ~3 modified apiserver files, ~2 test files
+
+### Story 15.5: ShadowPV Publisher Controller
+
+As a developer,
+I want a controller that watches VolumeReplication/VolumeGroupReplication CRs and publishes the backing PV information to ShadowPV resources,
+So that other clusters can discover and create the corresponding PVs.
+
+#### Acceptance Criteria
+
+**AC1: Watch VR/VGR CRs**
+**Given** the ShadowPV publisher controller
+**When** a VolumeReplication or VolumeGroupReplication CR is created/updated
+**And** it has a `soteria.io/drplan` label
+**Then** the controller is triggered
+
+**AC2: PV discovery**
+**Given** a VR/VGR CR is observed
+**When** the controller processes it
+**Then** it resolves the dataSource PVC → PV
+**And** reads the full PV spec (capacity, accessModes, CSI volumeHandle, volumeAttributes, etc.)
+
+**AC3: ShadowPV entry creation**
+**Given** a PV is discovered for a VR/VGR
+**When** the controller updates the ShadowPV
+**Then** it creates or updates the ShadowPV named `<plan-name>-<vg-name>`
+**And** adds/updates an entry with `clusterName=<localSite>`, `pvName=<pv.Name>`, `pv=<pv.Spec>`
+**And** sets the `soteria.io/drplan` label on the ShadowPV
+**And** sets the OwnerReference to the DRPlan
+
+**AC4: Idempotent updates**
+**Given** a ShadowPV entry already exists for this cluster+PV
+**When** the publisher runs again (reconcile retry)
+**Then** no update is performed if the PV spec is unchanged
+**And** resourceVersion conflicts are handled via retry
+
+**AC5: VGR multi-PVC handling**
+**Given** a VolumeGroupReplication CR with a PVC selector matching multiple PVCs
+**When** the publisher processes it
+**Then** all backing PVs are added as entries in the same ShadowPV
+**And** each entry has its own `pvName` and `pv` spec
+
+**AC6: PV deletion handling**
+**Given** a VR/VGR CR is deleted
+**When** the publisher detects the deletion
+**Then** the corresponding ShadowPV entry for this cluster is removed
+**And** if no entries remain, the ShadowPV is deleted
+
+#### Technical Notes
+
+- The publisher runs on every site (each site publishes its own PVs)
+- The `soteria.io/drplan` label on VR/VGR (set by Story 13.2) is the trigger for publishing
+- The controller needs RBAC for PV read access (cluster-scoped) and PVC read access (namespace-scoped)
+- Site identity comes from `--site-name` flag (same as DRPlan controller)
+- Scope: ~1 new controller file, ~1 new test file, ~1 modified setup.go
+
+### Story 15.6: ShadowPV Consumer Controller (PV Creation with Pool-ID Rewrite)
+
+As a developer,
+I want a controller that watches ShadowPV resources and creates local PVs for entries from remote clusters,
+So that mirrored Ceph RBD images have corresponding PVs on the target cluster ready for PVC binding.
+
+#### Acceptance Criteria
+
+**AC1: Watch ShadowPV resources**
+**Given** the ShadowPV consumer controller
+**When** a ShadowPV is created/updated
+**Then** the controller is triggered
+
+**AC2: Remote entry detection**
+**Given** a ShadowPV with entries from multiple clusters
+**When** the consumer processes it
+**Then** it identifies entries where `clusterName != localSite`
+**And** processes only those remote entries
+
+**AC3: PV creation from remote entry**
+**Given** a remote ShadowPV entry
+**When** no local PV with the same name exists
+**Then** a PV is created with the spec from the ShadowPV entry
+**And** the PV's `spec.csi.volumeHandle` has its pool-ID segment rewritten for the local Ceph cluster
+
+**AC4: Pool-ID rewrite for Ceph volume handles**
+**Given** a CSI volume handle in format `<ver>-<clusterID-len-hex>-<clusterID>-<poolID-hex-16>-<uuid>`
+**When** the consumer creates the local PV
+**Then** the `<poolID-hex-16>` segment is replaced with the local Ceph pool's ID (in 16-char hex)
+**And** the local pool ID is resolved from the CephBlockPool CR's status or via pool name lookup
+
+**AC5: Idempotent PV creation**
+**Given** a PV already exists locally with the same name
+**When** the consumer runs
+**Then** no update or recreation is attempted
+**And** no error is raised
+
+**AC6: Non-Ceph volume handles**
+**Given** a ShadowPV entry with a volume handle that does not match the Ceph format
+**When** the consumer processes it
+**Then** the PV is created with the volume handle as-is (no rewrite)
+**And** a warning event is emitted indicating no pool-ID rewrite was performed
+
+**AC7: Local pool ID resolution**
+**Given** the consumer needs the local Ceph pool ID
+**When** it resolves the pool
+**Then** it reads the CephBlockPool CR's `status.info.poolID` (or queries Ceph via toolbox)
+**And** the pool name is derived from the VolumeReplicationClass or StorageClass parameters
+**And** the resolution is cached for the lifetime of the reconcile
+
+#### Technical Notes
+
+- Volume handle format (Rook-Ceph): `0001-0009-rook-ceph-<poolID-hex-16>-<image-uuid>`
+- The pool-ID differs between clusters even for the same pool name (Ceph assigns sequential IDs)
+- The reference implementation is in `hack/multisite/setup-rook-ceph.sh` lines 648-656 (replication_smoke_test)
+- Pool-ID resolution: `CephBlockPool.status` may contain pool number, or query via Rook toolbox
+- The consumer should NOT create a PV if the local cluster already has a VR in primary state for that image (avoid creating PVs for volumes we own)
+- Parser for volume handle format: `pkg/drivers/csiextension/volumehandle.go`
+- Scope: ~1 new controller file, ~1 new volumehandle parser, ~2 test files
+
+### Story 15.7: Console Plugin Standalone Mode
+
+As a developer,
+I want the OCP console plugin to also run as a standalone web application with direct K8s API access,
+So that the DR management UI can be used in Minikube and non-OCP environments.
+
+#### Acceptance Criteria
+
+**AC1: Provider abstraction**
+**Given** the existing console plugin hooks in `console-plugin/src/hooks/`
+**When** the code is refactored
+**Then** a provider interface abstracts the data access layer
+**And** `providers/ocp.ts` wraps the existing `@openshift-console/dynamic-plugin-sdk` calls
+**And** `providers/standalone.ts` implements the same interface using raw `fetch()` against the K8s API
+
+**AC2: Build-time configuration**
+**Given** the console plugin build system
+**When** `make console-standalone` is run
+**Then** a standalone SPA is built using a separate webpack config (`webpack.standalone.js`)
+**And** the OCP SDK dependencies are not bundled (they don't exist in standalone mode)
+**And** the standalone build produces a self-contained `dist/standalone/` directory
+
+**AC3: Standalone entry point**
+**Given** the standalone build
+**When** the application starts
+**Then** `standalone/index.html` loads `main.tsx` with React + React Router (BrowserRouter)
+**And** all existing routes (Dashboard, PlanDetail, ExecutionDetail) are accessible
+**And** PatternFly styles are loaded directly (not via OCP Console host)
+
+**AC4: K8s API authentication**
+**Given** the standalone application deployed in-cluster
+**When** it connects to the K8s API
+**Then** it uses a mounted ServiceAccount token for authentication
+**And** API requests are proxied through a lightweight reverse proxy (or direct via CORS)
+**And** watch/list/get operations function identically to the OCP plugin
+
+**AC5: Minikube deployment**
+**Given** the standalone console build
+**When** deployed in the Minikube test cluster
+**Then** a Deployment + Service + ServiceAccount are created in a `soteria-console` namespace
+**And** the UI is accessible via MetalLB LoadBalancer IP or `minikube service`
+**And** RBAC grants read access to soteria.io resources and KubeVirt VMs
+
+**AC6: Runtime detection**
+**Given** the console plugin code
+**When** running in OCP Console host
+**Then** the OCP provider is used automatically
+**When** running standalone
+**Then** the standalone provider is used
+**And** detection is via build-time flag or `window.__OPENSHIFT_CONSOLE__` presence
+
+**AC7: Existing tests pass**
+**Given** the provider refactoring
+**When** existing Jest tests are run
+**Then** all 533+ tests continue to pass
+**And** the mock infrastructure targets the provider interface (not SDK directly)
+
+#### Technical Notes
+
+- The existing hooks (`useDRPlans`, `useDRExecutions`, etc.) already abstract the SDK — this is a layer below
+- For Minikube auth, the simplest approach is a Go reverse proxy (`cmd/console-proxy/main.go`) that adds the ServiceAccount token to API requests and serves the static SPA
+- The standalone webpack config excludes `@openshift-console/dynamic-plugin-sdk` (external/empty module)
+- PatternFly CSS must be imported directly in standalone mode (OCP Console injects it for plugins)
+- Consider `react-router-dom` v5 (same as OCP Console uses) for route compatibility
+- Scope: ~1 new providers directory, ~1 standalone directory, ~1 webpack config, ~1 proxy cmd, ~1 deployment manifest, ~5 modified hook files
+
+### Story 15.8: Full Lifecycle E2E Test (Moved from 14-7)
+
+As a platform engineer,
+I want the same test scenario from `hack/stretched-local-test.sh` deployed in the Minikube environment and an automated full lifecycle test validating 4 DR transitions with real storage,
+So that the platform is proven to work with real Ceph RBD volume replication including the Epic 15 orchestration improvements.
+
+#### Acceptance Criteria
+
+**AC1–AC11**: Same as original Story 14.7 acceptance criteria (see Epic 14 Story 14.7).
+
+**AC12: Resync guard validation (Epic 15 specific)**
+**Given** a planned migration transition
+**When** the test observes the DRExecution during Step 0
+**Then** a `ResyncPending=True` condition appears on the DRExecution
+**And** after VR status shows `Secondary+Completed=True`, the condition is cleared
+**And** the transition proceeds to wave execution
+
+**AC13: ShadowPV validation (Epic 15 specific)**
+**Given** DRPlan with VolumeReplication active
+**When** the test checks ShadowPV resources
+**Then** ShadowPV entries exist for each replicated PV
+**And** PVs exist on both clusters (created by ShadowPV consumer controller)
+**And** pool-IDs in volume handles differ between clusters
+
+**AC14: BeforeSuite includes Soteria deployment**
+**Given** the e2e test setup
+**When** `BeforeSuite` runs
+**Then** Soteria is built from the current source (`make docker-build`)
+**And** the image is loaded into both Minikube clusters
+**And** `deploy-soteria.sh` is called to deploy the freshly-built operator
+**And** this ensures the test always runs against the latest code
+
+#### Technical Notes
+
+- Moved from Epic 14 Story 14-7 because Epic 15 changes (resync guard, ShadowPV) must be validated
+- The e2e test compiles and deploys Soteria as part of BeforeSuite — this is why `setup-all.sh` excludes Soteria
+- Additional assertions for Epic 15 features (AC12, AC13) supplement the original AC1-AC11
+- Depends on all other Epic 15 stories being complete
+- Scope: `test/multisite/` directory (~3-4 Go files)
