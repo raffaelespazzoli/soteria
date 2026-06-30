@@ -3507,14 +3507,19 @@ Addresses three categories of insights discovered during Epic 14 integration tes
 
 3. **Console plugin standalone mode**: The OCP console plugin cannot run in Minikube (no OCP Console host). A standalone SPA wrapper with direct K8s API access enables the same UI for the multi-site dev/test environment.
 
-4. **Full lifecycle E2E test** (moved from Epic 14 Story 14-7): Validates all orchestration logic from Epics 13–15 against real Ceph RBD replication.
+4. **Soteria operator deployment** (moved from Epic 14 Story 14-6): Deploys Soteria on both Minikube clusters with Kustomize overlays adapted for Cilium + Rook-Ceph. May become a test fixture in BeforeSuite.
+
+5. **Full lifecycle E2E test** (moved from Epic 14 Story 14-7): Validates all orchestration logic from Epics 13–15 against real Ceph RBD replication.
+
+**Deferred to future epic:** Error condition bubbling from ShadowPV status and VR/VGR failures into DRPlan conditions, enabling DRPlan to gate operations based on infrastructure health. In Epic 15, ShadowPV records issues in its own status and emits events; DRPlan integration is separate.
 
 Dependency graph:
 ```
 15-1 (ResyncVolume method) → 15-2 (Planned Failover Resync Guard) → 15-3 (Reprotect Simplification)
 15-4 (ShadowPV CRD) → 15-5 (Publisher Controller) → 15-6 (Consumer Controller)
 15-7 (Console Standalone) — independent
-15-8 (E2E Test) — depends on all others
+15-8 (Soteria Deploy ex-14-6) — depends on 14.1-14.5 infra + all code stories
+15-9 (E2E Test) — depends on 15-8
 ```
 
 Depends on Epic 13 (VolumeReplication lifecycle) and Epic 14 (multi-site infrastructure).
@@ -3744,6 +3749,8 @@ type ShadowPVEntry struct {
 - The PVName field stores the desired PV name for creation on remote clusters
 - Cluster-scoped because PVs are cluster-scoped
 - ScyllaDB storage follows the same pattern as `pkg/registry/drplan/` and `pkg/registry/drexecution/`
+- **Garbage collection semantics:** When a PV is removed on one side, the ShadowPV publisher removes its entry from the corresponding ShadowPV. If that entry is the last one, the entire ShadowPV resource is deleted. This is entry-level GC, not resource-level — individual PV entries are added/removed independently
+- **Error condition bubbling to DRPlan is out of scope for Epic 15.** ShadowPV records issues in its own status and emits events. A future epic will address how ShadowPV conditions (and VR/VGR failure conditions) bubble up to DRPlan conditions and gate operations
 - Scope: ~2 new type files, ~1 new registry package, ~3 modified apiserver files, ~2 test files
 
 ### Story 15.5: ShadowPV Publisher Controller
@@ -3787,13 +3794,14 @@ So that other clusters can discover and create the corresponding PVs.
 **And** each entry has its own `pvName` and `pv` spec
 
 **AC6: PV deletion handling**
-**Given** a VR/VGR CR is deleted
+**Given** a VR/VGR CR is deleted (or the backing PV is deleted)
 **When** the publisher detects the deletion
 **Then** the corresponding ShadowPV entry for this cluster is removed
-**And** if no entries remain, the ShadowPV is deleted
+**And** if no entries remain in the ShadowPV, the entire ShadowPV resource is deleted
 
 #### Technical Notes
 
+- **Discovery model:** If a PVC is selected by a VolumeReplication or VolumeGroupReplication, we assume it is being replicated. The publisher creates a ShadowPV entry for it — no additional detection heuristic needed
 - The publisher runs on every site (each site publishes its own PVs)
 - The `soteria.io/drplan` label on VR/VGR (set by Story 13.2) is the trigger for publishing
 - The controller needs RBAC for PV read access (cluster-scoped) and PVC read access (namespace-scoped)
@@ -3831,11 +3839,15 @@ So that mirrored Ceph RBD images have corresponding PVs on the target cluster re
 **Then** the `<poolID-hex-16>` segment is replaced with the local Ceph pool's ID (in 16-char hex)
 **And** the local pool ID is resolved from the CephBlockPool CR's status or via pool name lookup
 
-**AC5: Idempotent PV creation**
+**AC5: PV already exists (idempotent and conflict handling)**
 **Given** a PV already exists locally with the same name
 **When** the consumer runs
-**Then** no update or recreation is attempted
-**And** no error is raised
+**And** the existing PV was created by the ShadowPV controller (matches expected spec)
+**Then** no update or recreation is attempted and no error is raised
+**When** the existing PV was NOT created by the ShadowPV controller (conflict)
+**Then** the controller emits a warning event on the ShadowPV resource
+**And** records the conflict in the ShadowPV status (e.g., `conditions[PVConflict]=True`)
+**And** does not overwrite or delete the conflicting PV
 
 **AC6: Non-Ceph volume handles**
 **Given** a ShadowPV entry with a volume handle that does not match the Ceph format
@@ -3843,20 +3855,22 @@ So that mirrored Ceph RBD images have corresponding PVs on the target cluster re
 **Then** the PV is created with the volume handle as-is (no rewrite)
 **And** a warning event is emitted indicating no pool-ID rewrite was performed
 
-**AC7: Local pool ID resolution**
+**AC7: Local pool ID resolution via CephBlockPool**
 **Given** the consumer needs the local Ceph pool ID
 **When** it resolves the pool
-**Then** it reads the CephBlockPool CR's `status.info.poolID` (or queries Ceph via toolbox)
+**Then** it reads the CephBlockPool CR's `.status.poolID` field (canonical source)
 **And** the pool name is derived from the VolumeReplicationClass or StorageClass parameters
 **And** the resolution is cached for the lifetime of the reconcile
+**And** the controller has RBAC for `ceph.rook.io` CephBlockPool read access
 
 #### Technical Notes
 
 - Volume handle format (Rook-Ceph): `0001-0009-rook-ceph-<poolID-hex-16>-<image-uuid>`
 - The pool-ID differs between clusters even for the same pool name (Ceph assigns sequential IDs)
+- **Pool-ID source:** `CephBlockPool.status.poolID` is the canonical source — no toolbox query needed. The consumer controller needs RBAC to read `ceph.rook.io/v1` CephBlockPool resources
 - The reference implementation is in `hack/multisite/setup-rook-ceph.sh` lines 648-656 (replication_smoke_test)
-- Pool-ID resolution: `CephBlockPool.status` may contain pool number, or query via Rook toolbox
 - The consumer should NOT create a PV if the local cluster already has a VR in primary state for that image (avoid creating PVs for volumes we own)
+- **Conflict handling:** If a PV already exists but was not created by this controller, emit an event on the ShadowPV and record the issue in ShadowPV status. Do not overwrite. Error bubbling to DRPlan is deferred to a future epic
 - Parser for volume handle format: `pkg/drivers/csiextension/volumehandle.go`
 - Scope: ~1 new controller file, ~1 new volumehandle parser, ~2 test files
 
@@ -3926,7 +3940,51 @@ So that the DR management UI can be used in Minikube and non-OCP environments.
 - Consider `react-router-dom` v5 (same as OCP Console uses) for route compatibility
 - Scope: ~1 new providers directory, ~1 standalone directory, ~1 webpack config, ~1 proxy cmd, ~1 deployment manifest, ~5 modified hook files
 
-### Story 15.8: Full Lifecycle E2E Test (Moved from 14-7)
+### Story 15.8: Soteria Operator Deployment (Moved from 14-6)
+
+As a platform engineer,
+I want Soteria deployed on both Minikube KVM2 clusters with the real Ceph VolumeReplicationClass,
+So that the operator manages DR plans against real storage replication.
+
+#### Acceptance Criteria
+
+**AC1: Soteria operator deployment**
+**Given** ScyllaDB and KubeVirt are running on both Minikube clusters
+**When** the Soteria deployment script is executed
+**Then** Soteria operator (API server + controller) is deployed on both clusters
+**And** console plugin is excluded (Minikube has no OCP Console)
+
+**AC2: Site-name configuration**
+**Given** the Soteria deployment
+**When** the controller manager starts
+**Then** east cluster runs with `--site-name=east` and `--scylladb-local-dc=east`
+**And** west cluster runs with `--site-name=west` and `--scylladb-local-dc=west`
+
+**AC3: VolumeReplicationClass reference**
+**Given** the Rook-Ceph VolumeReplicationClass from Story 14.2
+**When** DRPlans are created
+**Then** they reference `volumeReplicationDriver: {type: csi-extension, volumeReplicationClass: rook-ceph-rbd-vrc}`
+
+**AC4: APIService availability smoke test**
+**Given** Soteria is deployed
+**When** checking APIService status
+**Then** `v1alpha1.soteria.io` is Available on both clusters
+
+**AC5: Cross-DC replication smoke test**
+**Given** Soteria is running with ScyllaDB cross-DC
+**When** a test resource is created via the Soteria API on east
+**Then** it is visible on west after ScyllaDB replication delay
+
+#### Technical Notes
+
+- Image built locally and loaded into Minikube via `minikube image load` (not pulled from registry)
+- Kustomize overlays in `hack/multisite/overlays/{base,east,west}/` extend the ScyllaDB overlays from Story 14.5 with Soteria-specific patches (manager args, TLS volumes, RBAC, per-DC site-name)
+- Adapted from `hack/overlays/{base,etl6,etl7}/` pattern: `--scylladb-dc-replication=east:1,west:1` (1 member/rack in developer mode), `imagePullPolicy: IfNotPresent`, no console plugin, no Submariner ServiceExport
+- `deploy-soteria.sh` or `BeforeSuite` fixture — deployment approach TBD (may be integrated into E2E test setup)
+- No noop VR controller deployed — real CSI Addons sidecar from Story 14.2 handles VR/VGR reconciliation
+- Scope: `hack/multisite/deploy-soteria.sh` + overlay additions + README update
+
+### Story 15.9: Full Lifecycle E2E Test (Moved from 14-7)
 
 As a platform engineer,
 I want the same test scenario from `hack/stretched-local-test.sh` deployed in the Minikube environment and an automated full lifecycle test validating 4 DR transitions with real storage,
