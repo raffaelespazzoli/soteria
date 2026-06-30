@@ -1,5 +1,5 @@
 # generated: 2026-04-06
-# last_updated: 2026-06-30T09:52-04:00
+# last_updated: 2026-06-30T10:25-04:00
 # 14-8 created: Full Environment Orchestration Script — hack/multisite/setup-all.sh calling setup-clusters.sh, setup-rook-ceph.sh, setup-kubevirt.sh, validate-fedora-vm.sh, setup-scylladb.sh in sequence. Fail-fast, --skip support, teardown in reverse, timing summary. Does NOT include deploy-soteria.sh (Soteria deployment belongs in e2e test BeforeSuite for last-minute recompilation). (~1 script)
 # 14-7 moved-to-15-8: Test Scenario Setup + Full Lifecycle Integration Test postponed to Epic 15 (Story 15-8) because Epic 15 changes (resync guard, ShadowPV, reprotect simplification) must be validated in the e2e test
 # epic-15 created: Real-Storage Orchestration Correctness & Cross-Cluster PV Management — 8 stories (15-1 ResyncVolume Driver Method, 15-2 Planned Failover Resync Guard event-driven, 15-3 Reprotect Handler Simplification, 15-4 ShadowPV CRD + ScyllaDB Storage, 15-5 ShadowPV Publisher Controller, 15-6 ShadowPV Consumer Controller with Pool-ID Rewrite, 15-7 Console Plugin Standalone Mode, 15-8 Full Lifecycle E2E Test ex-14-7). Three insight categories: (1) resync-before-promote for planned failover zero-data-loss guarantee via event-driven VR watch on DRExecution controller, (2) ShadowPV cluster-scoped CRD for cross-cluster PV provisioning with Ceph pool-ID rewrite, (3) console plugin standalone SPA for Minikube/non-OCP environments. Dependencies: 15-1→15-2→15-3 (resync chain), 15-4→15-5→15-6 (ShadowPV chain), 15-7 independent, 15-8 depends on all. Depends on Epics 13+14.
@@ -392,7 +392,7 @@ development_status:
   epic-13-retrospective: done
 
   # Epic 14: Multi-Site Integration Testing with Real Storage
-  epic-14: in-progress
+  epic-14: done
   14-1-minikube-cluster-provisioning-cilium-cluster-mesh: done
   14-2-rook-ceph-rbd-volume-replication: done
   14-3-kubevirt-deployment-nested-virtualization: done
@@ -400,7 +400,7 @@ development_status:
   14-5-scylladb-cross-dc-on-rook-ceph: done
   14-6-soteria-operator-deployment: done
   14-7-test-scenario-setup-full-lifecycle-integration-test: moved-to-15-8
-  14-8-full-environment-orchestration-script: ready-for-dev
+  14-8-full-environment-orchestration-script: done
 
   # Epic 15: Real-Storage Orchestration Correctness & Cross-Cluster PV Management
   epic-15: backlog

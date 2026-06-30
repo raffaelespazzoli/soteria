@@ -1,6 +1,6 @@
 # Story 14.8: Full Environment Orchestration Script
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -51,38 +51,45 @@ Then it is idempotent (each underlying script is already idempotent)
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create `hack/multisite/setup-all.sh` (AC: 1, 2, 5, 6)
-  - [ ] 1.1: Apache 2.0 license header + description comment block matching existing scripts
-  - [ ] 1.2: `set -euo pipefail`, `SCRIPT_DIR` derivation
-  - [ ] 1.3: Color helpers (`info`, `warn`, `error`, `fatal`) — same as other scripts
-  - [ ] 1.4: Define ordered step list as an array: `(clusters rook-ceph kubevirt fedora-vm scylladb)` with corresponding script paths
-  - [ ] 1.5: `run_step()` function — sources SCRIPT_DIR, records `SECONDS` before/after, calls script, captures exit code, stores elapsed time
-  - [ ] 1.6: Main loop iterating steps, checking skip list, calling `run_step()`, halting on failure (AC: 1, 2)
-  - [ ] 1.7: Summary table at completion — step name, elapsed time (mm:ss), pass/skip status, total elapsed (AC: 5)
+- [x] Task 1: Create `hack/multisite/setup-all.sh` (AC: 1, 2, 5, 6)
+  - [x] 1.1: Apache 2.0 license header + description comment block matching existing scripts
+  - [x] 1.2: `set -euo pipefail`, `SCRIPT_DIR` derivation
+  - [x] 1.3: Color helpers (`info`, `warn`, `error`, `fatal`) — same as other scripts
+  - [x] 1.4: Define ordered step list as an array: `(clusters rook-ceph kubevirt fedora-vm scylladb)` with corresponding script paths
+  - [x] 1.5: `run_step()` function — sources SCRIPT_DIR, records `SECONDS` before/after, calls script, captures exit code, stores elapsed time
+  - [x] 1.6: Main loop iterating steps, checking skip list, calling `run_step()`, halting on failure (AC: 1, 2)
+  - [x] 1.7: Summary table at completion — step name, elapsed time (mm:ss), pass/skip status, total elapsed (AC: 5)
 
-- [ ] Task 2: Implement `--skip` flag parsing (AC: 3)
-  - [ ] 2.1: Parse CLI args — `--skip <name>` adds to a skip set (associative array)
-  - [ ] 2.2: Valid step names: `clusters`, `rook-ceph`, `kubevirt`, `fedora-vm`, `scylladb`
-  - [ ] 2.3: Warn on unknown step names, don't fail
-  - [ ] 2.4: Print which steps are being skipped at start
+- [x] Task 2: Implement `--skip` flag parsing (AC: 3)
+  - [x] 2.1: Parse CLI args — `--skip <name>` adds to a skip set (associative array)
+  - [x] 2.2: Valid step names: `clusters`, `rook-ceph`, `kubevirt`, `fedora-vm`, `scylladb`
+  - [x] 2.3: Warn on unknown step names, don't fail
+  - [x] 2.4: Print which steps are being skipped at start
 
-- [ ] Task 3: Implement `teardown` subcommand (AC: 4)
-  - [ ] 3.1: Detect `teardown` as first positional arg
-  - [ ] 3.2: Define teardown order as reverse of setup: `(scylladb kubevirt rook-ceph clusters)`
-  - [ ] 3.3: For `clusters` teardown — delegate to existing `teardown.sh`
-  - [ ] 3.4: For component teardown (`scylladb`, `kubevirt`, `rook-ceph`) — use namespace/resource deletion that tolerates missing resources
-  - [ ] 3.5: Each teardown step runs inside `set +e` block — failures are logged but don't halt teardown
-  - [ ] 3.6: `--skip` flags also apply to teardown (skip specific teardown steps)
+- [x] Task 3: Implement `teardown` subcommand (AC: 4)
+  - [x] 3.1: Detect `teardown` as first positional arg
+  - [x] 3.2: Define teardown order as reverse of setup: `(scylladb kubevirt rook-ceph clusters)`
+  - [x] 3.3: For `clusters` teardown — delegate to existing `teardown.sh`
+  - [x] 3.4: For component teardown (`scylladb`, `kubevirt`, `rook-ceph`) — use namespace/resource deletion that tolerates missing resources
+  - [x] 3.5: Each teardown step runs inside `set +e` block — failures are logged but don't halt teardown
+  - [x] 3.6: `--skip` flags also apply to teardown (skip specific teardown steps)
 
-- [ ] Task 4: Environment variable passthrough (AC: 6)
-  - [ ] 4.1: Pass through `EAST_CLUSTER_NAME` and `WEST_CLUSTER_NAME` if set (all sub-scripts read these)
-  - [ ] 4.2: Document all env vars from sub-scripts in the header comment
+- [x] Task 4: Environment variable passthrough (AC: 6)
+  - [x] 4.1: Pass through `EAST_CLUSTER_NAME` and `WEST_CLUSTER_NAME` if set (all sub-scripts read these)
+  - [x] 4.2: Document all env vars from sub-scripts in the header comment
 
-- [ ] Task 5: Make script executable and test (AC: 1-6)
-  - [ ] 5.1: `chmod +x hack/multisite/setup-all.sh`
-  - [ ] 5.2: Verify `--help` or no-arg invocation prints usage
-  - [ ] 5.3: Verify `--skip clusters --skip rook-ceph` skips the right steps
-  - [ ] 5.4: Verify `teardown` runs in reverse order
+- [x] Task 5: Make script executable and test (AC: 1-6)
+  - [x] 5.1: `chmod +x hack/multisite/setup-all.sh`
+  - [x] 5.2: Verify `--help` or no-arg invocation prints usage
+  - [x] 5.3: Verify `--skip clusters --skip rook-ceph` skips the right steps
+  - [x] 5.4: Verify `teardown` runs in reverse order
+
+### Review Findings
+
+- [x] [Review][Patch] Missing orchestrator-level failure message for failed setup steps [`hack/multisite/setup-all.sh:158`]
+- [x] [Review][Patch] Header comment does not document env vars from all delegated sub-scripts [`hack/multisite/setup-all.sh:35`]
+- [x] [Review][Patch] Component teardown derives kubeconfig filenames from cluster names instead of exported east/west kubeconfig paths [`hack/multisite/setup-all.sh:208`]
+- [x] [Review][Patch] Component teardown leaves cluster-scoped Rook/Scylla resources behind when clusters are preserved [`hack/multisite/setup-all.sh:217`]
 
 ## Dev Notes
 
@@ -363,8 +370,28 @@ hack/multisite/
 
 ### Agent Model Used
 
+Claude Opus 4.6 (Cursor)
+
 ### Debug Log References
+
+- Fixed bash 5.3 `set -u` incompatibility with empty associative arrays: `declare -A SKIP_SET` → `declare -A SKIP_SET=()` and `${SKIP_SET[key]+x}` → `[[ -v "SKIP_SET[key]" ]]`
 
 ### Completion Notes List
 
+- Created `hack/multisite/setup-all.sh` (352 lines) — single orchestration script for the full multi-site test environment
+- Sequential execution of 5 setup scripts with fail-fast semantics (AC1, AC2)
+- `--skip <step>` flag support with validation and warnings for unknown steps (AC3)
+- `teardown` subcommand with component-level teardown in reverse order (scylladb → kubevirt → rook-ceph → clusters), error-tolerant (AC4)
+- Timing summary table with per-step elapsed time and total (AC5)
+- Idempotent by delegation to idempotent sub-scripts (AC6)
+- All env vars documented in header comment for discoverability
+- Script validated: `--help`, `--skip`, fail-fast (exit code propagation), summary table, teardown order
+- All Go tests pass (no regressions)
+
 ### File List
+
+- `hack/multisite/setup-all.sh` — NEW: Full environment orchestration script
+
+### Change Log
+
+- 2026-06-30: Implemented Story 14.8 — created setup-all.sh with sequential execution, fail-fast, --skip support, teardown in reverse order, and timing summary
