@@ -19,11 +19,16 @@ package drivers
 import "context"
 
 // StorageProvider is the contract between the DR orchestrator and vendor-specific
-// storage backends (FR20). The interface uses a role-based replication model with
-// two engine-driven transitions routed through the NonReplicated state:
+// storage backends (FR20). The 7-method interface uses a role-based replication
+// model with two engine-driven transitions routed through the NonReplicated state:
 //
 //	NonReplicated → Source        (SetSource)
 //	Source        → NonReplicated (StopReplication)
+//
+// Additionally, ResyncVolume requests storage-layer data synchronization on the
+// secondary site before a planned failover promotion. This is a CSI-level concept
+// (Secondary → Resync → Secondary(Completed)) that does not change the engine's
+// role model — it ensures zero data loss before the promotion step.
 //
 // The Target role still exists in [ReplicationStatus] — the paired site's driver
 // may report its volumes as Target via [GetReplicationStatus]. However, the engine
@@ -72,6 +77,16 @@ type StorageProvider interface {
 	// writes internally. Idempotency: returns nil if the volume group is already
 	// NonReplicated. Returns ErrVolumeGroupNotFound if the group does not exist.
 	StopReplication(ctx context.Context, id VolumeGroupID) error
+
+	// ResyncVolume requests data resynchronization for a volume group on the
+	// current secondary site. The driver sets spec.replicationState to resync
+	// on the target VR/VGR CRs, instructing the storage backend to pull any
+	// un-replicated data from the peer primary before a planned failover
+	// promotion. This is a storage-layer synchronization request — it does not
+	// change the engine's role model. Idempotency: returns nil if the volume
+	// group is already in resync state. Returns ErrVolumeGroupNotFound if the
+	// group does not exist.
+	ResyncVolume(ctx context.Context, id VolumeGroupID) error
 
 	// GetReplicationStatus returns the current replication role and health for
 	// a volume group. The workflow engine polls this method to assess readiness

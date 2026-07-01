@@ -438,6 +438,48 @@ func TestDriver_Calls_ReturnsCopy(t *testing.T) {
 	}
 }
 
+// TestDriver_ResyncVolume_DefaultReturnsNil verifies that ResyncVolume returns nil
+// when no reaction is programmed (AC4).
+func TestDriver_ResyncVolume_DefaultReturnsNil(t *testing.T) {
+	d := fake.New()
+	if err := d.ResyncVolume(context.Background(), "vg-1"); err != nil {
+		t.Errorf("ResyncVolume: expected nil error, got %v", err)
+	}
+}
+
+// TestDriver_OnResyncVolume_ReturnError verifies that a programmed error is returned
+// and the call is recorded (AC1, AC3).
+func TestDriver_OnResyncVolume_ReturnError(t *testing.T) {
+	ctx := context.Background()
+	d := fake.New()
+	d.OnResyncVolume("vg-1").Return(drivers.ErrVolumeGroupNotFound)
+
+	err := d.ResyncVolume(ctx, "vg-1")
+	if !errors.Is(err, drivers.ErrVolumeGroupNotFound) {
+		t.Errorf("expected ErrVolumeGroupNotFound, got %v", err)
+	}
+	if d.CallCount("ResyncVolume") != 1 {
+		t.Errorf("expected 1 ResyncVolume call, got %d", d.CallCount("ResyncVolume"))
+	}
+}
+
+// TestDriver_ResyncVolume_CallRecording verifies that ResyncVolume invocations
+// are captured in the call history (AC2).
+func TestDriver_ResyncVolume_CallRecording(t *testing.T) {
+	ctx := context.Background()
+	d := fake.New()
+
+	_ = d.ResyncVolume(ctx, "vg-42")
+
+	calls := d.CallsTo("ResyncVolume")
+	if len(calls) != 1 {
+		t.Fatalf("expected 1 ResyncVolume call, got %d", len(calls))
+	}
+	if calls[0].Args[0] != drivers.VolumeGroupID("vg-42") {
+		t.Errorf("expected Args[0] == %q, got %v", "vg-42", calls[0].Args[0])
+	}
+}
+
 // TestDriver_CallsTo_ArgsNotAliased verifies that CallsTo() also returns
 // independent Args slices so mutations cannot corrupt the driver's history (AC2).
 func TestDriver_CallsTo_ArgsNotAliased(t *testing.T) {

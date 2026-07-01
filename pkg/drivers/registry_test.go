@@ -44,6 +44,9 @@ func (s *stubProvider) SetSource(_ context.Context, _ VolumeGroupID) error {
 func (s *stubProvider) StopReplication(_ context.Context, _ VolumeGroupID) error {
 	return nil
 }
+func (s *stubProvider) ResyncVolume(_ context.Context, _ VolumeGroupID) error {
+	return nil
+}
 func (s *stubProvider) GetReplicationStatus(_ context.Context, _ VolumeGroupID) (ReplicationStatus, error) {
 	return ReplicationStatus{}, nil
 }

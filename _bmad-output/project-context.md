@@ -115,7 +115,7 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 
 **StorageProvider Driver Framework:**
 
-- 6-method interface: CreateVolumeGroup, DeleteVolumeGroup, GetVolumeGroup, SetSource, StopReplication, GetReplicationStatus
+- 7-method interface: CreateVolumeGroup, DeleteVolumeGroup, GetVolumeGroup, SetSource, StopReplication, ResyncVolume, GetReplicationStatus
 - Replication model uses two engine-driven transitions (NonReplicated → Source, Source → NonReplicated) while the Target role is observable via GetReplicationStatus but not explicitly set by the engine
 - Drivers act as reconcilers — check actual storage state before applying changes
 - All 6 methods must be idempotent — safe to retry after crash/restart

@@ -335,6 +335,7 @@ func TestDriver_UnknownVolumeGroup_ReplicationMethods(t *testing.T) {
 	}{
 		{"SetSource", func() error { return d.SetSource(testCtx(), unknownID) }},
 		{"StopReplication", func() error { return d.StopReplication(testCtx(), unknownID) }},
+		{"ResyncVolume", func() error { return d.ResyncVolume(testCtx(), unknownID) }},
 		{"GetReplicationStatus", func() error {
 			_, err := d.GetReplicationStatus(testCtx(), unknownID)
 			return err
@@ -396,6 +397,50 @@ func TestDriver_ConcurrentAccess(t *testing.T) {
 	}
 
 	wg.Wait()
+}
+
+func TestDriver_ResyncVolume(t *testing.T) {
+	d := New()
+	info, err := d.CreateVolumeGroup(testCtx(), drivers.VolumeGroupSpec{Name: "resync-test"})
+	if err != nil {
+		t.Fatalf("CreateVolumeGroup: %v", err)
+	}
+
+	if err := d.ResyncVolume(testCtx(), info.ID); err != nil {
+		t.Fatalf("ResyncVolume: unexpected error: %v", err)
+	}
+
+	// Idempotent — second call should also succeed.
+	if err := d.ResyncVolume(testCtx(), info.ID); err != nil {
+		t.Fatalf("ResyncVolume (idempotent): unexpected error: %v", err)
+	}
+
+	// Role should remain unchanged (ResyncVolume is a no-op in noop driver).
+	status, err := d.GetReplicationStatus(testCtx(), info.ID)
+	if err != nil {
+		t.Fatalf("GetReplicationStatus: %v", err)
+	}
+	if status.Role != drivers.RoleSource {
+		t.Errorf("expected role %q after ResyncVolume, got %q", drivers.RoleSource, status.Role)
+	}
+}
+
+func TestDriver_ResyncVolume_NotFound(t *testing.T) {
+	d := New()
+	err := d.ResyncVolume(testCtx(), "does-not-exist")
+	if !errors.Is(err, drivers.ErrVolumeGroupNotFound) {
+		t.Fatalf("expected ErrVolumeGroupNotFound, got: %v", err)
+	}
+}
+
+func TestDriver_ResyncVolume_ContextCancelled(t *testing.T) {
+	d := New()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if err := d.ResyncVolume(ctx, "any-id"); err == nil {
+		t.Fatal("expected error from cancelled context, got nil")
+	}
 }
 
 func TestDriver_CompileTimeInterfaceCheck(t *testing.T) {

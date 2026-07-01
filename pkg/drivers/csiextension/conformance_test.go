@@ -111,6 +111,10 @@ func (a *conformanceAdapter) StopReplication(ctx context.Context, id drivers.Vol
 	return nil
 }
 
+func (a *conformanceAdapter) ResyncVolume(ctx context.Context, id drivers.VolumeGroupID) error {
+	return a.driver.ResyncVolume(ctx, id)
+}
+
 func (a *conformanceAdapter) GetReplicationStatus(
 	ctx context.Context, id drivers.VolumeGroupID,
 ) (drivers.ReplicationStatus, error) {

@@ -96,6 +96,15 @@ func runLifecycleTest(t *testing.T, provider drivers.StorageProvider) {
 		return
 	}
 
+	t.Run("ResyncVolume", func(t *testing.T) {
+		if err := provider.ResyncVolume(ctx, vgID); err != nil {
+			t.Fatalf("ResyncVolume failed for volume group %s: %v", vgID, err)
+		}
+	})
+	if t.Failed() {
+		return
+	}
+
 	t.Run("GetReplicationStatus_Source", func(t *testing.T) {
 		status, err := provider.GetReplicationStatus(ctx, vgID)
 		if err != nil {
@@ -216,6 +225,15 @@ func runIdempotencyTest(t *testing.T, provider drivers.StorageProvider) {
 		}
 	})
 
+	t.Run("ResyncVolume", func(t *testing.T) {
+		if err := provider.ResyncVolume(ctx, vgID); err != nil {
+			t.Fatalf("ResyncVolume first call failed for volume group %s: %v", vgID, err)
+		}
+		if err := provider.ResyncVolume(ctx, vgID); err != nil {
+			t.Fatalf("ResyncVolume second call failed (idempotency) for volume group %s: %v", vgID, err)
+		}
+	})
+
 	t.Run("StopReplication", func(t *testing.T) {
 		if err := provider.StopReplication(ctx, vgID); err != nil {
 			t.Fatalf("StopReplication first call failed for volume group %s: %v", vgID, err)
@@ -291,6 +309,13 @@ func runContextCancellationTest(t *testing.T, provider drivers.StorageProvider) 
 		}
 	})
 
+	t.Run("ResyncVolume", func(t *testing.T) {
+		err := provider.ResyncVolume(cancelledCtx, vgID)
+		if err == nil {
+			t.Fatalf("ResyncVolume: expected error with cancelled context for volume group %s, got nil", vgID)
+		}
+	})
+
 	t.Run("StopReplication", func(t *testing.T) {
 		err := provider.StopReplication(cancelledCtx, vgID)
 		if err == nil {
@@ -342,6 +367,16 @@ func runErrorConditionsTest(t *testing.T, provider drivers.StorageProvider) {
 
 	t.Run("StopReplication_NotFound", func(t *testing.T) {
 		err := provider.StopReplication(ctx, nonexistentID)
+		if err == nil {
+			t.Fatal("Expected error for nonexistent volume group, got nil")
+		}
+		if !errors.Is(err, drivers.ErrVolumeGroupNotFound) {
+			t.Fatalf("Expected error wrapping %v, got: %v", drivers.ErrVolumeGroupNotFound, err)
+		}
+	})
+
+	t.Run("ResyncVolume_NotFound", func(t *testing.T) {
+		err := provider.ResyncVolume(ctx, nonexistentID)
 		if err == nil {
 			t.Fatal("Expected error for nonexistent volume group, got nil")
 		}

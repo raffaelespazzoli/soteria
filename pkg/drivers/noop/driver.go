@@ -176,6 +176,24 @@ func (d *Driver) StopReplication(ctx context.Context, id drivers.VolumeGroupID) 
 	return nil
 }
 
+func (d *Driver) ResyncVolume(ctx context.Context, id drivers.VolumeGroupID) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	d.mu.RLock()
+	_, ok := d.volumeGroups[id]
+	d.mu.RUnlock()
+
+	if !ok {
+		log.FromContext(ctx).V(1).Info("No-op: Volume group not found for ResyncVolume", "volumeGroupID", id)
+		return drivers.ErrVolumeGroupNotFound
+	}
+
+	log.FromContext(ctx).V(1).Info("No-op: ResyncVolume (no-op)", "volumeGroupID", id)
+	return nil
+}
+
 func (d *Driver) GetReplicationStatus(
 	ctx context.Context, id drivers.VolumeGroupID,
 ) (drivers.ReplicationStatus, error) {

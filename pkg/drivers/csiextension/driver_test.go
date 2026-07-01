@@ -2027,6 +2027,105 @@ func TestCreateVolumeGroup_VGR_Idempotent_FinalizerNotDuplicated(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// ResyncVolume — State transition tests (Story 15.1)
+// ---------------------------------------------------------------------------
+
+func TestResyncVolume_StateTransitions(t *testing.T) {
+	tests := []struct {
+		name    string
+		initial replicationv1alpha1.ReplicationState
+	}{
+		{"secondary to resync", ReplicationStateSecondary},
+		{"primary to resync", ReplicationStatePrimary},
+		{"already resync (idempotent)", ReplicationStateResync},
+	}
+
+	for _, tt := range tests {
+		t.Run("VR/"+tt.name, func(t *testing.T) {
+			vr := &replicationv1alpha1.VolumeReplication{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      vgIDPrefix + testVGNameVM + "-data",
+					Namespace: "default",
+					Labels:    map[string]string{LabelVolumeGroup: testVGNameVM},
+				},
+				Spec: replicationv1alpha1.VolumeReplicationSpec{
+					VolumeReplicationClass: testVRClass,
+					ReplicationState:       tt.initial,
+					DataSource: corev1.TypedLocalObjectReference{
+						Kind: "PersistentVolumeClaim", Name: testPVCData,
+					},
+				},
+			}
+
+			drv := testDriver(t, vr)
+			ctx := context.Background()
+
+			if err := drv.ResyncVolume(ctx, vgIDFromNamespace("default", testVGNameVM)); err != nil {
+				t.Fatalf("ResyncVolume: %v", err)
+			}
+
+			var got replicationv1alpha1.VolumeReplication
+			if err := drv.client.Get(ctx, client.ObjectKeyFromObject(vr), &got); err != nil {
+				t.Fatalf("Get: %v", err)
+			}
+			if got.Spec.ReplicationState != ReplicationStateResync {
+				t.Errorf("ReplicationState = %q, want resync", got.Spec.ReplicationState)
+			}
+		})
+
+		t.Run("VGR/"+tt.name, func(t *testing.T) {
+			vgr := &replicationv1alpha1.VolumeGroupReplication{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      vgIDPrefix + testVGNameNS,
+					Namespace: testNamespace,
+					Labels:    map[string]string{LabelVolumeGroup: testVGNameNS},
+				},
+				Spec: replicationv1alpha1.VolumeGroupReplicationSpec{
+					VolumeGroupReplicationClassName: "ceph-rbd-group",
+					VolumeReplicationClassName:      testVRClass,
+					ReplicationState:                tt.initial,
+				},
+			}
+
+			drv := testDriver(t, vgr)
+			ctx := context.Background()
+
+			if err := drv.ResyncVolume(ctx, vgIDFromNamespace(testNamespace, testVGNameNS)); err != nil {
+				t.Fatalf("ResyncVolume: %v", err)
+			}
+
+			var got replicationv1alpha1.VolumeGroupReplication
+			if err := drv.client.Get(ctx, client.ObjectKeyFromObject(vgr), &got); err != nil {
+				t.Fatalf("Get: %v", err)
+			}
+			if got.Spec.ReplicationState != ReplicationStateResync {
+				t.Errorf("ReplicationState = %q, want resync", got.Spec.ReplicationState)
+			}
+		})
+	}
+}
+
+func TestResyncVolume_NotFound(t *testing.T) {
+	drv := testDriver(t)
+	ctx := context.Background()
+
+	err := drv.ResyncVolume(ctx, "csi-ext-default/nonexistent")
+	if !errors.Is(err, drivers.ErrVolumeGroupNotFound) {
+		t.Errorf("ResyncVolume for nonexistent: got %v, want ErrVolumeGroupNotFound", err)
+	}
+}
+
+func TestResyncVolume_ContextCancelled(t *testing.T) {
+	drv := testDriver(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	if err := drv.ResyncVolume(ctx, "csi-ext-default/test"); err == nil {
+		t.Fatal("expected error for cancelled context")
+	}
+}
+
 func TestCreateVolumeGroup_PartialRetry_SkipsExisting(t *testing.T) {
 	drv := testDriver(t)
 	ctx := context.Background()

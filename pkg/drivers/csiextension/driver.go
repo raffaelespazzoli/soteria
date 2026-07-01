@@ -403,6 +403,18 @@ func (d *Driver) StopReplication(ctx context.Context, id drivers.VolumeGroupID) 
 	return d.updateReplicationState(ctx, set, ReplicationStateSecondary)
 }
 
+func (d *Driver) ResyncVolume(ctx context.Context, id drivers.VolumeGroupID) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	set, err := d.listCRsForVG(ctx, id)
+	if err != nil {
+		return err
+	}
+	return d.updateReplicationState(ctx, set, ReplicationStateResync)
+}
+
 func (d *Driver) GetReplicationStatus(
 	ctx context.Context, id drivers.VolumeGroupID,
 ) (drivers.ReplicationStatus, error) {

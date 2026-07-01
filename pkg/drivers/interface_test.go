@@ -43,6 +43,10 @@ func (m *mockProvider) StopReplication(_ context.Context, _ VolumeGroupID) error
 	return nil
 }
 
+func (m *mockProvider) ResyncVolume(_ context.Context, _ VolumeGroupID) error {
+	return nil
+}
+
 func (m *mockProvider) GetReplicationStatus(_ context.Context, _ VolumeGroupID) (ReplicationStatus, error) {
 	return ReplicationStatus{}, nil
 }

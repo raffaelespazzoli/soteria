@@ -172,6 +172,12 @@ func (d *Driver) OnStopReplication(vgID ...drivers.VolumeGroupID) *CallStub {
 	return d.onMethod("StopReplication", optionalVgID(vgID))
 }
 
+// OnResyncVolume programs a reaction for ResyncVolume. If vgID is provided,
+// only calls with that ID match; otherwise the reaction matches any call.
+func (d *Driver) OnResyncVolume(vgID ...drivers.VolumeGroupID) *CallStub {
+	return d.onMethod("ResyncVolume", optionalVgID(vgID))
+}
+
 // OnGetReplicationStatus programs a reaction for GetReplicationStatus. If vgID is provided,
 // only calls with that ID match; otherwise the reaction matches any call.
 func (d *Driver) OnGetReplicationStatus(vgID ...drivers.VolumeGroupID) *CallStub {
@@ -277,6 +283,20 @@ func (d *Driver) StopReplication(_ context.Context, id drivers.VolumeGroupID) er
 	d.mu.Lock()
 	d.calls = append(d.calls, Call{Method: "StopReplication", Args: []any{id}})
 	r := d.findReaction("StopReplication", id)
+	d.mu.Unlock()
+
+	if r != nil {
+		return r.resp.Err
+	}
+	return nil
+}
+
+// ResyncVolume records the call and returns the programmed response.
+// Default: returns nil.
+func (d *Driver) ResyncVolume(_ context.Context, id drivers.VolumeGroupID) error {
+	d.mu.Lock()
+	d.calls = append(d.calls, Call{Method: "ResyncVolume", Args: []any{id}})
+	r := d.findReaction("ResyncVolume", id)
 	d.mu.Unlock()
 
 	if r != nil {

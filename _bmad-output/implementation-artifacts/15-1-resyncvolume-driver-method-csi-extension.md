@@ -1,6 +1,6 @@
 # Story 15.1: ResyncVolume Driver Method & CSI Extension Implementation
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -50,38 +50,38 @@ Then the operation respects `ctx.Err()` and returns the cancellation error
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Add `ResyncVolume` to StorageProvider interface (AC: 1, 6)
-  - [ ] 1.1: Add method signature to `pkg/drivers/interface.go` with godoc following existing style
-  - [ ] 1.2: Update interface doc comment to mention 7 methods and add `resync` transition description
-  - [ ] 1.3: Add `ResyncVolume` stub to `mockProvider` in `pkg/drivers/interface_test.go` (compile-time check — returns nil)
+- [x] Task 1: Add `ResyncVolume` to StorageProvider interface (AC: 1, 6)
+  - [x] 1.1: Add method signature to `pkg/drivers/interface.go` with godoc following existing style
+  - [x] 1.2: Update interface doc comment to mention 7 methods and add `resync` transition description
+  - [x] 1.3: Add `ResyncVolume` stub to `mockProvider` in `pkg/drivers/interface_test.go` (compile-time check — returns nil)
 
-- [ ] Task 2: Implement CSI Extension `ResyncVolume` (AC: 2, 6)
-  - [ ] 2.1: Add `ResyncVolume` method to `pkg/drivers/csiextension/driver.go` following `SetSource`/`StopReplication` pattern
-  - [ ] 2.2: Add `ResyncVolume` passthrough to `conformanceAdapter` in `pkg/drivers/csiextension/conformance_test.go` (delegate to `a.driver.ResyncVolume`)
-  - [ ] 2.3: Add unit test in `pkg/drivers/csiextension/driver_test.go` for VR and VGR paths
+- [x] Task 2: Implement CSI Extension `ResyncVolume` (AC: 2, 6)
+  - [x] 2.1: Add `ResyncVolume` method to `pkg/drivers/csiextension/driver.go` following `SetSource`/`StopReplication` pattern
+  - [x] 2.2: Add `ResyncVolume` passthrough to `conformanceAdapter` in `pkg/drivers/csiextension/conformance_test.go` (delegate to `a.driver.ResyncVolume`)
+  - [x] 2.3: Add unit test in `pkg/drivers/csiextension/driver_test.go` for VR and VGR paths
 
-- [ ] Task 3: Implement noop `ResyncVolume` (AC: 3, 6)
-  - [ ] 3.1: Add `ResyncVolume` method to `pkg/drivers/noop/driver.go`
-  - [ ] 3.2: Add unit test in `pkg/drivers/noop/driver_test.go`
+- [x] Task 3: Implement noop `ResyncVolume` (AC: 3, 6)
+  - [x] 3.1: Add `ResyncVolume` method to `pkg/drivers/noop/driver.go`
+  - [x] 3.2: Add unit test in `pkg/drivers/noop/driver_test.go`
 
-- [ ] Task 4: Implement fake `ResyncVolume` (AC: 4)
-  - [ ] 4.1: Add `OnResyncVolume` stub method to `pkg/drivers/fake/driver.go`
-  - [ ] 4.2: Add `ResyncVolume` StorageProvider implementation to `pkg/drivers/fake/driver.go`
-  - [ ] 4.3: Add unit test in `pkg/drivers/fake/driver_test.go`
+- [x] Task 4: Implement fake `ResyncVolume` (AC: 4)
+  - [x] 4.1: Add `OnResyncVolume` stub method to `pkg/drivers/fake/driver.go`
+  - [x] 4.2: Add `ResyncVolume` StorageProvider implementation to `pkg/drivers/fake/driver.go`
+  - [x] 4.3: Add unit test in `pkg/drivers/fake/driver_test.go`
 
-- [ ] Task 5: Add conformance tests (AC: 5)
-  - [ ] 5.1: Add `ResyncVolume` steps to `runLifecycleTest` in `pkg/drivers/conformance/suite.go`
-  - [ ] 5.2: Add `ResyncVolume` idempotency test to `runIdempotencyTest`
-  - [ ] 5.3: Add `ResyncVolume` context cancellation test to `runContextCancellationTest`
-  - [ ] 5.4: Add `ResyncVolume_NotFound` test to `runErrorConditionsTest`
+- [x] Task 5: Add conformance tests (AC: 5)
+  - [x] 5.1: Add `ResyncVolume` steps to `runLifecycleTest` in `pkg/drivers/conformance/suite.go`
+  - [x] 5.2: Add `ResyncVolume` idempotency test to `runIdempotencyTest`
+  - [x] 5.3: Add `ResyncVolume` context cancellation test to `runContextCancellationTest`
+  - [x] 5.4: Add `ResyncVolume_NotFound` test to `runErrorConditionsTest`
 
-- [ ] Task 6: Update project documentation
-  - [ ] 6.1: Update `_bmad-output/project-context.md` line 118 — change "6-method interface" to "7-method interface" and add `ResyncVolume` to the method list
+- [x] Task 6: Update project documentation
+  - [x] 6.1: Update `_bmad-output/project-context.md` line 118 — change "6-method interface" to "7-method interface" and add `ResyncVolume` to the method list
 
-- [ ] Task 7: Verify and finalize
-  - [ ] 7.1: Run `make lint-fix` — fix any issues
-  - [ ] 7.2: Run `make test` — all unit + envtest tests pass
-  - [ ] 7.3: Verify Tier 1/2/3 doc compliance (doc.go unaffected, method godoc added)
+- [x] Task 7: Verify and finalize
+  - [x] 7.1: Run `make lint-fix` — no new issues (pre-existing dupl/errcheck warnings only)
+  - [x] 7.2: Run `make test` — all unit + envtest tests pass
+  - [x] 7.3: Verify Tier 1/2/3 doc compliance (doc.go unaffected, method godoc added)
 
 ## Dev Notes
 
@@ -294,8 +294,38 @@ Recent commits (last 5) were all Epic 14 infrastructure work — no Go files cha
 
 ### Agent Model Used
 
+Opus 4.6 (Cursor)
+
 ### Debug Log References
+
+- Compilation break in `pkg/drivers/registry_test.go` — `stubProvider` also implemented StorageProvider and needed the `ResyncVolume` method added. Fixed immediately.
 
 ### Completion Notes List
 
+- Added `ResyncVolume(ctx context.Context, id VolumeGroupID) error` to `StorageProvider` interface, extending it from 6 to 7 methods. Updated interface doc comment with resync transition description.
+- CSI Extension implementation follows `SetSource`/`StopReplication` pattern exactly — delegates to `listCRsForVG` + `updateReplicationState(ctx, set, ReplicationStateResync)`. No changes to helpers.go or constants.go needed.
+- Noop implementation uses `RLock` (read lock) since resync has no semantic meaning — checks context cancellation and volume group existence, returns nil for existing groups.
+- Fake implementation adds `OnResyncVolume` stub and `ResyncVolume` method following existing `On*/Return` programmable API pattern with call recording.
+- Conformance suite adds ResyncVolume to all 4 test categories: lifecycle (Create → SetSource → ResyncVolume → StopReplication → Delete), idempotency (double-call), context cancellation, and not-found error condition.
+- All 6 AC satisfied: interface extension (AC1), CSI Extension implementation (AC2), noop passthrough (AC3), fake driver support (AC4), conformance tests (AC5), context cancellation (AC6).
+- All tests pass — 0 regressions, ~180 lines added across 12 files.
+- Pre-existing lint warnings (dupl in helpers.go/reconciler_test.go, errcheck in health_test.go) not introduced by this story.
+
 ### File List
+
+- `pkg/drivers/interface.go` — Added ResyncVolume method + updated doc comment (6→7 methods)
+- `pkg/drivers/interface_test.go` — Added ResyncVolume to mockProvider
+- `pkg/drivers/registry_test.go` — Added ResyncVolume to stubProvider
+- `pkg/drivers/csiextension/driver.go` — Added ResyncVolume method
+- `pkg/drivers/csiextension/driver_test.go` — Added ResyncVolume state transition, not-found, context-cancelled tests
+- `pkg/drivers/csiextension/conformance_test.go` — Added ResyncVolume to conformanceAdapter
+- `pkg/drivers/noop/driver.go` — Added ResyncVolume method
+- `pkg/drivers/noop/driver_test.go` — Added ResyncVolume, ResyncVolume_NotFound, ResyncVolume_ContextCancelled tests + updated UnknownVolumeGroup table
+- `pkg/drivers/fake/driver.go` — Added OnResyncVolume + ResyncVolume methods
+- `pkg/drivers/fake/driver_test.go` — Added ResyncVolume default, error injection, call recording tests
+- `pkg/drivers/conformance/suite.go` — Added ResyncVolume to lifecycle, idempotency, context-cancellation, error-conditions tests
+- `_bmad-output/project-context.md` — Updated 6-method → 7-method interface description
+
+### Change Log
+
+- 2026-07-01: Implemented Story 15.1 — ResyncVolume Driver Method & CSI Extension. Extended StorageProvider interface with ResyncVolume method across all drivers (csi-extension, noop, fake) with full conformance test coverage. All ACs satisfied, all tests pass.
