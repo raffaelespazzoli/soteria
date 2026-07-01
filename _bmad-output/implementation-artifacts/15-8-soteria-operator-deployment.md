@@ -1,6 +1,6 @@
 # Story 15.8: Soteria Operator Deployment (Moved from 14.6)
 
-Status: backlog
+Status: ready-for-dev
 
 ## Story
 
@@ -59,17 +59,16 @@ Then it is visible on west after ScyllaDB replication delay
   - [ ] 3.1: Env-var configuration block (IMG, EAST_CONTEXT, WEST_CONTEXT, NAMESPACE, KUSTOMIZE path)
   - [ ] 3.2: Prerequisite checks (kubectl, kustomize, Minikube clusters running, ScyllaDB ready on both, KubeVirt Deployed on both, image loaded in Minikube)
   - [ ] 3.3: Set image in kustomize: `cd config/manager && kustomize edit set image controller=${IMG}`
-  - [ ] 3.4: Build east overlay and apply: `kustomize build hack/multisite/overlays/east | kubectl --context=kind-east apply --server-side --force-conflicts -f -`
+  - [ ] 3.4: Build east overlay and apply: `kustomize build --load-restrictor LoadRestrictionsNone hack/multisite/overlays/east | kubectl --context=east apply --server-side --force-conflicts -f -`
   - [ ] 3.5: Wait for Soteria controller-manager deployment rollout on east (timeout 5m)
-  - [ ] 3.6: Build west overlay and apply: `kustomize build hack/multisite/overlays/west | kubectl --context=kind-west apply --server-side --force-conflicts -f -`
+  - [ ] 3.6: Build west overlay and apply: `kustomize build --load-restrictor LoadRestrictionsNone hack/multisite/overlays/west | kubectl --context=west apply --server-side --force-conflicts -f -`
   - [ ] 3.7: Wait for Soteria controller-manager deployment rollout on west (timeout 5m)
   - [ ] 3.8: Verify APIService `v1alpha1.soteria.io` is Available on both clusters
 
 - [ ] Task 4: Cross-DC replication smoke test (AC: 5)
-  - [ ] 4.1: Create a test namespace `soteria-smoke-test` on east via kubectl
-  - [ ] 4.2: Create a DRPlan via the Soteria API on east cluster with `volumeReplicationDriver: {type: csi-extension, volumeReplicationClass: rook-ceph-rbd-vrc}`, `primarySite: east`, `secondarySite: west`
-  - [ ] 4.3: Wait and verify the DRPlan is visible on west cluster via the Soteria API (ScyllaDB replication)
-  - [ ] 4.4: Delete the test DRPlan and namespace
+  - [ ] 4.1: Create a cluster-scoped DRPlan `smoke-test-plan` via the Soteria API on east cluster with `volumeReplicationDriver: {type: csi-extension, volumeReplicationClass: rook-ceph-rbd-vrc}`, `primarySite: east`, `secondarySite: west`
+  - [ ] 4.2: Wait and verify the DRPlan is visible on west cluster via the Soteria API (ScyllaDB replication)
+  - [ ] 4.3: Delete the test DRPlan
 
 - [ ] Task 5: README and finalization
   - [ ] 5.1: Update `hack/multisite/README.md` with Soteria deployment section (prerequisites, build, deploy, verify, troubleshooting)
@@ -242,17 +241,16 @@ The APIService becomes Available once:
 
 ### Cross-DC Replication Smoke Test
 
-Create a DRPlan on east and verify it appears on west:
+Create a DRPlan on east and verify it appears on west. DRPlan is cluster-scoped (no namespace):
 
 ```bash
-kubectl --context=kind-east apply -f - <<'EOF'
+kubectl --context=east apply -f - <<'EOF'
 apiVersion: soteria.io/v1alpha1
 kind: DRPlan
 metadata:
   name: smoke-test-plan
-  namespace: soteria-smoke-test
 spec:
-  maxConcurrentFailovers: 1
+  maxConcurrentFailovers: 2
   primarySite: east
   secondarySite: west
   volumeReplicationDriver:
@@ -260,9 +258,9 @@ spec:
     volumeReplicationClass: rook-ceph-rbd-vrc
 EOF
 
-# Wait for cross-DC replication (ScyllaDB eventual consistency)
+# Wait for cross-DC replication (ScyllaDB eventual consistency, up to 60s)
 for i in $(seq 1 30); do
-  if kubectl --context=kind-west get drplan smoke-test-plan -n soteria-smoke-test &>/dev/null; then
+  if kubectl --context=west get drplan smoke-test-plan &>/dev/null; then
     echo "Cross-DC replication verified"
     break
   fi
