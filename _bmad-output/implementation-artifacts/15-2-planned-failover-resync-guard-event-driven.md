@@ -1,6 +1,6 @@
 # Story 15.2: Planned Failover Resync Guard (Event-Driven)
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -57,58 +57,58 @@ And on resume after crash, the reconciler re-evaluates VR status (does not re-ca
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Modify PreExecute in `pkg/engine/failover.go` to call ResyncVolume on target VGs (AC: 1, 6)
-  - [ ] 1.1: After StopVM loop, add ResyncVolume loop over target VGs (call on each unique VG before StopReplication)
-  - [ ] 1.2: Remove the StopReplication call from PreExecute — demote moves to the reconciler after resync completes
-  - [ ] 1.3: Return a new sentinel value or error type indicating "resync-requested, await completion" so the reconciler knows to set the condition
-  - [ ] 1.4: Add unit tests for the modified PreExecute (ResyncVolume called, StopReplication NOT called)
+- [x] Task 1: Modify PreExecute in `pkg/engine/failover.go` to call ResyncVolume on target VGs (AC: 1, 6)
+  - [x] 1.1: After StopVM loop, add ResyncVolume loop over target VGs (call on each unique VG before StopReplication)
+  - [x] 1.2: Remove the StopReplication call from PreExecute — demote moves to the reconciler after resync completes
+  - [x] 1.3: Return a new sentinel value or error type indicating "resync-requested, await completion" so the reconciler knows to set the condition
+  - [x] 1.4: Add unit tests for the modified PreExecute (ResyncVolume called, StopReplication NOT called)
 
-- [ ] Task 2: Add `ResyncPending` condition and resync gate to reconciler (AC: 2, 4, 5, 7)
-  - [ ] 2.1: Define `ConditionResyncPending = "ResyncPending"` constant in the drexecution package
-  - [ ] 2.2: In `reconcileWaveExecution`, after Step 0 PreExecute completes, set `ResyncPending=True` condition with `RequeueAfter(resyncTimeout)` as safety net
-  - [ ] 2.3: Add resync gate check in the resume path: if `ResyncPending=True`, evaluate VR/VGR status before proceeding
-  - [ ] 2.4: Implement `checkResyncComplete` helper: queries target VR/VGR CRs, checks all have `status.state=Secondary && conditions[Completed].status=True`
-  - [ ] 2.5: On resync complete: remove `ResyncPending` condition, call StopReplication on source VGs, set `Step0Complete`, proceed to waves
-  - [ ] 2.6: On timeout (safety-net RequeueAfter fires + resync incomplete): fail execution with reason `ResyncTimeout`
-  - [ ] 2.7: Add unit tests for the resync gate (complete, timeout, resume-after-crash)
+- [x] Task 2: Add `ResyncPending` condition and resync gate to reconciler (AC: 2, 4, 5, 7)
+  - [x] 2.1: Define `ConditionResyncPending = "ResyncPending"` constant in the drexecution package
+  - [x] 2.2: In `reconcileWaveExecution`, after Step 0 PreExecute completes, set `ResyncPending=True` condition with `RequeueAfter(resyncTimeout)` as safety net
+  - [x] 2.3: Add resync gate check in the resume path: if `ResyncPending=True`, evaluate VR/VGR status before proceeding
+  - [x] 2.4: Implement `checkResyncComplete` helper: queries target VR/VGR CRs, checks all have `status.state=Secondary && conditions[Completed].status=True`
+  - [x] 2.5: On resync complete: remove `ResyncPending` condition, call StopReplication on source VGs, set `Step0Complete`, proceed to waves
+  - [x] 2.6: On timeout (safety-net RequeueAfter fires + resync incomplete): fail execution with reason `ResyncTimeout`
+  - [x] 2.7: Add unit tests for the resync gate (complete, timeout, resume-after-crash)
 
-- [ ] Task 3: Add VR/VGR watch to DRExecution controller's SetupWithManager (AC: 3)
-  - [ ] 3.1: Add `.Watches()` for `replicationv1alpha1.VolumeReplication` with `vrStatusChangePredicate()` and `mapVRToDRExecution` handler
-  - [ ] 3.2: Add `.Watches()` for `replicationv1alpha1.VolumeGroupReplication` with same predicate and handler
-  - [ ] 3.3: Implement `mapVRToDRExecution`: read `soteria.io/drplan` label → find active DRExecution for that plan (same pattern as `mapVMToDRExecution`)
-  - [ ] 3.4: Import and reuse `vrStatusChangePredicate` from the drplan package (or extract to shared package)
-  - [ ] 3.5: Add RBAC markers for `replication.storage.openshift.io` VR/VGR `get;list;watch`
-  - [ ] 3.6: Add unit tests for `mapVRToDRExecution` handler
+- [x] Task 3: Add VR/VGR watch to DRExecution controller's SetupWithManager (AC: 3)
+  - [x] 3.1: Add `.Watches()` for `replicationv1alpha1.VolumeReplication` with `vrStatusChangePredicate()` and `mapVRToDRExecution` handler
+  - [x] 3.2: Add `.Watches()` for `replicationv1alpha1.VolumeGroupReplication` with same predicate and handler
+  - [x] 3.3: Implement `mapVRToDRExecution`: read `soteria.io/drplan` label → find active DRExecution for that plan (same pattern as `mapVMToDRExecution`)
+  - [x] 3.4: Import and reuse `vrStatusChangePredicate` from the drplan package (or extract to shared package)
+  - [x] 3.5: Add RBAC markers for `replication.storage.openshift.io` VR/VGR `get;list;watch`
+  - [x] 3.6: Add unit tests for `mapVRToDRExecution` handler
 
-- [ ] Task 4: Add `ResyncTimeout` field to DRPlanSpec (AC: 5)
-  - [ ] 4.1: Add `ResyncTimeout *metav1.Duration` field to DRPlanSpec with `+kubebuilder:default="10m"` and `+optional`
-  - [ ] 4.2: Run `make manifests generate` to regenerate CRD and DeepCopy
-  - [ ] 4.3: Update sample CRD YAML with the new field
-  - [ ] 4.4: Update console-plugin DRPlanSpec TypeScript interface (add `resyncTimeout?: string`)
+- [x] Task 4: Add `ResyncTimeout` field to DRPlanSpec (AC: 5)
+  - [x] 4.1: Add `ResyncTimeout *metav1.Duration` field to DRPlanSpec with `+kubebuilder:default="10m"` and `+optional`
+  - [x] 4.2: Run `make manifests generate` to regenerate CRD and DeepCopy
+  - [x] 4.3: Update sample CRD YAML with the new field
+  - [x] 4.4: Update console-plugin DRPlanSpec TypeScript interface (add `resyncTimeout?: string`)
 
-- [ ] Task 5: Handle multi-site Step 0 flow (cross-site coordination via DRExecution conditions) (AC: 1, 2, 7)
-  - [ ] 5.1: In `reconcileStep0` (source site): after StopVM, set `VMsStopped=True` condition on DRExecution, return with `RequeueAfter(resyncTimeout)` to wait for `ResyncComplete`
-  - [ ] 5.2: In `reconcileStep0`: on re-reconcile, check for `ResyncComplete=True` condition (set by target site)
-  - [ ] 5.3: On ResyncComplete: call StopReplication on LOCAL primary VRs, remove `ResyncPending`/`ResyncComplete`, set `Step0Complete`
-  - [ ] 5.4: On timeout (resyncTimeout elapsed without ResyncComplete): fail execution with `ResyncTimeout`
-  - [ ] 5.5: In target site (RoleOwner) path: add pre-wave gate checking `VMsStopped=True`, call ResyncVolume on LOCAL secondary VRs, set `ResyncPending=True`
-  - [ ] 5.6: In target site: when VR watch fires and resync complete, set `ResyncComplete=True` condition
-  - [ ] 5.7: Update tests for multi-site Step 0 coordination path
+- [x] Task 5: Handle multi-site Step 0 flow (cross-site coordination via DRExecution conditions) (AC: 1, 2, 7)
+  - [x] 5.1: In `reconcileStep0` (source site): after StopVM, set `VMsStopped=True` condition on DRExecution, return with `RequeueAfter(resyncTimeout)` to wait for `ResyncComplete`
+  - [x] 5.2: In `reconcileStep0`: on re-reconcile, check for `ResyncComplete=True` condition (set by target site)
+  - [x] 5.3: On ResyncComplete: call StopReplication on LOCAL primary VRs, remove `ResyncPending`/`ResyncComplete`, set `Step0Complete`
+  - [x] 5.4: On timeout (resyncTimeout elapsed without ResyncComplete): fail execution with `ResyncTimeout`
+  - [x] 5.5: In target site (RoleOwner) path: add pre-wave gate checking `VMsStopped=True`, call ResyncVolume on LOCAL secondary VRs, set `ResyncPending=True`
+  - [x] 5.6: In target site: when VR watch fires and resync complete, set `ResyncComplete=True` condition
+  - [x] 5.7: Update tests for multi-site Step 0 coordination path
 
-- [ ] Task 6: Handle single-site Step 0 flow (AC: 1, 2, 7)
-  - [ ] 6.1: In `reconcileWaveExecution` Step 0 block (single-site path): after PreExecute, set `ResyncPending=True` and return with `RequeueAfter(resyncTimeout)`
-  - [ ] 6.2: Add resync-pending gate before wave initialization: if `ResyncPending=True`, check completion
-  - [ ] 6.3: On resync complete: call StopReplication, remove `ResyncPending`, set `Step0Complete`, proceed
-  - [ ] 6.4: On timeout: fail execution
-  - [ ] 6.5: Update tests for single-site Step 0 path
+- [x] Task 6: Handle single-site Step 0 flow (AC: 1, 2, 7)
+  - [x] 6.1: In `reconcileWaveExecution` Step 0 block (single-site path): after PreExecute, set `ResyncPending=True` and return with `RequeueAfter(resyncTimeout)`
+  - [x] 6.2: Add resync-pending gate before wave initialization: if `ResyncPending=True`, check completion
+  - [x] 6.3: On resync complete: call StopReplication, remove `ResyncPending`, set `Step0Complete`, proceed
+  - [x] 6.4: On timeout: fail execution
+  - [x] 6.5: Update tests for single-site Step 0 path
 
-- [ ] Task 7: Update documentation and finalize
-  - [ ] 7.1: Update `pkg/engine/doc.go` — document the ResyncVolume step in PreExecute
-  - [ ] 7.2: Update `pkg/controller/drexecution/doc.go` — document VR/VGR watch and resync gate
-  - [ ] 7.3: Update `_bmad-output/project-context.md` — add resync guard to the unified handler model description
-  - [ ] 7.4: Run `make lint-fix` — fix any issues
-  - [ ] 7.5: Run `make test` — all unit + envtest tests pass
-  - [ ] 7.6: Verify Tier 1/2/3 doc compliance
+- [x] Task 7: Update documentation and finalize
+  - [x] 7.1: Update `pkg/engine/doc.go` — document the ResyncVolume step in PreExecute
+  - [x] 7.2: Update `pkg/controller/drexecution/doc.go` — document VR/VGR watch and resync gate
+  - [x] 7.3: Update `_bmad-output/project-context.md` — add resync guard to the unified handler model description
+  - [x] 7.4: Run `make lint-fix` — fix any issues
+  - [x] 7.5: Run `make test` — all unit + envtest tests pass
+  - [x] 7.6: Verify Tier 1/2/3 doc compliance
 
 ## Dev Notes
 
@@ -441,4 +441,19 @@ Key patterns from 15.1:
 
 ### Completion Notes List
 
+- Task 1: Modified PreExecute in `pkg/engine/failover.go` — replaced StopReplication with ResyncVolume on target VGs. Added `ErrResyncRequested` sentinel error returned after ResyncVolume calls. Updated all 30+ failover/state-table tests. Disaster mode unchanged (no-op). Full test suite green.
+- Task 2: Added `ConditionResyncPending`, `ConditionVMsStopped`, `ConditionResyncComplete` constants. Implemented `reconcileResyncGate` (single-site) and `reconcileStep0ResyncGate` (multi-site source). Added `checkResyncComplete` helper checking VR/VGR state=Secondary + health=Healthy. 9 new unit tests all passing. Also proactively completed Task 4 (ResyncTimeout field on DRPlanSpec).
+- Task 3: Added VR/VGR `.Watches()` to `SetupWithManager` with `vrStatusChangePredicate` (filters on state/conditions changes) and `mapVRToDRExecution` handler (routes via soteria.io/drplan → soteria.io/plan-name labels). Added RBAC markers for replication.storage.openshift.io VR/VGR get/list/watch. 5 new unit tests (consolidated to table-driven to avoid dupl lint).
+- Task 4: Added `ResyncTimeout *metav1.Duration` to DRPlanSpec with `+kubebuilder:default="10m"`. Ran `make manifests generate`. Updated sample YAML and console-plugin TypeScript interface.
+- Task 5: Source site (`reconcileStep0`): PreExecute sets VMsStopped + ResyncPending, waits for ResyncComplete. Target site (`reconcileTargetSiteResyncGate`): monitors VMsStopped, checks local VR/VGR status, sets ResyncComplete when done. Source site's `reconcileStep0ResyncGate` then calls StopReplication and sets Step0Complete. 3 target-site tests added.
+- Task 6: Single-site path in `reconcileWaveExecution`: PreExecute → ResyncPending → `reconcileResyncGate` (checkResyncComplete + StopReplication + Step0Complete). Tests covered by Task 2 tests.
+- Task 7: Updated engine doc.go (ResyncVolume + ErrResyncRequested flow), drexecution doc.go (VR/VGR watch and resync gate), project-context.md (unified handler model). No new lint issues introduced (9 pre-existing). Full test suite green with 54.5% drexecution coverage.
+
 ### File List
+
+### Review Findings
+
+- [x] [Review][Patch] Multi-site resync still runs from the source site instead of the target site [pkg/controller/drexecution/reconciler.go:1564-1593]
+- [x] [Review][Patch] Resync completion gate accepts states weaker than `Secondary && Completed=True` [pkg/controller/drexecution/reconciler.go:1912-1936]
+- [x] [Review][Patch] Missing volume groups are treated as global resync success [pkg/controller/drexecution/reconciler.go:1917-1923]
+- [x] [Review][Patch] DRExecution's VR/VGR watch predicate dropped `lastSyncTime` changes instead of reusing the shared predicate [pkg/controller/drexecution/reconciler.go:2063-2104]

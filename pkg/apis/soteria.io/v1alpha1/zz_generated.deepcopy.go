@@ -246,6 +246,11 @@ func (in *DRPlanSpec) DeepCopyInto(out *DRPlanSpec) {
 		*out = new(v1.Duration)
 		**out = **in
 	}
+	if in.ResyncTimeout != nil {
+		in, out := &in.ResyncTimeout, &out.ResyncTimeout
+		*out = new(v1.Duration)
+		**out = **in
+	}
 	return
 }
 

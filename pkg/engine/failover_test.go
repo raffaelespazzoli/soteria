@@ -159,8 +159,9 @@ func TestFailoverHandler_Graceful_FullSuccess(t *testing.T) {
 
 	ctx := context.Background()
 
-	if err := handler.PreExecute(ctx, groups); err != nil {
-		t.Fatalf("PreExecute failed: %v", err)
+	err := handler.PreExecute(ctx, groups)
+	if !errors.Is(err, ErrResyncRequested) {
+		t.Fatalf("PreExecute should return ErrResyncRequested, got: %v", err)
 	}
 
 	stops := vm.getStops()
@@ -168,10 +169,13 @@ func TestFailoverHandler_Graceful_FullSuccess(t *testing.T) {
 		t.Errorf("Expected VM stop %s, got %v", testVMKey, stops)
 	}
 
-	// Step 0 should call StopReplication to demote source VR/VGR to secondary.
-	stopCalls := drv.CallsTo("StopReplication")
-	if len(stopCalls) != 1 {
-		t.Errorf("Step 0 should call StopReplication once, got %d calls", len(stopCalls))
+	// Step 0 should call ResyncVolume (not StopReplication) on target VGs.
+	resyncCalls := drv.CallsTo("ResyncVolume")
+	if len(resyncCalls) != 1 {
+		t.Errorf("Step 0 should call ResyncVolume once, got %d calls", len(resyncCalls))
+	}
+	if drv.Called("StopReplication") {
+		t.Error("Step 0 should NOT call StopReplication (moved to reconciler after resync)")
 	}
 
 	if err := handler.ExecuteGroup(ctx, groups[0]); err != nil {
@@ -390,8 +394,9 @@ func TestFailoverHandler_Graceful_MultiNamespace(t *testing.T) {
 			drv, 1),
 	}
 
-	if err := handler.PreExecute(context.Background(), groups); err != nil {
-		t.Fatalf("PreExecute failed: %v", err)
+	err := handler.PreExecute(context.Background(), groups)
+	if !errors.Is(err, ErrResyncRequested) {
+		t.Fatalf("PreExecute should return ErrResyncRequested, got: %v", err)
 	}
 
 	stops := vm.getStops()
@@ -425,8 +430,9 @@ func TestFailoverHandler_Graceful_Step0_DeduplicatesVMs(t *testing.T) {
 		}, drv, 0),
 	}
 
-	if err := handler.PreExecute(context.Background(), groups); err != nil {
-		t.Fatalf("PreExecute failed: %v", err)
+	err := handler.PreExecute(context.Background(), groups)
+	if !errors.Is(err, ErrResyncRequested) {
+		t.Fatalf("PreExecute should return ErrResyncRequested, got: %v", err)
 	}
 
 	stops := vm.getStops()
@@ -434,10 +440,13 @@ func TestFailoverHandler_Graceful_Step0_DeduplicatesVMs(t *testing.T) {
 		t.Errorf("VM should only be stopped once (deduplicated), got %d stops: %v", len(stops), stops)
 	}
 
-	// Step 0 should call StopReplication for each unique VG to demote to secondary.
-	stopCalls := drv.CallsTo("StopReplication")
-	if len(stopCalls) != 2 {
-		t.Errorf("Step 0 should call StopReplication for each VG (2 unique VGs), got %d calls", len(stopCalls))
+	// Step 0 should call ResyncVolume for each unique VG (not StopReplication).
+	resyncCalls := drv.CallsTo("ResyncVolume")
+	if len(resyncCalls) != 2 {
+		t.Errorf("Step 0 should call ResyncVolume for each VG (2 unique VGs), got %d calls", len(resyncCalls))
+	}
+	if drv.Called("StopReplication") {
+		t.Error("Step 0 should NOT call StopReplication (moved to reconciler)")
 	}
 }
 
@@ -465,6 +474,9 @@ func TestFailoverHandler_DisasterConfig_NoStep0(t *testing.T) {
 	}
 	if drv.Called("StopReplication") {
 		t.Error("Disaster mode Step 0 should not call StopReplication")
+	}
+	if drv.Called("ResyncVolume") {
+		t.Error("Disaster mode Step 0 should not call ResyncVolume")
 	}
 }
 
@@ -967,9 +979,9 @@ func TestFailover_ResolveVolumeGroupNotFound(t *testing.T) {
 	}
 }
 
-// --- Step 0 StopReplication tests (AC2) ---
+// --- Step 0 ResyncVolume tests (AC1, AC2) ---
 
-func TestFailoverHandler_Step0_PlannedMigration_CallsStopReplication(t *testing.T) {
+func TestFailoverHandler_Step0_PlannedMigration_CallsResyncVolume(t *testing.T) {
 	drv := fake.New()
 	drv.OnGetVolumeGroup("noop-ns1/vg-db").ReturnResult(fake.Response{
 		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "noop-ns1/vg-db", Name: "vg-db"},
@@ -994,8 +1006,9 @@ func TestFailoverHandler_Step0_PlannedMigration_CallsStopReplication(t *testing.
 	}
 	groups := []ExecutionGroup{makeExecutionGroup("g-0", vms, vgs, drv, 0)}
 
-	if err := handler.PreExecute(context.Background(), groups); err != nil {
-		t.Fatalf("PreExecute failed: %v", err)
+	err := handler.PreExecute(context.Background(), groups)
+	if !errors.Is(err, ErrResyncRequested) {
+		t.Fatalf("PreExecute should return ErrResyncRequested, got: %v", err)
 	}
 
 	vmStops := vm.getStops()
@@ -1003,17 +1016,20 @@ func TestFailoverHandler_Step0_PlannedMigration_CallsStopReplication(t *testing.
 		t.Errorf("Expected 2 VM stops, got %d", len(vmStops))
 	}
 
-	stopCalls := drv.CallsTo("StopReplication")
-	if len(stopCalls) != 2 {
-		t.Fatalf("Expected 2 StopReplication calls (one per VG), got %d", len(stopCalls))
+	resyncCalls := drv.CallsTo("ResyncVolume")
+	if len(resyncCalls) != 2 {
+		t.Fatalf("Expected 2 ResyncVolume calls (one per VG), got %d", len(resyncCalls))
 	}
 
+	if drv.Called("StopReplication") {
+		t.Error("Step 0 should NOT call StopReplication (moved to reconciler after resync)")
+	}
 	if drv.Called("SetSource") {
 		t.Error("Step 0 should not call SetSource (per-group handles promotion)")
 	}
 }
 
-func TestFailoverHandler_Step0_DisasterMode_NoStopReplication(t *testing.T) {
+func TestFailoverHandler_Step0_DisasterMode_NoResyncVolume(t *testing.T) {
 	drv := fake.New()
 	drv.OnGetVolumeGroup("noop-ns1/vg-db").ReturnResult(fake.Response{
 		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "noop-ns1/vg-db", Name: "vg-db"},
@@ -1036,8 +1052,11 @@ func TestFailoverHandler_Step0_DisasterMode_NoStopReplication(t *testing.T) {
 	if len(vm.getStops()) != 0 {
 		t.Error("No VMs should be stopped in disaster Step 0")
 	}
+	if drv.Called("ResyncVolume") {
+		t.Error("Disaster Step 0 should not call ResyncVolume (source unreachable)")
+	}
 	if drv.Called("StopReplication") {
-		t.Error("Disaster Step 0 should not call StopReplication (source unreachable)")
+		t.Error("Disaster Step 0 should not call StopReplication")
 	}
 	if drv.Called("SetSource") {
 		t.Error("Disaster Step 0 should not call SetSource")
@@ -1047,12 +1066,12 @@ func TestFailoverHandler_Step0_DisasterMode_NoStopReplication(t *testing.T) {
 	}
 }
 
-func TestFailoverHandler_Step0_StopReplicationError_FailsFast(t *testing.T) {
+func TestFailoverHandler_Step0_ResyncVolumeError_FailsFast(t *testing.T) {
 	drv := fake.New()
 	drv.OnGetVolumeGroup("noop-ns1/vg-db").ReturnResult(fake.Response{
 		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "noop-ns1/vg-db", Name: "vg-db"},
 	})
-	drv.OnStopReplication("noop-ns1/vg-db").Return(errors.New("storage backend unreachable"))
+	drv.OnResyncVolume("noop-ns1/vg-db").Return(errors.New("storage backend unreachable"))
 
 	vm := newMockVMManager()
 	handler := &FailoverHandler{
@@ -1066,14 +1085,49 @@ func TestFailoverHandler_Step0_StopReplicationError_FailsFast(t *testing.T) {
 
 	err := handler.PreExecute(context.Background(), groups)
 	if err == nil {
-		t.Fatal("PreExecute should fail when Step 0 StopReplication fails")
+		t.Fatal("PreExecute should fail when Step 0 ResyncVolume fails")
 	}
-	if !strings.Contains(err.Error(), "demoting volume group vg-db") {
-		t.Errorf("Error should mention demotion failure, got: %v", err)
+	if errors.Is(err, ErrResyncRequested) {
+		t.Error("A real ResyncVolume error should not be ErrResyncRequested")
+	}
+	if !strings.Contains(err.Error(), "requesting resync for volume group vg-db") {
+		t.Errorf("Error should mention resync failure, got: %v", err)
 	}
 
-	if !drv.Called("StopReplication") {
-		t.Error("StopReplication should have been called before failing")
+	if !drv.Called("ResyncVolume") {
+		t.Error("ResyncVolume should have been called before failing")
+	}
+}
+
+func TestFailoverHandler_Step0_SkipResync_OnlyStopsVMs(t *testing.T) {
+	drv := fake.New()
+	drv.OnGetVolumeGroup("noop-ns1/vg-db").ReturnResult(fake.Response{
+		VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: "noop-ns1/vg-db", Name: "vg-db"},
+	})
+
+	vm := newMockVMManager()
+	handler := &FailoverHandler{
+		VMManager: vm,
+		Config:    FailoverConfig{GracefulShutdown: true, SkipResync: true},
+	}
+
+	vms := []VMReference{{Name: "vm-db01", Namespace: "ns1"}}
+	vgs := []soteriav1alpha1.VolumeGroupInfo{makeVolumeGroupInfo("vg-db", "ns1", "vm-db01")}
+	groups := []ExecutionGroup{makeExecutionGroup("g-0", vms, vgs, drv, 0)}
+
+	err := handler.PreExecute(context.Background(), groups)
+	if !errors.Is(err, ErrResyncRequested) {
+		t.Fatalf("expected ErrResyncRequested with SkipResync, got: %v", err)
+	}
+
+	if len(vm.getStops()) != 1 {
+		t.Errorf("expected 1 VM stop, got %d", len(vm.getStops()))
+	}
+	if drv.Called("ResyncVolume") {
+		t.Error("SkipResync=true should NOT call ResyncVolume")
+	}
+	if drv.Called("StopReplication") {
+		t.Error("SkipResync=true should NOT call StopReplication")
 	}
 }
 
@@ -1118,23 +1172,27 @@ func TestFailover_PlannedMigration_FullTransition(t *testing.T) {
 	vgs := []soteriav1alpha1.VolumeGroupInfo{makeVolumeGroupInfo("vg-db", "ns1", "vm-db01")}
 	groups := []ExecutionGroup{makeExecutionGroup("g-0", vms, vgs, drv, 0)}
 
-	// Step 0 on source site: StopVM + StopReplication → source demoted to secondary
-	if err := handler.PreExecute(context.Background(), groups); err != nil {
-		t.Fatalf("PreExecute (Step 0) failed: %v", err)
+	// Step 0: StopVM + ResyncVolume → returns ErrResyncRequested
+	err := handler.PreExecute(context.Background(), groups)
+	if !errors.Is(err, ErrResyncRequested) {
+		t.Fatalf("PreExecute should return ErrResyncRequested, got: %v", err)
 	}
 
 	if len(vm.getStops()) != 1 {
 		t.Error("Step 0 should stop VMs")
 	}
-	stopCalls := drv.CallsTo("StopReplication")
-	if len(stopCalls) != 1 {
-		t.Errorf("Step 0 should call StopReplication once, got %d", len(stopCalls))
+	resyncCalls := drv.CallsTo("ResyncVolume")
+	if len(resyncCalls) != 1 {
+		t.Errorf("Step 0 should call ResyncVolume once, got %d", len(resyncCalls))
+	}
+	if drv.Called("StopReplication") {
+		t.Error("Step 0 should not call StopReplication (moved to reconciler)")
 	}
 
 	// Per-group on target site: SetSource → target promoted to primary (writable)
-	steps, err := handler.ExecuteGroupWithSteps(context.Background(), groups[0])
-	if err != nil {
-		t.Fatalf("ExecuteGroupWithSteps failed: %v", err)
+	steps, execErr := handler.ExecuteGroupWithSteps(context.Background(), groups[0])
+	if execErr != nil {
+		t.Fatalf("ExecuteGroupWithSteps failed: %v", execErr)
 	}
 
 	setCalls := drv.CallsTo("SetSource")
@@ -1243,8 +1301,9 @@ func TestStateTableInvariant_FullCycle(t *testing.T) {
 		vms := []VMReference{{Name: "vm-db01", Namespace: "ns1"}}
 		vgs := []soteriav1alpha1.VolumeGroupInfo{makeVolumeGroupInfo("vg-db", "ns1", "vm-db01")}
 		groups := []ExecutionGroup{makeExecutionGroup("g-0", vms, vgs, drv, 0)}
-		if err := handler.PreExecute(ctx, groups); err != nil {
-			t.Fatalf("%s PreExecute failed: %v", label, err)
+		err := handler.PreExecute(ctx, groups)
+		if !errors.Is(err, ErrResyncRequested) {
+			t.Fatalf("%s PreExecute should return ErrResyncRequested, got: %v", label, err)
 		}
 		if err := handler.ExecuteGroup(ctx, groups[0]); err != nil {
 			t.Fatalf("%s ExecuteGroup failed: %v", label, err)
@@ -1276,8 +1335,15 @@ func TestStateTableInvariant_FullCycle(t *testing.T) {
 		}
 	}
 
-	assertCumulativeCounts := func(t *testing.T, label string, wantStop, wantSet, wantStarts, wantStops int) {
+	// After Story 15.2, PreExecute calls ResyncVolume (not StopReplication).
+	// StopReplication is handled by the reconciler after resync completes,
+	// which is not exercised in this engine-layer test. Reprotect still calls
+	// StopReplication + SetSource internally.
+	assertCumulativeCounts := func(t *testing.T, label string, wantResync, wantStop, wantSet, wantStarts, wantStops int) {
 		t.Helper()
+		if got := len(drv.CallsTo("ResyncVolume")); got != wantResync {
+			t.Errorf("%s: cumulative ResyncVolume calls = %d, want %d", label, got, wantResync)
+		}
 		if got := len(drv.CallsTo("StopReplication")); got != wantStop {
 			t.Errorf("%s: cumulative StopReplication calls = %d, want %d", label, got, wantStop)
 		}
@@ -1293,24 +1359,26 @@ func TestStateTableInvariant_FullCycle(t *testing.T) {
 	}
 
 	// Phase 1: Planned failover (SteadyState → FailedOver)
-	// Step0: StopReplication(1), Per-group: SetSource(1), StopVM(1), StartVM(1)
+	// Step0: ResyncVolume(1), Per-group: SetSource(1), StopVM(1), StartVM(1)
+	// StopReplication is now called by the reconciler after resync completes,
+	// not by the engine — so it's 0 at this layer.
 	runPlannedFailover(t, "Phase1_PlannedFailover")
-	assertCumulativeCounts(t, "after Phase1", 1, 1, 1, 1)
+	assertCumulativeCounts(t, "after Phase1", 1, 0, 1, 1, 1)
 
 	// Phase 2: Reprotect (FailedOver → DRedSteadyState)
 	// SetSource(+1=2), no StopReplication (reprotect skips it), no VMs
 	runReprotect(t, "Phase2_Reprotect")
-	assertCumulativeCounts(t, "after Phase2", 1, 2, 1, 1)
+	assertCumulativeCounts(t, "after Phase2", 1, 0, 2, 1, 1)
 
 	// Phase 3: Failback (DRedSteadyState → FailedBack)
-	// Step0: StopReplication(+1=2), Per-group: SetSource(+1=3), StopVM(+1=2), StartVM(+1=2)
+	// Step0: ResyncVolume(+1=2), Per-group: SetSource(+1=3), StopVM(+1=2), StartVM(+1=2)
 	runPlannedFailover(t, "Phase3_Failback")
-	assertCumulativeCounts(t, "after Phase3", 2, 3, 2, 2)
+	assertCumulativeCounts(t, "after Phase3", 2, 0, 3, 2, 2)
 
 	// Phase 4: Restore (FailedBack → SteadyState)
-	// SetSource(+1=4), no StopReplication (reprotect skips it), no VMs
+	// SetSource(+1=4), no StopReplication, no VMs
 	runReprotect(t, "Phase4_Restore")
-	assertCumulativeCounts(t, "after Phase4", 2, 4, 2, 2)
+	assertCumulativeCounts(t, "after Phase4", 2, 0, 4, 2, 2)
 }
 
 func TestStateTableInvariant_DisasterFailover(t *testing.T) {
@@ -1381,17 +1449,21 @@ func TestStateTableInvariant_MultipleVolumeGroups_VR_and_VGR(t *testing.T) {
 	}
 	groups := []ExecutionGroup{makeExecutionGroup("g-0", vms, vgs, drv, 0)}
 
-	// Step 0: StopVM for all 3 VMs, StopReplication for both VGs
-	if err := handler.PreExecute(ctx, groups); err != nil {
-		t.Fatalf("PreExecute failed: %v", err)
+	// Step 0: StopVM for all 3 VMs, ResyncVolume for both VGs
+	err := handler.PreExecute(ctx, groups)
+	if !errors.Is(err, ErrResyncRequested) {
+		t.Fatalf("PreExecute should return ErrResyncRequested, got: %v", err)
 	}
 
 	if len(vm.getStops()) != 3 {
 		t.Errorf("Expected 3 VM stops, got %d", len(vm.getStops()))
 	}
-	stopCalls := drv.CallsTo("StopReplication")
-	if len(stopCalls) != 2 {
-		t.Errorf("Expected 2 StopReplication calls (one per VG), got %d", len(stopCalls))
+	resyncCalls := drv.CallsTo("ResyncVolume")
+	if len(resyncCalls) != 2 {
+		t.Errorf("Expected 2 ResyncVolume calls (one per VG), got %d", len(resyncCalls))
+	}
+	if drv.Called("StopReplication") {
+		t.Error("Step 0 should NOT call StopReplication (moved to reconciler)")
 	}
 
 	// Per-group: SetSource for both VGs, StartVM for all 3 VMs

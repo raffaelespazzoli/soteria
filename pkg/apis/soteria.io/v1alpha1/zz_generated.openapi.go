@@ -553,6 +553,12 @@ func schema_pkg_apis_soteriaio_v1alpha1_DRPlanSpec(ref common.ReferenceCallback)
 							Ref:         ref(v1.Duration{}.OpenAPIModelName()),
 						},
 					},
+					"resyncTimeout": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ResyncTimeout is the maximum duration to wait for VR/VGR resync completion during planned failover Step 0 before declaring a timeout. Only applies to planned_migration mode. Default: 10m.",
+							Ref:         ref(v1.Duration{}.OpenAPIModelName()),
+						},
+					},
 				},
 				Required: []string{"volumeReplicationDriver", "maxConcurrentFailovers", "primarySite", "secondarySite"},
 			},

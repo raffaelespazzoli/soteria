@@ -22,6 +22,7 @@ import (
 	"testing"
 	"time"
 
+	replicationv1alpha1 "github.com/csi-addons/kubernetes-csi-addons/api/replication.storage/v1alpha1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -42,6 +43,7 @@ func newTestScheme() *runtime.Scheme {
 	s := runtime.NewScheme()
 	_ = soteriav1alpha1.AddToScheme(s)
 	_ = kubevirtv1.AddToScheme(s)
+	_ = replicationv1alpha1.AddToScheme(s)
 	return s
 }
 
@@ -1900,5 +1902,727 @@ func TestBuildVolumeGroupEntries_VolumeGroupNotFound(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "vg-db") {
 		t.Fatalf("error %q should mention the missing volume group", err)
+	}
+}
+
+// --- Resync gate tests (Story 15.2) ---
+
+func TestCheckResyncComplete_NoWaveExecutor_ReturnsTrue(t *testing.T) {
+	r := &DRExecutionReconciler{}
+	plan := &soteriav1alpha1.DRPlan{}
+
+	complete, err := r.checkResyncComplete(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !complete {
+		t.Error("expected trivially complete when WaveExecutor is nil")
+	}
+}
+
+func TestCheckResyncComplete_NoWaves_ReturnsTrue(t *testing.T) {
+	fakeDriver := fakedrv.New()
+	registry := drivers.NewRegistry()
+	registry.RegisterDriver("noop", func() drivers.StorageProvider { return fakeDriver })
+
+	r := &DRExecutionReconciler{
+		WaveExecutor: &engine.WaveExecutor{Registry: registry},
+	}
+	plan := &soteriav1alpha1.DRPlan{}
+
+	complete, err := r.checkResyncComplete(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !complete {
+		t.Error("expected trivially complete when no waves exist (noop driver)")
+	}
+}
+
+func TestCheckResyncComplete_HealthSyncing_ReturnsFalse(t *testing.T) {
+	fakeDriver := fakedrv.New()
+	vgID := drivers.VolumeGroupIDFor("noop", "ns1", "vg-db")
+	fakeDriver.OnGetReplicationStatus(vgID).ReturnResult(fakedrv.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleTarget,
+			Health: drivers.HealthSyncing,
+		},
+	})
+
+	registry := drivers.NewRegistry()
+	registry.RegisterDriver("noop", func() drivers.StorageProvider { return fakeDriver })
+
+	r := &DRExecutionReconciler{
+		WaveExecutor: &engine.WaveExecutor{Registry: registry},
+	}
+	plan := &soteriav1alpha1.DRPlan{
+		Spec: soteriav1alpha1.DRPlanSpec{
+			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
+		},
+		Status: soteriav1alpha1.DRPlanStatus{
+			Waves: []soteriav1alpha1.WaveInfo{
+				{Groups: []soteriav1alpha1.VolumeGroupInfo{
+					{Name: "vg-db", Namespace: "ns1"},
+				}},
+			},
+		},
+	}
+
+	complete, err := r.checkResyncComplete(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if complete {
+		t.Error("expected incomplete when VG health is Syncing")
+	}
+}
+
+func TestCheckResyncComplete_HealthHealthy_ReturnsTrue(t *testing.T) {
+	fakeDriver := fakedrv.New()
+	vgID := drivers.VolumeGroupIDFor("noop", "ns1", "vg-db")
+	fakeDriver.OnGetReplicationStatus(vgID).ReturnResult(fakedrv.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleTarget,
+			Health: drivers.HealthHealthy,
+		},
+	})
+
+	registry := drivers.NewRegistry()
+	registry.RegisterDriver("noop", func() drivers.StorageProvider { return fakeDriver })
+
+	r := &DRExecutionReconciler{
+		WaveExecutor: &engine.WaveExecutor{Registry: registry},
+	}
+	plan := &soteriav1alpha1.DRPlan{
+		Spec: soteriav1alpha1.DRPlanSpec{
+			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
+		},
+		Status: soteriav1alpha1.DRPlanStatus{
+			Waves: []soteriav1alpha1.WaveInfo{
+				{Groups: []soteriav1alpha1.VolumeGroupInfo{
+					{Name: "vg-db", Namespace: "ns1"},
+				}},
+			},
+		},
+	}
+
+	complete, err := r.checkResyncComplete(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !complete {
+		t.Error("expected complete when VG health is Healthy")
+	}
+}
+
+func TestCheckResyncComplete_VGNotFound_ReturnsTrue(t *testing.T) {
+	fakeDriver := fakedrv.New()
+	vgID := drivers.VolumeGroupIDFor("noop", "ns1", "vg-db")
+	fakeDriver.OnGetReplicationStatus(vgID).Return(drivers.ErrVolumeGroupNotFound)
+
+	registry := drivers.NewRegistry()
+	registry.RegisterDriver("noop", func() drivers.StorageProvider { return fakeDriver })
+
+	r := &DRExecutionReconciler{
+		WaveExecutor: &engine.WaveExecutor{Registry: registry},
+	}
+	plan := &soteriav1alpha1.DRPlan{
+		Spec: soteriav1alpha1.DRPlanSpec{
+			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
+		},
+		Status: soteriav1alpha1.DRPlanStatus{
+			Waves: []soteriav1alpha1.WaveInfo{
+				{Groups: []soteriav1alpha1.VolumeGroupInfo{
+					{Name: "vg-db", Namespace: "ns1"},
+				}},
+			},
+		},
+	}
+
+	complete, err := r.checkResyncComplete(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !complete {
+		t.Error("expected trivially complete when VG not found (noop driver)")
+	}
+}
+
+func TestReconcileResyncGate_Timeout_FailsExecution(t *testing.T) {
+	now := metav1.Now()
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "exec-resync-timeout"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-1",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+		Status: soteriav1alpha1.DRExecutionStatus{
+			Phase:     soteriav1alpha1.ExecutionPhaseExecuting,
+			IsActive:  true,
+			StartTime: &now,
+			Conditions: []metav1.Condition{
+				{
+					Type:               ConditionResyncPending,
+					Status:             metav1.ConditionTrue,
+					Reason:             "ResyncRequested",
+					LastTransitionTime: metav1.NewTime(now.Add(-15 * time.Minute)),
+				},
+			},
+		},
+	}
+	plan := &soteriav1alpha1.DRPlan{
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-1"},
+		Spec: soteriav1alpha1.DRPlanSpec{
+			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
+		},
+	}
+
+	c := newTestClient(exec, plan)
+	r := &DRExecutionReconciler{
+		Client: c,
+		Scheme: newTestScheme(),
+	}
+
+	result, err := r.reconcileResyncGate(context.Background(), exec, plan)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	_ = result
+
+	var fetched soteriav1alpha1.DRExecution
+	if err := c.Get(context.Background(), client.ObjectKeyFromObject(exec), &fetched); err != nil {
+		t.Fatalf("failed to fetch execution: %v", err)
+	}
+	if fetched.Status.Result != soteriav1alpha1.ExecutionResultFailed {
+		t.Errorf("expected Failed result on timeout, got %q", fetched.Status.Result)
+	}
+}
+
+func TestReconcileResyncGate_Complete_SetsStep0Complete(t *testing.T) {
+	now := metav1.Now()
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "exec-resync-complete"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-1",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+		Status: soteriav1alpha1.DRExecutionStatus{
+			Phase:     soteriav1alpha1.ExecutionPhaseExecuting,
+			IsActive:  true,
+			StartTime: &now,
+			Conditions: []metav1.Condition{
+				{
+					Type:               ConditionResyncPending,
+					Status:             metav1.ConditionTrue,
+					Reason:             "ResyncRequested",
+					LastTransitionTime: now,
+				},
+			},
+		},
+	}
+	plan := &soteriav1alpha1.DRPlan{
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-1"},
+		Spec: soteriav1alpha1.DRPlanSpec{
+			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
+		},
+	}
+
+	c := newTestClient(exec, plan)
+	r := &DRExecutionReconciler{
+		Client: c,
+		Scheme: newTestScheme(),
+	}
+
+	result, err := r.reconcileResyncGate(context.Background(), exec, plan)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.RequeueAfter == 0 {
+		t.Error("expected RequeueAfter > 0 to continue wave execution")
+	}
+
+	var fetched soteriav1alpha1.DRExecution
+	if err := c.Get(context.Background(), client.ObjectKeyFromObject(exec), &fetched); err != nil {
+		t.Fatalf("failed to fetch execution: %v", err)
+	}
+	if !meta.IsStatusConditionTrue(fetched.Status.Conditions, "Step0Complete") {
+		t.Error("expected Step0Complete condition to be set after resync complete")
+	}
+	if meta.IsStatusConditionTrue(fetched.Status.Conditions, ConditionResyncPending) {
+		t.Error("expected ResyncPending condition to be removed after resync complete")
+	}
+}
+
+func TestReconcileResyncGate_Incomplete_Waits(t *testing.T) {
+	fakeDriver := fakedrv.New()
+	vgID := drivers.VolumeGroupIDFor("noop", "ns1", "vg-db")
+	fakeDriver.OnGetReplicationStatus(vgID).ReturnResult(fakedrv.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleTarget,
+			Health: drivers.HealthSyncing,
+		},
+	})
+
+	registry := drivers.NewRegistry()
+	registry.RegisterDriver("noop", func() drivers.StorageProvider { return fakeDriver })
+
+	now := metav1.Now()
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "exec-resync-waiting"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-1",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+		Status: soteriav1alpha1.DRExecutionStatus{
+			Phase:     soteriav1alpha1.ExecutionPhaseExecuting,
+			IsActive:  true,
+			StartTime: &now,
+			Conditions: []metav1.Condition{
+				{
+					Type:               ConditionResyncPending,
+					Status:             metav1.ConditionTrue,
+					Reason:             "ResyncRequested",
+					LastTransitionTime: now,
+				},
+			},
+		},
+	}
+	plan := &soteriav1alpha1.DRPlan{
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-1"},
+		Spec: soteriav1alpha1.DRPlanSpec{
+			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
+		},
+		Status: soteriav1alpha1.DRPlanStatus{
+			Waves: []soteriav1alpha1.WaveInfo{
+				{Groups: []soteriav1alpha1.VolumeGroupInfo{
+					{Name: "vg-db", Namespace: "ns1"},
+				}},
+			},
+		},
+	}
+
+	c := newTestClient(exec, plan)
+	r := &DRExecutionReconciler{
+		Client:       c,
+		Scheme:       newTestScheme(),
+		WaveExecutor: &engine.WaveExecutor{Registry: registry},
+	}
+
+	result, err := r.reconcileResyncGate(context.Background(), exec, plan)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.RequeueAfter == 0 {
+		t.Error("expected RequeueAfter > 0 to wait for resync")
+	}
+
+	var fetched soteriav1alpha1.DRExecution
+	if err := c.Get(context.Background(), client.ObjectKeyFromObject(exec), &fetched); err != nil {
+		t.Fatalf("failed to fetch execution: %v", err)
+	}
+	if meta.IsStatusConditionTrue(fetched.Status.Conditions, "Step0Complete") {
+		t.Error("Step0Complete should NOT be set while resync is incomplete")
+	}
+	if !meta.IsStatusConditionTrue(fetched.Status.Conditions, ConditionResyncPending) {
+		t.Error("ResyncPending should still be set while resync is incomplete")
+	}
+}
+
+func TestReconcile_ResyncPendingResume_ReEvaluatesVRStatus(t *testing.T) {
+	now := metav1.Now()
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "exec-resume-resync",
+			Labels: map[string]string{soteriav1alpha1.PlanNameLabel: "plan-1"},
+		},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-1",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+		Status: soteriav1alpha1.DRExecutionStatus{
+			Phase:     soteriav1alpha1.ExecutionPhaseExecuting,
+			IsActive:  true,
+			StartTime: &now,
+			Conditions: []metav1.Condition{
+				{
+					Type:               ConditionResyncPending,
+					Status:             metav1.ConditionTrue,
+					Reason:             "ResyncRequested",
+					LastTransitionTime: now,
+				},
+				{
+					Type:   "Progressing",
+					Status: metav1.ConditionTrue,
+					Reason: "ExecutionStarted",
+				},
+			},
+		},
+	}
+	plan := &soteriav1alpha1.DRPlan{
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-1"},
+		Spec: soteriav1alpha1.DRPlanSpec{
+			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
+		},
+		Status: soteriav1alpha1.DRPlanStatus{
+			Phase: soteriav1alpha1.PhaseSteadyState,
+		},
+	}
+
+	c := newTestClient(exec, plan)
+	r := &DRExecutionReconciler{
+		Client: c,
+		Scheme: newTestScheme(),
+	}
+
+	result, err := r.Reconcile(context.Background(), ctrl.Request{
+		NamespacedName: types.NamespacedName{Name: "exec-resume-resync"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// With no WaveExecutor, checkResyncComplete returns true → should set Step0Complete.
+	var fetched soteriav1alpha1.DRExecution
+	if err := c.Get(context.Background(), client.ObjectKeyFromObject(exec), &fetched); err != nil {
+		t.Fatalf("failed to fetch execution: %v", err)
+	}
+	if !meta.IsStatusConditionTrue(fetched.Status.Conditions, "Step0Complete") {
+		t.Error("expected Step0Complete after resync gate completes on resume")
+	}
+	_ = result
+}
+
+func TestReconcileTargetSiteResyncGate_WaitsForVMsStopped(t *testing.T) {
+	now := metav1.Now()
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "exec-target-wait",
+			Labels: map[string]string{soteriav1alpha1.PlanNameLabel: "plan-target"},
+		},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-target",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+		Status: soteriav1alpha1.DRExecutionStatus{
+			Phase:     soteriav1alpha1.ExecutionPhaseExecuting,
+			IsActive:  true,
+			StartTime: &now,
+		},
+	}
+	plan := &soteriav1alpha1.DRPlan{
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-target"},
+		Spec: soteriav1alpha1.DRPlanSpec{
+			PrimarySite:             "dc-west",
+			SecondarySite:           "dc-east",
+			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
+		},
+		Status: soteriav1alpha1.DRPlanStatus{Phase: soteriav1alpha1.PhaseSteadyState},
+	}
+
+	c := newTestClient(exec, plan)
+	r := &DRExecutionReconciler{Client: c, Scheme: newTestScheme(), LocalSite: "dc-east"}
+
+	result, err := r.reconcileTargetSiteResyncGate(context.Background(), exec, plan)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.RequeueAfter != 5*time.Second {
+		t.Errorf("expected 5s requeue while waiting for VMsStopped, got %v", result.RequeueAfter)
+	}
+}
+
+func TestReconcileTargetSiteResyncGate_InitiatesResync(t *testing.T) {
+	now := metav1.Now()
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "exec-target-init",
+			Labels: map[string]string{soteriav1alpha1.PlanNameLabel: "plan-target-init"},
+		},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-target-init",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+		Status: soteriav1alpha1.DRExecutionStatus{
+			Phase:     soteriav1alpha1.ExecutionPhaseExecuting,
+			IsActive:  true,
+			StartTime: &now,
+			Conditions: []metav1.Condition{
+				{
+					Type:               ConditionVMsStopped,
+					Status:             metav1.ConditionTrue,
+					Reason:             "VMsStoppedBySourceSite",
+					LastTransitionTime: now,
+				},
+			},
+		},
+	}
+	plan := &soteriav1alpha1.DRPlan{
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-target-init"},
+		Spec: soteriav1alpha1.DRPlanSpec{
+			PrimarySite:             "dc-west",
+			SecondarySite:           "dc-east",
+			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
+		},
+		Status: soteriav1alpha1.DRPlanStatus{Phase: soteriav1alpha1.PhaseSteadyState},
+	}
+
+	c := newTestClient(exec, plan)
+	r := &DRExecutionReconciler{Client: c, Scheme: newTestScheme(), LocalSite: "dc-east"}
+
+	_, err := r.reconcileTargetSiteResyncGate(context.Background(), exec, plan)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var fetched soteriav1alpha1.DRExecution
+	if err := c.Get(context.Background(), client.ObjectKeyFromObject(exec), &fetched); err != nil {
+		t.Fatalf("failed to fetch execution: %v", err)
+	}
+	if !meta.IsStatusConditionTrue(fetched.Status.Conditions, ConditionResyncPending) {
+		t.Error("expected ResyncPending=True after target initiates resync")
+	}
+	if meta.IsStatusConditionTrue(fetched.Status.Conditions, ConditionResyncComplete) {
+		t.Error("ResyncComplete should not be set on the first call (resync just initiated)")
+	}
+}
+
+func TestReconcileTargetSiteResyncGate_SetsResyncComplete(t *testing.T) {
+	now := metav1.Now()
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "exec-target-complete",
+			Labels: map[string]string{soteriav1alpha1.PlanNameLabel: "plan-target2"},
+		},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-target2",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+		Status: soteriav1alpha1.DRExecutionStatus{
+			Phase:     soteriav1alpha1.ExecutionPhaseExecuting,
+			IsActive:  true,
+			StartTime: &now,
+			Conditions: []metav1.Condition{
+				{
+					Type:               ConditionVMsStopped,
+					Status:             metav1.ConditionTrue,
+					Reason:             "VMsStoppedBySourceSite",
+					LastTransitionTime: now,
+				},
+				{
+					Type:               ConditionResyncPending,
+					Status:             metav1.ConditionTrue,
+					Reason:             "TargetResyncInitiated",
+					LastTransitionTime: now,
+				},
+			},
+		},
+	}
+	plan := &soteriav1alpha1.DRPlan{
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-target2"},
+		Spec: soteriav1alpha1.DRPlanSpec{
+			PrimarySite:             "dc-west",
+			SecondarySite:           "dc-east",
+			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
+		},
+		Status: soteriav1alpha1.DRPlanStatus{Phase: soteriav1alpha1.PhaseSteadyState},
+	}
+
+	c := newTestClient(exec, plan)
+	// No WaveExecutor → checkResyncComplete returns true (noop/trivial)
+	r := &DRExecutionReconciler{Client: c, Scheme: newTestScheme(), LocalSite: "dc-east"}
+
+	result, err := r.reconcileTargetSiteResyncGate(context.Background(), exec, plan)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.RequeueAfter != 5*time.Second {
+		t.Errorf("expected 5s requeue after setting ResyncComplete, got %v", result.RequeueAfter)
+	}
+
+	var fetched soteriav1alpha1.DRExecution
+	if err := c.Get(context.Background(), client.ObjectKeyFromObject(exec), &fetched); err != nil {
+		t.Fatalf("failed to fetch execution: %v", err)
+	}
+	if !meta.IsStatusConditionTrue(fetched.Status.Conditions, ConditionResyncComplete) {
+		t.Error("expected ResyncComplete=True after target site resync completion")
+	}
+	if meta.IsStatusConditionTrue(fetched.Status.Conditions, ConditionResyncPending) {
+		t.Error("expected ResyncPending removed after target site resync completion")
+	}
+}
+
+func TestReconcileTargetSiteResyncGate_AlreadyComplete_WaitsForStep0(t *testing.T) {
+	now := metav1.Now()
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "exec-target-done",
+			Labels: map[string]string{soteriav1alpha1.PlanNameLabel: "plan-target3"},
+		},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-target3",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+		Status: soteriav1alpha1.DRExecutionStatus{
+			Phase:     soteriav1alpha1.ExecutionPhaseExecuting,
+			IsActive:  true,
+			StartTime: &now,
+			Conditions: []metav1.Condition{
+				{
+					Type:               ConditionVMsStopped,
+					Status:             metav1.ConditionTrue,
+					Reason:             "VMsStoppedBySourceSite",
+					LastTransitionTime: now,
+				},
+				{
+					Type:               ConditionResyncComplete,
+					Status:             metav1.ConditionTrue,
+					Reason:             "TargetResyncComplete",
+					LastTransitionTime: now,
+				},
+			},
+		},
+	}
+	plan := &soteriav1alpha1.DRPlan{
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-target3"},
+		Spec: soteriav1alpha1.DRPlanSpec{
+			PrimarySite:             "dc-west",
+			SecondarySite:           "dc-east",
+			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
+		},
+		Status: soteriav1alpha1.DRPlanStatus{Phase: soteriav1alpha1.PhaseSteadyState},
+	}
+
+	c := newTestClient(exec, plan)
+	r := &DRExecutionReconciler{Client: c, Scheme: newTestScheme(), LocalSite: "dc-east"}
+
+	result, err := r.reconcileTargetSiteResyncGate(context.Background(), exec, plan)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.RequeueAfter != 5*time.Second {
+		t.Errorf("expected 5s requeue waiting for Step0Complete, got %v", result.RequeueAfter)
+	}
+}
+
+func TestMapVRToDRExecution(t *testing.T) {
+	tests := []struct {
+		name     string
+		objs     []client.Object
+		input    client.Object
+		wantLen  int
+		wantName string
+	}{
+		{
+			name: "active execution with VR",
+			objs: []client.Object{&soteriav1alpha1.DRExecution{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "exec-active-vr",
+					Labels: map[string]string{soteriav1alpha1.PlanNameLabel: "plan-vr"},
+				},
+				Spec:   soteriav1alpha1.DRExecutionSpec{PlanName: "plan-vr"},
+				Status: soteriav1alpha1.DRExecutionStatus{Phase: soteriav1alpha1.ExecutionPhaseExecuting, IsActive: true},
+			}},
+			input: &replicationv1alpha1.VolumeReplication{
+				ObjectMeta: metav1.ObjectMeta{Name: "vr-1", Namespace: "default",
+					Labels: map[string]string{drivers.LabelDRPlan: "plan-vr"}},
+			},
+			wantLen: 1, wantName: "exec-active-vr",
+		},
+		{
+			name: "no drplan label",
+			objs: nil,
+			input: &replicationv1alpha1.VolumeReplication{
+				ObjectMeta: metav1.ObjectMeta{Name: "vr-no-label", Namespace: "default"},
+			},
+			wantLen: 0,
+		},
+		{
+			name: "terminal execution ignored",
+			objs: []client.Object{&soteriav1alpha1.DRExecution{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "exec-done-vr",
+					Labels: map[string]string{soteriav1alpha1.PlanNameLabel: "plan-vr-done"},
+				},
+				Spec:   soteriav1alpha1.DRExecutionSpec{PlanName: "plan-vr-done"},
+				Status: soteriav1alpha1.DRExecutionStatus{Result: soteriav1alpha1.ExecutionResultSucceeded},
+			}},
+			input: &replicationv1alpha1.VolumeReplication{
+				ObjectMeta: metav1.ObjectMeta{Name: "vr-done", Namespace: "default",
+					Labels: map[string]string{drivers.LabelDRPlan: "plan-vr-done"}},
+			},
+			wantLen: 0,
+		},
+		{
+			name: "active execution with VGR",
+			objs: []client.Object{&soteriav1alpha1.DRExecution{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:   "exec-active-vgr",
+					Labels: map[string]string{soteriav1alpha1.PlanNameLabel: "plan-vgr"},
+				},
+				Spec:   soteriav1alpha1.DRExecutionSpec{PlanName: "plan-vgr"},
+				Status: soteriav1alpha1.DRExecutionStatus{Phase: soteriav1alpha1.ExecutionPhaseExecuting, IsActive: true},
+			}},
+			input: &replicationv1alpha1.VolumeGroupReplication{
+				ObjectMeta: metav1.ObjectMeta{Name: "vgr-1", Namespace: "default",
+					Labels: map[string]string{drivers.LabelDRPlan: "plan-vgr"}},
+			},
+			wantLen: 1, wantName: "exec-active-vgr",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newTestClient(tc.objs...)
+			r := &DRExecutionReconciler{Client: c, Scheme: newTestScheme()}
+			reqs := r.mapVRToDRExecution(context.Background(), tc.input)
+			if len(reqs) != tc.wantLen {
+				t.Fatalf("expected %d request(s), got %d", tc.wantLen, len(reqs))
+			}
+			if tc.wantLen > 0 && reqs[0].Name != tc.wantName {
+				t.Errorf("expected request for %s, got %s", tc.wantName, reqs[0].Name)
+			}
+		})
+	}
+}
+
+func TestVRStatusChangePredicate_FiltersCorrectly(t *testing.T) {
+	pred := vrStatusChangePredicate()
+
+	if pred.Create(event.CreateEvent{}) {
+		t.Error("expected Create to be suppressed")
+	}
+	if pred.Delete(event.DeleteEvent{}) {
+		t.Error("expected Delete to be suppressed")
+	}
+	if pred.Generic(event.GenericEvent{}) {
+		t.Error("expected Generic to be suppressed")
+	}
+
+	oldVR := &replicationv1alpha1.VolumeReplication{}
+	oldVR.Status.State = replicationv1alpha1.SecondaryState
+	newVR := &replicationv1alpha1.VolumeReplication{}
+	newVR.Status.State = replicationv1alpha1.PrimaryState
+
+	if !pred.Update(event.UpdateEvent{ObjectOld: oldVR, ObjectNew: newVR}) {
+		t.Error("expected Update with state change to pass")
+	}
+
+	sameVR := &replicationv1alpha1.VolumeReplication{}
+	sameVR.Status.State = replicationv1alpha1.SecondaryState
+	if pred.Update(event.UpdateEvent{ObjectOld: sameVR, ObjectNew: sameVR}) {
+		t.Error("expected Update without status change to be suppressed")
+	}
+
+	// lastSyncTime change should trigger update.
+	oldSyncVR := &replicationv1alpha1.VolumeReplication{}
+	oldSyncVR.Status.State = replicationv1alpha1.SecondaryState
+	now := metav1.Now()
+	oldSyncVR.Status.LastSyncTime = &now
+	newSyncVR := &replicationv1alpha1.VolumeReplication{}
+	newSyncVR.Status.State = replicationv1alpha1.SecondaryState
+	later := metav1.NewTime(now.Add(5 * time.Second))
+	newSyncVR.Status.LastSyncTime = &later
+	if !pred.Update(event.UpdateEvent{ObjectOld: oldSyncVR, ObjectNew: newSyncVR}) {
+		t.Error("expected Update with lastSyncTime change to pass")
 	}
 }

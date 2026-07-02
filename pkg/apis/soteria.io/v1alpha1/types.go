@@ -119,6 +119,12 @@ type DRPlanSpec struct {
 	// +optional
 	// +kubebuilder:default="5m"
 	VMReadyTimeout *metav1.Duration `json:"vmReadyTimeout,omitempty"`
+	// ResyncTimeout is the maximum duration to wait for VR/VGR resync
+	// completion during planned failover Step 0 before declaring a timeout.
+	// Only applies to planned_migration mode. Default: 10m.
+	// +optional
+	// +kubebuilder:default="10m"
+	ResyncTimeout *metav1.Duration `json:"resyncTimeout,omitempty"`
 }
 
 type DRPlanStatus struct {

@@ -18,4 +18,14 @@ limitations under the License.
 // +kubebuilder:rbac:groups=soteria.io,resources=drexecutions/status,verbs=get;update;patch
 
 // Package drexecution implements the DRExecution controller for workflow orchestration.
+//
+// The controller watches VirtualMachine, VolumeReplication, and VolumeGroupReplication
+// resources in addition to DRExecution objects. VM watches drive the wave readiness
+// gate (detecting when VMs reach Running). VR/VGR watches drive the event-driven
+// resync gate for planned migration Step 0: after PreExecute calls ResyncVolume,
+// the controller sets a ResyncPending condition and waits for VR/VGR status changes
+// (state=Secondary + health=Healthy) instead of polling. A configurable resync
+// timeout (DRPlan.Spec.ResyncTimeout, default 10m) acts as a safety net. In multi-site
+// mode, the target site monitors local VR/VGR status and sets ResyncComplete for the
+// source site, which then calls StopReplication and sets Step0Complete.
 package drexecution

@@ -77,6 +77,7 @@ export interface DRPlanSpec {
   secondarySite: string;
   volumeReplicationDriver: { type: string; volumeReplicationClass?: string };
   vmReadyTimeout?: string;
+  resyncTimeout?: string;
 }
 
 export interface SiteDiscovery {
