@@ -111,8 +111,15 @@ lint-fix: golangci-lint ## Run golangci-lint linter and perform fixes
 lint-config: golangci-lint ## Verify golangci-lint linter configuration
 	"$(GOLANGCI_LINT)" config verify
 
+INOTIFY_MIN := 1024
 .PHONY: integration
 integration: setup-envtest ## Run integration tests (envtest for controller, ScyllaDB for API server).
+	@current=$$(cat /proc/sys/fs/inotify/max_user_instances 2>/dev/null || echo 0); \
+	if [ "$$current" -lt "$(INOTIFY_MIN)" ]; then \
+		echo "ERROR: fs.inotify.max_user_instances is $$current (need >= $(INOTIFY_MIN))"; \
+		echo "Run: sudo sysctl -w fs.inotify.max_user_instances=$(INOTIFY_MIN)"; \
+		exit 1; \
+	fi
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
 	DOCKER_HOST=unix:///run/user/$$(id -u)/podman/podman.sock \
 	TESTCONTAINERS_RYUK_DISABLED=true \
