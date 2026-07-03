@@ -1313,8 +1313,26 @@ func TestStateTableInvariant_FullCycle(t *testing.T) {
 	runReprotect := func(t *testing.T, label string) {
 		t.Helper()
 		rh := &ReprotectHandler{HealthPollInterval: 10 * time.Millisecond, HealthTimeout: 50 * time.Millisecond}
+		// Call 1 — Phase 1: state verification — RoleSource (stale primary) triggers ResyncVolume.
 		drv.OnGetReplicationStatus("noop-ns1/vg-db").ReturnResult(fake.Response{
-			ReplicationStatus: &drivers.ReplicationStatus{Health: drivers.HealthHealthy},
+			ReplicationStatus: &drivers.ReplicationStatus{
+				Role:   drivers.RoleSource,
+				Health: drivers.HealthHealthy,
+			},
+		})
+		// Call 2 — Phase 1 (idempotent replay): RoleTarget (resync completed).
+		drv.OnGetReplicationStatus("noop-ns1/vg-db").ReturnResult(fake.Response{
+			ReplicationStatus: &drivers.ReplicationStatus{
+				Role:   drivers.RoleTarget,
+				Health: drivers.HealthHealthy,
+			},
+		})
+		// Call 2 — Phase 2: health monitoring.
+		drv.OnGetReplicationStatus("noop-ns1/vg-db").ReturnResult(fake.Response{
+			ReplicationStatus: &drivers.ReplicationStatus{
+				Role:   drivers.RoleTarget,
+				Health: drivers.HealthHealthy,
+			},
 		})
 		entry := VolumeGroupEntry{
 			Info:   makeVolumeGroupInfo("vg-db", "ns1", "vm-db01"),
@@ -1326,19 +1344,29 @@ func TestStateTableInvariant_FullCycle(t *testing.T) {
 			Plan:         &soteriav1alpha1.DRPlan{},
 			VolumeGroups: []VolumeGroupEntry{entry},
 		}
+		// First call: yields with ErrResyncRequested.
 		result, err := rh.Execute(ctx, input)
-		if err != nil {
-			t.Fatalf("%s Execute failed: %v", label, err)
+		if !errors.Is(err, ErrResyncRequested) {
+			t.Fatalf("%s Execute call 1: expected ErrResyncRequested, got: %v", label, err)
 		}
 		if result.SetupSucceeded != 1 {
-			t.Errorf("%s: expected 1 VG setup succeeded, got %d", label, result.SetupSucceeded)
+			t.Errorf("%s call 1: expected 1 VG setup succeeded, got %d", label, result.SetupSucceeded)
+		}
+		// Second call (simulates reconcile after VR/VGR watch event): completes.
+		result, err = rh.Execute(ctx, input)
+		if err != nil {
+			t.Fatalf("%s Execute call 2 failed: %v", label, err)
+		}
+		if result.SetupSucceeded != 1 {
+			t.Errorf("%s call 2: expected 1 VG setup succeeded, got %d", label, result.SetupSucceeded)
 		}
 	}
 
 	// After Story 15.2, PreExecute calls ResyncVolume (not StopReplication).
 	// StopReplication is handled by the reconciler after resync completes,
-	// which is not exercised in this engine-layer test. Reprotect still calls
-	// StopReplication + SetSource internally.
+	// which is not exercised in this engine-layer test. After Story 15.3,
+	// reprotect no longer calls SetSource — it verifies state via
+	// GetReplicationStatus and calls ResyncVolume for stale primaries.
 	assertCumulativeCounts := func(t *testing.T, label string, wantResync, wantStop, wantSet, wantStarts, wantStops int) {
 		t.Helper()
 		if got := len(drv.CallsTo("ResyncVolume")); got != wantResync {
@@ -1366,19 +1394,20 @@ func TestStateTableInvariant_FullCycle(t *testing.T) {
 	assertCumulativeCounts(t, "after Phase1", 1, 0, 1, 1, 1)
 
 	// Phase 2: Reprotect (FailedOver → DRedSteadyState)
-	// SetSource(+1=2), no StopReplication (reprotect skips it), no VMs
+	// State verification detects RoleSource (stale primary) → ResyncVolume(+1=2).
+	// No SetSource (removed in Story 15.3), no VMs.
 	runReprotect(t, "Phase2_Reprotect")
-	assertCumulativeCounts(t, "after Phase2", 1, 0, 2, 1, 1)
+	assertCumulativeCounts(t, "after Phase2", 2, 0, 1, 1, 1)
 
 	// Phase 3: Failback (DRedSteadyState → FailedBack)
-	// Step0: ResyncVolume(+1=2), Per-group: SetSource(+1=3), StopVM(+1=2), StartVM(+1=2)
+	// Step0: ResyncVolume(+1=3), Per-group: SetSource(+1=2), StopVM(+1=2), StartVM(+1=2)
 	runPlannedFailover(t, "Phase3_Failback")
-	assertCumulativeCounts(t, "after Phase3", 2, 0, 3, 2, 2)
+	assertCumulativeCounts(t, "after Phase3", 3, 0, 2, 2, 2)
 
 	// Phase 4: Restore (FailedBack → SteadyState)
-	// SetSource(+1=4), no StopReplication, no VMs
+	// State verification: RoleSource → ResyncVolume(+1=4). No SetSource, no VMs.
 	runReprotect(t, "Phase4_Restore")
-	assertCumulativeCounts(t, "after Phase4", 2, 0, 4, 2, 2)
+	assertCumulativeCounts(t, "after Phase4", 4, 0, 2, 2, 2)
 }
 
 func TestStateTableInvariant_DisasterFailover(t *testing.T) {

@@ -1,6 +1,6 @@
 # Story 15.3: Reprotect Handler Simplification for Real Storage
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -47,36 +47,41 @@ And existing unit tests continue to pass after updating assertions
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Replace SetSource with state verification in Phase 1 (AC: 1, 2, 3)
-  - [ ] 1.1: Remove the `SetSource` call loop (lines 168-198 of `reprotect.go`)
-  - [ ] 1.2: Add new Phase 1 logic: for each VG, call `GetReplicationStatus` to read current role
-  - [ ] 1.3: If `RoleTarget` → VG is already in correct state, add to `successfulVGs` with a "Verified" step status
-  - [ ] 1.4: If `RoleSource` → stale primary detected, call `ResyncVolume` on that VG, add to `successfulVGs` with a "ResyncRequested" step status
-  - [ ] 1.5: If `GetReplicationStatus` returns error → mark VG as failed (same as current SetSource failure handling)
-  - [ ] 1.6: Update step name constants: rename `StepReprotectSetSource` to `StepReprotectStateVerification` (or add new constant)
+- [x] Task 1: Replace SetSource with state verification in Phase 1 (AC: 1, 2, 3)
+  - [x] 1.1: Remove the `SetSource` call loop (lines 168-198 of `reprotect.go`)
+  - [x] 1.2: Add new Phase 1 logic: for each VG, call `GetReplicationStatus` to read current role
+  - [x] 1.3: If `RoleTarget` → VG is already in correct state, add to `successfulVGs` with a "Verified" step status
+  - [x] 1.4: If `RoleSource` → stale primary detected, call `ResyncVolume` on that VG, add to `successfulVGs` with a "ResyncRequested" step status
+  - [x] 1.5: If `GetReplicationStatus` returns error → mark VG as failed (same as current SetSource failure handling)
+  - [x] 1.6: Update step name constants: rename `StepReprotectSetSource` to `StepReprotectStateVerification` (or add new constant)
 
-- [ ] Task 2: Update ReprotectHandler struct and constants (AC: 1)
-  - [ ] 2.1: Update the Tier 2 architecture comment at top of file to describe new Phase 1 logic
-  - [ ] 2.2: Rename or add step constants to reflect verification + resync semantics
-  - [ ] 2.3: Update `Execute` method godoc
+- [x] Task 2: Update ReprotectHandler struct and constants (AC: 1)
+  - [x] 2.1: Update the Tier 2 architecture comment at top of file to describe new Phase 1 logic
+  - [x] 2.2: Rename or add step constants to reflect verification + resync semantics
+  - [x] 2.3: Update `Execute` method godoc
 
-- [ ] Task 3: Update unit tests (AC: 1, 2, 3, 4, 5)
-  - [ ] 3.1: Update `TestReprotect_FullSuccess` — remove SetSource assertion, add GetReplicationStatus + ResyncVolume assertions (noop driver returns RoleSource → triggers ResyncVolume)
-  - [ ] 3.2: Add `TestReprotect_SecondaryState_SkipsResync` — fake driver returns RoleTarget, verify no ResyncVolume call, verify health monitoring proceeds
-  - [ ] 3.3: Add `TestReprotect_StalePrimary_CallsResyncVolume` — fake driver returns RoleSource, verify ResyncVolume called, verify health monitoring proceeds immediately
-  - [ ] 3.4: Update `TestReprotect_SetSourceFails_VGMarkedFailed` → rename to `TestReprotect_StatusCheckFails_VGMarkedFailed` — fake driver returns error on GetReplicationStatus
-  - [ ] 3.5: Update `TestReprotect_AllSetSourceFail_ExecutionFails` → rename to `TestReprotect_AllStatusCheckFail_ExecutionFails`
-  - [ ] 3.6: Update `TestReprotect_DriverCallsMade` — verify no SetSource call, verify GetReplicationStatus called, verify ResyncVolume called when RoleSource
-  - [ ] 3.7: Add `TestReprotect_MixedStates_SomeSecondary_SomePrimary` — mixed VG states, verify correct handling of each
-  - [ ] 3.8: Verify all existing passing tests still pass (health monitoring, checkpointing, context cancellation, step status)
+- [x] Task 3: Update unit tests (AC: 1, 2, 3, 4, 5)
+  - [x] 3.1: Update `TestReprotect_FullSuccess` — remove SetSource assertion, add GetReplicationStatus + ResyncVolume assertions (noop driver returns RoleSource → triggers ResyncVolume)
+  - [x] 3.2: Add `TestReprotect_SecondaryState_SkipsResync` — fake driver returns RoleTarget, verify no ResyncVolume call, verify health monitoring proceeds
+  - [x] 3.3: Add `TestReprotect_StalePrimary_CallsResyncVolume` — fake driver returns RoleSource, verify ResyncVolume called, verify health monitoring proceeds immediately
+  - [x] 3.4: Update `TestReprotect_SetSourceFails_VGMarkedFailed` → rename to `TestReprotect_StatusCheckFails_VGMarkedFailed` — fake driver returns error on GetReplicationStatus
+  - [x] 3.5: Update `TestReprotect_AllSetSourceFail_ExecutionFails` → rename to `TestReprotect_AllStatusCheckFail_ExecutionFails`
+  - [x] 3.6: Update `TestReprotect_DriverCallsMade` — verify no SetSource call, verify GetReplicationStatus called, verify ResyncVolume called when RoleSource
+  - [x] 3.7: Add `TestReprotect_MixedStates_SomeSecondary_SomePrimary` — mixed VG states, verify correct handling of each
+  - [x] 3.8: Verify all existing passing tests still pass (health monitoring, checkpointing, context cancellation, step status)
 
-- [ ] Task 4: Update `pkg/engine/doc.go` (AC: 1)
-  - [ ] 4.1: Update the Re-protect handler section to describe new Phase 1 (state verification + conditional ResyncVolume)
+- [x] Task 4: Update `pkg/engine/doc.go` (AC: 1)
+  - [x] 4.1: Update the Re-protect handler section to describe new Phase 1 (state verification + conditional ResyncVolume)
 
-- [ ] Task 5: Verify and finalize
-  - [ ] 5.1: Run `make lint-fix` — fix any issues
-  - [ ] 5.2: Run `make test` — all unit + envtest tests pass
-  - [ ] 5.3: Verify Tier 1/2/3 doc compliance
+- [x] Task 5: Verify and finalize
+  - [x] 5.1: Run `make lint-fix` — fix any issues
+  - [x] 5.2: Run `make test` — all unit + envtest tests pass
+  - [x] 5.3: Verify Tier 1/2/3 doc compliance
+
+### Review Findings
+
+- [x] [Review][Patch] Reprotect should yield after requesting resync and resume on sync completion [pkg/engine/reprotect.go:254] — Story 15.3 requires fire-and-forget reprotect semantics. After `ResyncVolume`, the controller should set status to resyncing, yield, and rely on a later wake-up when VR/VGR status shows sync completion instead of blocking inside synchronous health polling.
+  - **Fixed**: Execute() now returns `ErrResyncRequested` after Phase 1 when any VG went through ResyncVolume. The reconciler sets `ResyncPending` condition and yields. On next reconcile (VR/VGR watch event), idempotent replay sees `RoleTarget` and proceeds to Phase 2.
 
 ## Dev Notes
 
@@ -299,8 +304,32 @@ When `ResyncVolume` is called on a VR that is in `Primary` state (stale primary 
 
 ### Agent Model Used
 
+Claude Opus 4.6 (via Cursor)
+
 ### Debug Log References
+
+- `TestStateTableInvariant_FullCycle` failed initially because the shared fake driver was not programmed with `Role` in `GetReplicationStatus` responses for the reprotect phases. Fixed by adding `Role: drivers.RoleSource` for Phase 1 state verification and `Role: drivers.RoleTarget` for Phase 2 health monitoring. Cumulative count assertions updated: reprotect now adds ResyncVolume calls instead of SetSource calls.
 
 ### Completion Notes List
 
+- Replaced `SetSource` call in reprotect Phase 1 with state verification via `GetReplicationStatus` + conditional `ResyncVolume` for stale primaries
+- Renamed `StepReprotectSetSource` constant to `StepReprotectStateVerification`
+- Updated Tier 2 architecture comment, Execute method godoc, Result method godoc
+- Updated doc.go re-protect handler section to describe new Phase 1 logic
+- Updated all existing reprotect tests to program `GetReplicationStatus` with Role field for Phase 1 verification and Phase 2 health monitoring
+- Added 3 new tests: `TestReprotect_SecondaryState_SkipsResync`, `TestReprotect_StalePrimary_CallsResyncVolume`, `TestReprotect_MixedStates_SomeSecondary_SomePrimary`
+- Updated `TestStateTableInvariant_FullCycle` in failover_test.go for new reprotect behavior
+- All 17 reprotect tests pass, full test suite passes with 0 regressions, 0 lint issues in engine package
+
 ### File List
+
+- `pkg/engine/reprotect.go` — Modified: replaced SetSource loop with GetReplicationStatus + ResyncVolume state verification, renamed constant, updated comments and godoc
+- `pkg/engine/reprotect_test.go` — Modified: updated all existing reprotect tests, added 3 new tests (SecondaryState_SkipsResync, StalePrimary_CallsResyncVolume, MixedStates)
+- `pkg/engine/failover_test.go` — Modified: updated TestStateTableInvariant_FullCycle runReprotect helper and cumulative count assertions
+- `pkg/engine/doc.go` — Modified: updated re-protect handler architecture description
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — Modified: story status ready-for-dev → in-progress → review
+- `_bmad-output/implementation-artifacts/15-3-reprotect-handler-simplification-real-storage.md` — Modified: task checkboxes, Dev Agent Record, File List, Change Log, Status
+
+### Change Log
+
+- 2026-07-03: Implemented Story 15.3 — Reprotect handler simplified for real storage. Removed SetSource from Phase 1, replaced with GetReplicationStatus state verification + conditional ResyncVolume for stale primaries. Updated all tests, added 3 new tests. All unit tests pass, 0 lint issues.

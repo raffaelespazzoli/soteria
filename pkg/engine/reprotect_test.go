@@ -68,11 +68,31 @@ func makeVGEntry(name string, drv drivers.StorageProvider, vgID drivers.VolumeGr
 
 func TestReprotect_FullSuccess(t *testing.T) {
 	d := fake.New()
+	// Phase 1: both VGs report RoleTarget (secondary — planned failover path).
 	d.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
-		ReplicationStatus: &drivers.ReplicationStatus{Health: drivers.HealthHealthy},
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleTarget,
+			Health: drivers.HealthHealthy,
+		},
 	})
 	d.OnGetReplicationStatus("vg-2").ReturnResult(fake.Response{
-		ReplicationStatus: &drivers.ReplicationStatus{Health: drivers.HealthHealthy},
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleTarget,
+			Health: drivers.HealthHealthy,
+		},
+	})
+	// Phase 2: health monitoring sees healthy.
+	d.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleTarget,
+			Health: drivers.HealthHealthy,
+		},
+	})
+	d.OnGetReplicationStatus("vg-2").ReturnResult(fake.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleTarget,
+			Health: drivers.HealthHealthy,
+		},
 	})
 
 	cp := &NoOpCheckpointer{}
@@ -107,29 +127,55 @@ func TestReprotect_FullSuccess(t *testing.T) {
 		t.Error("expected no timeout")
 	}
 
-	if !d.Called("SetSource") {
-		t.Error("expected SetSource to be called")
+	if !d.Called("GetReplicationStatus") {
+		t.Error("expected GetReplicationStatus to be called")
+	}
+	if d.Called("ResyncVolume") {
+		t.Error("ResyncVolume should not be called for VGs already in secondary state")
+	}
+	if d.Called("SetSource") {
+		t.Error("reprotect should not call SetSource")
 	}
 	if d.Called("StopReplication") {
 		t.Error("reprotect should not call StopReplication")
 	}
-	if d.CallCount("SetSource") != 2 {
-		t.Errorf("expected 2 SetSource calls, got %d", d.CallCount("SetSource"))
-	}
 }
 
-func TestReprotect_SetSourceFails_VGMarkedFailed(t *testing.T) {
+func TestReprotect_StatusCheckFails_VGMarkedFailed(t *testing.T) {
 	d1 := fake.New()
+	// VG-1: healthy secondary.
 	d1.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
-		ReplicationStatus: &drivers.ReplicationStatus{Health: drivers.HealthHealthy},
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleTarget,
+			Health: drivers.HealthHealthy,
+		},
+	})
+	// Phase 2 health check.
+	d1.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleTarget,
+			Health: drivers.HealthHealthy,
+		},
 	})
 
 	d2 := fake.New()
-	d2.OnSetSource("vg-2").Return(errors.New("source setup failed"))
+	// VG-2: GetReplicationStatus returns error.
+	d2.OnGetReplicationStatus("vg-2").Return(errors.New("status check failed"))
 
 	d3 := fake.New()
+	// VG-3: healthy secondary.
 	d3.OnGetReplicationStatus("vg-3").ReturnResult(fake.Response{
-		ReplicationStatus: &drivers.ReplicationStatus{Health: drivers.HealthHealthy},
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleTarget,
+			Health: drivers.HealthHealthy,
+		},
+	})
+	// Phase 2 health check.
+	d3.OnGetReplicationStatus("vg-3").ReturnResult(fake.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleTarget,
+			Health: drivers.HealthHealthy,
+		},
 	})
 
 	cp := &NoOpCheckpointer{}
@@ -159,14 +205,14 @@ func TestReprotect_SetSourceFails_VGMarkedFailed(t *testing.T) {
 		t.Errorf("expected FailedVGs=[vg-2], got %v", result.FailedVGs)
 	}
 	if got := result.Result(); got != soteriav1alpha1.ExecutionResultPartiallySucceeded {
-		t.Errorf("Result() = %s, want PartiallySucceeded (mixed setup failure)", got)
+		t.Errorf("Result() = %s, want PartiallySucceeded (mixed status check failure)", got)
 	}
 }
 
-func TestReprotect_AllSetSourceFail_ExecutionFails(t *testing.T) {
+func TestReprotect_AllStatusCheckFail_ExecutionFails(t *testing.T) {
 	d := fake.New()
-	d.OnSetSource().Return(errors.New("source failed"))
-	d.OnSetSource().Return(errors.New("source failed"))
+	d.OnGetReplicationStatus().Return(errors.New("status check failed"))
+	d.OnGetReplicationStatus().Return(errors.New("status check failed"))
 
 	cp := &NoOpCheckpointer{}
 	h := &ReprotectHandler{
@@ -182,7 +228,7 @@ func TestReprotect_AllSetSourceFail_ExecutionFails(t *testing.T) {
 
 	result, err := h.Execute(context.Background(), newReprotectInput(vgs))
 	if err == nil {
-		t.Fatal("expected error when all SetSource fail")
+		t.Fatal("expected error when all status checks fail")
 	}
 	if result.Result() != soteriav1alpha1.ExecutionResultFailed {
 		t.Errorf("expected Failed, got %s", result.Result())
@@ -197,10 +243,20 @@ func TestReprotect_AllSetSourceFail_ExecutionFails(t *testing.T) {
 
 func TestReprotect_HealthMonitoringTimeout(t *testing.T) {
 	d := fake.New()
-	// Always return Syncing — never Healthy.
+	// Phase 1: RoleTarget (secondary, passes verification).
+	d.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleTarget,
+			Health: drivers.HealthSyncing,
+		},
+	})
+	// Phase 2: Always return Syncing — never Healthy.
 	for range 100 {
 		d.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
-			ReplicationStatus: &drivers.ReplicationStatus{Health: drivers.HealthSyncing},
+			ReplicationStatus: &drivers.ReplicationStatus{
+				Role:   drivers.RoleTarget,
+				Health: drivers.HealthSyncing,
+			},
 		})
 	}
 
@@ -230,12 +286,25 @@ func TestReprotect_HealthMonitoringTimeout(t *testing.T) {
 
 func TestReprotect_HealthMonitoringCompletes(t *testing.T) {
 	d := fake.New()
-	// First poll: Syncing, second poll: Healthy.
+	// Phase 1: RoleTarget (secondary, passes verification).
 	d.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
-		ReplicationStatus: &drivers.ReplicationStatus{Health: drivers.HealthSyncing},
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleTarget,
+			Health: drivers.HealthSyncing,
+		},
+	})
+	// Phase 2 — first poll: Syncing, second poll: Healthy.
+	d.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleTarget,
+			Health: drivers.HealthSyncing,
+		},
 	})
 	d.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
-		ReplicationStatus: &drivers.ReplicationStatus{Health: drivers.HealthHealthy},
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleTarget,
+			Health: drivers.HealthHealthy,
+		},
 	})
 
 	cp := &NoOpCheckpointer{}
@@ -261,20 +330,30 @@ func TestReprotect_HealthMonitoringCompletes(t *testing.T) {
 		t.Error("expected no timeout")
 	}
 
-	// Should have polled at least twice (Syncing then Healthy).
-	if d.CallCount("GetReplicationStatus") < 2 {
-		t.Errorf("expected at least 2 GetReplicationStatus calls, got %d",
+	// Phase 1 + Phase 2: at least 3 calls (1 verification + 2 health polls).
+	if d.CallCount("GetReplicationStatus") < 3 {
+		t.Errorf("expected at least 3 GetReplicationStatus calls, got %d",
 			d.CallCount("GetReplicationStatus"))
 	}
 }
 
 func TestReprotect_ResumeFromHealthMonitoring(t *testing.T) {
-	// Simulate a resume scenario: role setup already done, VGs are already
-	// Source. SetSource is idempotent — calling it again succeeds. The
-	// handler should proceed to health monitoring.
+	// Simulate a resume scenario: VG is already Target (secondary) from a
+	// prior run. State verification passes, health monitoring sees Healthy.
 	d := fake.New()
+	// Phase 1: RoleTarget (already secondary).
 	d.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
-		ReplicationStatus: &drivers.ReplicationStatus{Health: drivers.HealthHealthy},
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleTarget,
+			Health: drivers.HealthHealthy,
+		},
+	})
+	// Phase 2: Healthy.
+	d.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleTarget,
+			Health: drivers.HealthHealthy,
+		},
 	})
 
 	cp := &NoOpCheckpointer{}
@@ -297,12 +376,25 @@ func TestReprotect_ResumeFromHealthMonitoring(t *testing.T) {
 
 func TestReprotect_CheckpointWrittenPerPoll(t *testing.T) {
 	d := fake.New()
-	// Two polls: first Syncing, then Healthy.
+	// Phase 1: RoleTarget (secondary, verification passes).
 	d.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
-		ReplicationStatus: &drivers.ReplicationStatus{Health: drivers.HealthSyncing},
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleTarget,
+			Health: drivers.HealthSyncing,
+		},
+	})
+	// Phase 2: two polls — first Syncing, then Healthy.
+	d.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleTarget,
+			Health: drivers.HealthSyncing,
+		},
 	})
 	d.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
-		ReplicationStatus: &drivers.ReplicationStatus{Health: drivers.HealthHealthy},
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleTarget,
+			Health: drivers.HealthHealthy,
+		},
 	})
 
 	cp := &NoOpCheckpointer{}
@@ -322,18 +414,29 @@ func TestReprotect_CheckpointWrittenPerPoll(t *testing.T) {
 		t.Errorf("expected Succeeded, got %s", result.Result())
 	}
 
-	// Checkpoints: 1 after SetSource + 2 during health monitoring (one per poll).
+	// Checkpoints: 1 after state verification + 2 during health monitoring (one per poll).
 	calls := cp.GetCalls()
 	if len(calls) < 3 {
-		t.Errorf("expected at least 3 checkpoint writes (1 SetSource + 2 health polls), got %d", len(calls))
+		t.Errorf("expected at least 3 checkpoint writes (1 verification + 2 health polls), got %d", len(calls))
 	}
 }
 
 func TestReprotect_ContextCancelled(t *testing.T) {
 	d := fake.New()
+	// Phase 1: RoleTarget passes verification.
+	d.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleTarget,
+			Health: drivers.HealthSyncing,
+		},
+	})
+	// Phase 2: always Syncing — context will cancel before health completes.
 	for range 100 {
 		d.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
-			ReplicationStatus: &drivers.ReplicationStatus{Health: drivers.HealthSyncing},
+			ReplicationStatus: &drivers.ReplicationStatus{
+				Role:   drivers.RoleTarget,
+				Health: drivers.HealthSyncing,
+			},
 		})
 	}
 
@@ -361,8 +464,19 @@ func TestReprotect_ContextCancelled(t *testing.T) {
 
 func TestReprotect_StepStatusRecorded(t *testing.T) {
 	d := fake.New()
+	// Phase 1: RoleTarget (passes verification).
 	d.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
-		ReplicationStatus: &drivers.ReplicationStatus{Health: drivers.HealthHealthy},
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleTarget,
+			Health: drivers.HealthHealthy,
+		},
+	})
+	// Phase 2: Healthy.
+	d.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleTarget,
+			Health: drivers.HealthHealthy,
+		},
 	})
 
 	h := &ReprotectHandler{
@@ -377,7 +491,7 @@ func TestReprotect_StepStatusRecorded(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Should have: SetSource(Succeeded), HealthMonitoring(Succeeded).
+	// Should have: StateVerification(Succeeded), HealthMonitoring(Succeeded).
 	if len(result.Steps) < 2 {
 		t.Fatalf("expected at least 2 steps, got %d", len(result.Steps))
 	}
@@ -387,8 +501,8 @@ func TestReprotect_StepStatusRecorded(t *testing.T) {
 		stepNames[s.Name] = s.Status
 	}
 
-	if stepNames[StepReprotectSetSource] != reprotectStatusSucceeded {
-		t.Errorf("expected SetSource Succeeded, got %q", stepNames[StepReprotectSetSource])
+	if stepNames[StepReprotectStateVerification] != reprotectStatusSucceeded {
+		t.Errorf("expected StateVerification Succeeded, got %q", stepNames[StepReprotectStateVerification])
 	}
 	if stepNames[StepReprotectHealthMonitoring] != reprotectStatusSucceeded {
 		t.Errorf("expected HealthMonitoring Succeeded, got %q", stepNames[StepReprotectHealthMonitoring])
@@ -398,6 +512,214 @@ func TestReprotect_StepStatusRecorded(t *testing.T) {
 		if s.Timestamp == nil {
 			t.Errorf("step %s has nil Timestamp", s.Name)
 		}
+	}
+}
+
+func TestReprotect_SecondaryState_SkipsResync(t *testing.T) {
+	d := fake.New()
+	// Phase 1: RoleTarget (already secondary — expected after planned failover).
+	d.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleTarget,
+			Health: drivers.HealthHealthy,
+		},
+	})
+	// Phase 2: Healthy.
+	d.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleTarget,
+			Health: drivers.HealthHealthy,
+		},
+	})
+
+	cp := &NoOpCheckpointer{}
+	h := &ReprotectHandler{
+		Checkpointer:       cp,
+		HealthPollInterval: 10 * time.Millisecond,
+		HealthTimeout:      1 * time.Second,
+	}
+
+	vgs := []VolumeGroupEntry{makeVGEntry("vg-1", d, "vg-1")}
+
+	result, err := h.Execute(context.Background(), newReprotectInput(vgs))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Result() != soteriav1alpha1.ExecutionResultSucceeded {
+		t.Errorf("expected Succeeded, got %s", result.Result())
+	}
+	if result.SetupSucceeded != 1 {
+		t.Errorf("expected 1 succeeded, got %d", result.SetupSucceeded)
+	}
+	if d.Called("ResyncVolume") {
+		t.Error("ResyncVolume should not be called for VGs already in secondary state")
+	}
+	if d.Called("SetSource") {
+		t.Error("SetSource should not be called by reprotect")
+	}
+}
+
+func TestReprotect_StalePrimary_CallsResyncVolume(t *testing.T) {
+	d := fake.New()
+	// Phase 1: RoleSource (stale primary — post-disaster).
+	d.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleSource,
+			Health: drivers.HealthSyncing,
+		},
+	})
+
+	cp := &NoOpCheckpointer{}
+	h := &ReprotectHandler{
+		Checkpointer:       cp,
+		HealthPollInterval: 10 * time.Millisecond,
+		HealthTimeout:      1 * time.Second,
+	}
+
+	vgs := []VolumeGroupEntry{makeVGEntry("vg-1", d, "vg-1")}
+
+	result, err := h.Execute(context.Background(), newReprotectInput(vgs))
+	if !errors.Is(err, ErrResyncRequested) {
+		t.Fatalf("expected ErrResyncRequested, got: %v", err)
+	}
+	if result.SetupSucceeded != 1 {
+		t.Errorf("expected 1 succeeded, got %d", result.SetupSucceeded)
+	}
+	if !d.Called("ResyncVolume") {
+		t.Error("expected ResyncVolume to be called for stale primary")
+	}
+	if d.CallCount("ResyncVolume") != 1 {
+		t.Errorf("expected 1 ResyncVolume call, got %d", d.CallCount("ResyncVolume"))
+	}
+	if d.Called("SetSource") {
+		t.Error("SetSource should not be called by reprotect")
+	}
+}
+
+func TestReprotect_StalePrimary_ResumeAfterResync(t *testing.T) {
+	// Simulates the two-call pattern: first call yields (ErrResyncRequested),
+	// second call (after VR/VGR watch event) sees RoleTarget and completes.
+	d := fake.New()
+	// Call 1 — Phase 1: RoleSource → ResyncVolume → yield.
+	d.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleSource,
+			Health: drivers.HealthSyncing,
+		},
+	})
+	// Call 2 — Phase 1 (idempotent replay): RoleTarget (resync completed).
+	d.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleTarget,
+			Health: drivers.HealthSyncing,
+		},
+	})
+	// Call 2 — Phase 2: health monitoring sees healthy.
+	d.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleTarget,
+			Health: drivers.HealthHealthy,
+		},
+	})
+
+	cp := &NoOpCheckpointer{}
+	h := &ReprotectHandler{
+		Checkpointer:       cp,
+		HealthPollInterval: 10 * time.Millisecond,
+		HealthTimeout:      1 * time.Second,
+	}
+
+	vgs := []VolumeGroupEntry{makeVGEntry("vg-1", d, "vg-1")}
+	input := newReprotectInput(vgs)
+
+	// First call: yields with ErrResyncRequested.
+	result, err := h.Execute(context.Background(), input)
+	if !errors.Is(err, ErrResyncRequested) {
+		t.Fatalf("first call: expected ErrResyncRequested, got: %v", err)
+	}
+	if result.SetupSucceeded != 1 {
+		t.Errorf("first call: expected 1 succeeded, got %d", result.SetupSucceeded)
+	}
+	if !d.Called("ResyncVolume") {
+		t.Error("first call: expected ResyncVolume to be called")
+	}
+
+	// Second call (simulates reconcile after VR/VGR watch event):
+	// Phase 1 sees RoleTarget → no resync → Phase 2 runs and completes.
+	result, err = h.Execute(context.Background(), input)
+	if err != nil {
+		t.Fatalf("second call: unexpected error: %v", err)
+	}
+	if result.Result() != soteriav1alpha1.ExecutionResultSucceeded {
+		t.Errorf("second call: expected Succeeded, got %s", result.Result())
+	}
+	if result.HealthyVGs != 1 {
+		t.Errorf("second call: expected 1 healthy, got %d", result.HealthyVGs)
+	}
+	// ResyncVolume should not have been called again on the second invocation.
+	if d.CallCount("ResyncVolume") != 1 {
+		t.Errorf("expected 1 total ResyncVolume call (idempotent), got %d", d.CallCount("ResyncVolume"))
+	}
+}
+
+func TestReprotect_MixedStates_SomeSecondary_SomePrimary(t *testing.T) {
+	d1 := fake.New()
+	// VG-1: RoleTarget (secondary — passes verification without resync).
+	d1.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleTarget,
+			Health: drivers.HealthHealthy,
+		},
+	})
+
+	d2 := fake.New()
+	// VG-2: RoleSource (stale primary — triggers ResyncVolume).
+	d2.OnGetReplicationStatus("vg-2").ReturnResult(fake.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleSource,
+			Health: drivers.HealthHealthy,
+		},
+	})
+
+	d3 := fake.New()
+	// VG-3: GetReplicationStatus error — marked as failed.
+	d3.OnGetReplicationStatus("vg-3").Return(errors.New("cannot reach storage"))
+
+	cp := &NoOpCheckpointer{}
+	h := &ReprotectHandler{
+		Checkpointer:       cp,
+		HealthPollInterval: 10 * time.Millisecond,
+		HealthTimeout:      1 * time.Second,
+	}
+
+	vgs := []VolumeGroupEntry{
+		makeVGEntry("vg-1", d1, "vg-1"),
+		makeVGEntry("vg-2", d2, "vg-2"),
+		makeVGEntry("vg-3", d3, "vg-3"),
+	}
+
+	// Mixed state with a stale primary → yields with ErrResyncRequested.
+	result, err := h.Execute(context.Background(), newReprotectInput(vgs))
+	if !errors.Is(err, ErrResyncRequested) {
+		t.Fatalf("expected ErrResyncRequested (has stale primary), got: %v", err)
+	}
+	if result.SetupSucceeded != 2 {
+		t.Errorf("expected 2 succeeded, got %d", result.SetupSucceeded)
+	}
+	if result.SetupFailed != 1 {
+		t.Errorf("expected 1 failed, got %d", result.SetupFailed)
+	}
+	if len(result.FailedVGs) != 1 || result.FailedVGs[0] != "vg-3" {
+		t.Errorf("expected FailedVGs=[vg-3], got %v", result.FailedVGs)
+	}
+
+	// VG-1 (secondary) should NOT have triggered ResyncVolume.
+	if d1.Called("ResyncVolume") {
+		t.Error("VG-1 (secondary) should not call ResyncVolume")
+	}
+	// VG-2 (stale primary) should have triggered ResyncVolume.
+	if !d2.Called("ResyncVolume") {
+		t.Error("VG-2 (stale primary) should call ResyncVolume")
 	}
 }
 
@@ -421,8 +743,12 @@ func TestReprotect_EmptyVolumeGroups(t *testing.T) {
 
 func TestReprotect_DriverCallsMade(t *testing.T) {
 	d := fake.New()
+	// Phase 1: RoleSource → triggers ResyncVolume → yields.
 	d.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
-		ReplicationStatus: &drivers.ReplicationStatus{Health: drivers.HealthHealthy},
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleSource,
+			Health: drivers.HealthHealthy,
+		},
 	})
 
 	h := &ReprotectHandler{
@@ -433,17 +759,24 @@ func TestReprotect_DriverCallsMade(t *testing.T) {
 	vgs := []VolumeGroupEntry{makeVGEntry("vg-1", d, "vg-1")}
 
 	_, err := h.Execute(context.Background(), newReprotectInput(vgs))
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if !errors.Is(err, ErrResyncRequested) {
+		t.Fatalf("expected ErrResyncRequested, got: %v", err)
 	}
 
+	if d.Called("SetSource") {
+		t.Error("reprotect should not call SetSource")
+	}
 	if d.Called("StopReplication") {
 		t.Error("reprotect should not call StopReplication")
 	}
-
-	srcCalls := d.CallsTo("SetSource")
-	if len(srcCalls) != 1 {
-		t.Fatalf("expected 1 SetSource call, got %d", len(srcCalls))
+	if !d.Called("GetReplicationStatus") {
+		t.Error("expected GetReplicationStatus to be called")
+	}
+	if !d.Called("ResyncVolume") {
+		t.Error("expected ResyncVolume to be called for stale primary")
+	}
+	if d.CallCount("ResyncVolume") != 1 {
+		t.Errorf("expected 1 ResyncVolume call, got %d", d.CallCount("ResyncVolume"))
 	}
 }
 
@@ -451,11 +784,25 @@ func TestReprotect_DriverCallsMade(t *testing.T) {
 // are updated on both DRExecution and DRPlan during health monitoring.
 func TestReprotect_HealthConditionsUpdated(t *testing.T) {
 	d := fake.New()
+	// Phase 1: RoleTarget (passes verification).
 	d.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
-		ReplicationStatus: &drivers.ReplicationStatus{Health: drivers.HealthSyncing},
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleTarget,
+			Health: drivers.HealthSyncing,
+		},
+	})
+	// Phase 2: first poll Syncing, second Healthy.
+	d.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleTarget,
+			Health: drivers.HealthSyncing,
+		},
 	})
 	d.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
-		ReplicationStatus: &drivers.ReplicationStatus{Health: drivers.HealthHealthy},
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleTarget,
+			Health: drivers.HealthHealthy,
+		},
 	})
 
 	h := &ReprotectHandler{

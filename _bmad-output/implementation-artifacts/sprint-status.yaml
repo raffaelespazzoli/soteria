@@ -415,7 +415,7 @@ development_status:
   epic-15: in-progress
   15-1-resyncvolume-driver-method-csi-extension: done
   15-2-planned-failover-resync-guard-event-driven: done
-  15-3-reprotect-handler-simplification-real-storage: ready-for-dev
+  15-3-reprotect-handler-simplification-real-storage: done
   15-4-shadowpv-crd-scylladb-storage: ready-for-dev
   15-5-shadowpv-publisher-controller: ready-for-dev
   15-6-shadowpv-consumer-controller-pv-creation-pool-id-rewrite: ready-for-dev

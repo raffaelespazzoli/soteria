@@ -29,13 +29,12 @@ limitations under the License.
 //
 // Workflow:
 //
-//	Phase 1 — Role setup: for each VG, call SetSource to set the local VR
-//	  to primary (writable). StopReplication is NOT called here because the
-//	  local VR is already in the correct state (secondary) after failover;
-//	  flipping to secondary then immediately to primary creates an
-//	  unnecessary race with the noop controller's status reconciler.
-//	  SetSource failures mark the VG as failed; if ALL VGs fail SetSource,
-//	  the execution fails.
+//	Phase 1 — State verification: for each VG, check replication role via
+//	  GetReplicationStatus. If already secondary (RoleTarget — expected after
+//	  planned failover), proceed. If stale primary (RoleSource — post-disaster),
+//	  call ResyncVolume to initiate sync from the new primary. No blocking
+//	  wait — health monitoring handles progress tracking. Verification
+//	  failures mark the VG as failed; if ALL VGs fail, the execution fails.
 //
 //	Phase 2 — Health monitoring: poll GetReplicationStatus at configurable
 //	  intervals until all VGs report HealthHealthy or the timeout expires.
@@ -59,8 +58,8 @@ import (
 )
 
 const (
-	StepReprotectSetSource        = "SetSource"
-	StepReprotectHealthMonitoring = "HealthMonitoring"
+	StepReprotectStateVerification = "StateVerification"
+	StepReprotectHealthMonitoring  = "HealthMonitoring"
 
 	reprotectStatusSucceeded = "Succeeded"
 	reprotectStatusFailed    = "Failed"
@@ -102,8 +101,8 @@ type ReprotectResult struct {
 }
 
 // Result returns the ExecutionResult corresponding to the re-protect outcome.
-// PartiallySucceeded when some VGs failed SetSource or health monitoring
-// timed out; Failed only when ALL SetSource calls failed.
+// PartiallySucceeded when some VGs failed state verification or health
+// monitoring timed out; Failed only when ALL verifications failed.
 func (r *ReprotectResult) Result() soteriav1alpha1.ExecutionResult {
 	if r.TotalVGs == 0 {
 		return soteriav1alpha1.ExecutionResultSucceeded
@@ -140,10 +139,13 @@ func (h *ReprotectHandler) healthTimeout() time.Duration {
 	return defaultHealthTimeout
 }
 
-// Execute runs the two-phase re-protect workflow: role setup followed by
-// health monitoring. Returns a ReprotectResult and nil on normal completion
-// (including timeout). Returns a non-nil error only for context cancellation
-// or when all VGs fail role setup.
+// Execute runs the two-phase re-protect workflow: state verification followed
+// by health monitoring. Phase 1 reads each VG's replication role: RoleTarget
+// (expected after planned failover) passes verification; RoleSource (stale
+// primary after disaster) triggers ResyncVolume to sync from the new primary.
+// Returns a ReprotectResult and nil on normal completion (including timeout).
+// Returns a non-nil error only for context cancellation or when all VGs fail
+// state verification.
 func (h *ReprotectHandler) Execute(ctx context.Context, input ReprotectInput) (*ReprotectResult, error) {
 	logger := log.FromContext(ctx)
 	setupStart := time.Now()
@@ -157,43 +159,85 @@ func (h *ReprotectHandler) Execute(ctx context.Context, input ReprotectInput) (*
 		return result, nil
 	}
 
-	// Phase 1: Role setup — SetSource per VG. StopReplication is not called
-	// because the local VR is already secondary after failover; the double-flip
-	// (secondary→secondary→primary) creates an unnecessary race with the noop
-	// controller's status reconciler. SetSource alone flips secondary→primary.
+	// Phase 1: State verification — read each VG's current replication role.
+	// RoleTarget (expected after planned failover) passes verification.
+	// RoleSource (stale primary after disaster) triggers ResyncVolume to
+	// initiate sync from the new primary — fire-and-forget, no blocking wait.
 	var successfulVGs []VolumeGroupEntry
 	var failedVGNames []string
 	var steps []soteriav1alpha1.StepStatus
+	var resyncRequested bool
 
 	for _, vg := range input.VolumeGroups {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
 
-		setErr := vg.Driver.SetSource(ctx, vg.VGID)
+		status, err := vg.Driver.GetReplicationStatus(ctx, vg.VGID)
 		now := metav1.Now()
-		if setErr != nil {
-			logger.Info("SetSource failed for volume group",
-				"vg", vg.Info.Name, "error", setErr)
+		if err != nil {
+			logger.Info("Could not verify replication state",
+				"vg", vg.Info.Name, "error", err)
 			steps = append(steps, soteriav1alpha1.StepStatus{
-				Name:      StepReprotectSetSource,
+				Name:      StepReprotectStateVerification,
 				Status:    reprotectStatusFailed,
-				Message:   fmt.Sprintf("SetSource failed for %s: %v", vg.Info.Name, setErr),
+				Message:   fmt.Sprintf("State verification failed for %s: %v", vg.Info.Name, err),
 				Timestamp: &now,
 			})
 			failedVGNames = append(failedVGNames, vg.Info.Name)
 			continue
 		}
-		logger.Info("SetSource completed", "vg", vg.Info.Name)
-		steps = append(steps, soteriav1alpha1.StepStatus{
-			Name:      StepReprotectSetSource,
-			Status:    reprotectStatusSucceeded,
-			Message:   fmt.Sprintf("Set source for %s", vg.Info.Name),
-			Timestamp: &now,
-		})
-		successfulVGs = append(successfulVGs, vg)
 
-		// Checkpoint after each VG's role setup (AC8).
+		switch status.Role {
+		case drivers.RoleTarget:
+			logger.Info("VG confirmed in secondary state", "vg", vg.Info.Name)
+			steps = append(steps, soteriav1alpha1.StepStatus{
+				Name:      StepReprotectStateVerification,
+				Status:    reprotectStatusSucceeded,
+				Message:   fmt.Sprintf("Verified %s in secondary state", vg.Info.Name),
+				Timestamp: &now,
+			})
+			successfulVGs = append(successfulVGs, vg)
+
+		case drivers.RoleSource:
+			// Post-disaster: stale primary. Kick off resync to pull from new primary.
+			logger.Info("Stale primary detected, requesting resync",
+				"vg", vg.Info.Name)
+			resyncErr := vg.Driver.ResyncVolume(ctx, vg.VGID)
+			if resyncErr != nil {
+				logger.Info("ResyncVolume failed for stale primary",
+					"vg", vg.Info.Name, "error", resyncErr)
+				steps = append(steps, soteriav1alpha1.StepStatus{
+					Name:      StepReprotectStateVerification,
+					Status:    reprotectStatusFailed,
+					Message:   fmt.Sprintf("ResyncVolume failed for %s: %v", vg.Info.Name, resyncErr),
+					Timestamp: &now,
+				})
+				failedVGNames = append(failedVGNames, vg.Info.Name)
+				continue
+			}
+			steps = append(steps, soteriav1alpha1.StepStatus{
+				Name:      StepReprotectStateVerification,
+				Status:    reprotectStatusSucceeded,
+				Message:   fmt.Sprintf("Resync requested for stale primary %s", vg.Info.Name),
+				Timestamp: &now,
+			})
+			successfulVGs = append(successfulVGs, vg)
+			resyncRequested = true
+
+		default:
+			logger.Info("Unexpected replication role during reprotect",
+				"vg", vg.Info.Name, "role", status.Role)
+			steps = append(steps, soteriav1alpha1.StepStatus{
+				Name:      StepReprotectStateVerification,
+				Status:    reprotectStatusFailed,
+				Message:   fmt.Sprintf("Unexpected role %s for %s", status.Role, vg.Info.Name),
+				Timestamp: &now,
+			})
+			failedVGNames = append(failedVGNames, vg.Info.Name)
+			continue
+		}
+
 		h.writeCheckpoint(ctx, input.Execution)
 	}
 
@@ -206,7 +250,27 @@ func (h *ReprotectHandler) Execute(ctx context.Context, input ReprotectInput) (*
 			FailedVGs:   failedVGNames,
 			Steps:       steps,
 		}
-		return result, fmt.Errorf("all volume groups failed SetSource during re-protect")
+		return result, fmt.Errorf("all volume groups failed state verification during re-protect")
+	}
+
+	// Yield after ResyncVolume: if any VG went through the stale-primary path,
+	// return ErrResyncRequested so the reconciler yields and waits for VR/VGR
+	// watch events to confirm resync completion. On the next reconcile,
+	// Execute is called again (idempotent replay) — Phase 1 will see RoleTarget
+	// and proceed to Phase 2.
+	if resyncRequested {
+		logger.Info("Resync requested on stale primaries, yielding for completion",
+			"plan", input.Plan.Name,
+			"succeeded", len(successfulVGs), "failed", len(failedVGNames))
+		h.writeCheckpoint(ctx, input.Execution)
+		result := &ReprotectResult{
+			SetupSucceeded: len(successfulVGs),
+			SetupFailed:    len(failedVGNames),
+			TotalVGs:       len(input.VolumeGroups),
+			FailedVGs:      failedVGNames,
+			Steps:          steps,
+		}
+		return result, ErrResyncRequested
 	}
 
 	// Phase 2: Health monitoring.

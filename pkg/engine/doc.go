@@ -182,16 +182,23 @@ limitations under the License.
 //
 //   - Re-protect handler (reprotect.go): implements storage-only re-protection
 //     and restore workflows without VM operations or wave semantics. Executes
-//     three phases sequentially: (1) role setup — StopReplication + SetSource on
-//     every VolumeGroup to flip replication direction; (2) health monitoring —
-//     polls GetReplicationStatus until all VGs report healthy or a configurable
-//     timeout fires; (3) result aggregation. Each VG step is recorded to a
-//     StepStatus slice in-memory. PartiallySucceeded is returned when some (but
-//     not all) SetSource calls fail or health monitoring times out. All driver
-//     calls are idempotent, enabling an idempotent-replay resume model: on crash
-//     recovery the entire workflow is re-executed rather than checkpointing
-//     individual phases. The handler is used for both Reprotecting (SteadyState →
-//     DRedSteadyState) and ReprotectingBack (FailedBack → SteadyState).
+//     two phases sequentially: (1) state verification — for each VG, call
+//     GetReplicationStatus to read the current role. If RoleTarget (expected
+//     after planned failover), the VG passes verification with no mutations.
+//     If RoleSource (stale primary after disaster failover), call ResyncVolume
+//     to initiate sync from the new primary and return ErrResyncRequested so
+//     the reconciler yields and waits for VR/VGR watch events to confirm resync
+//     completion. On the next reconcile (triggered by watch event or
+//     safety-net timeout), Execute is called again — Phase 1 sees RoleTarget
+//     and proceeds to Phase 2. (2) Health monitoring — polls
+//     GetReplicationStatus until all VGs report healthy or a configurable
+//     timeout fires. Each VG step is recorded to a StepStatus slice in-memory.
+//     PartiallySucceeded is returned when some (but not all) verifications
+//     fail or health monitoring times out. All driver calls are idempotent,
+//     enabling an idempotent-replay resume model: on crash recovery the entire
+//     workflow is re-executed rather than checkpointing individual phases. The
+//     handler is used for both Reprotecting (SteadyState → DRedSteadyState)
+//     and ReprotectingBack (FailedBack → SteadyState).
 //
 //     Current limitation: per-VG StepStatus entries are held in-memory during
 //     execution and surfaced through ReprotectResult but NOT persisted to the

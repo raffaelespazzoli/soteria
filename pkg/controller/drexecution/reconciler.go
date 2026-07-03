@@ -743,6 +743,36 @@ func (r *DRExecutionReconciler) reconcileReprotect(
 			fmt.Sprintf("re-protect failed: %v", execErr), plan)
 	}
 
+	// Resync gate: Phase 1 called ResyncVolume on stale primaries — yield
+	// and wait for VR/VGR status watches to confirm resync completion. On
+	// the next reconcile (triggered by watch event or safety-net timeout),
+	// Execute runs again: Phase 1 sees RoleTarget and proceeds to Phase 2.
+	if errors.Is(execErr, engine.ErrResyncRequested) {
+		resyncTimeout := defaultResyncTimeout
+		if plan.Spec.ResyncTimeout != nil {
+			resyncTimeout = plan.Spec.ResyncTimeout.Duration
+		}
+		execPatch := client.MergeFrom(exec.DeepCopy())
+		meta.SetStatusCondition(&exec.Status.Conditions, metav1.Condition{
+			Type:               ConditionResyncPending,
+			Status:             metav1.ConditionTrue,
+			Reason:             "ReprotectResyncRequested",
+			Message:            "ResyncVolume called on stale primaries, waiting for completion",
+			ObservedGeneration: exec.Generation,
+		})
+		if err := r.Status().Patch(ctx, exec, execPatch); err != nil {
+			return ctrl.Result{}, err
+		}
+		r.event(exec, corev1.EventTypeNormal, "ReprotectResyncRequested", "StateVerification",
+			fmt.Sprintf("Resync requested on stale primaries for plan %s, waiting for completion",
+				plan.Name))
+		logger.Info("Re-protect: resync requested, waiting for VR/VGR completion",
+			"resyncTimeout", resyncTimeout,
+			"setupSucceeded", result.SetupSucceeded,
+			"setupFailed", result.SetupFailed)
+		return ctrl.Result{RequeueAfter: resyncTimeout}, nil
+	}
+
 	// Context cancellation (leader election loss, shutdown): do NOT write a
 	// terminal result — let the new leader re-reconcile and resume via
 	// reconcileReprotectResume. All driver operations are idempotent.
