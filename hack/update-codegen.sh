@@ -40,6 +40,7 @@ kube::codegen::gen_openapi \
     --extra-pkgs "k8s.io/apimachinery/pkg/apis/meta/v1" \
     --extra-pkgs "k8s.io/apimachinery/pkg/runtime" \
     --extra-pkgs "k8s.io/apimachinery/pkg/version" \
+    --extra-pkgs "k8s.io/api/core/v1" \
     "${SCRIPT_ROOT}/pkg/apis"
 
 echo "Code generation complete."

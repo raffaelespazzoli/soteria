@@ -50,6 +50,7 @@ import (
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
 	"github.com/soteria-project/soteria/pkg/controller/drexecution"
 	"github.com/soteria-project/soteria/pkg/controller/drplan"
+	"github.com/soteria-project/soteria/pkg/controller/shadowpv"
 	"github.com/soteria-project/soteria/pkg/drivers"
 	"github.com/soteria-project/soteria/pkg/drivers/noop"
 	"github.com/soteria-project/soteria/pkg/engine"
@@ -80,6 +81,7 @@ func TestMain(m *testing.M) {
 			CRDs: []*apiextensionsv1.CustomResourceDefinition{
 				drplanCRD(),
 				drexecutionCRD(),
+				shadowpvCRD(),
 				virtualMachineCRD(),
 				volumeReplicationCRD(),
 				volumeGroupReplicationCRD(),
@@ -155,6 +157,16 @@ func TestMain(m *testing.M) {
 	}).SetupWithManager(mgr); err != nil {
 		panic(fmt.Sprintf("setting up DRExecution controller: %v", err))
 	}
+
+	if err := (&shadowpv.ShadowPVPublisherReconciler{
+		Client:    mgr.GetClient(),
+		Scheme:    mgr.GetScheme(),
+		LocalSite: "dc-east",
+		APIReader: mgr.GetAPIReader(),
+	}).SetupWithManager(mgr); err != nil {
+		panic(fmt.Sprintf("setting up ShadowPV publisher controller: %v", err))
+	}
+
 	cancelFunc = cancel
 
 	go func() {
@@ -246,6 +258,45 @@ func drexecutionCRD() *apiextensionsv1.CustomResourceDefinition {
 				Singular: "drexecution",
 				Kind:     "DRExecution",
 				ListKind: "DRExecutionList",
+			},
+			Scope: apiextensionsv1.ClusterScoped,
+			Versions: []apiextensionsv1.CustomResourceDefinitionVersion{{
+				Name:    "v1alpha1",
+				Served:  true,
+				Storage: true,
+				Subresources: &apiextensionsv1.CustomResourceSubresources{
+					Status: &apiextensionsv1.CustomResourceSubresourceStatus{},
+				},
+				Schema: &apiextensionsv1.CustomResourceValidation{
+					OpenAPIV3Schema: &apiextensionsv1.JSONSchemaProps{
+						Type: "object",
+						Properties: map[string]apiextensionsv1.JSONSchemaProps{
+							"spec": {
+								Type:                   "object",
+								XPreserveUnknownFields: boolPtr(true),
+							},
+							"status": {
+								Type:                   "object",
+								XPreserveUnknownFields: boolPtr(true),
+							},
+						},
+					},
+				},
+			}},
+		},
+	}
+}
+
+func shadowpvCRD() *apiextensionsv1.CustomResourceDefinition {
+	return &apiextensionsv1.CustomResourceDefinition{
+		ObjectMeta: metav1.ObjectMeta{Name: "shadowpvs.soteria.io"},
+		Spec: apiextensionsv1.CustomResourceDefinitionSpec{
+			Group: "soteria.io",
+			Names: apiextensionsv1.CustomResourceDefinitionNames{
+				Plural:   "shadowpvs",
+				Singular: "shadowpv",
+				Kind:     "ShadowPV",
+				ListKind: "ShadowPVList",
 			},
 			Scope: apiextensionsv1.ClusterScoped,
 			Versions: []apiextensionsv1.CustomResourceDefinitionVersion{{

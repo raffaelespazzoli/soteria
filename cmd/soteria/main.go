@@ -56,6 +56,7 @@ import (
 	"github.com/soteria-project/soteria/pkg/apiserver"
 	"github.com/soteria-project/soteria/pkg/controller/drexecution"
 	"github.com/soteria-project/soteria/pkg/controller/drplan"
+	"github.com/soteria-project/soteria/pkg/controller/shadowpv"
 	"github.com/soteria-project/soteria/pkg/controller/volumereplication"
 	"github.com/soteria-project/soteria/pkg/drivers"
 	"github.com/soteria-project/soteria/pkg/drivers/csiextension"
@@ -363,6 +364,16 @@ func main() {
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
 	}
+	if err := (&shadowpv.ShadowPVPublisherReconciler{
+		Client:    mgr.GetClient(),
+		Scheme:    mgr.GetScheme(),
+		LocalSite: siteName,
+		APIReader: mgr.GetAPIReader(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "Failed to create controller", "controller", "ShadowPVPublisher")
+		os.Exit(1)
+	}
+
 	if err := vrReconciler.SetupVolumeReplicationController(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "VolumeReplication")
 		os.Exit(1)

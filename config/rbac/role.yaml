@@ -9,6 +9,7 @@ rules:
   resources:
   - namespaces
   - persistentvolumeclaims
+  - persistentvolumes
   verbs:
   - get
   - list
@@ -91,6 +92,18 @@ rules:
   - drplans/finalizers
   verbs:
   - update
+- apiGroups:
+  - soteria.io
+  resources:
+  - shadowpvs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
 - apiGroups:
   - storage.k8s.io
   resources:
