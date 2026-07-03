@@ -21,10 +21,7 @@ GOBIN=$(shell go env GOBIN)
 endif
 
 # CONTAINER_TOOL defines the container tool to be used for building images.
-# Be aware that the target commands are only tested with Docker which is
-# scaffolded by default. However, you might want to replace it to use other
-# tools. (i.e. podman)
-CONTAINER_TOOL ?= docker
+CONTAINER_TOOL ?= podman
 
 # Setting SHELL to bash allows bash commands to be executed by recipes.
 # Options are set to exit when a recipe line exits non-zero or a piped command fails.
@@ -117,7 +114,9 @@ lint-config: golangci-lint ## Verify golangci-lint linter configuration
 .PHONY: integration
 integration: setup-envtest ## Run integration tests (envtest for controller, ScyllaDB for API server).
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
-	go test -tags=integration -p 1 ./test/integration/... -v -count=1
+	DOCKER_HOST=unix:///run/user/$$(id -u)/podman/podman.sock \
+	TESTCONTAINERS_RYUK_DISABLED=true \
+	go test -tags=integration -p 1 ./test/integration/... -v -count=1 -timeout 20m
 
 .PHONY: helmchart
 helmchart: manifests kustomize ## Render Helm chart from kustomize manifests

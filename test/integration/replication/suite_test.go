@@ -21,13 +21,14 @@ package replication_test
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"testing"
 	"time"
 
+	"github.com/docker/go-connections/nat"
 	"github.com/gocql/gocql"
 	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/network"
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -46,34 +47,31 @@ const (
 	scyllaImage     = "scylladb/scylla:latest"
 	cqlPort         = "9042/tcp"
 	startupTimeout  = 120 * time.Second
-	sessionTimeout  = 30 * time.Second
-	sessionRetries  = 15
+	sessionTimeout  = 10 * time.Second
+	sessionRetries  = 20
 	sessionRetryGap = 3 * time.Second
 )
 
 var (
-	dc1Container         testcontainers.Container
-	dc2Container         testcontainers.Container
-	tiebreakerContainer  testcontainers.Container
-	dc1Session           *gocql.Session
-	dc2Session           *gocql.Session
-	dc1IP                string
-	dc2IP                string
-	testNetwork          *testcontainers.DockerNetwork
-	testCodec            runtime.Codec
+	dc1Container        testcontainers.Container
+	dc2Container        testcontainers.Container
+	tiebreakerContainer testcontainers.Container
+	dc1Session          *gocql.Session
+	dc2Session          *gocql.Session
+	dc1Host             string
+	dc1Port             int
+	dc2Host             string
+	dc2Port             int
+	testCodec           runtime.Codec
 )
 
 func TestMain(m *testing.M) {
 	ctx := context.Background()
 
-	// Shared Docker network so both ScyllaDB nodes can gossip.
-	net, err := network.New(ctx)
-	if err != nil {
-		panic(fmt.Sprintf("creating docker network: %v", err))
-	}
-	testNetwork = net
-
 	// DC1 seed node — starts first, forms the cluster.
+	// All containers share the testcontainers default network
+	// (reaper_default under podman) for inter-node gossip.
+	var err error
 	dc1Container, err = testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
 		ContainerRequest: testcontainers.ContainerRequest{
 			Image:        scyllaImage,
@@ -87,10 +85,6 @@ func TestMain(m *testing.M) {
 				"--dc", dc1Name,
 				"--rack", "rack1",
 			},
-			Networks: []string{net.Name},
-			NetworkAliases: map[string][]string{
-				net.Name: {"scylla-dc1"},
-			},
 		},
 		Started: true,
 	})
@@ -98,7 +92,7 @@ func TestMain(m *testing.M) {
 		panic(fmt.Sprintf("starting DC1 container: %v", err))
 	}
 
-	dc1IP, err = dc1Container.ContainerIP(ctx)
+	dc1IP, err := dc1Container.ContainerIP(ctx)
 	if err != nil {
 		panic(fmt.Sprintf("getting DC1 container IP: %v", err))
 	}
@@ -117,10 +111,6 @@ func TestMain(m *testing.M) {
 				"--seeds", dc1IP,
 				"--dc", dc2Name,
 				"--rack", "rack1",
-			},
-			Networks: []string{net.Name},
-			NetworkAliases: map[string][]string{
-				net.Name: {"scylla-dc2"},
 			},
 		},
 		Started: true,
@@ -145,10 +135,6 @@ func TestMain(m *testing.M) {
 				"--dc", dc3Name,
 				"--rack", "rack1",
 			},
-			Networks: []string{net.Name},
-			NetworkAliases: map[string][]string{
-				net.Name: {"scylla-dc3"},
-			},
 		},
 		Started: true,
 	})
@@ -156,13 +142,11 @@ func TestMain(m *testing.M) {
 		panic(fmt.Sprintf("starting tiebreaker container: %v", err))
 	}
 
-	dc2IP, err = dc2Container.ContainerIP(ctx)
-	if err != nil {
-		panic(fmt.Sprintf("getting DC2 container IP: %v", err))
-	}
+	dc1Host, dc1Port = hostEndpoint(ctx, dc1Container, "9042")
+	dc2Host, dc2Port = hostEndpoint(ctx, dc2Container, "9042")
 
-	dc1Session = createSession(dc1IP, "", dc1Name)
-	dc2Session = createSession(dc2IP, "", dc2Name)
+	dc1Session = createSession(dc1Host, dc1Port, "", dc1Name)
+	dc2Session = createSession(dc2Host, dc2Port, "", dc2Name)
 
 	waitForCluster(dc1Session, 3)
 
@@ -179,8 +163,8 @@ func TestMain(m *testing.M) {
 	// Re-create sessions with the keyspace set.
 	dc1Session.Close()
 	dc2Session.Close()
-	dc1Session = createSession(dc1IP, testKeyspace, dc1Name)
-	dc2Session = createSession(dc2IP, testKeyspace, dc2Name)
+	dc1Session = createSession(dc1Host, dc1Port, testKeyspace, dc1Name)
+	dc2Session = createSession(dc2Host, dc2Port, testKeyspace, dc2Name)
 
 	// Build shared codec.
 	scheme := runtime.NewScheme()
@@ -197,7 +181,6 @@ func TestMain(m *testing.M) {
 	_ = dc1Container.Terminate(ctx)
 	_ = dc2Container.Terminate(ctx)
 	_ = tiebreakerContainer.Terminate(ctx)
-	_ = net.Remove(ctx)
 
 	os.Exit(exitCode)
 }
@@ -231,12 +214,21 @@ func newDRExecutionStoreForDC(session *gocql.Session) *scyllastore.Store {
 
 // ---------- helpers ----------
 
-func createSession(contactIP, keyspace, localDC string) *gocql.Session {
+func createSession(contactIP string, port int, keyspace, localDC string) *gocql.Session {
 	cluster := gocql.NewCluster(contactIP)
+	cluster.Port = port
 	cluster.Consistency = gocql.LocalOne
 	cluster.ConnectTimeout = sessionTimeout
 	cluster.Timeout = 10 * time.Second
 	cluster.PoolConfig.HostSelectionPolicy = gocql.DCAwareRoundRobinPolicy(localDC)
+	// Under rootless podman, containers' internal IPs aren't routable from
+	// the host. Pin ALL connections (including those discovered via gossip
+	// events) to the mapped host endpoint via an address translator.
+	cluster.DisableInitialHostLookup = true
+	cluster.IgnorePeerAddr = true
+	cluster.AddressTranslator = &pinnedTranslator{ip: net.ParseIP(contactIP), port: port}
+	cluster.Events.DisableNodeStatusEvents = true
+	cluster.Events.DisableTopologyEvents = true
 	if keyspace != "" {
 		cluster.Keyspace = keyspace
 	}
@@ -250,7 +242,32 @@ func createSession(contactIP, keyspace, localDC string) *gocql.Session {
 		}
 		time.Sleep(sessionRetryGap)
 	}
-	panic(fmt.Sprintf("creating session for %s (dc=%s) after %d retries: %v", contactIP, localDC, sessionRetries, err))
+	panic(fmt.Sprintf("creating session for %s:%d (dc=%s) after %d retries: %v", contactIP, port, localDC, sessionRetries, err))
+}
+
+// pinnedTranslator forces gocql to always connect to the configured host
+// endpoint, ignoring internal container IPs discovered via gossip or topology
+// events that aren't routable from the host under rootless podman.
+type pinnedTranslator struct {
+	ip   net.IP
+	port int
+}
+
+func (t *pinnedTranslator) Translate(_ net.IP, _ int) (net.IP, int) {
+	return t.ip, t.port
+}
+
+// hostEndpoint returns the host-accessible address and mapped port for a container.
+func hostEndpoint(ctx context.Context, c testcontainers.Container, port string) (string, int) {
+	host, err := c.Host(ctx)
+	if err != nil {
+		panic(fmt.Sprintf("getting container host: %v", err))
+	}
+	mapped, err := c.MappedPort(ctx, nat.Port(port))
+	if err != nil {
+		panic(fmt.Sprintf("getting mapped port: %v", err))
+	}
+	return host, mapped.Int()
 }
 
 // waitForCluster polls system.peers until expectedNodes are visible.
