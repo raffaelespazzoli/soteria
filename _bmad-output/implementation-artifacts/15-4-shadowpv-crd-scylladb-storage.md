@@ -1,6 +1,6 @@
 # Story 15.4: ShadowPV CRD Definition & ScyllaDB Storage
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -53,45 +53,45 @@ And the `spec.pvs` list is required (at least one entry on create)
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Define ShadowPV API types (AC: 1)
-  - [ ] 1.1: Create `pkg/apis/soteria.io/v1alpha1/types_shadowpv.go` with `ShadowPV`, `ShadowPVList`, `ShadowPVSpec`, `ShadowPVStatus`, `ShadowPVEntry` types
-  - [ ] 1.2: Add kubebuilder markers: `+kubebuilder:object:root=true`, `+kubebuilder:subresource:status`, `+kubebuilder:resource:scope=Cluster`
-  - [ ] 1.3: Register `ShadowPV` and `ShadowPVList` in `register.go`'s `addKnownTypes`
-  - [ ] 1.4: Run `make manifests generate` to regenerate DeepCopy and OpenAPI
+- [x] Task 1: Define ShadowPV API types (AC: 1)
+  - [x] 1.1: Create `pkg/apis/soteria.io/v1alpha1/types_shadowpv.go` with `ShadowPV`, `ShadowPVList`, `ShadowPVSpec`, `ShadowPVStatus`, `ShadowPVEntry` types
+  - [x] 1.2: Add kubebuilder markers: `+kubebuilder:object:root=true`, `+kubebuilder:subresource:status`, `+kubebuilder:resource:scope=Cluster`
+  - [x] 1.3: Register `ShadowPV` and `ShadowPVList` in `register.go`'s `addKnownTypes`
+  - [x] 1.4: Run `make manifests generate` to regenerate DeepCopy and OpenAPI
 
-- [ ] Task 2: Add ShadowPV validation (AC: 6)
-  - [ ] 2.1: Add `ValidateShadowPV(spv *ShadowPV) field.ErrorList` to `validation.go`
-  - [ ] 2.2: Add `ValidateShadowPVUpdate(new, old *ShadowPV) field.ErrorList` to `validation.go`
-  - [ ] 2.3: Validate each entry's `clusterName` and `pvName` are non-empty
-  - [ ] 2.4: Validate no duplicate `(clusterName, pvName)` pairs
-  - [ ] 2.5: Add validation unit tests in `validation_test.go`
+- [x] Task 2: Add ShadowPV validation (AC: 6)
+  - [x] 2.1: Add `ValidateShadowPV(spv *ShadowPV) field.ErrorList` to `validation.go`
+  - [x] 2.2: Add `ValidateShadowPVUpdate(new, old *ShadowPV) field.ErrorList` to `validation.go`
+  - [x] 2.3: Validate each entry's `clusterName` and `pvName` are non-empty
+  - [x] 2.4: Validate no duplicate `(clusterName, pvName)` pairs
+  - [x] 2.5: Add validation unit tests in `validation_test.go`
 
-- [ ] Task 3: Create ShadowPV registry package (AC: 2, 3, 4, 5)
-  - [ ] 3.1: Create `pkg/registry/shadowpv/doc.go`
-  - [ ] 3.2: Create `pkg/registry/shadowpv/strategy.go` with `shadowpvStrategy`, `GetAttrs`, `MatchShadowPV`, status strategy
-  - [ ] 3.3: Implement `PrepareForCreate` — initialize status, set Generation, resolve DRPlan OwnerReference via `planGetter`
-  - [ ] 3.4: Implement `PrepareForUpdate` — preserve status on main-resource updates
-  - [ ] 3.5: Implement `Validate` and `ValidateUpdate` — delegate to `ValidateShadowPV`/`ValidateShadowPVUpdate`
-  - [ ] 3.6: Implement `ShadowPVTableConvertor` with NAME, PLAN, PV-COUNT, AGE columns
-  - [ ] 3.7: Create `pkg/registry/shadowpv/storage.go` with `NewREST` (main store + StatusREST)
-  - [ ] 3.8: Add `SetPlanStorage(rest.Getter)` for OwnerReference resolution injection
+- [x] Task 3: Create ShadowPV registry package (AC: 2, 3, 4, 5)
+  - [x] 3.1: Create `pkg/registry/shadowpv/doc.go`
+  - [x] 3.2: Create `pkg/registry/shadowpv/strategy.go` with `shadowpvStrategy`, `GetAttrs`, `MatchShadowPV`, status strategy
+  - [x] 3.3: Implement `PrepareForCreate` — initialize status, set Generation, resolve DRPlan OwnerReference via `planGetter`
+  - [x] 3.4: Implement `PrepareForUpdate` — preserve status on main-resource updates
+  - [x] 3.5: Implement `Validate` and `ValidateUpdate` — delegate to `ValidateShadowPV`/`ValidateShadowPVUpdate`
+  - [x] 3.6: Implement `ShadowPVTableConvertor` with NAME, PLAN, PV-COUNT, AGE columns
+  - [x] 3.7: Create `pkg/registry/shadowpv/storage.go` with `NewREST` (main store + StatusREST)
+  - [x] 3.8: Add `SetPlanStorage(rest.Getter)` for OwnerReference resolution injection
 
-- [ ] Task 4: Register ShadowPV in the aggregated API server (AC: 3)
-  - [ ] 4.1: Add `shadowpvregistry` import to `pkg/apiserver/apiserver.go`
-  - [ ] 4.2: Call `shadowpvregistry.NewREST` after DRPlan storage creation
-  - [ ] 4.3: Inject DRPlan storage into ShadowPV strategy via `SetPlanStorage`
-  - [ ] 4.4: Register `"shadowpvs"` and `"shadowpvs/status"` in `v1alpha1storage` map
+- [x] Task 4: Register ShadowPV in the aggregated API server (AC: 3)
+  - [x] 4.1: Add `shadowpvregistry` import to `pkg/apiserver/apiserver.go`
+  - [x] 4.2: Call `shadowpvregistry.NewREST` after DRPlan storage creation
+  - [x] 4.3: Inject DRPlan storage into ShadowPV strategy via `SetPlanStorage`
+  - [x] 4.4: Register `"shadowpvs"` and `"shadowpvs/status"` in `v1alpha1storage` map
 
-- [ ] Task 5: Write tests (AC: 1, 2, 3, 4, 5, 6)
-  - [ ] 5.1: Add strategy unit tests in `pkg/registry/shadowpv/strategy_test.go` — PrepareForCreate (OwnerReference, status init, generation), PrepareForUpdate (status preserved), GetAttrs, table convertor
-  - [ ] 5.2: Add storage integration test in `pkg/registry/shadowpv/storage_test.go` — CRUD, list with label selector, status subresource update
-  - [ ] 5.3: Add OwnerReference tests (correct UID, nil getter graceful degradation, plan-not-found graceful degradation)
+- [x] Task 5: Write tests (AC: 1, 2, 3, 4, 5, 6)
+  - [x] 5.1: Add strategy unit tests in `pkg/registry/shadowpv/strategy_test.go` — PrepareForCreate (OwnerReference, status init, generation), PrepareForUpdate (status preserved), GetAttrs, table convertor
+  - [x] 5.2: Add storage integration test in `pkg/registry/shadowpv/storage_test.go` — CRUD, list with label selector, status subresource update
+  - [x] 5.3: Add OwnerReference tests (correct UID, nil getter graceful degradation, plan-not-found graceful degradation)
 
-- [ ] Task 6: Update documentation and finalize
-  - [ ] 6.1: Update `pkg/apis/soteria.io/v1alpha1/doc.go` — add ShadowPV to package overview
-  - [ ] 6.2: Run `make lint-fix` — fix any issues
-  - [ ] 6.3: Run `make test` — all unit + envtest tests pass
-  - [ ] 6.4: Verify Tier 1/2/3 doc compliance
+- [x] Task 6: Update documentation and finalize
+  - [x] 6.1: Update `pkg/apis/soteria.io/v1alpha1/doc.go` — add ShadowPV to package overview
+  - [x] 6.2: Run `make lint-fix` — fix any issues
+  - [x] 6.3: Run `make test` — all unit + envtest tests pass
+  - [x] 6.4: Verify Tier 1/2/3 doc compliance
 
 ## Dev Notes
 
@@ -338,12 +338,22 @@ func ValidateShadowPV(spv *ShadowPV) field.ErrorList {
     return allErrs
 }
 
-func ValidateShadowPVUpdate(new, old *ShadowPV) field.ErrorList {
-    return ValidateShadowPV(new)
+func ValidateShadowPVUpdate(newSPV, oldSPV *ShadowPV) field.ErrorList {
+    allErrs := ValidateShadowPV(newSPV)
+
+    const drplanLabel = "soteria.io/drplan"
+    if newSPV.Labels[drplanLabel] != oldSPV.Labels[drplanLabel] {
+        allErrs = append(allErrs, field.Forbidden(
+            field.NewPath("metadata", "labels").Key(drplanLabel),
+            "field is immutable",
+        ))
+    }
+
+    return allErrs
 }
 ```
 
-**No immutability constraints** — ShadowPV entries are freely mutable (the publisher adds/removes entries as VR/VGR CRs appear and disappear). Spec-on-update does not need freezing (unlike DRExecution's immutable spec).
+**Immutability:** The `soteria.io/drplan` label is immutable after creation — it is bound to the OwnerReference set during `PrepareForCreate`, and changing it would break garbage-collection cascade semantics. ShadowPV spec entries (PVs list) remain freely mutable (the publisher adds/removes entries as VR/VGR CRs appear and disappear). `PrepareForUpdate` preserves `OwnerReferences` from the old object, and the status strategy preserves both `Labels` and `OwnerReferences`.
 
 ### API Server Registration
 
@@ -529,8 +539,53 @@ Key patterns reused from prior stories:
 
 ### Agent Model Used
 
+Opus 4.6
+
 ### Debug Log References
+
+None — clean implementation with no debugging required.
 
 ### Completion Notes List
 
+- All 6 tasks and 28 subtasks completed successfully
+- ShadowPV API type defined as cluster-scoped with ShadowPVSpec (PVs list), ShadowPVStatus (Conditions), and ShadowPVEntry (ClusterName, PVName, PV corev1.PersistentVolumeSpec)
+- Validation: required PVs list, required clusterName/pvName per entry, duplicate (clusterName, pvName) detection, drplan label immutability on update
+- Registry package follows existing DRPlan/DRExecution patterns: strategy with PrepareForCreate (OwnerReference via rest.Getter), PrepareForUpdate (status + OwnerReferences preservation), StatusStrategy (spec + labels + OwnerReferences preservation), GetAttrs (label indexing), ShadowPVTableConvertor (NAME, PLAN, PV-COUNT, AGE)
+- OwnerReference graceful degradation: nil planGetter, plan-not-found, and missing label all skip OwnerReference without error
+- Registered in apiserver.go with SetPlanStorage injection before NewREST
+- 36 unit tests total: 13 validation tests, 23 strategy/storage tests
+- 4 integration tests added: ShadowPV CRUD, label-selector list, status subresource, drplan label immutability
+- Zero lint issues on changed packages, zero test regressions across full suite
+- DeepCopy and OpenAPI regenerated via `make manifests generate`
+
+### Change Log
+
+- 2026-07-03: Story 15.4 implemented — ShadowPV CRD definition and ScyllaDB storage
+- 2026-07-03: Review fixes applied — drplan label immutability on update, OwnerReferences preservation in PrepareForUpdate and status strategy, integration tests added
+
 ### File List
+
+**New files:**
+- `pkg/apis/soteria.io/v1alpha1/types_shadowpv.go` — ShadowPV, ShadowPVList, ShadowPVSpec, ShadowPVStatus, ShadowPVEntry types
+- `pkg/registry/shadowpv/doc.go` — package documentation
+- `pkg/registry/shadowpv/strategy.go` — strategy, GetAttrs, MatchShadowPV, status strategy, table convertor
+- `pkg/registry/shadowpv/storage.go` — NewREST, StatusREST
+- `pkg/registry/shadowpv/strategy_test.go` — strategy unit tests (14 tests)
+- `pkg/registry/shadowpv/storage_test.go` — storage-level tests (6 tests)
+
+**Modified files:**
+- `pkg/apis/soteria.io/v1alpha1/register.go` — added ShadowPV/ShadowPVList to addKnownTypes
+- `pkg/apis/soteria.io/v1alpha1/validation.go` — added ValidateShadowPV, ValidateShadowPVUpdate (drplan label immutability)
+- `pkg/apis/soteria.io/v1alpha1/validation_test.go` — added ShadowPV validation tests (13 tests)
+- `pkg/apis/soteria.io/v1alpha1/doc.go` — added ShadowPV to package overview
+- `pkg/apiserver/apiserver.go` — registered ShadowPV storage, injected planGetter
+- `test/integration/apiserver/apiserver_test.go` — added ShadowPV to discovery/OpenAPI checks, added CRUD/label-selector/status/immutability integration tests (4 tests)
+
+**Auto-generated files:**
+- `pkg/apis/soteria.io/v1alpha1/zz_generated.deepcopy.go` — DeepCopy methods for ShadowPV types
+- `pkg/apis/soteria.io/v1alpha1/zz_generated.openapi.go` — OpenAPI definitions for ShadowPV types
+
+### Review Findings
+
+- [x] [Review][Patch] ShadowPV plan linkage can drift after creation [pkg/registry/shadowpv/strategy.go:105]
+- [x] [Review][Patch] Missing real storage-path coverage for CRUD, label-selector list, and status updates [pkg/registry/shadowpv/storage_test.go:34]

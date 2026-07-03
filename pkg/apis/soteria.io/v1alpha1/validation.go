@@ -17,6 +17,8 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"fmt"
+
 	"k8s.io/apimachinery/pkg/util/validation/field"
 )
 
@@ -99,6 +101,55 @@ func ValidateDRPlanUpdate(newPlan, oldPlan *DRPlan) field.ErrorList {
 	}
 	if newPlan.Spec.VolumeReplicationDriver != oldPlan.Spec.VolumeReplicationDriver {
 		allErrs = append(allErrs, field.Forbidden(specPath.Child("volumeReplicationDriver"), "field is immutable"))
+	}
+
+	return allErrs
+}
+
+// ValidateShadowPV validates per-object field constraints on a ShadowPV.
+func ValidateShadowPV(spv *ShadowPV) field.ErrorList {
+	allErrs := field.ErrorList{}
+	specPath := field.NewPath("spec")
+	pvsPath := specPath.Child("pvs")
+
+	if len(spv.Spec.PVs) == 0 {
+		allErrs = append(allErrs, field.Required(pvsPath, "at least one PV entry required"))
+	}
+
+	seen := make(map[string]struct{})
+	for i, entry := range spv.Spec.PVs {
+		entryPath := pvsPath.Index(i)
+		if entry.ClusterName == "" {
+			allErrs = append(allErrs, field.Required(entryPath.Child("clusterName"), ""))
+		}
+		if entry.PVName == "" {
+			allErrs = append(allErrs, field.Required(entryPath.Child("pvName"), ""))
+		}
+		key := entry.ClusterName + "/" + entry.PVName
+		if _, dup := seen[key]; dup {
+			allErrs = append(allErrs, field.Duplicate(
+				entryPath,
+				fmt.Sprintf("(%s, %s)", entry.ClusterName, entry.PVName),
+			))
+		}
+		seen[key] = struct{}{}
+	}
+
+	return allErrs
+}
+
+// ValidateShadowPVUpdate validates an update to a ShadowPV.
+// The drplan label is bound to the OwnerReference at creation time;
+// changing it would break garbage-collection cascade semantics.
+func ValidateShadowPVUpdate(newSPV, oldSPV *ShadowPV) field.ErrorList {
+	allErrs := ValidateShadowPV(newSPV)
+
+	const drplanLabel = "soteria.io/drplan"
+	if newSPV.Labels[drplanLabel] != oldSPV.Labels[drplanLabel] {
+		allErrs = append(allErrs, field.Forbidden(
+			field.NewPath("metadata", "labels").Key(drplanLabel),
+			"field is immutable",
+		))
 	}
 
 	return allErrs

@@ -38,6 +38,7 @@ import (
 
 	drexecutionregistry "github.com/soteria-project/soteria/pkg/registry/drexecution"
 	drplanregistry "github.com/soteria-project/soteria/pkg/registry/drplan"
+	shadowpvregistry "github.com/soteria-project/soteria/pkg/registry/shadowpv"
 
 	cacherstorage "k8s.io/apiserver/pkg/storage/cacher"
 )
@@ -156,6 +157,15 @@ func (c CompletedConfig) New() (*SoteriaServer, error) {
 	if drplanTC != nil {
 		drplanTC.SetDRExecutionStorage(drexecStore)
 	}
+
+	shadowpvregistry.Strategy.SetPlanStorage(drplanStore)
+
+	shadowpvStore, shadowpvStatusStore, err := shadowpvregistry.NewREST(soteriainstall.Scheme, optsGetter)
+	if err != nil {
+		return nil, fmt.Errorf("creating ShadowPV storage: %w", err)
+	}
+	v1alpha1storage["shadowpvs"] = shadowpvStore
+	v1alpha1storage["shadowpvs/status"] = shadowpvStatusStore
 
 	apiGroupInfo.VersionedResourcesStorageMap["v1alpha1"] = v1alpha1storage
 

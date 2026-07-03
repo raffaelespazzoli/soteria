@@ -47,6 +47,8 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&DRPlanList{},
 		&DRExecution{},
 		&DRExecutionList{},
+		&ShadowPV{},
+		&ShadowPVList{},
 	)
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil

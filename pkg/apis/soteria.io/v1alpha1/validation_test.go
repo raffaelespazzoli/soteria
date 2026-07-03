@@ -18,6 +18,8 @@ package v1alpha1
 
 import (
 	"testing"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestDRExecutionStatus_IsTerminal(t *testing.T) {
@@ -544,6 +546,231 @@ func TestValidateDRPlanUpdate_VolumeReplicationClass_Immutable(t *testing.T) {
 	if !foundImmutable {
 		t.Errorf("expected immutability error on spec.volumeReplicationDriver, got: %v", errs)
 	}
+}
+
+func TestValidateShadowPV(t *testing.T) {
+	tests := []struct {
+		name       string
+		spv        *ShadowPV
+		wantErrors int
+		wantFields []string
+	}{
+		{
+			name: "valid spec with 2 entries from different clusters",
+			spv: &ShadowPV{
+				Spec: ShadowPVSpec{
+					PVs: []ShadowPVEntry{
+						{ClusterName: "east", PVName: "pv-data-1"},
+						{ClusterName: "west", PVName: "pv-data-2"},
+					},
+				},
+			},
+			wantErrors: 0,
+		},
+		{
+			name: "empty PVs list",
+			spv: &ShadowPV{
+				Spec: ShadowPVSpec{
+					PVs: []ShadowPVEntry{},
+				},
+			},
+			wantErrors: 1,
+			wantFields: []string{"spec.pvs"},
+		},
+		{
+			name: "nil PVs list",
+			spv: &ShadowPV{
+				Spec: ShadowPVSpec{},
+			},
+			wantErrors: 1,
+			wantFields: []string{"spec.pvs"},
+		},
+		{
+			name: "empty clusterName",
+			spv: &ShadowPV{
+				Spec: ShadowPVSpec{
+					PVs: []ShadowPVEntry{
+						{ClusterName: "", PVName: "pv-data-1"},
+					},
+				},
+			},
+			wantErrors: 1,
+			wantFields: []string{"spec.pvs[0].clusterName"},
+		},
+		{
+			name: "empty pvName",
+			spv: &ShadowPV{
+				Spec: ShadowPVSpec{
+					PVs: []ShadowPVEntry{
+						{ClusterName: "east", PVName: ""},
+					},
+				},
+			},
+			wantErrors: 1,
+			wantFields: []string{"spec.pvs[0].pvName"},
+		},
+		{
+			name: "duplicate entries",
+			spv: &ShadowPV{
+				Spec: ShadowPVSpec{
+					PVs: []ShadowPVEntry{
+						{ClusterName: "east", PVName: "pv-data-1"},
+						{ClusterName: "east", PVName: "pv-data-1"},
+					},
+				},
+			},
+			wantErrors: 1,
+			wantFields: []string{"spec.pvs[1]"},
+		},
+		{
+			name: "same cluster different pvNames is valid",
+			spv: &ShadowPV{
+				Spec: ShadowPVSpec{
+					PVs: []ShadowPVEntry{
+						{ClusterName: "east", PVName: "pv-data-1"},
+						{ClusterName: "east", PVName: "pv-data-2"},
+					},
+				},
+			},
+			wantErrors: 0,
+		},
+		{
+			name: "different clusters same pvName is valid",
+			spv: &ShadowPV{
+				Spec: ShadowPVSpec{
+					PVs: []ShadowPVEntry{
+						{ClusterName: "east", PVName: "pv-data-1"},
+						{ClusterName: "west", PVName: "pv-data-1"},
+					},
+				},
+			},
+			wantErrors: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			errs := ValidateShadowPV(tt.spv)
+			if len(errs) != tt.wantErrors {
+				t.Fatalf("ValidateShadowPV() returned %d errors, want %d: %v", len(errs), tt.wantErrors, errs)
+			}
+			for i, wantField := range tt.wantFields {
+				if i >= len(errs) {
+					break
+				}
+				if errs[i].Field != wantField {
+					t.Errorf("error[%d].Field = %q, want %q", i, errs[i].Field, wantField)
+				}
+			}
+		})
+	}
+}
+
+func TestValidateShadowPVUpdate(t *testing.T) {
+	old := &ShadowPV{
+		Spec: ShadowPVSpec{
+			PVs: []ShadowPVEntry{
+				{ClusterName: "east", PVName: "pv-data-1"},
+			},
+		},
+	}
+
+	t.Run("valid update", func(t *testing.T) {
+		updated := &ShadowPV{
+			Spec: ShadowPVSpec{
+				PVs: []ShadowPVEntry{
+					{ClusterName: "east", PVName: "pv-data-1"},
+					{ClusterName: "west", PVName: "pv-data-2"},
+				},
+			},
+		}
+		errs := ValidateShadowPVUpdate(updated, old)
+		if len(errs) != 0 {
+			t.Errorf("expected 0 errors, got %d: %v", len(errs), errs)
+		}
+	})
+
+	t.Run("invalid update validates new object", func(t *testing.T) {
+		invalid := &ShadowPV{
+			Spec: ShadowPVSpec{PVs: []ShadowPVEntry{}},
+		}
+		errs := ValidateShadowPVUpdate(invalid, old)
+		if len(errs) == 0 {
+			t.Error("expected errors for invalid new ShadowPV, got 0")
+		}
+	})
+
+	t.Run("drplan label changed", func(t *testing.T) {
+		oldLabeled := &ShadowPV{
+			ObjectMeta: metav1.ObjectMeta{
+				Labels: map[string]string{"soteria.io/drplan": "plan-a"},
+			},
+			Spec: ShadowPVSpec{
+				PVs: []ShadowPVEntry{{ClusterName: "east", PVName: "pv-data-1"}},
+			},
+		}
+		newLabeled := &ShadowPV{
+			ObjectMeta: metav1.ObjectMeta{
+				Labels: map[string]string{"soteria.io/drplan": "plan-b"},
+			},
+			Spec: ShadowPVSpec{
+				PVs: []ShadowPVEntry{{ClusterName: "east", PVName: "pv-data-1"}},
+			},
+		}
+		errs := ValidateShadowPVUpdate(newLabeled, oldLabeled)
+		if len(errs) != 1 {
+			t.Fatalf("expected 1 error for drplan label change, got %d: %v", len(errs), errs)
+		}
+		if errs[0].Field != `metadata.labels[soteria.io/drplan]` {
+			t.Errorf("error.Field = %q, want %q", errs[0].Field, `metadata.labels[soteria.io/drplan]`)
+		}
+	})
+
+	t.Run("drplan label removed", func(t *testing.T) {
+		oldLabeled := &ShadowPV{
+			ObjectMeta: metav1.ObjectMeta{
+				Labels: map[string]string{"soteria.io/drplan": "plan-a"},
+			},
+			Spec: ShadowPVSpec{
+				PVs: []ShadowPVEntry{{ClusterName: "east", PVName: "pv-data-1"}},
+			},
+		}
+		newNoLabel := &ShadowPV{
+			Spec: ShadowPVSpec{
+				PVs: []ShadowPVEntry{{ClusterName: "east", PVName: "pv-data-1"}},
+			},
+		}
+		errs := ValidateShadowPVUpdate(newNoLabel, oldLabeled)
+		if len(errs) != 1 {
+			t.Fatalf("expected 1 error for drplan label removal, got %d: %v", len(errs), errs)
+		}
+	})
+
+	t.Run("drplan label unchanged", func(t *testing.T) {
+		oldLabeled := &ShadowPV{
+			ObjectMeta: metav1.ObjectMeta{
+				Labels: map[string]string{"soteria.io/drplan": "plan-a"},
+			},
+			Spec: ShadowPVSpec{
+				PVs: []ShadowPVEntry{{ClusterName: "east", PVName: "pv-data-1"}},
+			},
+		}
+		newLabeled := &ShadowPV{
+			ObjectMeta: metav1.ObjectMeta{
+				Labels: map[string]string{"soteria.io/drplan": "plan-a"},
+			},
+			Spec: ShadowPVSpec{
+				PVs: []ShadowPVEntry{
+					{ClusterName: "east", PVName: "pv-data-1"},
+					{ClusterName: "west", PVName: "pv-data-2"},
+				},
+			},
+		}
+		errs := ValidateShadowPVUpdate(newLabeled, oldLabeled)
+		if len(errs) != 0 {
+			t.Errorf("expected 0 errors when drplan label unchanged, got %d: %v", len(errs), errs)
+		}
+	})
 }
 
 func TestValidateDRPlan_VolumeReplicationDriver_InvalidValue(t *testing.T) {

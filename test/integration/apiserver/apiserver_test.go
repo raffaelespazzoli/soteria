@@ -54,6 +54,14 @@ func drexecutionGVR() schema.GroupVersionResource {
 	}
 }
 
+func shadowpvGVR() schema.GroupVersionResource {
+	return schema.GroupVersionResource{
+		Group:    soteriav1alpha1.GroupName,
+		Version:  "v1alpha1",
+		Resource: "shadowpvs",
+	}
+}
+
 func newDynamicClient(t *testing.T) dynamic.Interface {
 	t.Helper()
 	cfg := rest.CopyConfig(restConfig)
@@ -79,6 +87,7 @@ func TestAPIServer_Discovery_SoteriaGroupRegistered(t *testing.T) {
 	wantResources := map[string]bool{
 		"drplans":      false,
 		"drexecutions": false,
+		"shadowpvs":    false,
 	}
 	for _, r := range resources.APIResources {
 		if _, ok := wantResources[r.Name]; ok {
@@ -374,7 +383,7 @@ func TestAPIServer_OpenAPI_SoteriaTypesPresent(t *testing.T) {
 		t.Fatal("OpenAPI doc missing components.schemas")
 	}
 
-	for _, kind := range []string{"DRPlan", "DRExecution"} {
+	for _, kind := range []string{"DRPlan", "DRExecution", "ShadowPV"} {
 		found := false
 		for key := range schemas {
 			if len(key) >= len(kind) && key[len(key)-len(kind):] == kind {
@@ -548,5 +557,292 @@ func TestAPIServer_DRPlan_Watch(t *testing.T) {
 		case <-timer.C:
 			t.Fatal("timed out waiting for ADDED event")
 		}
+	}
+}
+
+// --- ShadowPV integration tests ---
+
+func TestAPIServer_ShadowPV_CRUD(t *testing.T) {
+	client := newDynamicClient(t)
+	ctx := context.Background()
+
+	planName := "spv-crud-plan"
+	createDRPlan(t, ctx, client, planName, soteriav1alpha1.PhaseSteadyState, nil)
+	defer deleteDRPlan(t, ctx, client, planName)
+
+	spv := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "soteria.io/v1alpha1",
+			"kind":       "ShadowPV",
+			"metadata": map[string]any{
+				"name":   "spv-crud-test",
+				"labels": map[string]any{"soteria.io/drplan": planName},
+			},
+			"spec": map[string]any{
+				"pvs": []any{
+					map[string]any{
+						"clusterName": "east",
+						"pvName":      "pv-data-0",
+						"pv": map[string]any{
+							"capacity":    map[string]any{"storage": "10Gi"},
+							"accessModes": []any{"ReadWriteOnce"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Create
+	created, err := client.Resource(shadowpvGVR()).Create(ctx, spv, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Create ShadowPV failed: %v", err)
+	}
+	if created.GetName() != "spv-crud-test" {
+		t.Errorf("expected name spv-crud-test, got %s", created.GetName())
+	}
+	if created.GetResourceVersion() == "" {
+		t.Error("expected non-empty resource version after create")
+	}
+
+	// Verify OwnerReference was set by PrepareForCreate
+	ownerRefs := created.GetOwnerReferences()
+	if len(ownerRefs) != 1 {
+		t.Fatalf("expected 1 OwnerReference, got %d", len(ownerRefs))
+	}
+	if ownerRefs[0].Kind != "DRPlan" {
+		t.Errorf("expected OwnerReference Kind DRPlan, got %q", ownerRefs[0].Kind)
+	}
+
+	// Get
+	got, err := client.Resource(shadowpvGVR()).Get(ctx, "spv-crud-test", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("Get ShadowPV failed: %v", err)
+	}
+	if got.GetName() != "spv-crud-test" {
+		t.Errorf("expected name spv-crud-test, got %s", got.GetName())
+	}
+
+	// List
+	list, err := client.Resource(shadowpvGVR()).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		t.Fatalf("List ShadowPV failed: %v", err)
+	}
+	if len(list.Items) < 1 {
+		t.Error("expected at least 1 item in ShadowPV list")
+	}
+
+	// Update spec (add a PV entry)
+	pvs, _, _ := unstructured.NestedSlice(got.Object, "spec", "pvs")
+	pvs = append(pvs, map[string]any{
+		"clusterName": "west",
+		"pvName":      "pv-data-1",
+		"pv": map[string]any{
+			"capacity":    map[string]any{"storage": "20Gi"},
+			"accessModes": []any{"ReadWriteOnce"},
+		},
+	})
+	_ = unstructured.SetNestedSlice(got.Object, pvs, "spec", "pvs")
+	updated, err := client.Resource(shadowpvGVR()).Update(ctx, got, metav1.UpdateOptions{})
+	if err != nil {
+		t.Fatalf("Update ShadowPV failed: %v", err)
+	}
+	if updated.GetResourceVersion() == got.GetResourceVersion() {
+		t.Error("expected resource version to change after update")
+	}
+
+	// Delete
+	err = client.Resource(shadowpvGVR()).Delete(ctx, "spv-crud-test", metav1.DeleteOptions{})
+	if err != nil {
+		t.Fatalf("Delete ShadowPV failed: %v", err)
+	}
+
+	// Verify deleted
+	_, err = client.Resource(shadowpvGVR()).Get(ctx, "spv-crud-test", metav1.GetOptions{})
+	if err == nil {
+		t.Fatal("expected NotFound error after delete")
+	}
+}
+
+func TestAPIServer_ShadowPV_LabelSelectorList(t *testing.T) {
+	client := newDynamicClient(t)
+	ctx := context.Background()
+
+	planA := "spv-label-plan-a"
+	planB := "spv-label-plan-b"
+	createDRPlan(t, ctx, client, planA, soteriav1alpha1.PhaseSteadyState, nil)
+	defer deleteDRPlan(t, ctx, client, planA)
+	createDRPlan(t, ctx, client, planB, soteriav1alpha1.PhaseSteadyState, nil)
+	defer deleteDRPlan(t, ctx, client, planB)
+
+	for _, tc := range []struct {
+		name string
+		plan string
+	}{
+		{"spv-label-a", planA},
+		{"spv-label-b", planB},
+	} {
+		spv := &unstructured.Unstructured{
+			Object: map[string]any{
+				"apiVersion": "soteria.io/v1alpha1",
+				"kind":       "ShadowPV",
+				"metadata": map[string]any{
+					"name":   tc.name,
+					"labels": map[string]any{"soteria.io/drplan": tc.plan},
+				},
+				"spec": map[string]any{
+					"pvs": []any{
+						map[string]any{
+							"clusterName": "east",
+							"pvName":      "pv-0",
+							"pv":          map[string]any{"capacity": map[string]any{"storage": "5Gi"}},
+						},
+					},
+				},
+			},
+		}
+		_, err := client.Resource(shadowpvGVR()).Create(ctx, spv, metav1.CreateOptions{})
+		if err != nil {
+			t.Fatalf("Create ShadowPV %s failed: %v", tc.name, err)
+		}
+		defer func(name string) {
+			_ = client.Resource(shadowpvGVR()).Delete(ctx, name, metav1.DeleteOptions{})
+		}(tc.name)
+	}
+
+	// List with label selector filtering to planA
+	list, err := client.Resource(shadowpvGVR()).List(ctx, metav1.ListOptions{
+		LabelSelector: "soteria.io/drplan=" + planA,
+	})
+	if err != nil {
+		t.Fatalf("List with label selector failed: %v", err)
+	}
+
+	found := false
+	for _, item := range list.Items {
+		if item.GetName() == "spv-label-a" {
+			found = true
+		}
+		if item.GetName() == "spv-label-b" {
+			t.Error("spv-label-b should not match label selector for planA")
+		}
+	}
+	if !found {
+		t.Error("spv-label-a should match label selector for planA")
+	}
+}
+
+func TestAPIServer_ShadowPV_StatusSubresource(t *testing.T) {
+	client := newDynamicClient(t)
+	ctx := context.Background()
+
+	planName := "spv-status-plan"
+	createDRPlan(t, ctx, client, planName, soteriav1alpha1.PhaseSteadyState, nil)
+	defer deleteDRPlan(t, ctx, client, planName)
+
+	spv := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "soteria.io/v1alpha1",
+			"kind":       "ShadowPV",
+			"metadata": map[string]any{
+				"name":   "spv-status-test",
+				"labels": map[string]any{"soteria.io/drplan": planName},
+			},
+			"spec": map[string]any{
+				"pvs": []any{
+					map[string]any{
+						"clusterName": "east",
+						"pvName":      "pv-data-0",
+						"pv":          map[string]any{"capacity": map[string]any{"storage": "10Gi"}},
+					},
+				},
+			},
+		},
+	}
+
+	created, err := client.Resource(shadowpvGVR()).Create(ctx, spv, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Create ShadowPV failed: %v", err)
+	}
+	defer func() {
+		_ = client.Resource(shadowpvGVR()).Delete(ctx, "spv-status-test", metav1.DeleteOptions{})
+	}()
+
+	// Update status subresource
+	created.Object["status"] = map[string]any{
+		"conditions": []any{
+			map[string]any{
+				"type":               "PVConflict",
+				"status":             "True",
+				"reason":             "DuplicatePV",
+				"message":            "PV pv-data-0 already exists",
+				"lastTransitionTime": "2026-07-01T00:00:00Z",
+			},
+		},
+	}
+	statusUpdated, err := client.Resource(shadowpvGVR()).UpdateStatus(ctx, created, metav1.UpdateOptions{})
+	if err != nil {
+		t.Fatalf("UpdateStatus failed: %v", err)
+	}
+
+	conditions, _, _ := unstructured.NestedSlice(statusUpdated.Object, "status", "conditions")
+	if len(conditions) != 1 {
+		t.Errorf("expected 1 status condition, got %d", len(conditions))
+	}
+
+	// Verify spec was preserved during status update
+	pvs, _, _ := unstructured.NestedSlice(statusUpdated.Object, "spec", "pvs")
+	if len(pvs) != 1 {
+		t.Errorf("expected spec.pvs preserved with 1 entry, got %d", len(pvs))
+	}
+
+	// Verify labels were preserved during status update
+	if statusUpdated.GetLabels()["soteria.io/drplan"] != planName {
+		t.Errorf("expected drplan label preserved as %q, got %q",
+			planName, statusUpdated.GetLabels()["soteria.io/drplan"])
+	}
+}
+
+func TestAPIServer_ShadowPV_DRPlanLabelImmutable(t *testing.T) {
+	client := newDynamicClient(t)
+	ctx := context.Background()
+
+	planName := "spv-immutable-plan"
+	createDRPlan(t, ctx, client, planName, soteriav1alpha1.PhaseSteadyState, nil)
+	defer deleteDRPlan(t, ctx, client, planName)
+
+	spv := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "soteria.io/v1alpha1",
+			"kind":       "ShadowPV",
+			"metadata": map[string]any{
+				"name":   "spv-immutable-test",
+				"labels": map[string]any{"soteria.io/drplan": planName},
+			},
+			"spec": map[string]any{
+				"pvs": []any{
+					map[string]any{
+						"clusterName": "east",
+						"pvName":      "pv-data-0",
+						"pv":          map[string]any{"capacity": map[string]any{"storage": "10Gi"}},
+					},
+				},
+			},
+		},
+	}
+
+	created, err := client.Resource(shadowpvGVR()).Create(ctx, spv, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("Create ShadowPV failed: %v", err)
+	}
+	defer func() {
+		_ = client.Resource(shadowpvGVR()).Delete(ctx, "spv-immutable-test", metav1.DeleteOptions{})
+	}()
+
+	// Attempt to change the drplan label — should be rejected
+	created.SetLabels(map[string]string{"soteria.io/drplan": "different-plan"})
+	_, err = client.Resource(shadowpvGVR()).Update(ctx, created, metav1.UpdateOptions{})
+	if err == nil {
+		t.Fatal("expected error when changing immutable drplan label")
 	}
 }

@@ -48,6 +48,11 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightVM":                   schema_pkg_apis_soteriaio_v1alpha1_PreflightVM(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightVolumeGroup":          schema_pkg_apis_soteriaio_v1alpha1_PreflightVolumeGroup(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightWave":                 schema_pkg_apis_soteriaio_v1alpha1_PreflightWave(ref),
+		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.ShadowPV":                      schema_pkg_apis_soteriaio_v1alpha1_ShadowPV(ref),
+		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.ShadowPVEntry":                 schema_pkg_apis_soteriaio_v1alpha1_ShadowPVEntry(ref),
+		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.ShadowPVList":                  schema_pkg_apis_soteriaio_v1alpha1_ShadowPVList(ref),
+		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.ShadowPVSpec":                  schema_pkg_apis_soteriaio_v1alpha1_ShadowPVSpec(ref),
+		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.ShadowPVStatus":                schema_pkg_apis_soteriaio_v1alpha1_ShadowPVStatus(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.SiteDiscovery":                 schema_pkg_apis_soteriaio_v1alpha1_SiteDiscovery(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.StepStatus":                    schema_pkg_apis_soteriaio_v1alpha1_StepStatus(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.VolumeGroupDisk":               schema_pkg_apis_soteriaio_v1alpha1_VolumeGroupDisk(ref),
@@ -1160,6 +1165,211 @@ func schema_pkg_apis_soteriaio_v1alpha1_PreflightWave(ref common.ReferenceCallba
 		},
 		Dependencies: []string{
 			"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightChunk", "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.PreflightVM"},
+	}
+}
+
+func schema_pkg_apis_soteriaio_v1alpha1_ShadowPV(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ShadowPV shares PersistentVolume manifests between clusters for cross-site volume provisioning. Each entry represents a PV discovered on one cluster that should be pre-provisioned on the peer cluster (with pool-ID rewrite for Ceph). Named after the DRPlan + VolumeGroup it represents, e.g., \"<plan-name>-<vg-name>\".",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref(v1.ObjectMeta{}.OpenAPIModelName()),
+						},
+					},
+					"spec": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref("github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.ShadowPVSpec"),
+						},
+					},
+					"status": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref("github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.ShadowPVStatus"),
+						},
+					},
+				},
+				Required: []string{"spec"},
+			},
+		},
+		Dependencies: []string{
+			"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.ShadowPVSpec", "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.ShadowPVStatus", v1.ObjectMeta{}.OpenAPIModelName()},
+	}
+}
+
+func schema_pkg_apis_soteriaio_v1alpha1_ShadowPVEntry(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
+				Properties: map[string]spec.Schema{
+					"clusterName": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ClusterName identifies which cluster published this PV entry.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"pvName": {
+						SchemaProps: spec.SchemaProps{
+							Description: "PVName is the desired PV name for creation on remote clusters.",
+							Default:     "",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"pv": {
+						SchemaProps: spec.SchemaProps{
+							Description: "PV holds the PersistentVolume spec (not full PV — avoids unnecessary metadata).",
+							Default:     map[string]interface{}{},
+							Ref:         ref("k8s.io/api/core/v1.PersistentVolumeSpec"),
+						},
+					},
+				},
+				Required: []string{"clusterName", "pvName", "pv"},
+			},
+		},
+		Dependencies: []string{
+			"k8s.io/api/core/v1.PersistentVolumeSpec"},
+	}
+}
+
+func schema_pkg_apis_soteriaio_v1alpha1_ShadowPVList(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "ShadowPVList contains a list of ShadowPVs.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"metadata": {
+						SchemaProps: spec.SchemaProps{
+							Default: map[string]interface{}{},
+							Ref:     ref(v1.ListMeta{}.OpenAPIModelName()),
+						},
+					},
+					"items": {
+						SchemaProps: spec.SchemaProps{
+							Type: []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: map[string]interface{}{},
+										Ref:     ref("github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.ShadowPV"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"items"},
+			},
+		},
+		Dependencies: []string{
+			"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.ShadowPV", v1.ListMeta{}.OpenAPIModelName()},
+	}
+}
+
+func schema_pkg_apis_soteriaio_v1alpha1_ShadowPVSpec(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
+				Properties: map[string]spec.Schema{
+					"pvs": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-type": "atomic",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "PVs is the list of PV entries from different clusters.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: map[string]interface{}{},
+										Ref:     ref("github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.ShadowPVEntry"),
+									},
+								},
+							},
+						},
+					},
+				},
+				Required: []string{"pvs"},
+			},
+		},
+		Dependencies: []string{
+			"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.ShadowPVEntry"},
+	}
+}
+
+func schema_pkg_apis_soteriaio_v1alpha1_ShadowPVStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Type: []string{"object"},
+				Properties: map[string]spec.Schema{
+					"conditions": {
+						VendorExtensible: spec.VendorExtensible{
+							Extensions: spec.Extensions{
+								"x-kubernetes-list-map-keys": []interface{}{
+									"type",
+								},
+								"x-kubernetes-list-type": "map",
+							},
+						},
+						SchemaProps: spec.SchemaProps{
+							Description: "Conditions represent the latest observations of the ShadowPV state. Used by consumer controller to report PV conflicts and provisioning status.",
+							Type:        []string{"array"},
+							Items: &spec.SchemaOrArray{
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: map[string]interface{}{},
+										Ref:     ref(v1.Condition{}.OpenAPIModelName()),
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			v1.Condition{}.OpenAPIModelName()},
 	}
 }
 
