@@ -1,0 +1,9 @@
+# MCS API ServiceExport for west's per-node headless service.
+# With nodeService.type=Headless, the scylla-operator creates a headless
+# service per node. Exporting it enables pod-specific DNS from east at
+# <pod>.west.<svc>.<ns>.svc.clusterset.local.
+apiVersion: multicluster.x-k8s.io/v1alpha1
+kind: ServiceExport
+metadata:
+  name: soteria-scylladb-west-rack1-0
+  namespace: soteria

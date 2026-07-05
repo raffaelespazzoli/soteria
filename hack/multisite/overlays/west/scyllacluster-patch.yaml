@@ -1,10 +1,10 @@
-# West discovers east via Cilium global service DNS.
+# West discovers east via Cilium Cluster Mesh DNS.
 # The cluster.local FQDN resolves to ScyllaDB endpoints on east
-# because the headless service is annotated with service.cilium.io/global.
+# through Cilium Cluster Mesh endpoint synchronization.
 - op: replace
   path: /spec/datacenter/name
   value: west
-- op: add
+- op: replace
   path: /spec/externalSeeds
   value:
-    - soteria-scylladb-client.soteria.svc.cluster.local
+    - soteria-scylladb-east-rack1-0.soteria.svc.clusterset.local

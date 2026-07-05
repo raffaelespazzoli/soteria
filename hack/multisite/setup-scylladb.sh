@@ -26,8 +26,8 @@
 #     clusters issue certificates from the same root (no cross-CA trust needed).
 #   - PodIP broadcast: ScyllaCluster uses broadcastOptions.nodes.type=PodIP so
 #     internode addresses are routable via Cilium Cluster Mesh pod-to-pod routing.
-#   - Global services: the soteria-scylladb-client service is annotated with
-#     service.cilium.io/global so the externalSeeds DNS resolves cross-cluster.
+#   - Cross-DC seed discovery: west uses externalSeeds DNS to discover east
+#     via the soteria-scylladb-client service resolved through Cilium Cluster Mesh.
 #
 # Prerequisites:
 #   - Minikube KVM2 clusters created by setup-clusters.sh (east + west)
@@ -466,21 +466,6 @@ kubectl --context "${EAST_CONTEXT}" apply --server-side --force-conflicts \
   -k "${OVERLAYS_DIR}/east"
 
 # ---------------------------------------------------------------------------
-# Task 4.7: Annotate east headless service with Cilium global annotation
-# ---------------------------------------------------------------------------
-info "Waiting for east ScyllaDB headless service..."
-for _ in $(seq 1 60); do
-  if keast -n "${NAMESPACE}" get svc soteria-scylladb-client >/dev/null 2>&1; then
-    break
-  fi
-  sleep 5
-done
-
-keast -n "${NAMESPACE}" annotate service soteria-scylladb-client \
-  service.cilium.io/global="true" --overwrite
-info "East ScyllaDB headless service annotated with Cilium global"
-
-# ---------------------------------------------------------------------------
 # Task 4.8-4.9: Combined CA + wait for east readiness
 # ---------------------------------------------------------------------------
 create_combined_ca "${EAST_CONTEXT}"
@@ -501,21 +486,6 @@ echo ""
 info "=== Deploying ScyllaDB on west (joining DC) ==="
 kubectl --context "${WEST_CONTEXT}" apply --server-side --force-conflicts \
   -k "${OVERLAYS_DIR}/west"
-
-# ---------------------------------------------------------------------------
-# Task 4.11: Annotate west headless service
-# ---------------------------------------------------------------------------
-info "Waiting for west ScyllaDB headless service..."
-for _ in $(seq 1 60); do
-  if kwest -n "${NAMESPACE}" get svc soteria-scylladb-client >/dev/null 2>&1; then
-    break
-  fi
-  sleep 5
-done
-
-kwest -n "${NAMESPACE}" annotate service soteria-scylladb-client \
-  service.cilium.io/global="true" --overwrite
-info "West ScyllaDB headless service annotated with Cilium global"
 
 # ---------------------------------------------------------------------------
 # Task 4.12: Combined CA + wait for west readiness

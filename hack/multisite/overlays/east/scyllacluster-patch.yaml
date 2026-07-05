@@ -1,5 +1,9 @@
 # East is the seed DC — no externalSeeds needed.
-# Deploy east first; west discovers this DC via Cilium global service.
+# Deploy east first; west discovers this DC via MCS API DNS.
 - op: replace
   path: /spec/datacenter/name
   value: east
+
+- op: replace
+  path: /spec/externalSeeds
+  value: []

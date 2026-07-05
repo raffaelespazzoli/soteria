@@ -15,9 +15,9 @@ spec:
       clients:
         type: PodIP
     nodeService:
-      type: ClusterIP
-      annotations:
-        service.cilium.io/global: "true"
+      type: Headless
+  externalSeeds:
+    - REPLACED_BY_OVERLAY
   datacenter:
     name: REPLACED_BY_OVERLAY
     racks:
