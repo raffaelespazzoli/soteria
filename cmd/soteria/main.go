@@ -374,6 +374,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err := (&shadowpv.ShadowPVConsumerReconciler{
+		Client:        mgr.GetClient(),
+		Scheme:        mgr.GetScheme(),
+		LocalSite:     siteName,
+		APIReader:     mgr.GetAPIReader(),
+		EventRecorder: mgr.GetEventRecorderFor("shadowpv-consumer"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "Failed to create controller", "controller", "ShadowPVConsumer")
+		os.Exit(1)
+	}
+
 	if err := vrReconciler.SetupVolumeReplicationController(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "VolumeReplication")
 		os.Exit(1)

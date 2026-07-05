@@ -9,8 +9,16 @@ rules:
   resources:
   - namespaces
   - persistentvolumeclaims
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
   - persistentvolumes
   verbs:
+  - create
   - get
   - list
   - watch
@@ -21,12 +29,21 @@ rules:
   verbs:
   - get
 - apiGroups:
+  - ""
   - events.k8s.io
   resources:
   - events
   verbs:
   - create
   - patch
+- apiGroups:
+  - ceph.rook.io
+  resources:
+  - cephblockpools
+  verbs:
+  - get
+  - list
+  - watch
 - apiGroups:
   - kubevirt.io
   resources:
@@ -82,6 +99,7 @@ rules:
   resources:
   - drexecutions/status
   - drplans/status
+  - shadowpvs/status
   verbs:
   - get
   - patch

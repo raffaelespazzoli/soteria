@@ -14,7 +14,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package shadowpv implements the ShadowPV publisher controller.
+// Package shadowpv implements the ShadowPV publisher and consumer controllers
+// for cross-cluster PersistentVolume provisioning.
+//
+// # Publisher Controller
 //
 // The publisher watches VolumeReplication (VR) and VolumeGroupReplication (VGR)
 // CRs that carry a soteria.io/drplan label. For each such CR the controller
@@ -35,8 +38,22 @@ limitations under the License.
 //   - Delete: VR/VGR deletion (via finalizer) removes local-site entries; if
 //     no entries remain the ShadowPV is deleted
 //
-// The publisher runs on every site. Each site independently publishes its PVs
-// into the shared ShadowPV (stored in ScyllaDB, visible cross-site via CDC
-// replication). The consumer controller (package shadowpv, Story 15.6) reads
-// remote entries and creates local PVs with pool-ID rewrite.
+// # Consumer Controller
+//
+// The consumer watches ShadowPV resources and creates local PVs for entries
+// from remote clusters. For Rook-Ceph CSI volumes, the consumer rewrites the
+// pool-ID segment of the volume handle to match the local cluster's
+// CephBlockPool ID (resolved from the CephBlockPool CR's status).
+//
+// Reconcile flow:
+//   - Filter entries where clusterName != localSite (remote entries)
+//   - For each remote entry: check if PV exists, create with pool-ID rewrite if not
+//   - PV ownership tracked via soteria.io/shadowpv-consumer label for idempotency
+//   - Conflict detection: existing PV without consumer label triggers PVConflict
+//     condition on ShadowPV status and emits a warning event
+//   - Non-Ceph volume handles are created as-is with a warning event
+//
+// Both controllers run on every site. The publisher populates ShadowPV entries
+// (stored in ScyllaDB, visible cross-site via CDC replication), and the
+// consumer reads remote entries to pre-provision PVs for DR failover.
 package shadowpv

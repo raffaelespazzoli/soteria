@@ -167,6 +167,16 @@ func TestMain(m *testing.M) {
 		panic(fmt.Sprintf("setting up ShadowPV publisher controller: %v", err))
 	}
 
+	if err := (&shadowpv.ShadowPVConsumerReconciler{
+		Client:        mgr.GetClient(),
+		Scheme:        mgr.GetScheme(),
+		LocalSite:     "dc-east",
+		APIReader:     mgr.GetAPIReader(),
+		EventRecorder: mgr.GetEventRecorderFor("shadowpv-consumer"),
+	}).SetupWithManager(mgr); err != nil {
+		panic(fmt.Sprintf("setting up ShadowPV consumer controller: %v", err))
+	}
+
 	cancelFunc = cancel
 
 	go func() {
