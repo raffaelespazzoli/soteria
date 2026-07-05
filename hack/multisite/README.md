@@ -104,6 +104,7 @@ hack/multisite/
 ├── setup-kubevirt.sh                   # Deploys KubeVirt + CDI + virtctl
 ├── validate-fedora-vm.sh              # Fedora VM validation + node sizing report
 ├── setup-scylladb.sh                   # Deploys ScyllaDB cross-DC + cert-manager + mTLS
+├── deploy-soteria.sh                   # Builds + deploys Soteria operator (Story 15.8)
 ├── fix-ceph-osd-auth.sh               # Recovers Ceph OSDs after mon database reset
 ├── teardown.sh                         # Deletes clusters + cleans kubeconfigs
 ├── manifests/
@@ -120,18 +121,31 @@ hack/multisite/
 │   │   ├── test-pvc.yaml               # Template: smoke test PVC
 │   │   └── test-volume-replication.yaml # Template: smoke test VolumeReplication
 │   └── storage-class-xfs.yaml          # XFS StorageClass for ScyllaDB (rook-ceph-block-xfs)
-├── overlays/                           # Kustomize overlays for ScyllaDB
-│   ├── base/
-│   │   ├── kustomization.yaml          # Shared resources + TLS patches
+├── overlays/
+│   ├── base/                           # ScyllaDB shared resources (used by setup-scylladb.sh)
+│   │   ├── kustomization.yaml          # ScyllaDB resources + TLS patches
 │   │   ├── scyllacluster.yaml          # Base ScyllaCluster CR
 │   │   ├── scylladb-tls-config.yaml    # ScyllaDB mTLS scylla.yaml ConfigMap
-│   │   └── scylladb-tls-patch.yaml     # ScyllaCluster TLS volumes patch
+│   │   ├── scylladb-tls-patch.yaml     # ScyllaCluster TLS volumes patch
+│   │   ├── manager-args-patch.yaml     # Soteria: ScyllaDB/APIServer args
+│   │   ├── manager-scylladb-patch.yaml # Soteria: TLS volume mounts
+│   │   ├── apiserver-rbac.yaml         # Soteria: auth-delegation RBAC
+│   │   └── apiserver-cert.yaml         # Soteria: APIServer TLS Certificate
 │   ├── east/
-│   │   ├── kustomization.yaml          # Inherits base, DC = east (seed)
-│   │   └── scyllacluster-patch.yaml    # datacenter.name: east
-│   └── west/
-│       ├── kustomization.yaml          # Inherits base, DC = west (joining)
-│       └── scyllacluster-patch.yaml    # datacenter.name: west + externalSeeds
+│   │   ├── kustomization.yaml          # ScyllaDB: DC = east (seed)
+│   │   ├── scyllacluster-patch.yaml    # datacenter.name: east
+│   │   └── manager-dc-patch.yaml       # Soteria: --site-name=east
+│   ├── west/
+│   │   ├── kustomization.yaml          # ScyllaDB: DC = west (joining)
+│   │   ├── scyllacluster-patch.yaml    # datacenter.name: west + externalSeeds
+│   │   └── manager-dc-patch.yaml       # Soteria: --site-name=west
+│   └── soteria/                        # Soteria operator overlays (used by deploy-soteria.sh)
+│       ├── base/
+│       │   └── kustomization.yaml      # config/default + patches + RBAC + cert
+│       ├── east/
+│       │   └── kustomization.yaml      # Inherits soteria/base, adds east DC args
+│       └── west/
+│           └── kustomization.yaml      # Inherits soteria/base, adds west DC args
 ├── .bin/                               # Auto-downloaded tool binaries (gitignored)
 ├── .kubeconfigs/                       # Exported kubeconfigs (gitignored)
 └── README.md                           # This file
@@ -573,6 +587,125 @@ minikube ssh -p west -- "sudo dnf install -y xfsprogs"
 ScyllaDB may need additional time after nodetool shows UN. The script retries
 CQL reads with 5s intervals.
 
+## Soteria Operator Deployment (Story 15.8)
+
+After all infrastructure components are deployed, install the Soteria DR orchestration
+operator on both clusters:
+
+```bash
+./hack/multisite/deploy-soteria.sh
+```
+
+This deploys:
+- Soteria operator image (built locally, loaded into Minikube via `minikube image load`)
+- Controller-manager with aggregated API server (port 6443, TLS)
+- ScyllaDB connection with mTLS (contact-points, keyspace, DC replication)
+- Per-site configuration (`--site-name=east/west`, `--scylladb-local-dc=east/west`)
+- APIService `v1alpha1.soteria.io` registration with cert-manager CA injection
+- Cross-DC replication smoke test (DRPlan create on east → verify on west)
+
+### Prerequisites
+
+- Minikube KVM2 clusters running (Story 14.1)
+- Rook-Ceph deployed with `rook-ceph-block` StorageClass (Story 14.2)
+- KubeVirt deployed with VirtualMachine CRDs (Story 14.3)
+- ScyllaDB cross-DC cluster running with mTLS + cert-manager (Story 14.5)
+- `podman` (or `docker`) for image build
+
+### Soteria Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `EAST_CLUSTER_NAME` | `east` | Name of the east Minikube profile |
+| `WEST_CLUSTER_NAME` | `west` | Name of the west Minikube profile |
+| `NAMESPACE` | `soteria` | Namespace for Soteria deployment |
+| `IMG` | `localhost/soteria:dev` | Soteria container image name:tag |
+| `CONTAINER_TOOL` | `podman` | Container build tool (podman or docker) |
+| `SKIP_BUILD` | `0` | Set to `1` to skip image build |
+| `SKIP_LOAD` | `0` | Set to `1` to skip loading image into Minikube |
+| `SMOKE_TEST` | `1` | Set to `0` to skip cross-DC replication smoke test |
+| `SMOKE_TEST_PLAN_NAME` | `smoke-test-plan-<timestamp>-<pid>` | Name for the temporary DRPlan used by the smoke test |
+
+### Verify Soteria
+
+```bash
+# APIService status
+kubectl --context east get apiservice v1alpha1.soteria.io
+kubectl --context west get apiservice v1alpha1.soteria.io
+
+# Controller-manager pods
+kubectl --context east -n soteria get pods -l control-plane=controller-manager
+kubectl --context west -n soteria get pods -l control-plane=controller-manager
+
+# Controller logs
+kubectl --context east -n soteria logs deploy/soteria-controller-manager -c manager --tail=30
+kubectl --context west -n soteria logs deploy/soteria-controller-manager -c manager --tail=30
+
+# Create a Ceph-backed DRPlan via the Soteria API
+kubectl --context east apply -f - <<'EOF'
+apiVersion: soteria.io/v1alpha1
+kind: DRPlan
+metadata:
+  name: verify-ceph-plan
+spec:
+  maxConcurrentFailovers: 2
+  primarySite: east
+  secondarySite: west
+  volumeReplicationDriver:
+    type: csi-extension
+    volumeReplicationClass: rook-ceph-rbd-vrc
+EOF
+kubectl --context east get drplans
+```
+
+### Soteria Troubleshooting
+
+**Image not found (ImagePullBackOff):**
+The image must be loaded into Minikube before deployment. Re-run without skipping:
+```bash
+SKIP_BUILD=0 SKIP_LOAD=0 ./hack/multisite/deploy-soteria.sh
+```
+
+**Controller-manager CrashLoopBackOff:**
+Usually indicates ScyllaDB connection failure. Check:
+```bash
+kubectl --context east -n soteria logs deploy/soteria-controller-manager -c manager --tail=50
+# Verify ScyllaDB is reachable
+kubectl --context east -n soteria get scyllacluster soteria-scylladb
+```
+
+**APIService stays Unavailable:**
+The pod isn't passing readiness probes (`/readyz` on port 8081). Check:
+```bash
+kubectl --context east -n soteria describe pod -l control-plane=controller-manager
+kubectl --context east get apiservice v1alpha1.soteria.io -o yaml
+```
+
+**TLS certificate not issued:**
+cert-manager must have the `soteria-internal` Issuer in the `soteria` namespace:
+```bash
+kubectl --context east -n soteria get issuer soteria-internal
+kubectl --context east -n soteria get certificate
+```
+
+**Cross-DC replication timeout:**
+ScyllaDB replication may be slow in developer mode. Verify multi-DC connectivity:
+```bash
+kubectl --context east -n soteria exec -it pod/soteria-scylladb-east-rack1-0 -c scylla -- nodetool status
+```
+
+**Kustomize build failure:**
+Ensure `--load-restrictor LoadRestrictionsNone` is used (the script handles this).
+Verify `config/manager/kustomization.yaml` has the correct image after `kustomize edit set image`.
+
+### Idempotency
+
+The deploy script is idempotent — safe to re-run at any time:
+- `kubectl apply --server-side --force-conflicts` handles existing resources
+- Image build and load are no-ops if unchanged
+- `kustomize edit set image` overwrites the previous value
+- Use `SKIP_BUILD=1 SKIP_LOAD=1` for faster re-deploys after code changes
+
 ## Downstream Dependencies
 
 This environment is the foundation for the full Epic 14 stack:
@@ -581,5 +714,5 @@ This environment is the foundation for the full Epic 14 stack:
 2. **Story 14.3** — KubeVirt deployment with hardware KVM acceleration
 3. **Story 14.4** — Fedora VM validation (depends on KubeVirt + CDI)
 4. **Story 14.5** — ScyllaDB cross-DC deployment
-5. **Story 14.6** — Soteria operator deployment
-6. **Story 14.7** — Full lifecycle integration test
+5. **Story 15.8** — Soteria operator deployment
+6. **Story 15.9** — Full lifecycle integration test

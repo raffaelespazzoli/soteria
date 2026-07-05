@@ -1,0 +1,12 @@
+# East cluster Soteria overlay — adds --site-name=east and --scylladb-local-dc=east.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../base
+
+patches:
+  - path: ../../east/manager-dc-patch.yaml
+    target:
+      kind: Deployment
+      name: soteria-controller-manager

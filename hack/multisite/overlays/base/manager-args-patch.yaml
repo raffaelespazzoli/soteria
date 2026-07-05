@@ -1,0 +1,39 @@
+# JSON6902 patch: add aggregated API server and ScyllaDB flags to the
+# manager container. Adapted for Minikube multisite (east/west DCs, RF=1).
+# The --scylladb-local-dc flag is set per-cluster by the east/west overlays.
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --secure-port=6443
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --scylladb-contact-points=soteria-scylladb-client.soteria.svc:9142
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --scylladb-keyspace=soteria
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --scylladb-dc-replication=east:1,west:1
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --scylladb-tls-cert=/etc/soteria/scylladb-client-tls/tls.crt
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --scylladb-tls-key=/etc/soteria/scylladb-client-tls/tls.key
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --scylladb-tls-ca=/etc/soteria/scylladb-client-tls/ca.crt
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --scylladb-tls-server-name=soteria-scylladb-client.soteria.svc
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --tls-cert-file=/etc/soteria/apiserver-tls/tls.crt
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --tls-private-key-file=/etc/soteria/apiserver-tls/tls.key
+- op: add
+  path: /spec/template/spec/containers/0/args/-
+  value: --disable-admission-plugins=ValidatingAdmissionPolicy,ValidatingAdmissionWebhook,MutatingAdmissionWebhook
+- op: replace
+  path: /spec/template/spec/containers/0/imagePullPolicy
+  value: IfNotPresent

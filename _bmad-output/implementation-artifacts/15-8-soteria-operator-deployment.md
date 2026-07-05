@@ -1,6 +1,6 @@
 # Story 15.8: Soteria Operator Deployment (Moved from 14.6)
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -39,40 +39,40 @@ Then it is visible on west after ScyllaDB replication delay
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Build Soteria container image and load into Minikube (AC: 1)
-  - [ ] 1.1: Build operator image via `make docker-build IMG=localhost/soteria:dev CONTAINER_TOOL=podman`
-  - [ ] 1.2: Load image into both Minikube clusters via `minikube image load localhost/soteria:dev -p east` and `-p west`
-  - [ ] 1.3: Verify image is available in both clusters (`minikube ssh -p east -- "sudo crictl images | grep soteria"`)
+- [x] Task 1: Build Soteria container image and load into Minikube (AC: 1)
+  - [x] 1.1: Build operator image via `make docker-build IMG=localhost/soteria:dev CONTAINER_TOOL=podman`
+  - [x] 1.2: Load image into both Minikube clusters via `minikube image load localhost/soteria:dev -p east` and `-p west`
+  - [x] 1.3: Verify image is available in both clusters (`minikube ssh -p east -- "sudo crictl images | grep soteria"`)
 
-- [ ] Task 2: Create Kustomize overlays for Minikube multisite deployment (AC: 1, 2)
-  - [ ] 2.1: Create `hack/multisite/overlays/base/manager-args-patch.yaml` — ScyllaDB connection args adapted for Minikube (contact-points uses `soteria-scylladb-client.soteria.svc:9142`, `--scylladb-dc-replication=east:1,west:1`, TLS cert paths, apiserver TLS, disable admission plugins)
-  - [ ] 2.2: Create `hack/multisite/overlays/base/manager-scylladb-patch.yaml` — volume mounts for apiserver-tls and scylladb-client-tls secrets (mirrors `hack/overlays/base/manager-scylladb-patch.yaml`)
-  - [ ] 2.3: Create `hack/multisite/overlays/base/apiserver-rbac.yaml` — auth-delegation, admission, flowcontrol RBAC (mirrors `hack/overlays/base/apiserver-rbac.yaml`)
-  - [ ] 2.4: Create `hack/multisite/overlays/base/apiserver-cert.yaml` — Certificate for the apiserver service TLS (mirrors `hack/overlays/base/apiserver-cert.yaml`)
-  - [ ] 2.5: Update `hack/multisite/overlays/base/kustomization.yaml` — add Soteria resources (config/default as base) with patches, apiserver-rbac, apiserver-cert, NO console plugin, NO storageclass-xfs, NO serviceexport (Cilium replaces Submariner)
-  - [ ] 2.6: Create `hack/multisite/overlays/east/manager-dc-patch.yaml` — `--scylladb-local-dc=east` and `--site-name=east` args
-  - [ ] 2.7: Create `hack/multisite/overlays/west/manager-dc-patch.yaml` — `--scylladb-local-dc=west` and `--site-name=west` args
-  - [ ] 2.8: Update `hack/multisite/overlays/east/kustomization.yaml` — add manager-dc-patch target
-  - [ ] 2.9: Update `hack/multisite/overlays/west/kustomization.yaml` — add manager-dc-patch target
+- [x] Task 2: Create Kustomize overlays for Minikube multisite deployment (AC: 1, 2)
+  - [x] 2.1: Create `hack/multisite/overlays/base/manager-args-patch.yaml` — ScyllaDB connection args adapted for Minikube (contact-points uses `soteria-scylladb-client.soteria.svc:9142`, `--scylladb-dc-replication=east:1,west:1`, TLS cert paths, apiserver TLS, disable admission plugins)
+  - [x] 2.2: Create `hack/multisite/overlays/base/manager-scylladb-patch.yaml` — volume mounts for apiserver-tls and scylladb-client-tls secrets (mirrors `hack/overlays/base/manager-scylladb-patch.yaml`)
+  - [x] 2.3: Create `hack/multisite/overlays/base/apiserver-rbac.yaml` — auth-delegation, admission, flowcontrol RBAC (mirrors `hack/overlays/base/apiserver-rbac.yaml`)
+  - [x] 2.4: Create `hack/multisite/overlays/base/apiserver-cert.yaml` — Certificate for the apiserver service TLS (mirrors `hack/overlays/base/apiserver-cert.yaml`)
+  - [x] 2.5: Create `hack/multisite/overlays/soteria/base/kustomization.yaml` — Soteria overlay using config/default as base, with patches, apiserver-rbac, apiserver-cert, NO console plugin, NO storageclass-xfs, NO serviceexport (Cilium replaces Submariner)
+  - [x] 2.6: Create `hack/multisite/overlays/east/manager-dc-patch.yaml` — `--scylladb-local-dc=east` and `--site-name=east` args
+  - [x] 2.7: Create `hack/multisite/overlays/west/manager-dc-patch.yaml` — `--scylladb-local-dc=west` and `--site-name=west` args
+  - [x] 2.8: Create `hack/multisite/overlays/soteria/east/kustomization.yaml` — inherits soteria/base, adds east manager-dc-patch
+  - [x] 2.9: Create `hack/multisite/overlays/soteria/west/kustomization.yaml` — inherits soteria/base, adds west manager-dc-patch
 
-- [ ] Task 3: Create `hack/multisite/deploy-soteria.sh` (AC: 1, 2, 4, 5)
-  - [ ] 3.1: Env-var configuration block (IMG, EAST_CONTEXT, WEST_CONTEXT, NAMESPACE, KUSTOMIZE path)
-  - [ ] 3.2: Prerequisite checks (kubectl, kustomize, Minikube clusters running, ScyllaDB ready on both, KubeVirt Deployed on both, image loaded in Minikube)
-  - [ ] 3.3: Set image in kustomize: `cd config/manager && kustomize edit set image controller=${IMG}`
-  - [ ] 3.4: Build east overlay and apply: `kustomize build --load-restrictor LoadRestrictionsNone hack/multisite/overlays/east | kubectl --context=east apply --server-side --force-conflicts -f -`
-  - [ ] 3.5: Wait for Soteria controller-manager deployment rollout on east (timeout 5m)
-  - [ ] 3.6: Build west overlay and apply: `kustomize build --load-restrictor LoadRestrictionsNone hack/multisite/overlays/west | kubectl --context=west apply --server-side --force-conflicts -f -`
-  - [ ] 3.7: Wait for Soteria controller-manager deployment rollout on west (timeout 5m)
-  - [ ] 3.8: Verify APIService `v1alpha1.soteria.io` is Available on both clusters
+- [x] Task 3: Create `hack/multisite/deploy-soteria.sh` (AC: 1, 2, 4, 5)
+  - [x] 3.1: Env-var configuration block (IMG, EAST_CONTEXT, WEST_CONTEXT, NAMESPACE, KUSTOMIZE path)
+  - [x] 3.2: Prerequisite checks (kubectl, kustomize, Minikube clusters running, ScyllaDB ready on both, KubeVirt Deployed on both, image loaded in Minikube)
+  - [x] 3.3: Set image in kustomize: `cd config/manager && kustomize edit set image controller=${IMG}`
+  - [x] 3.4: Build east overlay and apply: `kustomize build --load-restrictor LoadRestrictionsNone hack/multisite/overlays/soteria/east | kubectl --context=east apply --server-side --force-conflicts -f -`
+  - [x] 3.5: Wait for Soteria controller-manager deployment rollout on east (timeout 5m)
+  - [x] 3.6: Build west overlay and apply: `kustomize build --load-restrictor LoadRestrictionsNone hack/multisite/overlays/soteria/west | kubectl --context=west apply --server-side --force-conflicts -f -`
+  - [x] 3.7: Wait for Soteria controller-manager deployment rollout on west (timeout 5m)
+  - [x] 3.8: Verify APIService `v1alpha1.soteria.io` is Available on both clusters
 
-- [ ] Task 4: Cross-DC replication smoke test (AC: 5)
-  - [ ] 4.1: Create a cluster-scoped DRPlan `smoke-test-plan` via the Soteria API on east cluster with `volumeReplicationDriver: {type: csi-extension, volumeReplicationClass: rook-ceph-rbd-vrc}`, `primarySite: east`, `secondarySite: west`
-  - [ ] 4.2: Wait and verify the DRPlan is visible on west cluster via the Soteria API (ScyllaDB replication)
-  - [ ] 4.3: Delete the test DRPlan
+- [x] Task 4: Cross-DC replication smoke test (AC: 5)
+  - [x] 4.1: Create a cluster-scoped DRPlan `smoke-test-plan` via the Soteria API on east cluster with `volumeReplicationDriver: {type: csi-extension, volumeReplicationClass: rook-ceph-rbd-vrc}`, `primarySite: east`, `secondarySite: west`
+  - [x] 4.2: Wait and verify the DRPlan is visible on west cluster via the Soteria API (ScyllaDB replication)
+  - [x] 4.3: Delete the test DRPlan
 
-- [ ] Task 5: README and finalization
-  - [ ] 5.1: Update `hack/multisite/README.md` with Soteria deployment section (prerequisites, build, deploy, verify, troubleshooting)
-  - [ ] 5.2: Add idempotency checks throughout script (check deployment exists before apply, etc.)
+- [x] Task 5: README and finalization
+  - [x] 5.1: Update `hack/multisite/README.md` with Soteria deployment section (prerequisites, build, deploy, verify, troubleshooting)
+  - [x] 5.2: Add idempotency checks throughout script (check deployment exists before apply, etc.)
 
 ## Dev Notes
 
@@ -424,8 +424,53 @@ No Go tests for this story — validation is via the deploy script's built-in ve
 
 ### Agent Model Used
 
+Claude Opus 4.6 (Cursor)
+
 ### Debug Log References
+
+- Kustomize build validated for both east/west overlays
+- All unit tests pass (no Go code changes in this story)
+- Pre-existing lint issues in Go code (dupl, errcheck, lll) not introduced by this story
+- Bash syntax validation passed for deploy-soteria.sh
 
 ### Completion Notes List
 
+- Created separate Soteria overlay tree (`hack/multisite/overlays/soteria/{base,east,west}/`) to avoid breaking existing `setup-scylladb.sh` which uses `kubectl apply -k` on the ScyllaDB overlays. The Soteria overlay references `config/default` and requires `--load-restrictor LoadRestrictionsNone` (crossing directory boundaries).
+- Patch files placed in existing `base/`, `east/`, `west/` directories for shared use; kustomization.yaml files in `soteria/` subdirectory reference them via relative paths.
+- `config/default` includes ScyllaDB manifests — these are harmlessly re-applied when deploy-soteria.sh runs (ScyllaDB already deployed by setup-scylladb.sh, idempotent with `--server-side --force-conflicts`).
+- The imagePullPolicy override (`IfNotPresent`) is applied via the manager-args-patch to work with Minikube's local image cache.
+- All cert-manager Certificate resources patched to use `soteria-internal` Issuer (created in Story 14.5).
+- Kustomize replacements correctly wire APIService CA injection annotation and apiserver cert DNS names from the Service name/namespace.
+- Deploy script includes: image build, image load, prerequisite checks (clusters, ScyllaDB, KubeVirt), kustomize apply, rollout wait, APIService verification, and cross-DC replication smoke test.
+- Idempotency: script detects existing healthy deployment and logs re-apply message; all kubectl operations use `--server-side --force-conflicts`.
+
 ### File List
+
+- hack/multisite/deploy-soteria.sh (NEW)
+- hack/multisite/overlays/base/manager-args-patch.yaml (NEW)
+- hack/multisite/overlays/base/manager-scylladb-patch.yaml (NEW)
+- hack/multisite/overlays/base/apiserver-rbac.yaml (NEW)
+- hack/multisite/overlays/base/apiserver-cert.yaml (NEW)
+- hack/multisite/overlays/east/manager-dc-patch.yaml (NEW)
+- hack/multisite/overlays/west/manager-dc-patch.yaml (NEW)
+- hack/multisite/overlays/soteria/base/kustomization.yaml (NEW)
+- hack/multisite/overlays/soteria/east/kustomization.yaml (NEW)
+- hack/multisite/overlays/soteria/west/kustomization.yaml (NEW)
+- hack/multisite/README.md (MODIFIED — added Soteria deployment section + updated file structure)
+- .gitignore (MODIFIED — fixed binary ignore patterns to use root-relative /soteria, /console-proxy)
+- cmd/console-proxy/main.go (MODIFIED — go fmt alignment fix, pre-existing)
+- _bmad-output/implementation-artifacts/sprint-status.yaml (MODIFIED — status → in-progress → review)
+- _bmad-output/implementation-artifacts/15-8-soteria-operator-deployment.md (MODIFIED — tasks, status, dev record)
+
+### Change Log
+
+- 2026-07-05: Implemented Story 15.8 — Soteria operator deployment for Minikube multisite environment. Created deploy script, Kustomize overlays, and README documentation.
+
+### Review Findings
+
+- [x] [Review][Patch] Imported `config/default` still pulls in Prometheus `ServiceMonitor`, so Minikube deploy can fail without Prometheus Operator CRDs [hack/multisite/overlays/soteria/base/kustomization.yaml:13]
+- [x] [Review][Patch] ScyllaDB readiness is only warned on, but the story requires ScyllaDB to be ready before deploying Soteria [hack/multisite/deploy-soteria.sh:115]
+- [x] [Review][Patch] KubeVirt prerequisite check only verifies the `virtualmachines.kubevirt.io` CRD exists, not that KubeVirt is actually deployed and healthy [hack/multisite/deploy-soteria.sh:121]
+- [x] [Review][Patch] Smoke test does not verify `rook-ceph-rbd-vrc` exists before creating the DRPlan required by AC3 [hack/multisite/deploy-soteria.sh:251]
+- [x] [Review][Patch] Smoke test uses a fixed `smoke-test-plan` name and then deletes it, which can collide with a real pre-existing DRPlan on re-run [hack/multisite/deploy-soteria.sh:251]
+- [x] [Review][Patch] README verification step applies `config/samples/`, but the sample DRPlan uses the `noop` driver instead of the required Ceph-backed `csi-extension` configuration [hack/multisite/README.md:643]

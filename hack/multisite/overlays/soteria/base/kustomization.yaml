@@ -1,0 +1,168 @@
+# Base Soteria operator overlay for Minikube multisite deployment.
+# Imports config/default (operator + ScyllaDB) and applies patches for
+# ScyllaDB connection, TLS mounts, imagePullPolicy, and API server RBAC.
+#
+# Per-DC overlays (east/, west/) add --site-name and --scylladb-local-dc args.
+#
+# NOTE: config/default includes ScyllaDB manifests which are harmlessly
+# re-applied (ScyllaDB is already running from setup-scylladb.sh).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../../../../config/default
+  # Aggregated API server RBAC (auth-delegation, admission, flowcontrol)
+  - ../../base/apiserver-rbac.yaml
+  - ../../base/apiserver-cert.yaml
+
+patches:
+  # --- ScyllaDB + APIServer TLS volumes on the manager ---
+  - path: ../../base/manager-scylladb-patch.yaml
+    target:
+      kind: Deployment
+      name: soteria-controller-manager
+
+  # --- ScyllaDB connection + APIServer TLS args + imagePullPolicy ---
+  - path: ../../base/manager-args-patch.yaml
+    target:
+      kind: Deployment
+      name: soteria-controller-manager
+
+  # --- Override ScyllaCluster storage for Minikube (rook-ceph-block-xfs) ---
+  - target:
+      group: scylla.scylladb.com
+      version: v1
+      kind: ScyllaCluster
+      name: soteria-scylladb
+    patch: |
+      - op: replace
+        path: /spec/datacenter/racks/0/storage/storageClassName
+        value: rook-ceph-block-xfs
+
+  # --- Switch all cert-manager Certificates to use soteria-internal Issuer ---
+  - target:
+      group: cert-manager.io
+      version: v1
+      kind: Certificate
+      name: soteria-scylladb-serving
+    patch: |
+      - op: replace
+        path: /spec/issuerRef/name
+        value: soteria-internal
+  - target:
+      group: cert-manager.io
+      version: v1
+      kind: Certificate
+      name: soteria-scylladb-client
+    patch: |
+      - op: replace
+        path: /spec/issuerRef/name
+        value: soteria-internal
+  - target:
+      group: cert-manager.io
+      version: v1
+      kind: Certificate
+      name: soteria-serving-cert
+    patch: |
+      - op: replace
+        path: /spec/issuerRef/name
+        value: soteria-internal
+  - target:
+      group: cert-manager.io
+      version: v1
+      kind: Certificate
+      name: soteria-metrics-certs
+    patch: |
+      - op: replace
+        path: /spec/issuerRef/name
+        value: soteria-internal
+
+  # --- Minikube deployment does not assume Prometheus Operator CRDs exist ---
+  - target:
+      group: monitoring.coreos.com
+      version: v1
+      kind: ServiceMonitor
+      name: controller-manager-metrics-monitor
+    patch: |
+      $patch: delete
+      apiVersion: monitoring.coreos.com/v1
+      kind: ServiceMonitor
+      metadata:
+        name: controller-manager-metrics-monitor
+
+replacements:
+  # --- APIService CA injection from apiserver cert ---
+  - source:
+      kind: Certificate
+      group: cert-manager.io
+      version: v1
+      name: soteria-apiserver-cert
+      fieldPath: .metadata.namespace
+    targets:
+      - select:
+          group: apiregistration.k8s.io
+          version: v1
+          kind: APIService
+          name: v1alpha1.soteria.io
+        fieldPaths:
+          - .metadata.annotations.[cert-manager.io/inject-ca-from]
+        options:
+          delimiter: '/'
+          index: 0
+          create: true
+  - source:
+      kind: Certificate
+      group: cert-manager.io
+      version: v1
+      name: soteria-apiserver-cert
+      fieldPath: .metadata.name
+    targets:
+      - select:
+          group: apiregistration.k8s.io
+          version: v1
+          kind: APIService
+          name: v1alpha1.soteria.io
+        fieldPaths:
+          - .metadata.annotations.[cert-manager.io/inject-ca-from]
+        options:
+          delimiter: '/'
+          index: 1
+          create: true
+
+  # --- APIServer cert DNS names from the apiserver Service ---
+  - source:
+      kind: Service
+      version: v1
+      name: soteria-apiserver
+      fieldPath: .metadata.name
+    targets:
+      - select:
+          kind: Certificate
+          group: cert-manager.io
+          version: v1
+          name: soteria-apiserver-cert
+        fieldPaths:
+          - .spec.dnsNames.0
+          - .spec.dnsNames.1
+        options:
+          delimiter: '.'
+          index: 0
+          create: true
+  - source:
+      kind: Service
+      version: v1
+      name: soteria-apiserver
+      fieldPath: .metadata.namespace
+    targets:
+      - select:
+          kind: Certificate
+          group: cert-manager.io
+          version: v1
+          name: soteria-apiserver-cert
+        fieldPaths:
+          - .spec.dnsNames.0
+          - .spec.dnsNames.1
+        options:
+          delimiter: '.'
+          index: 1
+          create: true
