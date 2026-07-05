@@ -6,6 +6,7 @@
 *.dylib
 bin/*
 soteria
+console-proxy
 Dockerfile.cross
 
 # Test binary, built with `go test -c`
@@ -33,6 +34,9 @@ go.work
 # Downloaded tool binaries and local data for hack scripts
 hack/multisite/.bin/
 hack/multisite/.data/
+
+# Build outputs
+console-plugin/dist-standalone/
 
 # AI agent skills and cursor artifacts
 .agents/
