@@ -173,7 +173,7 @@ func newK8sProxyWithPaths(target *url.URL, saTokenPath, saCaPath string) (http.H
 			MinVersion: tls.VersionTLS12,
 		},
 		DialContext:           (&net.Dialer{Timeout: 10 * time.Second}).DialContext,
-		TLSHandshakeTimeout:  10 * time.Second,
+		TLSHandshakeTimeout:   10 * time.Second,
 		ResponseHeaderTimeout: 30 * time.Second,
 		IdleConnTimeout:       90 * time.Second,
 	}

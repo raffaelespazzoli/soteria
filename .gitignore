@@ -5,8 +5,8 @@
 *.so
 *.dylib
 bin/*
-soteria
-console-proxy
+/soteria
+/console-proxy
 Dockerfile.cross
 
 # Test binary, built with `go test -c`
