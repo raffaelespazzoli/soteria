@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { k8sCreate } from '@openshift-console/dynamic-plugin-sdk';
+import { useProvider } from '../providers';
 import { DRExecution } from '../models/types';
 import { drExecutionModel } from '../models/k8sModels';
 import { ACTION_CONFIG, resolveActionKey } from '../utils/drPlanActions';
@@ -10,23 +10,23 @@ export function useCreateDRExecution(): {
   error: string | undefined;
   clearError: () => void;
 } {
+  const { createResource } = useProvider();
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | undefined>();
 
   const clearError = useCallback(() => setError(undefined), []);
 
-  const create = useCallback(async (planName: string, action: string): Promise<DRExecution> => {
-    const key = resolveActionKey(action);
-    const config = ACTION_CONFIG[key];
-    if (!config) throw new Error(`Unknown action: ${action}`);
+  const create = useCallback(
+    async (planName: string, action: string): Promise<DRExecution> => {
+      const key = resolveActionKey(action);
+      const config = ACTION_CONFIG[key];
+      if (!config) throw new Error(`Unknown action: ${action}`);
 
-    setIsCreating(true);
-    setError(undefined);
+      setIsCreating(true);
+      setError(undefined);
 
-    try {
-      const result = await k8sCreate({
-        model: drExecutionModel,
-        data: {
+      try {
+        const result = await createResource<DRExecution>(drExecutionModel, {
           apiVersion: 'soteria.io/v1alpha1',
           kind: 'DRExecution',
           metadata: {
@@ -37,17 +37,18 @@ export function useCreateDRExecution(): {
             planName,
             mode: config.mode,
           },
-        },
-      });
-      setIsCreating(false);
-      return result as DRExecution;
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      setError(message);
-      setIsCreating(false);
-      throw e;
-    }
-  }, []);
+        });
+        setIsCreating(false);
+        return result;
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        setError(message);
+        setIsCreating(false);
+        throw e;
+      }
+    },
+    [createResource],
+  );
 
   return { create, isCreating, error, clearError };
 }

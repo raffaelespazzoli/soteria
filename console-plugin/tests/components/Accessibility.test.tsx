@@ -122,13 +122,18 @@ const mockExecutions: DRExecution[] = [
 
 let mockPlansData: DRPlan[] = [mockSteadyStatePlan];
 
-jest.mock('@openshift-console/dynamic-plugin-sdk', () => ({
-  useK8sWatchResource: jest.fn(
-    (resource: { groupVersionKind?: { kind?: string } }) => {
-      if (resource?.groupVersionKind?.kind === 'DRExecution') return [mockExecutions, true, null];
-      return [mockPlansData, true, null];
-    },
-  ),
+jest.mock('../../src/providers', () => ({
+  useProvider: () => ({
+    useWatchResource: jest.fn(
+      (gvk: { kind?: string } | null) => {
+        if (gvk?.kind === 'DRExecution') return [mockExecutions, true, null];
+        return [mockPlansData, true, null];
+      },
+    ),
+    createResource: jest.fn(),
+    patchResource: jest.fn(),
+    DocumentTitle: ({ children }: { children: React.ReactNode }) => <title>{children}</title>,
+  }),
 }));
 
 const ALL_PHASES: EffectivePhase[] = [

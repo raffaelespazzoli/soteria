@@ -1,0 +1,7 @@
+# Kind cluster configuration for the Soteria project e2e tests.
+# Uses a dedicated cluster name to avoid interference with other projects.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: soteria-test-e2e
+nodes:
+  - role: control-plane

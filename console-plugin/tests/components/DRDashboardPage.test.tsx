@@ -1,6 +1,5 @@
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { axe, toHaveNoViolations } from 'jest-axe';
-import { useK8sWatchResource } from '@openshift-console/dynamic-plugin-sdk';
 import DRDashboardPage from '../../src/components/DRDashboard/DRDashboardPage';
 import {
   saveDashboardState,
@@ -19,14 +18,18 @@ jest.mock('react-router-dom', () => ({
   useHistory: () => ({ replace: mockReplace, push: mockPush, location: { search: '' } }),
 }));
 
-jest.mock('@openshift-console/dynamic-plugin-sdk', () => ({
-  DocumentTitle: ({ children }: { children: React.ReactNode }) => (
-    <title>{children}</title>
-  ),
-  useK8sWatchResource: jest.fn(() => [[], true, null]),
-}));
+const mockUseWatchResource = jest.fn(() => [[], true, null]);
 
-const mockUseK8sWatchResource = useK8sWatchResource as jest.Mock;
+jest.mock('../../src/providers', () => ({
+  useProvider: () => ({
+    useWatchResource: mockUseWatchResource,
+    createResource: jest.fn(),
+    patchResource: jest.fn(),
+    DocumentTitle: ({ children }: { children: React.ReactNode }) => (
+      <title>{children}</title>
+    ),
+  }),
+}));
 
 jest.mock('../../src/components/DRDashboard/DRDashboard', () => {
   return {
@@ -117,7 +120,7 @@ describe('DRDashboardPage', () => {
         ],
       },
     };
-    mockUseK8sWatchResource.mockReturnValue([[errorPlan], true, null]);
+    mockUseWatchResource.mockReturnValue([[errorPlan], true, null]);
 
     render(<DRDashboardPage />);
     const link = screen.getByText('View affected plans');
@@ -127,6 +130,6 @@ describe('DRDashboardPage', () => {
       { search: 'protected=Error' },
     );
 
-    mockUseK8sWatchResource.mockReturnValue([[], true, null]);
+    mockUseWatchResource.mockReturnValue([[], true, null]);
   });
 });

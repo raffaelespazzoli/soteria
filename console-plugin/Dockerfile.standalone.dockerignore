@@ -1,0 +1,19 @@
+# BuildKit named dockerignore for Dockerfile.standalone
+# Build context is the repo root.
+# Deny-all then re-include only what the multi-stage build needs.
+**
+
+# Go module files & proxy source
+!go.mod
+!go.sum
+!cmd/console-proxy/
+
+# Console plugin source needed by node-build stage
+!console-plugin/package.json
+!console-plugin/yarn.lock
+!console-plugin/.yarnrc.yml
+!console-plugin/.yarn/releases/
+!console-plugin/tsconfig.json
+!console-plugin/webpack.standalone.ts
+!console-plugin/src/
+!console-plugin/standalone/

@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { k8sPatch } from '@openshift-console/dynamic-plugin-sdk';
+import { useProvider } from '../providers';
 import { DRExecution, Condition } from '../models/types';
 import { drExecutionModel } from '../models/k8sModels';
 
@@ -24,6 +24,7 @@ export function useRetryDRGroup(
   executionName: string,
   execution: DRExecution | null | undefined,
 ): UseRetryDRGroupResult {
+  const { patchResource } = useProvider();
   const [isRetrying, setIsRetrying] = useState(false);
   const [retryError, setRetryError] = useState<string | null>(null);
   const [retriedGroup, setRetriedGroup] = useState<string | null>(null);
@@ -37,24 +38,20 @@ export function useRetryDRGroup(
       setRetriedGroup(value === RETRY_ALL_FAILED ? RETRY_ALL_FAILED : value);
 
       try {
-        await k8sPatch({
-          model: drExecutionModel,
-          resource: { metadata: { name: executionName } },
-          data: [
-            {
-              op: 'add',
-              path: '/metadata/annotations/soteria.io~1retry-groups',
-              value,
-            },
-          ],
-        });
+        await patchResource(drExecutionModel, { metadata: { name: executionName } }, [
+          {
+            op: 'add',
+            path: '/metadata/annotations/soteria.io~1retry-groups',
+            value,
+          },
+        ]);
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
         setRetryError(message);
         setIsRetrying(false);
       }
     },
-    [executionName],
+    [executionName, patchResource],
   );
 
   const retry = useCallback((groupName: string) => patchAnnotation(groupName), [patchAnnotation]);

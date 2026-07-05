@@ -5,11 +5,15 @@ import { DRExecution, DRGroupResultValue } from '../../src/models/types';
 
 expect.extend(toHaveNoViolations);
 
-jest.mock('@openshift-console/dynamic-plugin-sdk', () => ({
-  DocumentTitle: ({ children }: { children: React.ReactNode }) => (
-    <title>{children}</title>
-  ),
-  k8sPatch: jest.fn(),
+jest.mock('../../src/providers', () => ({
+  useProvider: () => ({
+    useWatchResource: jest.fn(() => [[], true, null]),
+    createResource: jest.fn(),
+    patchResource: jest.fn(),
+    DocumentTitle: ({ children }: { children: React.ReactNode }) => (
+      <title>{children}</title>
+    ),
+  }),
 }));
 
 jest.mock('react-router-dom', () => ({

@@ -70,11 +70,11 @@ vet: ## Run go vet against code.
 test: manifests generate fmt vet setup-envtest ## Run tests.
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" go test $$(go list ./... | grep -v /e2e | grep -v /console-plugin/) -coverprofile cover.out
 
-# TODO(user): To use a different vendor for e2e tests, modify the setup under 'tests/e2e'.
 # The default setup assumes Kind is pre-installed and builds/loads the Manager Docker image locally.
 # CertManager is installed by default; skip with:
 # - CERT_MANAGER_INSTALL_SKIP=true
 KIND_CLUSTER ?= soteria-test-e2e
+KIND_CONFIG ?= test/e2e/kind-config.yaml
 
 .PHONY: setup-test-e2e
 setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
@@ -86,8 +86,8 @@ setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
 		*"$(KIND_CLUSTER)"*) \
 			echo "Kind cluster '$(KIND_CLUSTER)' already exists. Skipping creation." ;; \
 		*) \
-			echo "Creating Kind cluster '$(KIND_CLUSTER)'..."; \
-			$(KIND) create cluster --name $(KIND_CLUSTER) ;; \
+			echo "Creating Kind cluster '$(KIND_CLUSTER)' (profile: Soteria)..."; \
+			$(KIND) create cluster --name $(KIND_CLUSTER) --config $(KIND_CONFIG) ;; \
 	esac
 
 .PHONY: test-e2e
@@ -327,3 +327,9 @@ endef
 define gomodver
 $(shell go list -m -f '{{if .Replace}}{{.Replace.Version}}{{else}}{{.Version}}{{end}}' $(1) 2>/dev/null)
 endef
+
+## Console Plugin
+
+.PHONY: console-standalone
+console-standalone: ## Build standalone console SPA.
+	cd console-plugin && yarn install --immutable && yarn console-standalone

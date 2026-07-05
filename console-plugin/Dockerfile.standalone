@@ -1,0 +1,20 @@
+FROM node:22-slim AS node-build
+ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+RUN corepack enable
+
+COPY console-plugin/ /usr/src/app/console-plugin/
+WORKDIR /usr/src/app/console-plugin
+RUN yarn install --immutable && yarn console-standalone
+
+FROM golang:1.24 AS go-build
+WORKDIR /usr/src/app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY cmd/console-proxy/ cmd/console-proxy/
+RUN CGO_ENABLED=0 go build -o /console-proxy ./cmd/console-proxy
+
+FROM gcr.io/distroless/static:nonroot
+COPY --from=node-build /usr/src/app/console-plugin/dist-standalone /opt/app-root/src
+COPY --from=go-build /console-proxy /console-proxy
+USER 65534:65534
+ENTRYPOINT ["/console-proxy"]

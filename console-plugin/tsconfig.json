@@ -11,7 +11,7 @@
     "noUnusedLocals": true,
     "skipLibCheck": true
   },
-  "include": ["src"],
+  "include": ["src", "standalone"],
   "exclude": ["node_modules"],
   "ts-node": {
     "files": true,

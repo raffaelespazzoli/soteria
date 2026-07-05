@@ -80,15 +80,21 @@ const mockExecutions: DRExecution[] = [
   },
 ];
 
-jest.mock('@openshift-console/dynamic-plugin-sdk', () => ({
-  useK8sWatchResource: jest.fn(
-    (resource: { groupVersionKind?: { kind?: string }; isList?: boolean }) => {
-      if (resource.groupVersionKind?.kind === 'DRExecution')
-        return [mockExecutions, true, null];
-      return [mockPlans, true, null];
-    },
-  ),
-  DocumentTitle: ({ children }: { children: React.ReactNode }) => <title>{children}</title>,
+const mockUseWatchResource = jest.fn(
+  (gvk: { kind?: string } | null) => {
+    if (gvk?.kind === 'DRExecution')
+      return [mockExecutions, true, null];
+    return [mockPlans, true, null];
+  },
+);
+
+jest.mock('../../src/providers', () => ({
+  useProvider: () => ({
+    useWatchResource: mockUseWatchResource,
+    createResource: jest.fn(),
+    patchResource: jest.fn(),
+    DocumentTitle: ({ children }: { children: React.ReactNode }) => <title>{children}</title>,
+  }),
 }));
 
 describe('DRDashboard', () => {
@@ -175,20 +181,18 @@ describe('DRDashboard', () => {
     ];
 
     beforeEach(() => {
-      const { useK8sWatchResource } = jest.requireMock('@openshift-console/dynamic-plugin-sdk');
-      useK8sWatchResource.mockImplementation(
-        (resource: { groupVersionKind?: { kind?: string } }) => {
-          if (resource.groupVersionKind?.kind === 'DRExecution') return [[], true, null];
+      mockUseWatchResource.mockImplementation(
+        (gvk: { kind?: string } | null) => {
+          if (gvk?.kind === 'DRExecution') return [[], true, null];
           return [plansWithSitesMismatch, true, null];
         },
       );
     });
 
     afterEach(() => {
-      const { useK8sWatchResource } = jest.requireMock('@openshift-console/dynamic-plugin-sdk');
-      useK8sWatchResource.mockImplementation(
-        (resource: { groupVersionKind?: { kind?: string } }) => {
-          if (resource.groupVersionKind?.kind === 'DRExecution')
+      mockUseWatchResource.mockImplementation(
+        (gvk: { kind?: string } | null) => {
+          if (gvk?.kind === 'DRExecution')
             return [mockExecutions, true, null];
           return [mockPlans, true, null];
         },
@@ -233,20 +237,18 @@ describe('DRDashboard', () => {
     ];
 
     beforeEach(() => {
-      const { useK8sWatchResource } = jest.requireMock('@openshift-console/dynamic-plugin-sdk');
-      useK8sWatchResource.mockImplementation(
-        (resource: { groupVersionKind?: { kind?: string } }) => {
-          if (resource.groupVersionKind?.kind === 'DRExecution') return [[], true, null];
+      mockUseWatchResource.mockImplementation(
+        (gvk: { kind?: string } | null) => {
+          if (gvk?.kind === 'DRExecution') return [[], true, null];
           return [plansWithDisksMismatch, true, null];
         },
       );
     });
 
     afterEach(() => {
-      const { useK8sWatchResource } = jest.requireMock('@openshift-console/dynamic-plugin-sdk');
-      useK8sWatchResource.mockImplementation(
-        (resource: { groupVersionKind?: { kind?: string } }) => {
-          if (resource.groupVersionKind?.kind === 'DRExecution')
+      mockUseWatchResource.mockImplementation(
+        (gvk: { kind?: string } | null) => {
+          if (gvk?.kind === 'DRExecution')
             return [mockExecutions, true, null];
           return [mockPlans, true, null];
         },
@@ -268,6 +270,41 @@ describe('DRDashboard', () => {
       const { container } = render(<DRDashboard />);
       const results = await axe(container);
       expect(results).toHaveNoViolations();
+    });
+  });
+
+  describe('loading and error states', () => {
+    afterEach(() => {
+      mockUseWatchResource.mockImplementation(
+        (gvk: { kind?: string } | null) => {
+          if (gvk?.kind === 'DRExecution')
+            return [mockExecutions, true, null];
+          return [mockPlans, true, null];
+        },
+      );
+    });
+
+    it('renders loading state when plans are not yet loaded', () => {
+      mockUseWatchResource.mockImplementation(
+        (gvk: { kind?: string } | null) => {
+          if (gvk?.kind === 'DRExecution') return [[], false, null];
+          return [[], false, null];
+        },
+      );
+      render(<DRDashboard />);
+      expect(screen.getByText('Loading...')).toBeInTheDocument();
+    });
+
+    it('renders error alert when plan watch fails', () => {
+      mockUseWatchResource.mockImplementation(
+        (gvk: { kind?: string } | null) => {
+          if (gvk?.kind === 'DRExecution') return [[], true, null];
+          return [[], true, new Error('connection refused')];
+        },
+      );
+      render(<DRDashboard />);
+      expect(screen.getByText('Failed to load DR plans')).toBeInTheDocument();
+      expect(screen.getByText(/connection refused/)).toBeInTheDocument();
     });
   });
 });

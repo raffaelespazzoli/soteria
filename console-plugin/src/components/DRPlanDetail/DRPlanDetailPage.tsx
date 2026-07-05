@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
-import { DocumentTitle } from '@openshift-console/dynamic-plugin-sdk';
 import { Alert, PageSection, Skeleton, Tab, Tabs, TabTitleText } from '@patternfly/react-core';
+import { useProvider } from '../../providers';
 import DRBreadcrumb from '../shared/DRBreadcrumb';
 import ToastContainer from '../shared/ToastContainer';
 import PlanHeader from './PlanHeader';
@@ -26,6 +26,7 @@ interface DRPlanDetailPageProps {
 }
 
 const DRPlanDetailPage: React.FC<DRPlanDetailPageProps> = (props) => {
+  const { DocumentTitle } = useProvider();
   const name = useRouteParamName(props.match);
   const [plan, planLoaded, planError] = useDRPlan(name!);
   const [executions, executionsLoaded] = useDRExecutions(name!);

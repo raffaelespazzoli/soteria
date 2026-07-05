@@ -1,6 +1,6 @@
 import { useCallback, useEffect } from 'react';
-import { DocumentTitle } from '@openshift-console/dynamic-plugin-sdk';
 import { PageSection, Title } from '@patternfly/react-core';
+import { useProvider } from '../../providers';
 import DRDashboard from './DRDashboard';
 import AlertBannerSystem from './AlertBannerSystem';
 import ToastContainer from '../shared/ToastContainer';
@@ -10,6 +10,7 @@ import { useFilterParams, EMPTY_FILTERS } from '../../hooks/useFilterParams';
 import { useExecutionNotifications } from '../../hooks/useExecutionNotifications';
 
 function DRDashboardPage() {
+  const { DocumentTitle } = useProvider();
   const [plans] = useDRPlans();
   const { setFilters } = useFilterParams();
   useExecutionNotifications();

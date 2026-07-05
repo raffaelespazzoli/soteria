@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
-import { DocumentTitle } from '@openshift-console/dynamic-plugin-sdk';
 import { PageSection, ProgressStepper, Skeleton, Alert } from '@patternfly/react-core';
+import { useProvider } from '../../providers';
 import { Redirect } from 'react-router-dom';
 import DRBreadcrumb from '../shared/DRBreadcrumb';
 import ToastContainer from '../shared/ToastContainer';
@@ -18,6 +18,7 @@ interface ExecutionDetailPageProps {
 }
 
 const ExecutionDetailPage: React.FC<ExecutionDetailPageProps> = (props) => {
+  const { DocumentTitle } = useProvider();
   const name = useRouteParamName(props.match);
 
   const [allExecutions, execListLoaded, execListError] = useDRExecutions();

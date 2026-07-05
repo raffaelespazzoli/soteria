@@ -48,13 +48,18 @@ const mockDRedSteadyStatePlan: DRPlan = {
 const mockPlans: DRPlan[] = [mockSteadyStatePlan];
 const mockExecs: DRExecution[] = [];
 
-jest.mock('@openshift-console/dynamic-plugin-sdk', () => ({
-  useK8sWatchResource: jest.fn(
-    (resource: { groupVersionKind?: { kind?: string } }) => {
-      if (resource?.groupVersionKind?.kind === 'DRExecution') return [mockExecs, true, null];
-      return [mockPlans, true, null];
-    },
-  ),
+jest.mock('../../src/providers', () => ({
+  useProvider: () => ({
+    useWatchResource: jest.fn(
+      (gvk: { kind?: string } | null) => {
+        if (gvk?.kind === 'DRExecution') return [mockExecs, true, null];
+        return [mockPlans, true, null];
+      },
+    ),
+    createResource: jest.fn(),
+    patchResource: jest.fn(),
+    DocumentTitle: ({ children }: { children: React.ReactNode }) => <title>{children}</title>,
+  }),
 }));
 
 const mockPlanWithWaves: DRPlan = {

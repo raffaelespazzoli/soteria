@@ -1,10 +1,15 @@
 import { useCreateDRExecution } from '../../src/hooks/useCreateDRExecution';
 import { ACTION_CONFIG, resolveActionKey } from '../../src/utils/drPlanActions';
 
-const mockK8sCreate = jest.fn();
+const mockCreateResource = jest.fn();
 
-jest.mock('@openshift-console/dynamic-plugin-sdk', () => ({
-  k8sCreate: (...args: unknown[]) => mockK8sCreate(...args),
+jest.mock('../../src/providers', () => ({
+  useProvider: () => ({
+    createResource: (...args: unknown[]) => mockCreateResource(...args),
+    useWatchResource: jest.fn(() => [[], true, null]),
+    patchResource: jest.fn(),
+    DocumentTitle: () => null,
+  }),
 }));
 
 jest.mock('react', () => {
@@ -21,7 +26,7 @@ describe('useCreateDRExecution', () => {
   let setError: jest.Mock;
 
   beforeEach(() => {
-    mockK8sCreate.mockReset();
+    mockCreateResource.mockReset();
     setIsCreating = jest.fn();
     setError = jest.fn();
 
@@ -35,69 +40,69 @@ describe('useCreateDRExecution', () => {
   });
 
   it('maps failover action to disaster mode', async () => {
-    mockK8sCreate.mockResolvedValue({ metadata: { name: 'test' } });
+    mockCreateResource.mockResolvedValue({ metadata: { name: 'test' } });
     const { create } = useCreateDRExecution();
     await create('erp-plan', 'failover');
-    expect(mockK8sCreate.mock.calls[0][0].data.spec.mode).toBe('disaster');
+    expect(mockCreateResource.mock.calls[0][1].spec.mode).toBe('disaster');
   });
 
   it('maps planned_migration action to planned_migration mode', async () => {
-    mockK8sCreate.mockResolvedValue({ metadata: { name: 'test' } });
+    mockCreateResource.mockResolvedValue({ metadata: { name: 'test' } });
     const { create } = useCreateDRExecution();
     await create('erp-plan', 'planned_migration');
-    expect(mockK8sCreate.mock.calls[0][0].data.spec.mode).toBe('planned_migration');
+    expect(mockCreateResource.mock.calls[0][1].spec.mode).toBe('planned_migration');
   });
 
   it('maps reprotect action to reprotect mode', async () => {
-    mockK8sCreate.mockResolvedValue({ metadata: { name: 'test' } });
+    mockCreateResource.mockResolvedValue({ metadata: { name: 'test' } });
     const { create } = useCreateDRExecution();
     await create('erp-plan', 'reprotect');
-    expect(mockK8sCreate.mock.calls[0][0].data.spec.mode).toBe('reprotect');
+    expect(mockCreateResource.mock.calls[0][1].spec.mode).toBe('reprotect');
   });
 
   it('maps failback action to planned_migration mode', async () => {
-    mockK8sCreate.mockResolvedValue({ metadata: { name: 'test' } });
+    mockCreateResource.mockResolvedValue({ metadata: { name: 'test' } });
     const { create } = useCreateDRExecution();
     await create('erp-plan', 'failback');
-    expect(mockK8sCreate.mock.calls[0][0].data.spec.mode).toBe('planned_migration');
+    expect(mockCreateResource.mock.calls[0][1].spec.mode).toBe('planned_migration');
   });
 
   it('maps restore action to reprotect mode', async () => {
-    mockK8sCreate.mockResolvedValue({ metadata: { name: 'test' } });
+    mockCreateResource.mockResolvedValue({ metadata: { name: 'test' } });
     const { create } = useCreateDRExecution();
     await create('erp-plan', 'restore');
-    expect(mockK8sCreate.mock.calls[0][0].data.spec.mode).toBe('reprotect');
+    expect(mockCreateResource.mock.calls[0][1].spec.mode).toBe('reprotect');
   });
 
   it('generates resource name with plan name and action', async () => {
-    mockK8sCreate.mockResolvedValue({ metadata: { name: 'test' } });
+    mockCreateResource.mockResolvedValue({ metadata: { name: 'test' } });
     const { create } = useCreateDRExecution();
     await create('erp-plan', 'failover');
-    const name = mockK8sCreate.mock.calls[0][0].data.metadata.name;
+    const name = mockCreateResource.mock.calls[0][1].metadata.name;
     expect(name).toMatch(/^erp-plan-failover-\d+$/);
   });
 
   it('replaces underscores with hyphens in resource name', async () => {
-    mockK8sCreate.mockResolvedValue({ metadata: { name: 'test' } });
+    mockCreateResource.mockResolvedValue({ metadata: { name: 'test' } });
     const { create } = useCreateDRExecution();
     await create('erp-plan', 'planned_migration');
-    const name = mockK8sCreate.mock.calls[0][0].data.metadata.name;
+    const name = mockCreateResource.mock.calls[0][1].metadata.name;
     expect(name).toMatch(/^erp-plan-planned-migration-\d+$/);
   });
 
   it('sets soteria.io/plan-name label', async () => {
-    mockK8sCreate.mockResolvedValue({ metadata: { name: 'test' } });
+    mockCreateResource.mockResolvedValue({ metadata: { name: 'test' } });
     const { create } = useCreateDRExecution();
     await create('erp-plan', 'failover');
-    const labels = mockK8sCreate.mock.calls[0][0].data.metadata.labels;
+    const labels = mockCreateResource.mock.calls[0][1].metadata.labels;
     expect(labels['soteria.io/plan-name']).toBe('erp-plan');
   });
 
   it('uses correct K8s model', async () => {
-    mockK8sCreate.mockResolvedValue({ metadata: { name: 'test' } });
+    mockCreateResource.mockResolvedValue({ metadata: { name: 'test' } });
     const { create } = useCreateDRExecution();
     await create('erp-plan', 'failover');
-    const model = mockK8sCreate.mock.calls[0][0].model;
+    const model = mockCreateResource.mock.calls[0][0];
     expect(model.apiGroup).toBe('soteria.io');
     expect(model.kind).toBe('DRExecution');
     expect(model.plural).toBe('drexecutions');
@@ -105,14 +110,14 @@ describe('useCreateDRExecution', () => {
   });
 
   it('sets planName in spec', async () => {
-    mockK8sCreate.mockResolvedValue({ metadata: { name: 'test' } });
+    mockCreateResource.mockResolvedValue({ metadata: { name: 'test' } });
     const { create } = useCreateDRExecution();
     await create('erp-plan', 'failover');
-    expect(mockK8sCreate.mock.calls[0][0].data.spec.planName).toBe('erp-plan');
+    expect(mockCreateResource.mock.calls[0][1].spec.planName).toBe('erp-plan');
   });
 
   it('sets isCreating true then false on success', async () => {
-    mockK8sCreate.mockResolvedValue({ metadata: { name: 'test' } });
+    mockCreateResource.mockResolvedValue({ metadata: { name: 'test' } });
     const { create } = useCreateDRExecution();
     await create('erp-plan', 'failover');
     expect(setIsCreating).toHaveBeenCalledWith(true);
@@ -120,7 +125,7 @@ describe('useCreateDRExecution', () => {
   });
 
   it('sets error on failure', async () => {
-    mockK8sCreate.mockRejectedValue(new Error('concurrent execution already active'));
+    mockCreateResource.mockRejectedValue(new Error('concurrent execution already active'));
     const { create } = useCreateDRExecution();
     await expect(create('erp-plan', 'failover')).rejects.toThrow(
       'concurrent execution already active',
@@ -132,11 +137,11 @@ describe('useCreateDRExecution', () => {
   it('throws for unknown action', async () => {
     const { create } = useCreateDRExecution();
     await expect(create('erp-plan', 'unknown')).rejects.toThrow('Unknown action: unknown');
-    expect(mockK8sCreate).not.toHaveBeenCalled();
+    expect(mockCreateResource).not.toHaveBeenCalled();
   });
 
   it('clears error before new creation attempt', async () => {
-    mockK8sCreate.mockResolvedValue({ metadata: { name: 'test' } });
+    mockCreateResource.mockResolvedValue({ metadata: { name: 'test' } });
     const { create } = useCreateDRExecution();
     await create('erp-plan', 'failover');
     expect(setError).toHaveBeenCalledWith(undefined);
@@ -149,11 +154,11 @@ describe('useCreateDRExecution', () => {
   });
 
   it('resolves title-case label to correct action key', async () => {
-    mockK8sCreate.mockResolvedValue({ metadata: { name: 'test' } });
+    mockCreateResource.mockResolvedValue({ metadata: { name: 'test' } });
     const { create } = useCreateDRExecution();
     await create('erp-plan', 'Failover');
-    expect(mockK8sCreate.mock.calls[0][0].data.spec.mode).toBe('disaster');
-    expect(mockK8sCreate.mock.calls[0][0].data.metadata.name).toMatch(/^erp-plan-failover-\d+$/);
+    expect(mockCreateResource.mock.calls[0][1].spec.mode).toBe('disaster');
+    expect(mockCreateResource.mock.calls[0][1].metadata.name).toMatch(/^erp-plan-failover-\d+$/);
   });
 });
 

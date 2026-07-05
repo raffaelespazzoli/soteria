@@ -3952,7 +3952,8 @@ So that the operator manages DR plans against real storage replication.
 **Given** ScyllaDB and KubeVirt are running on both Minikube clusters
 **When** the Soteria deployment script is executed
 **Then** Soteria operator (API server + controller) is deployed on both clusters
-**And** console plugin is excluded (Minikube has no OCP Console)
+**And** OCP console plugin is excluded (Minikube has no OCP Console)
+**And** standalone console UI is deployed on both clusters
 
 **AC2: Site-name configuration**
 **Given** the Soteria deployment
@@ -3975,6 +3976,13 @@ So that the operator manages DR plans against real storage replication.
 **When** a test resource is created via the Soteria API on east
 **Then** it is visible on west after ScyllaDB replication delay
 
+**AC6: Standalone console availability**
+**Given** the standalone console deployment
+**When** the deploy script completes
+**Then** the `soteria-console-standalone` pod is Ready on both clusters
+**And** `curl http://<service-ip>:8080/healthz` returns 200
+**And** the UI serves the SPA at the root path
+
 #### Technical Notes
 
 - Image built locally and loaded into Minikube via `minikube image load` (not pulled from registry)
@@ -3982,7 +3990,12 @@ So that the operator manages DR plans against real storage replication.
 - Adapted from `hack/overlays/{base,etl6,etl7}/` pattern: `--scylladb-dc-replication=east:1,west:1` (1 member/rack in developer mode), `imagePullPolicy: IfNotPresent`, no console plugin, no Submariner ServiceExport
 - `deploy-soteria.sh` or `BeforeSuite` fixture — deployment approach TBD (may be integrated into E2E test setup)
 - No noop VR controller deployed — real CSI Addons sidecar from Story 14.2 handles VR/VGR reconciliation
-- Scope: `hack/multisite/deploy-soteria.sh` + overlay additions + README update
+- Standalone console image built via `docker build -f console-plugin/Dockerfile.standalone .` (repo root context)
+- Standalone image loaded into both Minikube clusters via `minikube image load` (same workflow as operator image)
+- `hack/overlays/base/console-standalone.yaml` applied with `CONSOLE_STANDALONE_IMG_PLACEHOLDER` replaced by the local tag
+- Deploy order: operator deployed first → wait for APIService Available (AC4) → then deploy standalone console (the UI queries `soteria.io` APIs via the APIService)
+- Standalone console is stateless and per-cluster (each instance proxies to its local K8s API); deployed on both sites so console access survives a site failure
+- Scope: `hack/multisite/deploy-soteria.sh` + overlay additions + ~1 standalone image build step + ~1 standalone manifest apply + README update
 
 ### Story 15.9: Full Lifecycle E2E Test (Moved from 14-7)
 

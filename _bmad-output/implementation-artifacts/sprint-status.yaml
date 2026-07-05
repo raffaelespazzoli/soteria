@@ -419,6 +419,6 @@ development_status:
   15-4-shadowpv-crd-scylladb-storage: done
   15-5-shadowpv-publisher-controller: done
   15-6-shadowpv-consumer-controller-pv-creation-pool-id-rewrite: done
-  15-7-console-plugin-standalone-mode: ready-for-dev
+  15-7-console-plugin-standalone-mode: review
   15-8-soteria-operator-deployment: ready-for-dev
   15-9-full-lifecycle-e2e-test: ready-for-dev

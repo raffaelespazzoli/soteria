@@ -33,9 +33,13 @@ const mockPlan: DRPlan = {
 const mockUseDRPlan = jest.fn<[DRPlan | undefined, boolean, unknown], [string]>();
 const mockUseDRExecutions = jest.fn();
 
-jest.mock('@openshift-console/dynamic-plugin-sdk', () => ({
-  DocumentTitle: ({ children }: { children: React.ReactNode }) => <title>{children}</title>,
-  useK8sWatchResource: jest.fn(() => [null, false, null]),
+jest.mock('../../src/providers', () => ({
+  useProvider: () => ({
+    useWatchResource: jest.fn(() => [null, false, null]),
+    createResource: jest.fn(),
+    patchResource: jest.fn(),
+    DocumentTitle: ({ children }: { children: React.ReactNode }) => <title>{children}</title>,
+  }),
 }));
 
 jest.mock('../../src/hooks/useDRResources', () => ({

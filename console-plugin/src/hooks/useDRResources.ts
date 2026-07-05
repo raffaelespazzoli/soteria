@@ -1,9 +1,6 @@
 import { useEffect, useState } from 'react';
-import {
-  K8sGroupVersionKind,
-  useK8sWatchResource,
-  WatchK8sResource,
-} from '@openshift-console/dynamic-plugin-sdk';
+import type { K8sGroupVersionKind } from '@openshift-console/dynamic-plugin-sdk';
+import { useProvider } from '../providers';
 import { DRExecution, DRPlan } from '../models/types';
 
 const drPlanGVK: K8sGroupVersionKind = {
@@ -19,20 +16,13 @@ const drExecutionGVK: K8sGroupVersionKind = {
 };
 
 export function useDRPlans(): [DRPlan[], boolean, unknown] {
-  const resource: WatchK8sResource = {
-    groupVersionKind: drPlanGVK,
-    isList: true,
-  };
-  return useK8sWatchResource<DRPlan[]>(resource);
+  const { useWatchResource } = useProvider();
+  return useWatchResource<DRPlan[]>(drPlanGVK, { isList: true, plural: 'drplans' });
 }
 
 export function useDRPlan(name: string): [DRPlan | undefined, boolean, unknown] {
-  const resource: WatchK8sResource = {
-    groupVersionKind: drPlanGVK,
-    name,
-    isList: false,
-  };
-  const [data, loaded, error] = useK8sWatchResource<DRPlan>(resource);
+  const { useWatchResource } = useProvider();
+  const [data, loaded, error] = useWatchResource<DRPlan>(drPlanGVK, { name, isList: false, plural: 'drplans' });
   const [cached, setCached] = useState<DRPlan | undefined>(undefined);
 
   const dataHasContent = !!(data && data.metadata?.name);
@@ -51,19 +41,18 @@ export function useDRPlan(name: string): [DRPlan | undefined, boolean, unknown] 
 }
 
 export function useDRExecutions(planName?: string): [DRExecution[], boolean, unknown] {
-  const resource: WatchK8sResource = {
-    groupVersionKind: drExecutionGVK,
+  const { useWatchResource } = useProvider();
+  return useWatchResource<DRExecution[]>(drExecutionGVK, {
     isList: true,
+    plural: 'drexecutions',
     ...(planName ? { selector: { matchLabels: { 'soteria.io/plan-name': planName } } } : {}),
-  };
-  return useK8sWatchResource<DRExecution[]>(resource);
+  });
 }
 
 export function useDRExecution(name: string): [DRExecution | undefined, boolean, unknown] {
-  const resource: WatchK8sResource | null = name
-    ? { groupVersionKind: drExecutionGVK, name, isList: false }
-    : null;
-  const [data, loaded, error] = useK8sWatchResource<DRExecution>(resource);
+  const { useWatchResource } = useProvider();
+  const gvk = name ? drExecutionGVK : null;
+  const [data, loaded, error] = useWatchResource<DRExecution>(gvk, { name, isList: false, plural: 'drexecutions' });
   const [cached, setCached] = useState<DRExecution | undefined>(undefined);
 
   const dataHasContent = !!(data && data.metadata?.name);

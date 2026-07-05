@@ -5,8 +5,13 @@ import {
 } from '../../src/hooks/useRetryDRGroup';
 import { Condition } from '../../src/models/types';
 
-jest.mock('@openshift-console/dynamic-plugin-sdk', () => ({
-  k8sPatch: jest.fn(),
+jest.mock('../../src/providers', () => ({
+  useProvider: () => ({
+    patchResource: jest.fn(),
+    useWatchResource: jest.fn(() => [[], true, null]),
+    createResource: jest.fn(),
+    DocumentTitle: () => null,
+  }),
 }));
 
 describe('getRetryRejectedMessage', () => {

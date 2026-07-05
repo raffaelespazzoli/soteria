@@ -1,14 +1,18 @@
 import { render, screen, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { k8sPatch } from '@openshift-console/dynamic-plugin-sdk';
 import { useRetryDRGroup, RETRY_GROUPS_ANNOTATION, RETRY_ALL_FAILED } from '../../src/hooks/useRetryDRGroup';
 import { DRExecution } from '../../src/models/types';
 
-jest.mock('@openshift-console/dynamic-plugin-sdk', () => ({
-  k8sPatch: jest.fn(),
-}));
+const mockPatchResource = jest.fn();
 
-const mockedK8sPatch = k8sPatch as jest.MockedFunction<typeof k8sPatch>;
+jest.mock('../../src/providers', () => ({
+  useProvider: () => ({
+    patchResource: (...args: unknown[]) => mockPatchResource(...args),
+    useWatchResource: jest.fn(() => [[], true, null]),
+    createResource: jest.fn(),
+    DocumentTitle: () => null,
+  }),
+}));
 
 const baseExecution: DRExecution = {
   apiVersion: 'soteria.io/v1alpha1',
@@ -61,7 +65,7 @@ const HookOutput: React.FC<HookOutputProps> = ({ executionName, execution }) => 
 describe('useRetryDRGroup (hook behavior)', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockedK8sPatch.mockResolvedValue({} as never);
+    mockPatchResource.mockResolvedValue({} as never);
   });
 
   it('patches annotation with group name for single retry', async () => {
@@ -70,17 +74,17 @@ describe('useRetryDRGroup (hook behavior)', () => {
 
     await user.click(screen.getByTestId('retry-single'));
 
-    expect(mockedK8sPatch).toHaveBeenCalledWith({
-      model: expect.objectContaining({ kind: 'DRExecution', apiGroup: 'soteria.io' }),
-      resource: { metadata: { name: 'erp-failover-001' } },
-      data: [
+    expect(mockPatchResource).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'DRExecution', apiGroup: 'soteria.io' }),
+      { metadata: { name: 'erp-failover-001' } },
+      [
         {
           op: 'add',
           path: '/metadata/annotations/soteria.io~1retry-groups',
           value: 'drgroup-3',
         },
       ],
-    });
+    );
   });
 
   it('patches annotation with all-failed for retry all', async () => {
@@ -89,22 +93,22 @@ describe('useRetryDRGroup (hook behavior)', () => {
 
     await user.click(screen.getByTestId('retry-all'));
 
-    expect(mockedK8sPatch).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: [
-          {
-            op: 'add',
-            path: '/metadata/annotations/soteria.io~1retry-groups',
-            value: RETRY_ALL_FAILED,
-          },
-        ],
-      }),
+    expect(mockPatchResource).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      [
+        {
+          op: 'add',
+          path: '/metadata/annotations/soteria.io~1retry-groups',
+          value: RETRY_ALL_FAILED,
+        },
+      ],
     );
   });
 
   it('returns isRetrying true while patch is in flight', async () => {
     let resolvePromise!: () => void;
-    mockedK8sPatch.mockReturnValue(
+    mockPatchResource.mockReturnValue(
       new Promise<void>((resolve) => {
         resolvePromise = resolve;
       }) as never,
@@ -125,7 +129,7 @@ describe('useRetryDRGroup (hook behavior)', () => {
   });
 
   it('sets retryError on patch failure', async () => {
-    mockedK8sPatch.mockRejectedValue(new Error('Forbidden'));
+    mockPatchResource.mockRejectedValue(new Error('Forbidden'));
     const user = userEvent.setup();
     render(<HookOutput executionName="erp-failover-001" execution={baseExecution} />);
 
@@ -136,8 +140,8 @@ describe('useRetryDRGroup (hook behavior)', () => {
   });
 
   it('clears retryError on new retry attempt', async () => {
-    mockedK8sPatch.mockRejectedValueOnce(new Error('Forbidden'));
-    mockedK8sPatch.mockResolvedValueOnce({} as never);
+    mockPatchResource.mockRejectedValueOnce(new Error('Forbidden'));
+    mockPatchResource.mockResolvedValueOnce({} as never);
 
     const user = userEvent.setup();
     render(<HookOutput executionName="erp-failover-001" execution={baseExecution} />);
