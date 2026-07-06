@@ -1,0 +1,35 @@
+# Cilium Gateway API resources for the Soteria console-standalone UI.
+# Applied by deploy-soteria.sh after enabling gatewayAPI in Cilium.
+# MetalLB assigns a LoadBalancer IP to the Gateway automatically.
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: soteria-console-gateway
+  namespace: soteria-console
+spec:
+  gatewayClassName: cilium
+  listeners:
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: Same
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: soteria-console-route
+  namespace: soteria-console
+spec:
+  parentRefs:
+    - name: soteria-console-gateway
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: soteria-console-standalone
+          port: 8080

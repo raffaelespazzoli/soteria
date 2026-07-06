@@ -14,12 +14,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Builds and deploys the Soteria operator on both Minikube KVM2 clusters.
+# Builds and deploys the Soteria operator and console UI on both Minikube
+# KVM2 clusters.
 #
-# Builds the operator image locally, loads it into both Minikube clusters,
-# applies Kustomize overlays with ScyllaDB connection + TLS + site-name
-# configuration, waits for controller-manager rollout, verifies APIService
-# availability, and runs a cross-DC replication smoke test.
+# Builds the operator and console-standalone images locally, loads them into
+# both Minikube clusters, applies Kustomize overlays with ScyllaDB connection
+# + TLS + site-name configuration, waits for controller-manager rollout,
+# verifies APIService availability, deploys the console-standalone UI with
+# Cilium Gateway API ingress, and runs a cross-DC replication smoke test.
 #
 # Prerequisites:
 #   - Minikube KVM2 clusters created by setup-clusters.sh (east + west)
@@ -39,6 +41,7 @@
 #   CONTAINER_TOOL        Container build tool (default: podman)
 #   SKIP_BUILD            Set to "1" to skip image build (default: 0)
 #   SKIP_LOAD             Set to "1" to skip image load into Minikube (default: 0)
+#   CONSOLE_IMG           Console standalone image (default: localhost/soteria-console:dev)
 #   SMOKE_TEST            Set to "0" to skip the cross-DC replication smoke test
 #   SMOKE_TEST_PLAN_NAME  Name for the temporary smoke-test DRPlan
 
@@ -59,6 +62,7 @@ IMG="${IMG:-localhost/soteria:dev}"
 CONTAINER_TOOL="${CONTAINER_TOOL:-podman}"
 SKIP_BUILD="${SKIP_BUILD:-0}"
 SKIP_LOAD="${SKIP_LOAD:-0}"
+CONSOLE_IMG="${CONSOLE_IMG:-localhost/soteria-console:dev}"
 SMOKE_TEST="${SMOKE_TEST:-1}"
 SMOKE_TEST_PLAN_NAME="${SMOKE_TEST_PLAN_NAME:-smoke-test-plan-$(date +%s)-$$}"
 
@@ -145,24 +149,42 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Task 1: Load image into both Minikube clusters
+# Task 1b: Build console-standalone container image
 # ---------------------------------------------------------------------------
-if [[ "${SKIP_LOAD}" != "1" ]]; then
+if [[ "${SKIP_BUILD}" != "1" ]]; then
+  info "=== Building console-standalone image: ${CONSOLE_IMG} ==="
+  ${CONTAINER_TOOL} build -t "${CONSOLE_IMG}" \
+    -f "${REPO_ROOT}/console-plugin/Dockerfile.standalone" "${REPO_ROOT}"
+  info "Console image built successfully"
+else
+  info "Skipping console image build (SKIP_BUILD=1)"
+fi
+
+# ---------------------------------------------------------------------------
+# Task 2: Load images into both Minikube clusters
+# ---------------------------------------------------------------------------
+load_image() {
+  local image="$1" label="$2"
+  local img_tar
+  img_tar="$(mktemp -t "${label}-XXXXXX.tar")"
+
+  info "Saving ${label} image to tarball for minikube import..."
+  ${CONTAINER_TOOL} save "${image}" -o "${img_tar}"
+
   for profile in "${EAST_CLUSTER_NAME}" "${WEST_CLUSTER_NAME}"; do
-    info "Loading image into Minikube cluster: ${profile}"
-    minikube image load "${IMG}" -p "${profile}"
+    info "Loading ${label} image into Minikube cluster: ${profile}"
+    minikube image load "${img_tar}" -p "${profile}"
   done
-  info "Image loaded into both clusters"
+  rm -f "${img_tar}"
+}
+
+if [[ "${SKIP_LOAD}" != "1" ]]; then
+  load_image "${IMG}" "soteria-operator"
+  load_image "${CONSOLE_IMG}" "console-standalone"
+  info "Images loaded into both clusters"
 else
   info "Skipping image load (SKIP_LOAD=1)"
 fi
-
-# Verify image is available
-for profile in "${EAST_CLUSTER_NAME}" "${WEST_CLUSTER_NAME}"; do
-  if ! minikube ssh -p "${profile}" -- "sudo crictl images" 2>/dev/null | grep -q "soteria"; then
-    warn "Soteria image may not be visible on '${profile}' via crictl. Continuing anyway..."
-  fi
-done
 
 # ---------------------------------------------------------------------------
 # Idempotency: check if Soteria is already deployed and healthy
@@ -250,7 +272,59 @@ for ctx in "${EAST_CONTEXT}" "${WEST_CONTEXT}"; do
 done
 
 # ---------------------------------------------------------------------------
-# Task 4: Cross-DC replication smoke test
+# Task 4: Deploy console-standalone on both clusters
+# ---------------------------------------------------------------------------
+CONSOLE_MANIFEST="${REPO_ROOT}/hack/overlays/base/console-standalone.yaml"
+CONSOLE_NS="soteria-console"
+
+info "=== Deploying console-standalone ==="
+for ctx in "${EAST_CONTEXT}" "${WEST_CONTEXT}"; do
+  info "Applying console-standalone on ${ctx}..."
+  sed "s|CONSOLE_STANDALONE_IMG_PLACEHOLDER|${CONSOLE_IMG}|g" "${CONSOLE_MANIFEST}" | \
+    kubectl --context="${ctx}" apply --server-side --force-conflicts -f -
+
+  info "Waiting for console-standalone rollout on ${ctx} (timeout 3m)..."
+  if ! kubectl --context="${ctx}" -n "${CONSOLE_NS}" rollout status \
+      deployment/soteria-console-standalone --timeout=180s; then
+    error "Console-standalone rollout failed on ${ctx}"
+    kubectl --context="${ctx}" -n "${CONSOLE_NS}" describe deployment/soteria-console-standalone
+    kubectl --context="${ctx}" -n "${CONSOLE_NS}" logs deployment/soteria-console-standalone --tail=30 2>/dev/null || true
+    fatal "Console deployment failed on ${ctx}"
+  fi
+  info "Console-standalone running on ${ctx}"
+done
+
+# ---------------------------------------------------------------------------
+# Task 5: Deploy Gateway + HTTPRoute for console UI
+# ---------------------------------------------------------------------------
+GATEWAY_MANIFEST="${SCRIPT_DIR}/manifests/console-gateway.yaml"
+
+info "=== Deploying Gateway + HTTPRoute for console UI ==="
+for ctx in "${EAST_CONTEXT}" "${WEST_CONTEXT}"; do
+  kubectl --context="${ctx}" apply --server-side -f "${GATEWAY_MANIFEST}"
+done
+
+for ctx in "${EAST_CONTEXT}" "${WEST_CONTEXT}"; do
+  info "Waiting for Gateway to be programmed on ${ctx}..."
+  retries=0
+  while true; do
+    programmed=$(kubectl --context="${ctx}" -n "${CONSOLE_NS}" get gateway soteria-console-gateway \
+      -o jsonpath='{.status.conditions[?(@.type=="Programmed")].status}' 2>/dev/null) || true
+    if [[ "${programmed}" == "True" ]]; then
+      break
+    fi
+    retries=$((retries + 1))
+    if [[ ${retries} -ge 30 ]]; then
+      warn "Gateway not Programmed on ${ctx} after 60s — continuing anyway"
+      break
+    fi
+    sleep 2
+  done
+done
+info "Gateway deployed on both clusters"
+
+# ---------------------------------------------------------------------------
+# Task 7: Cross-DC replication smoke test
 # ---------------------------------------------------------------------------
 if [[ "${SMOKE_TEST}" != "0" ]]; then
   info "=== Running cross-DC replication smoke test ==="
@@ -310,20 +384,31 @@ fi
 # ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
+east_gw_ip=$(kubectl --context "${EAST_CONTEXT}" -n "${CONSOLE_NS}" get gateway soteria-console-gateway \
+  -o jsonpath='{.status.addresses[0].value}' 2>/dev/null) || true
+west_gw_ip=$(kubectl --context "${WEST_CONTEXT}" -n "${CONSOLE_NS}" get gateway soteria-console-gateway \
+  -o jsonpath='{.status.addresses[0].value}' 2>/dev/null) || true
+
 echo ""
 info "============================================"
 info "  Soteria deployment complete!"
 info "============================================"
 info ""
-info "  Image:      ${IMG}"
+info "  Operator:   ${IMG}"
+info "  Console:    ${CONSOLE_IMG}"
 info "  East:       controller-manager running, APIService Available"
 info "  West:       controller-manager running, APIService Available"
 if [[ "${SMOKE_TEST}" != "0" ]]; then
   info "  Smoke test: Cross-DC replication verified"
 fi
 info ""
+info "  Console UI:"
+info "    East: http://${east_gw_ip:-<pending>}"
+info "    West: http://${west_gw_ip:-<pending>}"
+info ""
 info "  Verify:"
 info "    kubectl --context east get apiservice v1alpha1.soteria.io"
 info "    kubectl --context west get apiservice v1alpha1.soteria.io"
 info "    kubectl --context east -n soteria logs deploy/soteria-controller-manager -c manager"
+info "    kubectl --context east -n soteria-console get gateway,httproute"
 info ""

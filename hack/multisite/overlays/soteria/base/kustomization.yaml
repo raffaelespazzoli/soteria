@@ -4,40 +4,43 @@
 #
 # Per-DC overlays (east/, west/) add --site-name and --scylladb-local-dc args.
 #
-# NOTE: config/default includes ScyllaDB manifests which are harmlessly
-# re-applied (ScyllaDB is already running from setup-scylladb.sh).
+# NOTE: config/default includes the ScyllaCluster resource, but ScyllaDB is
+# managed separately by setup-scylladb.sh. We exclude it here to avoid
+# conflicts with the multisite ScyllaCluster (different DC name, exposeOptions).
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
   - ../../../../../config/default
   # Aggregated API server RBAC (auth-delegation, admission, flowcontrol)
-  - ../../base/apiserver-rbac.yaml
-  - ../../base/apiserver-cert.yaml
+  - apiserver-rbac.yaml
+  - apiserver-cert.yaml
 
 patches:
   # --- ScyllaDB + APIServer TLS volumes on the manager ---
-  - path: ../../base/manager-scylladb-patch.yaml
+  - path: manager-scylladb-patch.yaml
     target:
       kind: Deployment
       name: soteria-controller-manager
 
   # --- ScyllaDB connection + APIServer TLS args + imagePullPolicy ---
-  - path: ../../base/manager-args-patch.yaml
+  - path: manager-args-patch.yaml
     target:
       kind: Deployment
       name: soteria-controller-manager
 
-  # --- Override ScyllaCluster storage for Minikube (rook-ceph-block-xfs) ---
+  # --- Exclude ScyllaCluster (managed by setup-scylladb.sh) ---
   - target:
       group: scylla.scylladb.com
       version: v1
       kind: ScyllaCluster
       name: soteria-scylladb
     patch: |
-      - op: replace
-        path: /spec/datacenter/racks/0/storage/storageClassName
-        value: rook-ceph-block-xfs
+      $patch: delete
+      apiVersion: scylla.scylladb.com/v1
+      kind: ScyllaCluster
+      metadata:
+        name: soteria-scylladb
 
   # --- Switch all cert-manager Certificates to use soteria-internal Issuer ---
   - target:

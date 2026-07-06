@@ -1,7 +1,7 @@
 # Cilium Helm values for Minikube KVM2-based multisite clusters.
 #
-# Cluster-specific overrides (cluster.name, cluster.id) are passed via
-# --set flags in setup-clusters.sh.
+# Cluster-specific overrides (cluster.name, cluster.id, k8sServiceHost,
+# k8sServicePort) are passed via --set flags in setup-clusters.sh.
 #
 # Cluster Mesh is enabled as a separate step after initial install,
 # since the apiserver requires both clusters to be operational.
@@ -11,7 +11,17 @@
 ipam:
   mode: kubernetes
 
-kubeProxyReplacement: "true"
+kubeProxyReplacement: true
+
+gatewayAPI:
+  enabled: true
+
+clustermesh:
+  mcsapi:
+    enabled: true
+    corednsAutoConfigure:
+      enabled: true
+  enableEndpointSliceSynchronization: true
 
 operator:
   replicas: 1

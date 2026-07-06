@@ -6,7 +6,7 @@ resources:
   - ../base
 
 patches:
-  - path: ../../west/manager-dc-patch.yaml
+  - path: manager-dc-patch.yaml
     target:
       kind: Deployment
       name: soteria-controller-manager

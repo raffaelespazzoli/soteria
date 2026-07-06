@@ -245,16 +245,19 @@ install_cilium() {
   # Default minikube API port
   local API_SERVER_PORT=8443
 
+  info "Installing Gateway API CRDs (v1.4.1)..."
+  local gw_crd_base="https://raw.githubusercontent.com/kubernetes-sigs/gateway-api/v1.4.1/config/crd/standard"
+  for crd in gatewayclasses gateways httproutes referencegrants grpcroutes; do
+    kubectl --context "${context}" apply -f \
+      "${gw_crd_base}/gateway.networking.k8s.io_${crd}.yaml"
+  done
+
   helm upgrade --install --namespace kube-system \
     cilium cilium/cilium \
     --kube-context "${context}" \
     --values "${MANIFESTS_DIR}/cilium/values.yaml" \
     --set cluster.name="${cluster_name}" \
     --set cluster.id="${cluster_id}" \
-    --set clustermesh.mcsapi.enabled=true \
-    --set clustermesh.enableEndpointSliceSynchronization=true \
-    --set clustermesh.mcsapi.corednsAutoConfigure.enabled=true \
-    --set kubeProxyReplacement=true \
     --set k8sServiceHost=${API_SERVER_IP} \
     --set k8sServicePort=${API_SERVER_PORT} \
     "${version_args[@]+"${version_args[@]}"}" \
