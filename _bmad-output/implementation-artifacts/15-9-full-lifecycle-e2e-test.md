@@ -1,94 +1,98 @@
 # Story 15.9: Full Lifecycle E2E Test with Real Storage (Moved from 14.7)
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
 As a platform engineer,
-I want an automated full lifecycle E2E test validating 4 DR transitions with real Ceph RBD replication including Epic 15 features (resync guard, ShadowPV cross-cluster PV provisioning, reprotect simplification),
-so that the platform is proven to work end-to-end with real storage and cross-cluster PV management.
+I want a parameterized E2E test suite validating the full DR lifecycle across a matrix of failover modes (planned migration vs disaster) and mirroring types (snapshot vs streaming) with real Ceph RBD replication,
+so that the platform is proven to work end-to-end with real storage, ShadowPV cross-cluster PV provisioning, and actual cluster failure scenarios.
 
 ## Acceptance Criteria
 
-**AC1: Test namespace and VM creation**
-Given Soteria and KubeVirt are running on both clusters (deployed by Story 15-8)
-When the test `BeforeSuite` runs
-Then namespace `soteria-dr-test` is created on both clusters
-And 6 test VMs are created following the `stretched-local-test.sh` wave structure:
-  - Wave 1: `fedora-db`
-  - Wave 2: `fedora-appserver-1`, `fedora-appserver-2`
-  - Wave 3: `fedora-webserver-1`, `fedora-webserver-2`, `fedora-webserver-3`
-And east VMs have `runStrategy: Always`, west VMs have `runStrategy: Halted`
-And VMs use container disk for boot + `rook-ceph-block` PVC for data disk (PVC is what gets volume-replicated)
-And VMs are labeled with `soteria.io/drplan: fedora-app` and `soteria.io/wave: "<N>"`
+**AC1: Test infrastructure and parameterized framework**
+Given the test suite
+When implemented
+Then Go test code lives in `test/multisite/` using Ginkgo/Gomega
+And `suite_test.go` bootstraps the Ginkgo suite with `//go:build multisite`
+And `setup_test.go` handles `BeforeSuite` (minimal: clients + namespace) and `AfterSuite` (cleanup)
+And `convergence_test.go` contains the DRPlan-to-healthy-state test
+And `lifecycle_test.go` contains the parameterized 4-scenario lifecycle matrix
+And `helpers_test.go` contains shared factories, assertions, polling, and minikube control helpers
+And kubeconfigs are configurable via env vars (`EAST_KUBECONFIG`, `WEST_KUBECONFIG`)
+And timeouts are configurable for real-storage timing variability
+And each scenario uses a unique VM/DRPlan prefix for isolation
+And VMs are created and destroyed per test (resource constraints: max 6 VMs at a time)
 
-**AC2: DRPlan creation**
-Given VMs are deployed
-When the DRPlan `fedora-app` is created on both clusters
-Then `primarySite: east, secondarySite: west, maxConcurrentFailovers: 2`
-And `volumeReplicationDriver: {type: csi-extension, volumeReplicationClass: rook-ceph-rbd-vrc}`
-
-**AC3: Pre-test sanity verification**
-Given the test scenario is deployed
-When the test verifies initial state
-Then DRPlan phase = SteadyState, activeSite = east
-And Conditions: Ready=True, SitesInSync=True, DisksConsistent=True, ReplicationHealthy=True
+**AC2: DRPlan convergence to healthy state via ShadowPV pipeline (Test 1)**
+Given Soteria and KubeVirt are running on both clusters
+When the convergence test runs
+Then on east: 6 data PVCs (`rook-ceph-block`, 1Gi) and 6 VMs (container disk boot + PVC data disk, `runStrategy: Always`) are created
+And on west: 6 VMs (container disk boot, reference to PVC, `runStrategy: Halted`) are created WITHOUT data PVCs
+And DRPlan is created with `primarySite: east, secondarySite: west`
+And DRPlan initially has `DisksConsistent=False` (expected: west has no matching PVCs yet)
+And ShadowPV publisher creates ShadowPV resources from east VR/VGR PVC→PV chain
+And ShadowPV consumer on west creates PVs from remote ShadowPV entries (with pool-ID rewrite)
+And the test creates west PVCs with `spec.volumeName: <shadowpv-created-pv-name>` to bind to those PVs
+And DRPlan converges to all conditions healthy: Ready=True, SitesInSync=True, DisksConsistent=True, ReplicationHealthy=True
+And east VMs reach Running state (VMI phase=Running)
 And VR CRs on east = primary, on west = secondary
-And East VMs running, west VMs stopped
+And VMs are torn down after the test
 
-**AC4: ShadowPV initial state verification**
-Given the system is in SteadyState with VR CRs active
-When the ShadowPV publisher has processed VR/VGR CRs
-Then ShadowPV resources exist (one per VG, named `fedora-app-<vgName>`)
-And each ShadowPV has entries from the local cluster with `clusterName` matching the site
-And the ShadowPV consumer has created corresponding PVs on the remote cluster
-And remote PVs have pool-ID rewritten for the local Ceph cluster (or as-is if non-Ceph format not detected)
+**AC3: Planned migration full lifecycle with snapshot mirroring (Test 2)**
+Given a healthy DRPlan with `volumeReplicationClass: rook-ceph-rbd-vrc-snapshot`
+When the planned lifecycle test runs
+Then 4 transitions complete successfully:
+  - T1: planned_migration east→west (ResyncPending observed, FailedOver, VMs flipped)
+  - T2: reprotect on west (DRedSteadyState, conditions healthy)
+  - T3: planned_migration west→east (ResyncPending observed, FailedBack, VMs flipped)
+  - T4: reprotect on east (SteadyState, conditions healthy)
+And system returns to initial state (SteadyState, activeSite=east)
+And per-transition assertions pass (Duration, Phase=Succeeded, IsActive=false, conditions healthy)
+And real-storage assertions pass (non-zero lastSyncTime on VR CRs)
+And no checkpoint conflicts or immutability violations in controller logs
 
-**AC5: Planned migration east → west (T1: SteadyState → FailedOver) with resync guard**
-Given the system is in SteadyState
-When a `planned_migration` DRExecution is created on east (active site)
-Then the execution enters Step 0: StopVM → ResyncVolume on target VGs
-And a `ResyncPending` condition appears on the DRExecution (resync guard from Story 15-2)
-And the `ResyncPending` condition resolves after VR resync completes (event-driven, not polled)
-And StopReplication demotes source VGs after resync completion
-And wave execution proceeds (SetSource + StartVM on target)
+**AC4: Planned migration full lifecycle with streaming mirroring (Test 3)**
+Given a healthy DRPlan with `volumeReplicationClass: rook-ceph-rbd-vrc-journal`
+When the planned lifecycle test runs
+Then the same 4 transitions complete successfully as AC3
+And streaming-specific timing is recorded for calibration
+
+**AC5: Disaster failover lifecycle with snapshot mirroring (Test 4)**
+Given a healthy DRPlan with `volumeReplicationClass: rook-ceph-rbd-vrc-snapshot`
+When the disaster lifecycle test runs
+Then `minikube stop -p east` is executed (source cluster goes offline)
+And the west API server remains responsive (sanity check)
+And a `disaster` DRExecution is created on west (surviving site)
 And the execution completes with result = Succeeded
-And DRPlan phase = FailedOver, activeSite = west
-And VR CRs on west = primary, on east = secondary
-And West VMs running, east VMs stopped
+And DRPlan phase = FailedOver, activeSite = west on the west cluster
+And `minikube start -p east` is executed (source cluster recovers)
+And the test waits for east API server to become ready
+And a `reprotect` DRExecution is created on west to re-establish replication
+And DRPlan converges to DRedSteadyState with all conditions healthy
+And VMs are torn down
 
-**AC6: ShadowPV state after failover**
-Given the system is in FailedOver
-When the ShadowPV publisher processes the new VR state
-Then ShadowPV entries are updated to reflect the new site ownership
-And PVs on the east cluster include the formerly-remote entries (now local after failover)
+**AC6: Disaster failover lifecycle with streaming mirroring (Test 5)**
+Given a healthy DRPlan with `volumeReplicationClass: rook-ceph-rbd-vrc-journal`
+When the disaster lifecycle test runs
+Then the same disaster + recovery flow as AC5 completes successfully
 
-**AC7: Reprotect (T2: FailedOver → DRedSteadyState) with simplified handler**
-Given the system is in FailedOver
-When a `reprotect` DRExecution is created on west (active site)
-Then the reprotect handler verifies VR state via `GetReplicationStatus` (Story 15-3)
-And stale primaries are detected and `ResyncVolume` is called on them
-And health monitoring proceeds
-And the execution completes with result = Succeeded
-And DRPlan phase = DRedSteadyState
-And conditions return to healthy (Ready, SitesInSync, DisksConsistent, ReplicationHealthy)
+**AC7: Two VolumeReplicationClasses in infrastructure**
+Given the Rook-Ceph infrastructure
+When `setup-rook-ceph.sh` deploys storage resources
+Then VolumeReplicationClass `rook-ceph-rbd-vrc-snapshot` exists (mirroringMode: snapshot, schedulingInterval: 1m)
+And VolumeReplicationClass `rook-ceph-rbd-vrc-journal` exists (mirroringMode: journal)
+And both are deployed on both clusters
 
-**AC8: Planned migration west → east (T3: DRedSteadyState → FailedBack) with resync guard**
-Given the system is in DRedSteadyState
-When a `planned_migration` DRExecution is created on west (active site)
-Then the resync guard activates again (ResyncPending condition lifecycle)
-And the execution completes with result = Succeeded
-And DRPlan phase = FailedBack, activeSite = east
-And VR CRs on east = primary, on west = secondary
-And East VMs running, west VMs stopped
+**AC8: ScyllaDB symmetric seeds for disaster resilience**
+Given the ScyllaDB cross-DC deployment
+When scyllacluster patches are applied
+Then east has externalSeeds pointing to west (`soteria-scylladb-west-rack1-0.soteria.svc.clusterset.local`)
+And west has externalSeeds pointing to east (`soteria-scylladb-east-rack1-0.soteria.svc.clusterset.local`)
+And either DC can go offline and the surviving DC continues to operate
+And the recovering DC can rejoin the cluster via its external seed
 
-**AC9: Reprotect (T4: FailedBack → SteadyState)**
-Given the system is in FailedBack
-When a `reprotect` DRExecution is created on east (active site)
-Then the execution completes with result = Succeeded
-And DRPlan phase = SteadyState, activeSite = east
-
-**AC10: Per-transition assertions**
+**AC9: Per-transition assertions (all lifecycle tests)**
 Given each transition completes
 When the test validates post-transition state
 Then DRExecution Duration field is populated
@@ -96,129 +100,190 @@ And DRExecution Phase field = Succeeded, IsActive = false
 And all conditions remain healthy (Ready, SitesInSync, DisksConsistent, ReplicationHealthy)
 And no checkpoint conflicts in controller logs
 And no immutability violations in controller logs
+And VolumeReplication status shows non-zero `lastSyncTime`
 
-**AC11: Real-storage assertions**
-Given real Ceph RBD mirroring is in use
-When the test checks replication state
-Then VolumeReplication status shows non-zero `lastSyncTime`
-And measurable RPO from actual Ceph mirroring lag (not noop-instant)
-
-**AC12: Post-lifecycle verification**
-Given the full 4-transition lifecycle is complete
-When the test verifies final state
-Then the system is back to its initial state (SteadyState, activeSite=east, all conditions healthy)
-And ShadowPV resources still exist with correct entries matching the final state
-
-**AC13: Test infrastructure**
-Given the test suite
-When implemented
-Then Go test code lives in `test/multisite/` using Ginkgo/Gomega
-And `suite_test.go` bootstraps the Ginkgo suite with `//go:build multisite`
-And `setup_test.go` handles `BeforeSuite` (scenario setup) and `AfterSuite` (cleanup)
-And `lifecycle_test.go` contains the 4-transition lifecycle test
-And `helpers_test.go` contains shared polling/assertion helpers
-And kubeconfigs are configurable via env vars (`EAST_KUBECONFIG`, `WEST_KUBECONFIG`)
-And timeouts are configurable for real-storage timing variability
+**AC10: ShadowPV state verification (all lifecycle tests)**
+Given each lifecycle test runs
+When transitions occur
+Then ShadowPV entries update to reflect site ownership changes
+And ShadowPV resources remain consistent after the lifecycle completes
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create test suite scaffold `test/multisite/` (AC: 13)
-  - [ ] 1.1: Create `test/multisite/suite_test.go` — Ginkgo `TestMultisite` entry with `//go:build multisite` build tag, `RegisterFailHandler(Fail)`, `RunSpecs(t, "Multisite Integration Suite")`
-  - [ ] 1.2: Create configurable env vars: `EAST_KUBECONFIG` (default `~/.kube/config`), `WEST_KUBECONFIG` (default `~/.kube/config`), `EAST_CONTEXT` (default `east`), `WEST_CONTEXT` (default `west`), `DR_TEST_NS` (default `soteria-dr-test`), `TRANSITION_TIMEOUT` (default `5m`), `SETUP_TIMEOUT` (default `10m`), `SHADOWPV_TIMEOUT` (default `2m`)
-  - [ ] 1.3: Build two `client.Client` instances (east + west) from the respective kubeconfigs/contexts with Soteria + KubeVirt + CSI Addons + CephBlockPool schemes registered
-  - [ ] 1.4: Build two `kubernetes.Clientset` instances for pod log capture
+- [x] Task 1: Infrastructure changes (AC: 7, 8)
+  - [x] 1.1: Rename `hack/multisite/manifests/rook-ceph/volume-replication-class.yaml` to contain both VRCs: `rook-ceph-rbd-vrc-snapshot` (mirroringMode: snapshot, schedulingInterval: 1m) and `rook-ceph-rbd-vrc-journal` (mirroringMode: journal)
+  - [x] 1.2: Update `hack/multisite/setup-rook-ceph.sh` to apply the updated VRC manifest
+  - [x] 1.3: Update `hack/multisite/overlays/east/scyllacluster-patch.yaml` to add symmetric external seed pointing to west
+  - [x] 1.4: Update any references to the old VRC name `rook-ceph-rbd-vrc` across the codebase (story specs, deploy scripts, smoke tests)
 
-- [ ] Task 2: Create `test/multisite/setup_test.go` — `BeforeSuite` / `AfterSuite` (AC: 1, 2)
-  - [ ] 2.1: `BeforeSuite` creates `soteria-dr-test` namespace on both clusters (idempotent via `client.Create` + `IgnoreAlreadyExists`)
-  - [ ] 2.2: Create 6 data PVCs on east cluster (`rook-ceph-block` SC, 1Gi each, named `<vm-name>-data`)
-  - [ ] 2.3: Create 6 VMs on east (`runStrategy: Always`, container disk boot + PVC data disk) and 6 on west (`runStrategy: Halted`, container disk boot, NO data PVC — PVs provisioned by ShadowPV consumer)
-  - [ ] 2.4: Label all VMs and pod templates with `soteria.io/drplan: fedora-app` and `soteria.io/wave: "<N>"`
-  - [ ] 2.5: Create DRPlan `fedora-app` on east: `{primarySite: east, secondarySite: west, maxConcurrentFailovers: 2, volumeReplicationDriver: {type: csi-extension, volumeReplicationClass: rook-ceph-rbd-vrc}}`
-  - [ ] 2.6: Wait for DRPlan conditions to stabilize: Ready=True, SitesInSync=True, DisksConsistent=True, ReplicationHealthy=True (poll with configurable timeout)
-  - [ ] 2.7: Wait for east VMs to reach Running state (VMI exists + phase=Running)
-  - [ ] 2.8: Wait for ShadowPV resources to appear and have entries from east cluster
-  - [ ] 2.9: `AfterSuite` deletes the `soteria-dr-test` namespace on both clusters, then deletes the cluster-scoped DRPlan `fedora-app` and any ShadowPV resources with `soteria.io/drplan: fedora-app`
+- [x] Task 2: Refactor test suite scaffold (AC: 1)
+  - [x] 2.1: Update `suite_test.go` — add `EAST_MINIKUBE_PROFILE` and `WEST_MINIKUBE_PROFILE` env vars for minikube control
+  - [x] 2.2: Refactor `setup_test.go` — `BeforeSuite` becomes minimal (clients + namespace creation only), `AfterSuite` cleans up namespace
+  - [x] 2.3: Define `lifecycleScenario` struct in `helpers_test.go` with fields: name, failoverMode, volumeReplicationClass, simulateDisaster, vmPrefix
 
-- [ ] Task 3: Create `test/multisite/lifecycle_test.go` — 4-transition lifecycle test (AC: 3-12)
-  - [ ] 3.1: Pre-test sanity check (AC3, AC4): assert DRPlan phase=SteadyState, activeSite=east, all 4 conditions healthy, VR CRs correct (east=primary, west=secondary), east VMs Running, west VMs stopped, ShadowPV resources exist with expected entries
-  - [ ] 3.2: T1 — Planned migration east→west (AC5, AC6): create DRExecution on east, observe ResyncPending condition, poll for result=Succeeded, assert phase=FailedOver, activeSite=west, VR/VM state flipped, ShadowPV entries updated
-  - [ ] 3.3: T2 — Reprotect (AC7): create DRExecution on west, poll for result=Succeeded, assert phase=DRedSteadyState, conditions healthy
-  - [ ] 3.4: T3 — Planned migration west→east (AC8): create DRExecution on west, observe ResyncPending, poll for result=Succeeded, assert phase=FailedBack, activeSite=east
-  - [ ] 3.5: T4 — Reprotect (AC9): create DRExecution on east, poll for result=Succeeded, assert phase=SteadyState, activeSite=east
-  - [ ] 3.6: Per-transition assertions (AC10): after each transition, verify Duration non-empty, Phase=Succeeded, IsActive=false, conditions healthy
-  - [ ] 3.7: Real-storage assertions (AC11): after T1, verify VR status has non-zero lastSyncTime on at least one VR CR
-  - [ ] 3.8: Post-lifecycle verification (AC12): final state matches initial state, ShadowPV resources consistent
+- [x] Task 3: Refactor helpers for per-test VM lifecycle (AC: 1, 2)
+  - [x] 3.1: Create `deployScenario(ctx, scenario)` — creates east PVCs + VMs (Always) + west VMs (Halted, no PVCs) + DRPlan with scenario VRC
+  - [x] 3.2: Create `waitForShadowPVConsumerPVs(ctx, westClient, planName)` — polls for PVs created by ShadowPV consumer on west
+  - [x] 3.3: Create `createWestPVCsFromShadowPVs(ctx, westClient, planName)` — creates west PVCs with `spec.volumeName` binding to ShadowPV-provisioned PVs
+  - [x] 3.4: Create `waitForDRPlanHealthy(ctx, client, planName)` — polls for all 4 conditions healthy
+  - [x] 3.5: Create `teardownScenario(ctx, scenario)` — deletes DRPlan, VMs, PVCs, ShadowPVs for the scenario
+  - [x] 3.6: Create `minikubeStop(profile string)` and `minikubeStart(profile string)` — shells out to minikube CLI
+  - [x] 3.7: Create `waitForAPIServer(ctx, client)` — polls until client can reach the API server
 
-- [ ] Task 4: Create `test/multisite/helpers_test.go` — shared helper functions (AC: 3-12)
-  - [ ] 4.1: `createDRExecution(ctx, cl, name, planName, mode)` — creates DRExecution CR with `soteria.io/plan-name` label
-  - [ ] 4.2: `waitForExecResult(ctx, cl, name, expectedResult, timeout)` — polls DRExecution for terminal result
-  - [ ] 4.3: `assertPlanState(ctx, cl, name, expectedPhase, expectedActiveSite)` — verifies DRPlan phase and activeSite
-  - [ ] 4.4: `assertConditionsHealthy(ctx, cl, planName)` — checks Ready, SitesInSync, DisksConsistent, ReplicationHealthy all True
-  - [ ] 4.5: `assertVRState(ctx, cl, namespace, expectedState)` — lists VR CRs with `soteria.io/drplan: fedora-app` and checks spec.replicationState
-  - [ ] 4.6: `assertVMRunState(ctx, cl, namespace, expectRunning)` — checks VM runStrategy and VMI existence
-  - [ ] 4.7: `assertShadowPVEntries(ctx, cl, planName, expectedClusterName)` — lists ShadowPV resources and verifies entries
-  - [ ] 4.8: `observeResyncPending(ctx, cl, execName, timeout)` — polls DRExecution conditions for ResyncPending=True appearance then resolution
-  - [ ] 4.9: `captureControllerLogs(ctx, clientset, namespace)` — captures manager pod logs for error pattern scanning
-  - [ ] 4.10: `scanLogsForErrors(logs string)` — checks for checkpoint conflicts, immutability violations, unexpected errors
-  - [ ] 4.11: `activeClient(eastCl, westCl, activeSite)` — returns the client for the current active site
-  - [ ] 4.12: `waitForCondition(ctx, cl, planName, condType, expectedStatus, timeout)` — generic condition poller
+- [x] Task 4: Create `convergence_test.go` — DRPlan healthy state test (AC: 2)
+  - [x] 4.1: Deploy scenario (east PVCs + VMs, west VMs without PVCs, DRPlan)
+  - [x] 4.2: Assert DRPlan initially has `DisksConsistent=False`
+  - [x] 4.3: Wait for ShadowPV publisher to create ShadowPV resources
+  - [x] 4.4: Wait for ShadowPV consumer to create PVs on west
+  - [x] 4.5: Create west PVCs with `spec.volumeName` binding
+  - [x] 4.6: Assert DRPlan converges to all conditions healthy
+  - [x] 4.7: Assert east VMs Running, west VMs Halted, VR CRs correct
+  - [x] 4.8: Assert ShadowPV entries have correct cluster name
+  - [x] 4.9: Teardown scenario
+
+- [x] Task 5: Rewrite `lifecycle_test.go` — parameterized matrix (AC: 3, 4, 5, 6, 9, 10)
+  - [x] 5.1: Define 4 scenarios: planned-snapshot, planned-journal, disaster-snapshot, disaster-journal
+  - [x] 5.2: For each planned scenario: deploy → converge → T1 (planned_migration, observe ResyncPending) → T2 (reprotect) → T3 (planned_migration) → T4 (reprotect) → verify initial state → teardown
+  - [x] 5.3: For each disaster scenario: deploy → converge → minikube stop east → disaster exec on west → assert FailedOver → minikube start east → wait API server → reprotect → assert DRedSteadyState → teardown
+  - [x] 5.4: Per-transition assertions: Duration, Phase=Succeeded, IsActive=false, conditions healthy
+  - [x] 5.5: Real-storage assertions: non-zero lastSyncTime on VR CRs
+  - [x] 5.6: ShadowPV assertions: entries update after transitions
+  - [x] 5.7: Log scanning: no checkpoint conflicts, no immutability violations
+
+### Review Findings
+
+- [x] [Review][Patch] Story marks the rewrite complete while the same file still says code rework is pending [`_bmad-output/implementation-artifacts/15-9-full-lifecycle-e2e-test.md:408`]
+- [x] [Review][Patch] `setup_test.go` does not contain the `BeforeSuite`/`AfterSuite` hooks the story marks complete [`test/multisite/suite_test.go:64`]
+- [x] [Review][Patch] Convergence test does not require `DisksConsistent=False`; it passes if the condition is missing [`test/multisite/convergence_test.go:62`]
+- [x] [Review][Patch] ShadowPV consumer PV lookup and teardown are not isolated per scenario, so stale west PVs can satisfy later runs [`test/multisite/helpers_test.go:290`]
+- [x] [Review][Patch] Disaster failover does not run the real-storage and log checks on the failover transition itself, despite AC9 being marked complete [`test/multisite/lifecycle_test.go:185`]
+- [x] [Review][Patch] Task 1.4 is checked complete even though stale `rook-ceph-rbd-vrc` references remain in the repo [`hack/multisite/setup-all.sh:290`]
 
 ## Dev Notes
 
 ### Scope and Context
 
-This is the **capstone story of Epic 15** — the integration test that validates the entire DR lifecycle against real Ceph RBD volume replication, including all Epic 15 features. All outputs are Go test files:
+This is the **capstone story of Epic 15** — the integration test that validates the entire DR lifecycle against real Ceph RBD volume replication. The test suite exercises a 2×2 matrix plus a convergence test:
 
-- `test/multisite/suite_test.go` — Ginkgo test suite bootstrap + two-client setup
-- `test/multisite/setup_test.go` — test scenario deployment/teardown
-- `test/multisite/lifecycle_test.go` — 4-transition lifecycle test with Epic 15 feature assertions
-- `test/multisite/helpers_test.go` — shared helper functions
+| # | Test | Failover Mode | Mirroring | Disaster Sim |
+|---|------|---------------|-----------|--------------|
+| 1 | DRPlan convergence | N/A | snapshot (default) | No |
+| 2 | Full lifecycle | planned_migration | snapshot | No |
+| 3 | Full lifecycle | planned_migration | journal (streaming) | No |
+| 4 | Full lifecycle | disaster | snapshot | minikube stop east |
+| 5 | Full lifecycle | disaster | journal (streaming) | minikube stop east |
 
-No shell scripts, no Kustomize files, no operator code changes. This is purely test code exercising the infrastructure built by Stories 14.1-14.5 + 15.8, and the operator code from Stories 15.1-15.7.
+### Critical: ShadowPV-Driven West Cluster PV Provisioning
 
-### Critical: Epic 15 Features Under Test
+The correct flow for west cluster data disks:
 
-This E2E test validates three Epic 15 feature categories against real storage:
+**East side (source of truth):**
+1. Create VM and PVC on east
+2. PVC triggers dynamic provisioner → PV created → PVC binds
+3. When VM/PVC/PV become part of a DRPlan, ShadowPV publisher creates ShadowPV resource
+4. West ShadowPV consumer reads remote entries and creates PV with pool-ID rewrite
 
-**1. Resync Guard (Stories 15-1, 15-2):**
-- Planned failover Step 0 calls `ResyncVolume` on target VGs before promotion
-- `ResyncPending` condition appears on DRExecution during sync wait
-- Event-driven completion (VR/VGR watch triggers reconcile)
-- `StopReplication` (source demotion) only after resync completes
-- Observable assertion: `ResyncPending=True` → `ResyncPending` removed → `Step0Complete`
+**West side (DR target — initially incomplete):**
+1. Create VM with reference to PVC name but do NOT create PVC
+2. Create DRPlan — will initially show `DisksConsistent=False` (expected)
+3. Wait for ShadowPV consumer to create PV on west
+4. Create PVC with `spec.volumeName: <pv-name>` to bind to the ShadowPV-provisioned PV
 
-**2. ShadowPV Cross-Cluster PV Provisioning (Stories 15-4, 15-5, 15-6):**
-- ShadowPV publisher creates ShadowPV resources from VR/VGR PVC→PV chain
-- ShadowPV consumer creates local PVs from remote entries with Ceph pool-ID rewrite
-- ShadowPV entries update as VR ownership changes during failover
-- Observable assertions: ShadowPV resources exist, remote PVs created, pool-ID rewritten
+This validates the entire ShadowPV provisioning pipeline end-to-end.
 
-**3. Reprotect Simplification (Story 15-3):**
-- Reprotect Phase 1 calls `GetReplicationStatus` instead of `SetSource`
-- Stale primaries get `ResyncVolume` call (fire-and-forget)
-- Health monitoring proceeds immediately
-- Observable assertion: reprotect completes Succeeded (not PartiallySucceeded)
+### Critical: Disaster Simulation via Minikube Stop
 
-### Critical: VM Specification for Minikube KVM2 + Rook-Ceph
+For disaster failover tests, the east minikube cluster is actually stopped:
 
-Use container disk for boot (NOT DataVolume/DataSource — those are OCP-specific). The data PVC on `rook-ceph-block` is what gets volume-replicated.
+```bash
+minikube stop -p east    # Source cluster goes offline
+# ... disaster failover on west ...
+minikube start -p east   # Source cluster recovers
+```
+
+**Key behaviors during disaster:**
+- East API server unreachable — controller-runtime client gets connection errors
+- ScyllaDB east DC offline — west ScyllaDB continues operating (symmetric seeds ensure rejoin)
+- Ceph RBD mirrors on east go stale — west promotes volumes without source acknowledgment
+- After restart: kubeconfig unchanged (same VM IP, same certs), client reconnects automatically
+- After restart: ScyllaDB east rejoins via `externalSeeds` pointing to west
+- After restart: Ceph mirrors re-establish from last known state
+
+**No client rebuild needed** — minikube uses static kubeconfig. The existing controller-runtime client reconnects when the API server is available.
+
+### Critical: Per-Test VM Lifecycle
+
+Due to resource constraints (Minikube KVM2 nodes have limited memory), VMs are created and destroyed per test. Each scenario uses a unique `vmPrefix` (e.g., `conv-`, `ps-`, `pj-`, `ds-`, `dj-`) to avoid collisions:
+
+```go
+type lifecycleScenario struct {
+    name                   string
+    failoverMode           soteriav1alpha1.ExecutionMode
+    volumeReplicationClass string
+    simulateDisaster       bool
+    vmPrefix               string
+}
+```
+
+Tests run sequentially (Ginkgo `Ordered` + `Serial`) — only one set of 6 VMs exists at a time.
+
+### Critical: Two VolumeReplicationClasses
+
+| VRC Name | mirroringMode | Notes |
+|----------|---------------|-------|
+| `rook-ceph-rbd-vrc-snapshot` | snapshot | Periodic snapshot-based, schedulingInterval: 1m |
+| `rook-ceph-rbd-vrc-journal` | journal | Continuous journal-based (streaming), near-zero RPO |
+
+Both deployed by `setup-rook-ceph.sh` as static infrastructure. DRPlan references the VRC via `volumeReplicationDriver.volumeReplicationClass`.
+
+### Critical: ScyllaDB Symmetric Seeds
+
+Both DCs must have external seeds pointing to each other so either can survive independently:
+
+```yaml
+# East patch:
+- op: replace
+  path: /spec/externalSeeds
+  value:
+    - soteria-scylladb-west-rack1-0.soteria.svc.clusterset.local
+
+# West patch (unchanged):
+- op: replace
+  path: /spec/externalSeeds
+  value:
+    - soteria-scylladb-east-rack1-0.soteria.svc.clusterset.local
+```
+
+### Critical: Disaster Lifecycle Shape
+
+Disaster tests have a shorter lifecycle than planned tests:
+
+**Planned (4 transitions):** SteadyState → FailedOver → DRedSteadyState → FailedBack → SteadyState
+
+**Disaster (2 transitions):** SteadyState → [minikube stop] → FailedOver → [minikube start] → Reprotect → DRedSteadyState
+
+Disaster tests do NOT attempt failback because the scenario is "east failed, we recovered on west." A full round-trip (disaster failover + planned failback) would be a separate future test.
+
+### VM Specification for Minikube KVM2 + Rook-Ceph
+
+Use container disk for boot (NOT DataVolume/DataSource). The data PVC on `rook-ceph-block` is what gets volume-replicated.
 
 ```go
 vm := &kubevirtv1.VirtualMachine{
     ObjectMeta: metav1.ObjectMeta{
-        Name:      vmName,
+        Name:      vmPrefix + vmName,
         Namespace: testNamespace,
         Labels: map[string]string{
-            "soteria.io/drplan": "fedora-app",
+            "soteria.io/drplan": planName,
             "soteria.io/wave":   waveNum,
         },
     },
     Spec: kubevirtv1.VirtualMachineSpec{
-        RunStrategy: ptr.To(kubevirtv1.VirtualMachineRunStrategyAlways),
+        RunStrategy: ptr.To(kubevirtv1.RunStrategyAlways),
         Template: &kubevirtv1.VirtualMachineInstanceTemplateSpec{
             ObjectMeta: metav1.ObjectMeta{
                 Labels: map[string]string{
-                    "soteria.io/drplan": "fedora-app",
+                    "soteria.io/drplan": planName,
                     "soteria.io/wave":   waveNum,
                 },
             },
@@ -245,7 +310,7 @@ vm := &kubevirtv1.VirtualMachine{
                     {Name: "datadisk", VolumeSource: kubevirtv1.VolumeSource{
                         PersistentVolumeClaim: &kubevirtv1.PersistentVolumeClaimVolumeSource{
                             PersistentVolumeClaimVolumeSource: corev1.PersistentVolumeClaimVolumeSource{
-                                ClaimName: vmName + "-data",
+                                ClaimName: vmPrefix + vmName + "-data",
                             },
                         },
                     }},
@@ -256,417 +321,119 @@ vm := &kubevirtv1.VirtualMachine{
 }
 ```
 
-Pre-create data PVCs:
-```go
-pvc := &corev1.PersistentVolumeClaim{
-    ObjectMeta: metav1.ObjectMeta{
-        Name:      vmName + "-data",
-        Namespace: testNamespace,
-    },
-    Spec: corev1.PersistentVolumeClaimSpec{
-        AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
-        StorageClassName: ptr.To("rook-ceph-block"),
-        Resources: corev1.VolumeResourceRequirements{
-            Requests: corev1.ResourceList{
-                corev1.ResourceStorage: resource.MustParse("1Gi"),
-            },
-        },
-    },
-}
-```
-
-### Critical: West Cluster VM Data Disks
-
-On the west cluster, data PVCs should NOT be pre-created manually — they should be provisioned by the ShadowPV consumer controller. The ShadowPV publisher on east discovers PVs backing VR CRs and publishes them to ShadowPV resources (stored in ScyllaDB, visible cross-cluster). The consumer on west reads remote entries and creates local PVs with pool-ID rewrite. The west VMs reference data PVCs that will bind to these ShadowPV-provisioned PVs.
-
-**However**, PVCs must still be created on west because PVs alone are not sufficient — PVCs need to exist to bind to the PVs. The ShadowPV consumer creates PVs, not PVCs. Create west PVCs with the same names but do NOT specify `storageClassName` — let them bind to the ShadowPV-provisioned PVs via `volumeName` if available, or create them after ShadowPV PVs appear.
-
-**Practical approach for MVP:** Create data PVCs on both clusters with `rook-ceph-block` StorageClass. Rook-Ceph with RBD mirroring handles the underlying volume replication transparently. ShadowPV verification is an observation-only assertion (verify ShadowPV resources exist and have correct entries) rather than relying on ShadowPV for actual PV provisioning in the test flow. The ShadowPV feature enables PV discovery across clusters — verify it works, but don't depend on it for the test's VM setup.
-
-### Critical: DRExecution Creation Pattern
+### DRExecution Creation Pattern
 
 **Rule: always create DRExecution on the current active site.**
 
-Per UAT-13 verification log:
-- T1 (SteadyState→FailedOver, east→west): execution created on **east** (active site)
-- T2 (FailedOver→DRedSteadyState, reprotect): execution created on **west** (active site)
-- T3 (DRedSteadyState→FailedBack, west→east): execution created on **west** (active site)
-- T4 (FailedBack→SteadyState, reprotect): execution created on **east** (active site)
+- Planned T1 (east→west): execution on **east**
+- Planned T2 (reprotect): execution on **west**
+- Planned T3 (west→east): execution on **west**
+- Planned T4 (reprotect): execution on **east**
+- Disaster failover: execution on **west** (east is offline)
+- Disaster reprotect: execution on **west** (active site after failover)
 
-DRExecution is cluster-scoped (not namespaced):
-```go
-exec := &soteriav1alpha1.DRExecution{
-    ObjectMeta: metav1.ObjectMeta{
-        Name: execName,
-        Labels: map[string]string{
-            soteriav1alpha1.PlanNameLabel: "fedora-app",
-        },
-    },
-    Spec: soteriav1alpha1.DRExecutionSpec{
-        PlanName: "fedora-app",
-        Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
-    },
-}
+### Timeout Calibration for Real Storage
+
+| Operation | Snapshot Timing | Journal Timing | Notes |
+|-----------|----------------|----------------|-------|
+| VR state transition | 5-30s | 2-10s | Journal is faster |
+| ResyncVolume completion | 5-60s | 2-30s | Small test data |
+| VM start after SetSource | 10-30s | 10-30s | Same (container disk) |
+| Health convergence | 30-120s | 15-60s | Journal converges faster |
+| Full planned migration | 3-6m | 2-4m | |
+| Full reprotect | 1-3m | 1-2m | |
+| minikube stop | 5-15s | 5-15s | |
+| minikube start + cluster ready | 60-120s | 60-120s | Kubelet + Ceph + ScyllaDB |
+
+Default `TRANSITION_TIMEOUT=5m`, `DISASTER_RECOVERY_TIMEOUT=3m`, `CLUSTER_RESTART_TIMEOUT=3m`.
+
+### Test File Structure
+
+```
+test/multisite/
+├── suite_test.go           # Ginkgo bootstrap, env vars, scheme, two-client setup
+├── setup_test.go           # BeforeSuite (clients + namespace), AfterSuite (cleanup)
+├── convergence_test.go     # Test 1: DRPlan → healthy via ShadowPV pipeline
+├── lifecycle_test.go       # Tests 2-5: parameterized matrix (planned/disaster × snapshot/journal)
+└── helpers_test.go         # Scenario factories, assertions, polling, minikube control
 ```
 
-### Critical: ResyncPending Condition Observation
-
-The resync guard (Story 15-2) introduces a `ResyncPending` condition on DRExecution during planned failover. The E2E test should observe this condition's lifecycle:
-
-```go
-func observeResyncPending(ctx context.Context, cl client.Client, execName string, timeout time.Duration) {
-    // Phase 1: Wait for ResyncPending=True to appear
-    Eventually(func(g Gomega) {
-        var exec soteriav1alpha1.DRExecution
-        g.Expect(cl.Get(ctx, client.ObjectKey{Name: execName}, &exec)).To(Succeed())
-        cond := meta.FindStatusCondition(exec.Status.Conditions, "ResyncPending")
-        g.Expect(cond).NotTo(BeNil(), "ResyncPending condition should appear")
-        g.Expect(cond.Status).To(Equal(metav1.ConditionTrue))
-    }).WithTimeout(timeout).WithPolling(2 * time.Second).Should(Succeed())
-
-    // Phase 2: Wait for ResyncPending to be removed (resync completed)
-    Eventually(func(g Gomega) {
-        var exec soteriav1alpha1.DRExecution
-        g.Expect(cl.Get(ctx, client.ObjectKey{Name: execName}, &exec)).To(Succeed())
-        cond := meta.FindStatusCondition(exec.Status.Conditions, "ResyncPending")
-        g.Expect(cond).To(BeNil(), "ResyncPending should be removed after resync completes")
-    }).WithTimeout(timeout).WithPolling(2 * time.Second).Should(Succeed())
-}
-```
-
-**Note:** This is a best-effort observation — the resync may complete very quickly with small test data volumes, making the ResyncPending window narrow. If the condition appears and resolves too fast to observe, the test should still pass (the successful completion of the planned migration implicitly proves the resync guard worked). Use `Consistently` with a short duration if needed to verify the condition appeared at some point.
-
-**Fallback approach:** If timing makes ResyncPending observation unreliable, verify instead that the DRExecution completed Succeeded AND VR CRs show correct state transitions (secondary→resync→secondary(completed)→primary on target side). The absence of data loss is the real assertion.
-
-### Critical: ShadowPV Assertion Strategy
-
-ShadowPV resources are cluster-scoped and stored in ScyllaDB (visible on both clusters). After DRPlan stabilization:
-
-```go
-func assertShadowPVEntries(ctx context.Context, cl client.Client, planName, expectedCluster string) {
-    var shadowPVList soteriav1alpha1.ShadowPVList
-    Expect(cl.List(ctx, &shadowPVList, client.MatchingLabels{
-        "soteria.io/drplan": planName,
-    })).To(Succeed())
-    Expect(shadowPVList.Items).NotTo(BeEmpty(), "ShadowPV resources should exist")
-    
-    for _, spv := range shadowPVList.Items {
-        hasLocalEntry := false
-        for _, entry := range spv.Spec.PVs {
-            if entry.ClusterName == expectedCluster {
-                hasLocalEntry = true
-                Expect(entry.PVName).NotTo(BeEmpty())
-                Expect(entry.PV).NotTo(BeZero())
-            }
-        }
-        Expect(hasLocalEntry).To(BeTrue(),
-            "ShadowPV %s should have entry from cluster %s", spv.Name, expectedCluster)
-    }
-}
-```
-
-### Critical: Build Tag and Test Isolation
-
-Use `//go:build multisite` build tag on ALL test files. These tests require real Minikube KVM2 clusters with real infrastructure — they must NOT run during `make test` or in CI.
-
-Run command: `go test -tags=multisite -v ./test/multisite/ -timeout 30m`
-
-### Critical: Two-Client Architecture
-
-```go
-var (
-    eastClient client.Client
-    westClient client.Client
-    eastClientset *kubernetes.Clientset
-    westClientset *kubernetes.Clientset
-    testNamespace string
-    transitionTimeout time.Duration
-    setupTimeout time.Duration
-    shadowPVTimeout time.Duration
-)
-
-var _ = BeforeSuite(func() {
-    scheme := runtime.NewScheme()
-    Expect(clientgoscheme.AddToScheme(scheme)).To(Succeed())
-    Expect(soteriav1alpha1.AddToScheme(scheme)).To(Succeed())
-    Expect(kubevirtv1.AddToScheme(scheme)).To(Succeed())
-    Expect(replicationv1alpha1.AddToScheme(scheme)).To(Succeed())
-
-    eastCfg, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
-        &clientcmd.ClientConfigLoadingRules{ExplicitPath: os.Getenv("EAST_KUBECONFIG")},
-        &clientcmd.ConfigOverrides{CurrentContext: os.Getenv("EAST_CONTEXT")},
-    ).ClientConfig()
-    Expect(err).NotTo(HaveOccurred())
-    eastClient, err = client.New(eastCfg, client.Options{Scheme: scheme})
-    Expect(err).NotTo(HaveOccurred())
-    // ... same for west ...
-})
-```
-
-Each Minikube profile has its own kubeconfig. Use the merged kubeconfig with context overrides (`EAST_CONTEXT=east`, `WEST_CONTEXT=west`).
-
-### Critical: Timeout Calibration for Real Storage
-
-UAT-13 timings with noop driver: planned migration ~55-70s, reprotect ~40s. Real Ceph RBD mirroring adds:
-- VR state transitions: 5-30s per VR CR (Ceph mirror daemon response)
-- ResyncVolume completion: 5-60s (depends on data delta — small test data should be fast)
-- VM start after SetSource: 10-30s (container disk boot)
-- Health convergence after reprotect: 30-120s (Ceph mirror establishment)
-- Full planned migration with resync guard: ~3-6 minutes
-- Full reprotect with simplified handler: ~1-3 minutes
-
-Default `TRANSITION_TIMEOUT=5m` (300s). Report actual transition times in test output for calibration.
-
-### Critical: Assertions After Reprotect
-
-Reprotect does NOT change which VMs are running or stopped — it only sets up replication. After reprotect:
-- VMs remain on the active site (unchanged from post-failover state)
-- VR CRs on the active site verified as secondary (GetReplicationStatus), stale primaries get ResyncVolume
-- DRPlan phase advances to the next rest state
-- Health conditions converge to healthy
-
-Do NOT assert VM state changes after reprotect — only VR state, DRPlan phase, and conditions.
-
-### Critical: VR CR State Assertions
-
-VolumeReplication CRs are namespaced (in `soteria-dr-test`). List VR CRs with label `soteria.io/drplan: fedora-app`:
-
-```go
-func assertVRState(ctx context.Context, cl client.Client, ns, expectedState string) {
-    var vrList replicationv1alpha1.VolumeReplicationList
-    Expect(cl.List(ctx, &vrList,
-        client.InNamespace(ns),
-        client.MatchingLabels{"soteria.io/drplan": "fedora-app"},
-    )).To(Succeed())
-    Expect(vrList.Items).NotTo(BeEmpty(), "VR CRs should exist in %s", ns)
-    for _, vr := range vrList.Items {
-        Expect(string(vr.Spec.ReplicationState)).To(Equal(expectedState),
-            "VR %s should be %s", vr.Name, expectedState)
-    }
-}
-```
-
-### Critical: VM Running State Detection
-
-```go
-func assertVMRunState(ctx context.Context, cl client.Client, ns string, expectRunning bool) {
-    var vmList kubevirtv1.VirtualMachineList
-    Expect(cl.List(ctx, &vmList,
-        client.InNamespace(ns),
-        client.MatchingLabels{"soteria.io/drplan": "fedora-app"},
-    )).To(Succeed())
-
-    for _, vm := range vmList.Items {
-        if expectRunning {
-            Expect(ptr.Deref(vm.Spec.RunStrategy, "")).To(Equal(
-                kubevirtv1.VirtualMachineRunStrategyAlways))
-            // Verify VMI exists and is Running
-            var vmi kubevirtv1.VirtualMachineInstance
-            Expect(cl.Get(ctx, client.ObjectKey{
-                Name: vm.Name, Namespace: ns,
-            }, &vmi)).To(Succeed())
-            Expect(vmi.Status.Phase).To(Equal(kubevirtv1.Running))
-        } else {
-            Expect(ptr.Deref(vm.Spec.RunStrategy, "")).To(Equal(
-                kubevirtv1.VirtualMachineRunStrategyHalted))
-        }
-    }
-}
-```
-
-### Ginkgo Test Structure
-
-```go
-var _ = Describe("Full Lifecycle E2E Test", Ordered, func() {
-    It("pre-test sanity: initial state is correct", func() { ... })
-
-    It("pre-test sanity: ShadowPV resources exist with correct entries", func() { ... })
-
-    It("T1: planned migration east→west with resync guard", func() {
-        execName := "t1-planned-migration"
-        cl := activeClient(eastClient, westClient, "east")
-        createDRExecution(ctx, cl, execName, "fedora-app",
-            soteriav1alpha1.ExecutionModePlannedMigration)
-
-        By("observing ResyncPending condition lifecycle")
-        observeResyncPending(ctx, cl, execName, transitionTimeout)
-
-        By("waiting for execution to succeed")
-        waitForExecResult(ctx, cl, execName,
-            soteriav1alpha1.ExecutionResultSucceeded, transitionTimeout)
-
-        By("verifying post-failover state")
-        assertPlanState(ctx, eastClient, "fedora-app", "FailedOver", "west")
-        assertVRState(ctx, westClient, testNamespace, "primary")
-        assertVRState(ctx, eastClient, testNamespace, "secondary")
-        assertVMRunState(ctx, westClient, testNamespace, true)
-        assertVMRunState(ctx, eastClient, testNamespace, false)
-        assertConditionsHealthy(ctx, eastClient, "fedora-app")
-
-        By("verifying ShadowPV entries updated")
-        assertShadowPVEntries(ctx, eastClient, "fedora-app", "west")
-    })
-
-    It("T2: reprotect (FailedOver → DRedSteadyState)", func() { ... })
-    It("T3: planned migration west→east with resync guard", func() { ... })
-    It("T4: reprotect (FailedBack → SteadyState)", func() { ... })
-    It("post-lifecycle: system returns to initial state", func() { ... })
-})
-```
-
-Use `Ordered` to ensure sequential execution — each transition depends on the previous one.
-
-### Polling Strategy
-
-Use Gomega `Eventually` with 5s polling interval and configurable timeout:
-
-```go
-Eventually(func(g Gomega) {
-    var exec soteriav1alpha1.DRExecution
-    g.Expect(cl.Get(ctx, client.ObjectKey{Name: execName}, &exec)).To(Succeed())
-    g.Expect(exec.Status.Result).To(Equal(soteriav1alpha1.ExecutionResultSucceeded))
-}).WithTimeout(transitionTimeout).WithPolling(5 * time.Second).Should(Succeed())
-```
-
-### UAT-13 Lessons Learned — All Fixed, Must Still Hold
-
-1. **Reprotect double-flip race (UAT-13.001/002):** Fixed in Epic 13. Story 15-3 further simplifies reprotect — verify both reprotects complete Succeeded
-2. **Health count (UAT-13.003):** Fixed — verify health count matches total VG count
-3. **Duration field (UAT-13.004):** Fixed — verify Duration populated for all executions
-4. **Checkpoint conflicts (UAT-13.005):** Fixed by Story 13.7 — scan logs for zero conflicts
-5. **Immutability violations (UAT-13.006):** Fixed by Story 13.7 — scan logs for zero violations
-
-### Log Capture Strategy
-
-After each transition, capture controller-manager logs and scan for:
-- `"the object has been modified"` → checkpoint conflicts (should be zero)
-- `"is immutable after completion"` → immutability violations (should be zero)
-- `ERROR` level entries (exclude expected ScyllaDB connection retries)
-
-```go
-func captureControllerLogs(ctx context.Context, cs *kubernetes.Clientset, ns string) string {
-    pods, _ := cs.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{
-        LabelSelector: "control-plane=controller-manager",
-    })
-    if len(pods.Items) == 0 {
-        return ""
-    }
-    logs, _ := cs.CoreV1().Pods(ns).GetLogs(pods.Items[0].Name,
-        &corev1.PodLogOptions{Container: "manager"}).Stream(ctx)
-    defer logs.Close()
-    buf := new(bytes.Buffer)
-    io.Copy(buf, logs)
-    return buf.String()
-}
-```
+All files use `package multisite_test` and `//go:build multisite` tag.
 
 ### Dependencies
 
 | Dependency | Story | What's Needed |
 |------------|-------|---------------|
-| Minikube KVM2 clusters + Cilium | 14.1 | Both `east` and `west` clusters running with Cluster Mesh |
-| Rook-Ceph | 14.2 | StorageClass `rook-ceph-block`, VolumeReplicationClass `rook-ceph-rbd-vrc`, CSI Addons running |
-| KubeVirt + CDI | 14.3 | KubeVirt Deployed on both clusters with nested virtualization |
-| Fedora image cached | 14.4 | Container disk images pre-pulled on all nodes |
-| ScyllaDB | 14.5 | Cross-DC ScyllaDB cluster running on both clusters |
-| Soteria deployed | 15.8 | Soteria operator deployed on both clusters with `--site-name=east/west` and all Epic 15 code changes built in |
-| ResyncVolume driver method | 15.1 | StorageProvider `ResyncVolume` method available in CSI extension |
-| Resync guard | 15.2 | Planned failover Step 0 calls ResyncVolume, ResyncPending condition |
-| Reprotect simplification | 15.3 | Reprotect uses GetReplicationStatus + conditional ResyncVolume |
-| ShadowPV CRD | 15.4 | ShadowPV type registered in aggregated API server |
-| ShadowPV publisher | 15.5 | Publisher creates ShadowPV resources from VR/VGR PVC→PV chain |
-| ShadowPV consumer | 15.6 | Consumer creates PVs from remote ShadowPV entries with pool-ID rewrite |
+| Minikube KVM2 clusters + Cilium | 14.1 | Both `east` and `west` clusters running |
+| Rook-Ceph with two VRCs | 14.2 | `rook-ceph-rbd-vrc-snapshot` + `rook-ceph-rbd-vrc-journal` |
+| KubeVirt + CDI | 14.3 | KubeVirt on both clusters |
+| ScyllaDB symmetric seeds | 14.5 | Both DCs can survive independently |
+| Soteria deployed | 15.8 | Operator on both clusters with all Epic 15 code |
+| ResyncVolume driver | 15.1 | StorageProvider `ResyncVolume` available |
+| Resync guard | 15.2 | Planned failover ResyncPending condition |
+| Reprotect simplification | 15.3 | GetReplicationStatus + conditional ResyncVolume |
+| ShadowPV CRD | 15.4 | ShadowPV type registered |
+| ShadowPV publisher | 15.5 | Publisher creates ShadowPV from VR/VGR |
+| ShadowPV consumer | 15.6 | Consumer creates PVs from remote entries |
 
-### Existing Test Patterns to Follow
+### Existing Code Assessment (from first implementation pass)
 
-**From `test/integration/controller/suite_test.go`:**
-- `waitForCondition`, `waitForExecResult`, `waitForPlanPhase` polling helpers
-- `newTestDRPlan` factory function
-- Adapt these to accept a `client.Client` parameter (two-client architecture)
+The current `test/multisite/` files from the first pass are ~70% reusable:
+- `suite_test.go` — 90% reusable (add minikube env vars)
+- `helpers_test.go` — 80% reusable (assertions are parameterized, add scenario factories + minikube helpers)
+- `setup_test.go` — 30% reusable (shrink BeforeSuite, move factories out)
+- `lifecycle_test.go` — 20% reusable (completely restructured as matrix)
 
-**From `test/e2e/e2e_suite_test.go`:**
-- Ginkgo `BeforeSuite`/`AfterSuite` with `RegisterFailHandler(Fail)`
-- Build tag gating (`//go:build e2e`)
-
-### Project Structure Notes
-
-```
-test/multisite/
-├── suite_test.go        # Ginkgo bootstrap, env var config, two-client setup
-├── setup_test.go        # BeforeSuite (deploy scenario), AfterSuite (cleanup)
-├── lifecycle_test.go    # 4-transition lifecycle test with Epic 15 assertions
-└── helpers_test.go      # Shared polling/assertion/log-capture helpers
-```
-
-All files use `package multisite_test` and `//go:build multisite` tag.
-
-### Scheme Registration
-
-The test client scheme must include:
-- `k8s.io/client-go/kubernetes/scheme` — core types
-- `soteria.io/v1alpha1` — DRPlan, DRExecution, ShadowPV
-- `kubevirt.io/api/core/v1` — VirtualMachine, VirtualMachineInstance
-- `github.com/csi-addons/kubernetes-csi-addons/api/replication.storage.openshift.io/v1alpha1` — VolumeReplication, VolumeGroupReplication
-
-### Real Storage Timing Expectations
-
-| Operation | Noop Timing | Real Ceph Timing | Notes |
-|-----------|-------------|-------------------|-------|
-| VR state transition | instant | 5-30s | Ceph mirror daemon response |
-| ResyncVolume completion | instant | 5-60s | Small test data = fast |
-| VM start after SetSource | 5-10s | 10-30s | Container disk boot |
-| Health convergence | instant | 30-120s | Ceph mirror establishment |
-| Full planned migration | 55-70s | 3-6m | Includes resync guard |
-| Full reprotect | 40s | 1-3m | Simplified handler |
-
-### Previous Story Intelligence
-
-**From Story 15-8 (Soteria Operator Deployment):**
-- Deployment via `hack/multisite/deploy-soteria.sh`
-- Image built locally + `minikube image load`
-- `--site-name=east/west` and `--scylladb-local-dc=east/west` configured per cluster
-- APIService `v1alpha1.soteria.io` Available on both clusters
-- Cross-DC DRPlan replication smoke test validates ScyllaDB connectivity
-- Console plugin excluded (no OCP Console)
-
-**From Epic 14 (Infrastructure):**
-- Cluster profiles/contexts: `east` and `west`
-- 4 nodes per cluster (1 CP + 3 workers)
-- `rook-ceph-block` StorageClass with RBD mirroring
-- VolumeReplicationClass `rook-ceph-rbd-vrc` with snapshot-mode, 1m schedule
-- KubeVirt with nested virtualization (hardware KVM)
-- Fedora container disk pre-cached on all nodes
-- ScyllaDB cross-DC with mTLS, Cilium global services
-
-**From Epic 13 (VolumeReplication Lifecycle):**
-- Story 13.7 peer-site reconcile guard eliminates checkpoint conflicts and immutability violations
-- DRPlan creates/updates VR/VGR with site-aware replication state
-- DRExecution mutates VR/VGR during transitions
-- All UAT-13 issues resolved before Epic 15
+Recommendation: **rework** existing code rather than discard.
 
 ### References
 
 - [Source: epics.md#Epic 15, Story 15.9]
-- [Source: _bmad-output/implementation-artifacts/14-7-test-scenario-setup-full-lifecycle-integration-test.md — Original story spec]
-- [Source: _bmad-output/implementation-artifacts/15-8-soteria-operator-deployment.md — Deployment story]
-- [Source: _bmad-output/implementation-artifacts/15-1-resyncvolume-driver-method-csi-extension.md — ResyncVolume method]
-- [Source: _bmad-output/implementation-artifacts/15-2-planned-failover-resync-guard-event-driven.md — Resync guard]
-- [Source: _bmad-output/implementation-artifacts/15-3-reprotect-handler-simplification-real-storage.md — Reprotect simplification]
-- [Source: _bmad-output/implementation-artifacts/15-5-shadowpv-publisher-controller.md — ShadowPV publisher]
-- [Source: _bmad-output/implementation-artifacts/15-6-shadowpv-consumer-controller-pv-creation-pool-id-rewrite.md — ShadowPV consumer]
-- [Source: hack/stretched-local-test.sh lines 430-514] — VM creation pattern, wave structure
-- [Source: user-acceptance-test-epic-13.md] — UAT-13 lifecycle test pattern, timing expectations
-- [Source: test/integration/controller/suite_test.go] — polling helpers, test plan factory
-- [Source: test/e2e/e2e_suite_test.go] — Ginkgo suite scaffold, build tag pattern
-- [Source: pkg/apis/soteria.io/v1alpha1/types.go] — DRPlanSpec, DRExecutionSpec, ShadowPVSpec, ExecutionResult, ExecutionPhase
-- [Source: project-context.md] — DRPlan 8-phase lifecycle, site-aware reconciliation, ShadowPV architecture
+- [Source: hack/multisite/setup-rook-ceph.sh — VRC deployment]
+- [Source: hack/multisite/overlays/east/scyllacluster-patch.yaml — ScyllaDB seed config]
+- [Source: hack/multisite/overlays/west/scyllacluster-patch.yaml — ScyllaDB seed config]
+- [Source: pkg/apis/soteria.io/v1alpha1/types.go — DRPlanSpec, DRExecutionSpec, ShadowPVSpec]
+- [Source: test/integration/controller/suite_test.go — polling helpers pattern]
 
 ## Dev Agent Record
 
 ### Agent Model Used
 
+Claude Opus 4.6
+
 ### Debug Log References
+
+- First pass implementation completed (all 4 files, lint clean, tests pass)
+- User correction: west PVCs should NOT be pre-created; ShadowPV consumer creates PVs, test creates PVCs to bind
+- User decision: test matrix (planned/disaster × snapshot/journal) = 5 tests total
+- User decision: per-test VM lifecycle (create + destroy) due to resource constraints
+- User decision: disaster simulation via actual `minikube stop` (not just mode flag)
+- User decision: ScyllaDB symmetric seeds for disaster resilience
+- User decision: VRC renamed to `rook-ceph-rbd-vrc-snapshot` + new `rook-ceph-rbd-vrc-journal`
+- User decision: `spec.volumeName` for west PVC binding to ShadowPV-created PVs
 
 ### Completion Notes List
 
+- First pass: 4 Go test files created, lint clean, all existing tests pass
+- Story rewritten to capture corrected requirements (test matrix, disaster sim, ShadowPV flow)
+- Review fixes aligned the rewritten story, multisite test suite, and active docs/scripts
+
 ### File List
+
+- `test/multisite/suite_test.go` (new) — Ginkgo suite entry, two-client setup
+- `test/multisite/setup_test.go` (new) — BeforeSuite/AfterSuite and namespace helpers
+- `test/multisite/convergence_test.go` (new) — DRPlan convergence test via ShadowPV pipeline
+- `test/multisite/lifecycle_test.go` (new) — parameterized lifecycle matrix
+- `test/multisite/helpers_test.go` (new) — shared helpers, polling, cleanup, log scanning
+- `hack/multisite/manifests/rook-ceph/volume-replication-class.yaml` (updated) — two VRCs
+- `hack/multisite/setup-rook-ceph.sh` (updated) — apply both VRCs
+- `hack/multisite/overlays/east/scyllacluster-patch.yaml` (updated) — symmetric seeds
+- `hack/multisite/setup-all.sh` (updated) — teardown old/new VRCs
+- `hack/multisite/README.md` (updated) — two-VRC docs and smoke-test example
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (modified) — status tracking
+- `_bmad-output/implementation-artifacts/15-9-full-lifecycle-e2e-test.md` (modified) — this file
+
+### Change Log
+
+- 2026-07-06 (first pass): Implemented initial 4-file test suite (single lifecycle, observation-only ShadowPV)
+- 2026-07-06 (story rewrite): Rewrote story spec to capture: test matrix (5 tests), ShadowPV-driven provisioning, disaster simulation via minikube stop, per-test VM lifecycle, two VRCs, symmetric ScyllaDB seeds

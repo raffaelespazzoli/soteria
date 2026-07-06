@@ -64,7 +64,7 @@ metadata:
   name: test-vr
   namespace: replicated-pvc-test
 spec:
-  volumeReplicationClass: rook-ceph-rbd-vrc
+  volumeReplicationClass: rook-ceph-rbd-vrc-snapshot
   replicationState: secondary
   dataSource:
     kind: PersistentVolumeClaim

@@ -223,7 +223,7 @@ This deploys:
 - Bidirectional bootstrap peer exchange between east and west
 - CephRBDMirror daemons for asynchronous replication
 - CSI Addons controller (VolumeReplication/VolumeGroupReplication CRDs)
-- VolumeReplicationClass `rook-ceph-rbd-vrc` (snapshot-mode, 1m schedule)
+- VolumeReplicationClasses `rook-ceph-rbd-vrc-snapshot` (snapshot-mode, 1m schedule) and `rook-ceph-rbd-vrc-journal` (journal-mode)
 - StorageClass `rook-ceph-block` with `exclusive-lock` feature
 
 ### Rook-Ceph Environment Variables
@@ -246,8 +246,8 @@ kubectl --context west -n rook-ceph get cephcluster
 # RBD mirror status
 kubectl --context east -n rook-ceph get cephblockpool mirrored-pool -o yaml
 
-# VolumeReplicationClass
-kubectl --context east get volumereplicationclass rook-ceph-rbd-vrc
+# VolumeReplicationClasses
+kubectl --context east get volumereplicationclass rook-ceph-rbd-vrc-snapshot rook-ceph-rbd-vrc-journal
 
 # StorageClass
 kubectl --context east get storageclass rook-ceph-block
@@ -653,7 +653,7 @@ spec:
   secondarySite: west
   volumeReplicationDriver:
     type: csi-extension
-    volumeReplicationClass: rook-ceph-rbd-vrc
+    volumeReplicationClass: rook-ceph-rbd-vrc-snapshot
 EOF
 kubectl --context east get drplans
 ```

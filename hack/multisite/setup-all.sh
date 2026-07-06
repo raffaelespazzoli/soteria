@@ -287,7 +287,7 @@ teardown_rook_ceph() {
     kubectl --kubeconfig="$kc" delete namespace rook-ceph --ignore-not-found --timeout=120s 2>/dev/null || true
     helm --kubeconfig="$kc" uninstall csi-addons -n csi-addons-system 2>/dev/null || true
     kubectl --kubeconfig="$kc" delete namespace csi-addons-system --ignore-not-found --timeout=60s 2>/dev/null || true
-    kubectl --kubeconfig="$kc" delete volumereplicationclass rook-ceph-rbd-vrc --ignore-not-found 2>/dev/null || true
+    kubectl --kubeconfig="$kc" delete volumereplicationclass rook-ceph-rbd-vrc-snapshot rook-ceph-rbd-vrc-journal --ignore-not-found 2>/dev/null || true
     kubectl --kubeconfig="$kc" delete storageclass rook-ceph-block --ignore-not-found 2>/dev/null || true
   done
 }

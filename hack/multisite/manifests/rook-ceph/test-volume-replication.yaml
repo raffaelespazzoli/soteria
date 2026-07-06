@@ -8,7 +8,7 @@ metadata:
   name: test-vr
   namespace: ${TEST_NAMESPACE}
 spec:
-  volumeReplicationClass: rook-ceph-rbd-vrc
+  volumeReplicationClass: rook-ceph-rbd-vrc-snapshot
   replicationState: primary
   dataSource:
     kind: PersistentVolumeClaim

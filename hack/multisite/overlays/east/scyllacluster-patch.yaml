@@ -1,9 +1,9 @@
-# East is the seed DC — no externalSeeds needed.
-# Deploy east first; west discovers this DC via MCS API DNS.
+# East discovers west via Cilium Cluster Mesh DNS.
+# Symmetric seeds: both DCs can survive independently and rejoin.
 - op: replace
   path: /spec/datacenter/name
   value: east
-
 - op: replace
   path: /spec/externalSeeds
-  value: []
+  value:
+    - soteria-scylladb-west-rack1-0.soteria.svc.clusterset.local

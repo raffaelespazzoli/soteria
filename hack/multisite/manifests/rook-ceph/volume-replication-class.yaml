@@ -1,14 +1,26 @@
-# VolumeReplicationClass for Rook-Ceph RBD snapshot-based mirroring.
-# Referenced by Soteria DRPlans as volumeReplicationClass: rook-ceph-rbd-vrc.
-# schedulingInterval: 1m for fast RPO during integration testing.
+# VolumeReplicationClasses for Rook-Ceph RBD mirroring.
+# Referenced by Soteria DRPlans as volumeReplicationClass field.
+# Both deployed on east and west clusters by setup-rook-ceph.sh.
+---
 apiVersion: replication.storage.openshift.io/v1alpha1
 kind: VolumeReplicationClass
 metadata:
-  name: rook-ceph-rbd-vrc
+  name: rook-ceph-rbd-vrc-snapshot
 spec:
   provisioner: rook-ceph.rbd.csi.ceph.com
   parameters:
     mirroringMode: snapshot
     schedulingInterval: "1m"
+    replication.storage.openshift.io/replication-secret-name: rook-csi-rbd-provisioner
+    replication.storage.openshift.io/replication-secret-namespace: rook-ceph
+---
+apiVersion: replication.storage.openshift.io/v1alpha1
+kind: VolumeReplicationClass
+metadata:
+  name: rook-ceph-rbd-vrc-journal
+spec:
+  provisioner: rook-ceph.rbd.csi.ceph.com
+  parameters:
+    mirroringMode: journal
     replication.storage.openshift.io/replication-secret-name: rook-csi-rbd-provisioner
     replication.storage.openshift.io/replication-secret-namespace: rook-ceph

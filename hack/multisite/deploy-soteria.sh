@@ -130,8 +130,8 @@ for ctx in "${EAST_CONTEXT}" "${WEST_CONTEXT}"; do
     fatal "KubeVirt is not deployed on context '${ctx}' (phase: ${kubevirt_phase:-not found}). Run setup-kubevirt.sh first."
   fi
 
-  if ! kubectl --context "${ctx}" get volumereplicationclass rook-ceph-rbd-vrc &>/dev/null; then
-    fatal "VolumeReplicationClass 'rook-ceph-rbd-vrc' not found on context '${ctx}'. Run setup-rook-ceph.sh first."
+  if ! kubectl --context "${ctx}" get volumereplicationclass rook-ceph-rbd-vrc-snapshot &>/dev/null; then
+    fatal "VolumeReplicationClass 'rook-ceph-rbd-vrc-snapshot' not found on context '${ctx}'. Run setup-rook-ceph.sh first."
   fi
 done
 
@@ -346,7 +346,7 @@ spec:
   secondarySite: west
   volumeReplicationDriver:
     type: csi-extension
-    volumeReplicationClass: rook-ceph-rbd-vrc
+    volumeReplicationClass: rook-ceph-rbd-vrc-snapshot
 EOF
 
   # Task 4.2: Verify DRPlan visible on west via ScyllaDB cross-DC replication

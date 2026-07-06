@@ -733,7 +733,7 @@ metadata:
   name: test-vr
   namespace: ${test_ns}
 spec:
-  volumeReplicationClass: rook-ceph-rbd-vrc
+  volumeReplicationClass: rook-ceph-rbd-vrc-snapshot
   replicationState: secondary
   dataSource:
     kind: PersistentVolumeClaim
@@ -1122,8 +1122,8 @@ main() {
   info "RBD mirror status:"
   info "  kubectl --context ${EAST_CONTEXT} -n rook-ceph get cephblockpool mirrored-pool -o jsonpath='{.status.mirroringStatus}'"
   info ""
-  info "VolumeReplicationClass:"
-  info "  kubectl --context ${EAST_CONTEXT} get volumereplicationclass rook-ceph-rbd-vrc"
+  info "VolumeReplicationClasses:"
+  info "  kubectl --context ${EAST_CONTEXT} get volumereplicationclass rook-ceph-rbd-vrc-snapshot rook-ceph-rbd-vrc-journal"
   info ""
   info "StorageClass:"
   info "  kubectl --context ${EAST_CONTEXT} get storageclass rook-ceph-block"

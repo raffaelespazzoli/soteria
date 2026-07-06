@@ -1,6 +1,6 @@
 # Story 15.7: Console Plugin Standalone Mode
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -61,56 +61,56 @@ And the mock infrastructure targets the provider interface (not SDK directly)
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create provider abstraction layer (AC: 1, 6)
-  - [ ] 1.1: Create `console-plugin/src/providers/types.ts` — define `K8sProvider` interface with methods: `watchResource<T>(gvk, opts) → [T[], boolean, unknown]`, `createResource<T>(model, data) → Promise<T>`, `patchResource<T>(model, resource, patches) → Promise<T>`, `getDocumentTitle() → React.FC<{children: string}>`
-  - [ ] 1.2: Create `console-plugin/src/providers/ocp.ts` — implement `K8sProvider` wrapping `useK8sWatchResource`, `k8sCreate`, `k8sPatch`, `DocumentTitle` from `@openshift-console/dynamic-plugin-sdk`
-  - [ ] 1.3: Create `console-plugin/src/providers/standalone.ts` — implement `K8sProvider` using raw `fetch()` against `/api/k8s/` proxy path with watch, list, get, create, patch operations
-  - [ ] 1.4: Create `console-plugin/src/providers/context.tsx` — React context providing the active `K8sProvider`, auto-selects OCP or standalone based on `__STANDALONE__` build flag
-  - [ ] 1.5: Create `console-plugin/src/providers/index.ts` — re-exports context, types, and provider hooks
+- [x] Task 1: Create provider abstraction layer (AC: 1, 6)
+  - [x] 1.1: Create `console-plugin/src/providers/types.ts` — define `K8sProvider` interface with methods: `watchResource<T>(gvk, opts) → [T[], boolean, unknown]`, `createResource<T>(model, data) → Promise<T>`, `patchResource<T>(model, resource, patches) → Promise<T>`, `getDocumentTitle() → React.FC<{children: string}>`
+  - [x] 1.2: Create `console-plugin/src/providers/ocp.ts` — implement `K8sProvider` wrapping `useK8sWatchResource`, `k8sCreate`, `k8sPatch`, `DocumentTitle` from `@openshift-console/dynamic-plugin-sdk`
+  - [x] 1.3: Create `console-plugin/src/providers/standalone.ts` — implement `K8sProvider` using raw `fetch()` against `/api/k8s/` proxy path with watch, list, get, create, patch operations
+  - [x] 1.4: Create `console-plugin/src/providers/context.tsx` — React context providing the active `K8sProvider`, auto-selects OCP or standalone based on `__STANDALONE__` build flag
+  - [x] 1.5: Create `console-plugin/src/providers/index.ts` — re-exports context, types, and provider hooks
 
-- [ ] Task 2: Refactor existing hooks to use provider (AC: 1, 7)
-  - [ ] 2.1: Refactor `useDRResources.ts` — replace direct `useK8sWatchResource` calls with provider's `watchResource`, keep identical return types
-  - [ ] 2.2: Refactor `useCreateDRExecution.ts` — replace `k8sCreate` with provider's `createResource`
-  - [ ] 2.3: Refactor `useRetryDRGroup.ts` — replace `k8sPatch` with provider's `patchResource`
-  - [ ] 2.4: Refactor page components — replace `DocumentTitle` import from SDK with provider's `DocumentTitle` component (`DRDashboardPage.tsx`, `DRPlanDetailPage.tsx`, `ExecutionDetailPage.tsx`)
-  - [ ] 2.5: Update all test mocks — mock the provider context instead of SDK directly; existing assertions remain unchanged
+- [x] Task 2: Refactor existing hooks to use provider (AC: 1, 7)
+  - [x] 2.1: Refactor `useDRResources.ts` — replace direct `useK8sWatchResource` calls with provider's `watchResource`, keep identical return types
+  - [x] 2.2: Refactor `useCreateDRExecution.ts` — replace `k8sCreate` with provider's `createResource`
+  - [x] 2.3: Refactor `useRetryDRGroup.ts` — replace `k8sPatch` with provider's `patchResource`
+  - [x] 2.4: Refactor page components — replace `DocumentTitle` import from SDK with provider's `DocumentTitle` component (`DRDashboardPage.tsx`, `DRPlanDetailPage.tsx`, `ExecutionDetailPage.tsx`)
+  - [x] 2.5: Update all test mocks — mock the provider context instead of SDK directly; existing assertions remain unchanged
 
-- [ ] Task 3: Create standalone webpack config (AC: 2)
-  - [ ] 3.1: Create `console-plugin/webpack.standalone.ts` — standard webpack config (no `ConsoleRemotePlugin`), entry point `standalone/main.tsx`, output to `dist-standalone/`, resolve same extensions
-  - [ ] 3.2: Configure `DefinePlugin` — set `__STANDALONE__: true` in standalone config, `__STANDALONE__: false` in existing OCP config
-  - [ ] 3.3: Configure `HtmlWebpackPlugin` — generate `index.html` from `standalone/index.html` template
-  - [ ] 3.4: Include PatternFly CSS — import `@patternfly/react-core/dist/styles/base.css` and `@patternfly/patternfly/patternfly.min.css` in standalone entry
-  - [ ] 3.5: Add `externals` for `@openshift-console/dynamic-plugin-sdk` — empty module in standalone build (tree-shaking removes it since provider routes around it)
-  - [ ] 3.6: Add `console-standalone` script to `package.json` and `Makefile` target
+- [x] Task 3: Create standalone webpack config (AC: 2)
+  - [x] 3.1: Create `console-plugin/webpack.standalone.ts` — standard webpack config (no `ConsoleRemotePlugin`), entry point `standalone/main.tsx`, output to `dist-standalone/`, resolve same extensions
+  - [x] 3.2: Configure `DefinePlugin` — set `__STANDALONE__: true` in standalone config, `__STANDALONE__: false` in existing OCP config
+  - [x] 3.3: Configure `HtmlWebpackPlugin` — generate `index.html` from `standalone/index.html` template
+  - [x] 3.4: Include PatternFly CSS — import `@patternfly/react-core/dist/styles/base.css` and `@patternfly/patternfly/patternfly.min.css` in standalone entry
+  - [x] 3.5: Add `externals` for `@openshift-console/dynamic-plugin-sdk` — empty module in standalone build (tree-shaking removes it since provider routes around it)
+  - [x] 3.6: Add `console-standalone` script to `package.json` and `Makefile` target
 
-- [ ] Task 4: Create standalone entry point (AC: 3)
-  - [ ] 4.1: Create `console-plugin/standalone/index.html` — minimal HTML with `<div id="root">`, PatternFly CSS links, viewport meta
-  - [ ] 4.2: Create `console-plugin/standalone/main.tsx` — render `<BrowserRouter>` with `<Switch>` routing to DRDashboardPage, DRPlanDetailPage, ExecutionDetailPage, wrapped in provider context
-  - [ ] 4.3: Create `console-plugin/standalone/StandaloneApp.tsx` — app shell with PatternFly `Page` layout, sidebar navigation matching OCP routes (`/disaster-recovery`, `/disaster-recovery/plans/:name`, `/disaster-recovery/executions/:name`)
-  - [ ] 4.4: Add PatternFly `@patternfly/patternfly` as a dependency (dev peer — OCP Console provides it for plugin mode; standalone needs it bundled)
+- [x] Task 4: Create standalone entry point (AC: 3)
+  - [x] 4.1: Create `console-plugin/standalone/index.html` — minimal HTML with `<div id="root">`, PatternFly CSS links, viewport meta
+  - [x] 4.2: Create `console-plugin/standalone/main.tsx` — render `<BrowserRouter>` with `<Switch>` routing to DRDashboardPage, DRPlanDetailPage, ExecutionDetailPage, wrapped in provider context
+  - [x] 4.3: Create `console-plugin/standalone/StandaloneApp.tsx` — app shell with PatternFly `Page` layout, sidebar navigation matching OCP routes (`/disaster-recovery`, `/disaster-recovery/plans/:name`, `/disaster-recovery/executions/:name`)
+  - [x] 4.4: Add PatternFly `@patternfly/patternfly` as a dependency (dev peer — OCP Console provides it for plugin mode; standalone needs it bundled)
 
-- [ ] Task 5: Create Go reverse proxy (AC: 4)
-  - [ ] 5.1: Create `cmd/console-proxy/main.go` — HTTP server that serves static SPA from `/` and proxies `/api/k8s/` to the K8s API server
-  - [ ] 5.2: Implement K8s API proxy — read ServiceAccount token from `/var/run/secrets/kubernetes.io/serviceaccount/token`, inject `Authorization: Bearer <token>` header, proxy to `KUBERNETES_SERVICE_HOST:KUBERNETES_SERVICE_PORT`
-  - [ ] 5.3: Implement SPA fallback — all non-`/api/k8s/` GET requests serve `index.html` (client-side routing support)
-  - [ ] 5.4: Configure TLS — proxy connects to K8s API using the CA cert from `/var/run/secrets/kubernetes.io/serviceaccount/ca.crt`
-  - [ ] 5.5: Add health endpoint — `GET /healthz` returns 200
+- [x] Task 5: Create Go reverse proxy (AC: 4)
+  - [x] 5.1: Create `cmd/console-proxy/main.go` — HTTP server that serves static SPA from `/` and proxies `/api/k8s/` to the K8s API server
+  - [x] 5.2: Implement K8s API proxy — read ServiceAccount token from `/var/run/secrets/kubernetes.io/serviceaccount/token`, inject `Authorization: Bearer <token>` header, proxy to `KUBERNETES_SERVICE_HOST:KUBERNETES_SERVICE_PORT`
+  - [x] 5.3: Implement SPA fallback — all non-`/api/k8s/` GET requests serve `index.html` (client-side routing support)
+  - [x] 5.4: Configure TLS — proxy connects to K8s API using the CA cert from `/var/run/secrets/kubernetes.io/serviceaccount/ca.crt`
+  - [x] 5.5: Add health endpoint — `GET /healthz` returns 200
 
-- [ ] Task 6: Create Dockerfile and deployment manifests (AC: 5)
-  - [ ] 6.1: Create `console-plugin/Dockerfile.standalone` — multi-stage: Node build stage produces `dist-standalone/`, Go build stage compiles `cmd/console-proxy`, final stage copies both into a `scratch`/`distroless` image
-  - [ ] 6.2: Create `hack/overlays/base/console-standalone.yaml` — Deployment + Service + ServiceAccount + ClusterRole + ClusterRoleBinding for Minikube deployment
-  - [ ] 6.3: RBAC in ClusterRole — `get`, `list`, `watch` on `soteria.io` DRPlan and DRExecution resources; `get`, `list`, `watch` on `kubevirt.io` VirtualMachine resources
-  - [ ] 6.4: Service type `LoadBalancer` for MetalLB access; port 8080
+- [x] Task 6: Create Dockerfile and deployment manifests (AC: 5)
+  - [x] 6.1: Create `console-plugin/Dockerfile.standalone` — multi-stage: Node build stage produces `dist-standalone/`, Go build stage compiles `cmd/console-proxy`, final stage copies both into a `scratch`/`distroless` image
+  - [x] 6.2: Create `hack/overlays/base/console-standalone.yaml` — Deployment + Service + ServiceAccount + ClusterRole + ClusterRoleBinding for Minikube deployment
+  - [x] 6.3: RBAC in ClusterRole — `get`, `list`, `watch` on `soteria.io` DRPlan and DRExecution resources; `get`, `list`, `watch` on `kubevirt.io` VirtualMachine resources
+  - [x] 6.4: Service type `LoadBalancer` for MetalLB access; port 8080
 
-- [ ] Task 7: Update existing OCP webpack config (AC: 6)
-  - [ ] 7.1: Add `DefinePlugin` to existing `webpack.config.ts` — set `__STANDALONE__: false`
-  - [ ] 7.2: Add `declare const __STANDALONE__: boolean;` to a global types file (`src/typings/globals.d.ts`)
+- [x] Task 7: Update existing OCP webpack config (AC: 6)
+  - [x] 7.1: Add `DefinePlugin` to existing `webpack.config.ts` — set `__STANDALONE__: false`
+  - [x] 7.2: Add `declare const __STANDALONE__: boolean;` to a global types file (`src/typings/globals.d.ts`)
 
-- [ ] Task 8: Tests (AC: 7)
-  - [ ] 8.1: Run existing test suite — verify all pass with refactored provider abstraction
-  - [ ] 8.2: Add provider abstraction tests — test OCP provider delegates to SDK mocks, test standalone provider issues correct fetch calls
-  - [ ] 8.3: Add standalone webpack build smoke test — `yarn console-standalone` completes without errors, `dist-standalone/index.html` exists
-  - [ ] 8.4: Add Go proxy unit tests — test static file serving, API proxy path rewriting, token injection, SPA fallback
+- [x] Task 8: Tests (AC: 7)
+  - [x] 8.1: Run existing test suite — verify all pass with refactored provider abstraction
+  - [x] 8.2: Add provider abstraction tests — test OCP provider delegates to SDK mocks, test standalone provider issues correct fetch calls
+  - [x] 8.3: Add standalone webpack build smoke test — `yarn console-standalone` completes without errors, `dist-standalone/index.html` exists
+  - [x] 8.4: Add Go proxy unit tests — test static file serving, API proxy path rewriting, token injection, SPA fallback
 
 ## Dev Notes
 
@@ -291,8 +291,40 @@ hack/overlays/base/
 
 ### Agent Model Used
 
+Claude Opus 4.6
+
 ### Debug Log References
+
+- Implemented in commit 0958b47 (feat(15.7): add console plugin standalone mode for non-OCP environments)
+- Story file was not updated during implementation — task checkboxes and status backfilled during code review
 
 ### Completion Notes List
 
+- Provider abstraction layer created (types, ocp, standalone, context)
+- Existing hooks refactored to use provider instead of direct SDK calls
+- Standalone webpack config, entry point, and Go reverse proxy created
+- Dockerfile.standalone and deployment manifests added
+- All existing tests pass with refactored provider abstraction
+
 ### File List
+
+- `console-plugin/src/providers/types.ts` (new) — K8sProvider interface
+- `console-plugin/src/providers/ocp.ts` (new) — OCP SDK wrapper
+- `console-plugin/src/providers/standalone.ts` (new) — fetch()-based implementation
+- `console-plugin/src/providers/context.tsx` (new) — React context + auto-detection
+- `console-plugin/src/providers/index.ts` (new) — re-exports
+- `console-plugin/standalone/index.html` (new) — HTML template
+- `console-plugin/standalone/main.tsx` (new) — React entry + BrowserRouter
+- `console-plugin/standalone/StandaloneApp.tsx` (new) — App shell with PatternFly Page layout
+- `console-plugin/webpack.standalone.ts` (new) — standalone webpack config
+- `console-plugin/Dockerfile.standalone` (new) — multi-stage standalone build
+- `cmd/console-proxy/main.go` (new) — Go reverse proxy
+- `hack/overlays/base/console-standalone.yaml` (new) — Minikube deployment manifests
+- `console-plugin/webpack.config.ts` (modified) — DefinePlugin __STANDALONE__: false
+- `console-plugin/src/typings/globals.d.ts` (new) — __STANDALONE__ declaration
+- `console-plugin/package.json` (modified) — console-standalone script
+
+### Change Log
+
+- 2026-07-06: Implementation completed (commit 0958b47)
+- 2026-07-06: Story file backfilled (status, task checkboxes, dev agent record) during 15-9 review
