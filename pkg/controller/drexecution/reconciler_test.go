@@ -70,8 +70,8 @@ func TestDRExecutionReconciler_ResumeInProgress_EmitsEvent(t *testing.T) {
 		Status: soteriav1alpha1.DRExecutionStatus{
 			StartTime: &now,
 			Result:    "", // In-progress — needs resume.
-			Conditions: []metav1.Condition{
-				{Type: "Step0Complete", Status: metav1.ConditionTrue, Reason: "Test"},
+			SiteStatuses: map[string]soteriav1alpha1.SiteCoordinationStatus{
+				"dc-west": {Step0Complete: true, LastUpdated: &now},
 			},
 			Waves: []soteriav1alpha1.WaveStatus{
 				{
@@ -540,13 +540,14 @@ func TestDRExecutionReconciler_RoleStep0_PlannedMigration(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify Step0Complete was set.
+	// Verify Step0Complete was set in SiteStatuses.
 	var fetched soteriav1alpha1.DRExecution
 	if err := cl.Get(context.Background(), client.ObjectKey{Name: "exec-step0"}, &fetched); err != nil {
 		t.Fatalf("fetching execution: %v", err)
 	}
-	if !meta.IsStatusConditionTrue(fetched.Status.Conditions, "Step0Complete") {
-		t.Error("expected Step0Complete condition to be set")
+	eastStatus := getSiteStatus(&fetched, "east")
+	if !eastStatus.Step0Complete {
+		t.Error("expected siteStatuses[east].step0Complete to be set")
 	}
 }
 
@@ -561,12 +562,8 @@ func TestDRExecutionReconciler_RoleStep0_Idempotent(t *testing.T) {
 		},
 		Status: soteriav1alpha1.DRExecutionStatus{
 			StartTime: &now,
-			Conditions: []metav1.Condition{
-				{
-					Type:   "Step0Complete",
-					Status: metav1.ConditionTrue,
-					Reason: "SourceSiteStep0Completed",
-				},
+			SiteStatuses: map[string]soteriav1alpha1.SiteCoordinationStatus{
+				"east": {Step0Complete: true, LastUpdated: &now},
 			},
 		},
 	}
@@ -656,8 +653,8 @@ func TestDRExecutionReconciler_PlannedMigration_OwnerWaitsForStep0(t *testing.T)
 }
 
 func TestDRExecutionReconciler_PlannedMigration_OwnerProceedsAfterStep0(t *testing.T) {
-	// Target site (west) is Owner for planned migration. Step0Complete IS set.
-	// Should proceed with wave execution (no wait).
+	// Target site (west) is Owner for planned migration. Step0Complete IS set
+	// in the source site's SiteStatuses entry. Should proceed with wave execution.
 	now := metav1.Now()
 	exec := &soteriav1alpha1.DRExecution{
 		ObjectMeta: metav1.ObjectMeta{
@@ -672,15 +669,13 @@ func TestDRExecutionReconciler_PlannedMigration_OwnerProceedsAfterStep0(t *testi
 			StartTime: &now,
 			Conditions: []metav1.Condition{
 				{
-					Type:   "Step0Complete",
-					Status: metav1.ConditionTrue,
-					Reason: "SourceSiteStep0Completed",
-				},
-				{
 					Type:   "Progressing",
 					Status: metav1.ConditionTrue,
 					Reason: "ExecutionStarted",
 				},
+			},
+			SiteStatuses: map[string]soteriav1alpha1.SiteCoordinationStatus{
+				"east": {Step0Complete: true, LastUpdated: &now},
 			},
 		},
 	}
@@ -755,7 +750,8 @@ func TestDRExecutionReconciler_ResumePath_WaitsForStep0Complete(t *testing.T) {
 }
 
 func TestDRExecutionReconciler_ResumePath_ProceedsAfterStep0Complete(t *testing.T) {
-	// When Step0Complete IS set, the resume path should proceed normally.
+	// When Step0Complete IS set in source's SiteStatuses, the resume path
+	// should proceed normally.
 	now := metav1.Now()
 	exec := &soteriav1alpha1.DRExecution{
 		ObjectMeta: metav1.ObjectMeta{Name: "exec-resume-ok"},
@@ -771,11 +767,9 @@ func TestDRExecutionReconciler_ResumePath_ProceedsAfterStep0Complete(t *testing.
 					Status: metav1.ConditionTrue,
 					Reason: "ExecutionStarted",
 				},
-				{
-					Type:   "Step0Complete",
-					Status: metav1.ConditionTrue,
-					Reason: "SourceSiteStep0Completed",
-				},
+			},
+			SiteStatuses: map[string]soteriav1alpha1.SiteCoordinationStatus{
+				"east": {Step0Complete: true, LastUpdated: &now},
 			},
 		},
 	}
@@ -1121,12 +1115,11 @@ func TestReconcileWaveProgress_Timeout_PlannedMigrationFailFast(t *testing.T) {
 				},
 			},
 		})
-	exec.Status.Conditions = []metav1.Condition{
-		{
-			Type:   "Step0Complete",
-			Status: metav1.ConditionTrue,
-			Reason: "Test",
-		},
+	// Source site (dc-west) completed Step0 — set in SiteStatuses so target
+	// site (dc-east) can proceed past the Step0 wait gate.
+	now := metav1.Now()
+	exec.Status.SiteStatuses = map[string]soteriav1alpha1.SiteCoordinationStatus{
+		"dc-west": {Step0Complete: true, LastUpdated: &now},
 	}
 
 	plan := newWaveGatePlan("plan-1")
@@ -2346,13 +2339,8 @@ func TestReconcileTargetSiteResyncGate_InitiatesResync(t *testing.T) {
 			Phase:     soteriav1alpha1.ExecutionPhaseExecuting,
 			IsActive:  true,
 			StartTime: &now,
-			Conditions: []metav1.Condition{
-				{
-					Type:               ConditionVMsStopped,
-					Status:             metav1.ConditionTrue,
-					Reason:             "VMsStoppedBySourceSite",
-					LastTransitionTime: now,
-				},
+			SiteStatuses: map[string]soteriav1alpha1.SiteCoordinationStatus{
+				"dc-west": {VMsStopped: true, LastUpdated: &now},
 			},
 		},
 	}
@@ -2378,11 +2366,12 @@ func TestReconcileTargetSiteResyncGate_InitiatesResync(t *testing.T) {
 	if err := c.Get(context.Background(), client.ObjectKeyFromObject(exec), &fetched); err != nil {
 		t.Fatalf("failed to fetch execution: %v", err)
 	}
-	if !meta.IsStatusConditionTrue(fetched.Status.Conditions, ConditionResyncPending) {
-		t.Error("expected ResyncPending=True after target initiates resync")
+	eastStatus := getSiteStatus(&fetched, "dc-east")
+	if !eastStatus.ResyncPending {
+		t.Error("expected siteStatuses[dc-east].resyncPending=true after target initiates resync")
 	}
-	if meta.IsStatusConditionTrue(fetched.Status.Conditions, ConditionResyncComplete) {
-		t.Error("ResyncComplete should not be set on the first call (resync just initiated)")
+	if eastStatus.ResyncComplete {
+		t.Error("siteStatuses[dc-east].resyncComplete should not be set on the first call")
 	}
 }
 
@@ -2401,19 +2390,9 @@ func TestReconcileTargetSiteResyncGate_SetsResyncComplete(t *testing.T) {
 			Phase:     soteriav1alpha1.ExecutionPhaseExecuting,
 			IsActive:  true,
 			StartTime: &now,
-			Conditions: []metav1.Condition{
-				{
-					Type:               ConditionVMsStopped,
-					Status:             metav1.ConditionTrue,
-					Reason:             "VMsStoppedBySourceSite",
-					LastTransitionTime: now,
-				},
-				{
-					Type:               ConditionResyncPending,
-					Status:             metav1.ConditionTrue,
-					Reason:             "TargetResyncInitiated",
-					LastTransitionTime: now,
-				},
+			SiteStatuses: map[string]soteriav1alpha1.SiteCoordinationStatus{
+				"dc-west": {VMsStopped: true, LastUpdated: &now},
+				"dc-east": {ResyncPending: true, LastUpdated: &now},
 			},
 		},
 	}
@@ -2428,7 +2407,6 @@ func TestReconcileTargetSiteResyncGate_SetsResyncComplete(t *testing.T) {
 	}
 
 	c := newTestClient(exec, plan)
-	// No WaveExecutor → checkResyncComplete returns true (noop/trivial)
 	r := &DRExecutionReconciler{Client: c, Scheme: newTestScheme(), LocalSite: "dc-east"}
 
 	result, err := r.reconcileTargetSiteResyncGate(context.Background(), exec, plan)
@@ -2443,11 +2421,12 @@ func TestReconcileTargetSiteResyncGate_SetsResyncComplete(t *testing.T) {
 	if err := c.Get(context.Background(), client.ObjectKeyFromObject(exec), &fetched); err != nil {
 		t.Fatalf("failed to fetch execution: %v", err)
 	}
-	if !meta.IsStatusConditionTrue(fetched.Status.Conditions, ConditionResyncComplete) {
-		t.Error("expected ResyncComplete=True after target site resync completion")
+	eastStatus := getSiteStatus(&fetched, "dc-east")
+	if !eastStatus.ResyncComplete {
+		t.Error("expected siteStatuses[dc-east].resyncComplete=true after target site resync completion")
 	}
-	if meta.IsStatusConditionTrue(fetched.Status.Conditions, ConditionResyncPending) {
-		t.Error("expected ResyncPending removed after target site resync completion")
+	if eastStatus.ResyncPending {
+		t.Error("expected siteStatuses[dc-east].resyncPending=false after target site resync completion")
 	}
 }
 
@@ -2466,19 +2445,9 @@ func TestReconcileTargetSiteResyncGate_AlreadyComplete_WaitsForStep0(t *testing.
 			Phase:     soteriav1alpha1.ExecutionPhaseExecuting,
 			IsActive:  true,
 			StartTime: &now,
-			Conditions: []metav1.Condition{
-				{
-					Type:               ConditionVMsStopped,
-					Status:             metav1.ConditionTrue,
-					Reason:             "VMsStoppedBySourceSite",
-					LastTransitionTime: now,
-				},
-				{
-					Type:               ConditionResyncComplete,
-					Status:             metav1.ConditionTrue,
-					Reason:             "TargetResyncComplete",
-					LastTransitionTime: now,
-				},
+			SiteStatuses: map[string]soteriav1alpha1.SiteCoordinationStatus{
+				"dc-west": {VMsStopped: true, LastUpdated: &now},
+				"dc-east": {ResyncComplete: true, LastUpdated: &now},
 			},
 		},
 	}

@@ -54,6 +54,7 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.ShadowPVList":                  schema_pkg_apis_soteriaio_v1alpha1_ShadowPVList(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.ShadowPVSpec":                  schema_pkg_apis_soteriaio_v1alpha1_ShadowPVSpec(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.ShadowPVStatus":                schema_pkg_apis_soteriaio_v1alpha1_ShadowPVStatus(ref),
+		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.SiteCoordinationStatus":        schema_pkg_apis_soteriaio_v1alpha1_SiteCoordinationStatus(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.SiteDiscovery":                 schema_pkg_apis_soteriaio_v1alpha1_SiteDiscovery(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.StepStatus":                    schema_pkg_apis_soteriaio_v1alpha1_StepStatus(ref),
 		"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.VolumeGroupDisk":               schema_pkg_apis_soteriaio_v1alpha1_VolumeGroupDisk(ref),
@@ -557,12 +558,27 @@ func schema_pkg_apis_soteriaio_v1alpha1_DRExecutionStatus(ref common.ReferenceCa
 							},
 						},
 					},
+					"siteStatuses": {
+						SchemaProps: spec.SchemaProps{
+							Description: "SiteStatuses holds per-site coordination signals, keyed by site name (e.g., \"east\", \"west\"). Each controller writes ONLY to its own site entry and reads from the other site's entry. This avoids ScyllaDB LWW conflicts from concurrent cross-site status patches.",
+							Type:        []string{"object"},
+							AdditionalProperties: &spec.SchemaOrBool{
+								Allows: true,
+								Schema: &spec.Schema{
+									SchemaProps: spec.SchemaProps{
+										Default: map[string]interface{}{},
+										Ref:     ref("github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.SiteCoordinationStatus"),
+									},
+								},
+							},
+						},
+					},
 				},
 				Required: []string{"isActive"},
 			},
 		},
 		Dependencies: []string{
-			"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.WaveStatus", metav1.Condition{}.OpenAPIModelName(), metav1.Time{}.OpenAPIModelName()},
+			"github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.SiteCoordinationStatus", "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1.WaveStatus", metav1.Condition{}.OpenAPIModelName(), metav1.Time{}.OpenAPIModelName()},
 	}
 }
 
@@ -1608,6 +1624,55 @@ func schema_pkg_apis_soteriaio_v1alpha1_ShadowPVStatus(ref common.ReferenceCallb
 		},
 		Dependencies: []string{
 			metav1.Condition{}.OpenAPIModelName()},
+	}
+}
+
+func schema_pkg_apis_soteriaio_v1alpha1_SiteCoordinationStatus(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "SiteCoordinationStatus holds coordination signals written exclusively by one site's controller. Each site writes only to its own entry in the DRExecution's SiteStatuses map, eliminating ScyllaDB LWW conflicts from concurrent cross-site status patches.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"vmsStopped": {
+						SchemaProps: spec.SchemaProps{
+							Description: "VMsStopped is set by the source site (Step0) after stopping all VMs during planned migration. Signals the target site to begin resync.",
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
+					"step0Complete": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Step0Complete is set by the source site (Step0) after resync completes and StopReplication has demoted local primary VRs. Signals the target site to proceed with wave execution (SetSource + StartVM).",
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
+					"resyncPending": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ResyncPending is set by the target site (Owner) after calling ResyncVolume on its local secondary VR/VGR CRs. Indicates the target is waiting for VR status watches to confirm resync completion.",
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
+					"resyncComplete": {
+						SchemaProps: spec.SchemaProps{
+							Description: "ResyncComplete is set by the target site (Owner) after all local VRs have completed resync. Signals the source site to proceed with StopReplication and Step0Complete.",
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
+					"lastUpdated": {
+						SchemaProps: spec.SchemaProps{
+							Description: "LastUpdated records when this site last wrote to its coordination status.",
+							Ref:         ref(metav1.Time{}.OpenAPIModelName()),
+						},
+					},
+				},
+			},
+		},
+		Dependencies: []string{
+			metav1.Time{}.OpenAPIModelName()},
 	}
 }
 

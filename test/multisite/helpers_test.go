@@ -901,25 +901,25 @@ func observeResyncPending(
 		var exec soteriav1alpha1.DRExecution
 		g.Expect(cl.Get(ctx, client.ObjectKey{Name: execName}, &exec)).To(Succeed())
 
-		summary := fmt.Sprintf("result=%q startTime=%v conditions=[", exec.Status.Result, exec.Status.StartTime != nil)
-		for i, c := range exec.Status.Conditions {
-			if i > 0 {
-				summary += ", "
-			}
-			summary += fmt.Sprintf("%s=%s", c.Type, c.Status)
+		summary := fmt.Sprintf("result=%q startTime=%v siteStatuses={", exec.Status.Result, exec.Status.StartTime != nil)
+		for site, ss := range exec.Status.SiteStatuses {
+			summary += fmt.Sprintf("%s: vmsStopped=%v step0=%v resyncPending=%v resyncComplete=%v, ",
+				site, ss.VMsStopped, ss.Step0Complete, ss.ResyncPending, ss.ResyncComplete)
 		}
-		summary += "]"
+		summary += "}"
 		if summary != lastPrinted {
 			GinkgoWriter.Printf("  [poll] exec %s: %s\n", execName, summary)
 			lastPrinted = summary
 		}
 
-		cond := meta.FindStatusCondition(exec.Status.Conditions, "ResyncPending")
-		if cond != nil && cond.Status == metav1.ConditionTrue {
-			resyncSeen = true
+		for _, ss := range exec.Status.SiteStatuses {
+			if ss.ResyncPending {
+				resyncSeen = true
+				break
+			}
 		}
 		g.Expect(resyncSeen || exec.Status.Result != "").To(BeTrue(),
-			"waiting for ResyncPending or execution completion")
+			"waiting for ResyncPending in SiteStatuses or execution completion")
 	}).WithTimeout(timeout).WithPolling(2 * time.Second).Should(Succeed())
 
 	if !resyncSeen {
@@ -930,9 +930,14 @@ func observeResyncPending(
 	Eventually(func(g Gomega) {
 		var exec soteriav1alpha1.DRExecution
 		g.Expect(cl.Get(ctx, client.ObjectKey{Name: execName}, &exec)).To(Succeed())
-		cond := meta.FindStatusCondition(exec.Status.Conditions, "ResyncPending")
-		g.Expect(cond == nil || cond.Status == metav1.ConditionFalse).To(BeTrue(),
-			"ResyncPending should resolve")
+		pending := false
+		for _, ss := range exec.Status.SiteStatuses {
+			if ss.ResyncPending {
+				pending = true
+				break
+			}
+		}
+		g.Expect(pending).To(BeFalse(), "ResyncPending should resolve in SiteStatuses")
 	}).WithTimeout(timeout).WithPolling(2 * time.Second).Should(Succeed())
 }
 

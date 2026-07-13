@@ -465,6 +465,31 @@ type DRExecutionSpec struct {
 	Mode ExecutionMode `json:"mode"`
 }
 
+// SiteCoordinationStatus holds coordination signals written exclusively
+// by one site's controller. Each site writes only to its own entry in
+// the DRExecution's SiteStatuses map, eliminating ScyllaDB LWW conflicts
+// from concurrent cross-site status patches.
+type SiteCoordinationStatus struct {
+	// VMsStopped is set by the source site (Step0) after stopping all VMs
+	// during planned migration. Signals the target site to begin resync.
+	VMsStopped bool `json:"vmsStopped,omitempty"`
+	// Step0Complete is set by the source site (Step0) after resync completes
+	// and StopReplication has demoted local primary VRs. Signals the target
+	// site to proceed with wave execution (SetSource + StartVM).
+	Step0Complete bool `json:"step0Complete,omitempty"`
+	// ResyncPending is set by the target site (Owner) after calling
+	// ResyncVolume on its local secondary VR/VGR CRs. Indicates the
+	// target is waiting for VR status watches to confirm resync completion.
+	ResyncPending bool `json:"resyncPending,omitempty"`
+	// ResyncComplete is set by the target site (Owner) after all local
+	// VRs have completed resync. Signals the source site to proceed
+	// with StopReplication and Step0Complete.
+	ResyncComplete bool `json:"resyncComplete,omitempty"`
+	// LastUpdated records when this site last wrote to its coordination status.
+	// +optional
+	LastUpdated *metav1.Time `json:"lastUpdated,omitempty"`
+}
+
 type DRExecutionStatus struct {
 	// Phase is the lifecycle phase of the execution.
 	// +kubebuilder:validation:Enum=Pending;Executing;Succeeded;PartiallySucceeded;Failed
@@ -489,6 +514,12 @@ type DRExecutionStatus struct {
 	Duration string `json:"duration,omitempty"`
 	// Conditions represent the latest observations.
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+	// SiteStatuses holds per-site coordination signals, keyed by site name
+	// (e.g., "east", "west"). Each controller writes ONLY to its own site
+	// entry and reads from the other site's entry. This avoids ScyllaDB LWW
+	// conflicts from concurrent cross-site status patches.
+	// +optional
+	SiteStatuses map[string]SiteCoordinationStatus `json:"siteStatuses,omitempty"`
 }
 
 // IsTerminal reports whether the execution has a persisted outcome.

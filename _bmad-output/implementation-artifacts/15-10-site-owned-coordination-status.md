@@ -1,6 +1,6 @@
 # Story 15.10: Site-Owned Coordination Status (ScyllaDB LWW Fix)
 
-Status: ready
+Status: done
 
 ## Context
 
@@ -156,19 +156,25 @@ And the coordination conditions removed from `Conditions` were never rendered by
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Add `SiteCoordinationStatus` type and `SiteStatuses` field to `DRExecutionStatus` in `pkg/apis/soteria.io/v1alpha1/types.go` (AC: 1)
-- [ ] Task 2: Run `make manifests generate` to regenerate CRDs and DeepCopy (AC: 1)
-- [ ] Task 3: Add helper functions for reading/writing site coordination status (e.g., `getSiteStatus`, `setSiteStatus`, `getOtherSiteStatus`) in reconciler (AC: 2, 3, 4)
-- [ ] Task 4: Update `reconcileStep0` to write `VMsStopped` and `Step0Complete` to `siteStatuses[localSite]` instead of `Conditions` (AC: 2)
-- [ ] Task 5: Update `reconcileStep0ResyncGate` to read `ResyncComplete` from `siteStatuses[otherSite]` and write `Step0Complete` to `siteStatuses[localSite]` (AC: 2, 4)
-- [ ] Task 6: Update `reconcileTargetSiteResyncGate` to read `VMsStopped` and `Step0Complete` from `siteStatuses[otherSite]`, write `ResyncPending` and `ResyncComplete` to `siteStatuses[localSite]` (AC: 3, 4)
-- [ ] Task 7: Update `Reconcile` and `reconcileWaveExecution` routing logic to read from `SiteStatuses` instead of `Conditions` for multi-site coordination checks (AC: 4)
-- [ ] Task 8: Update `reconcileResume` to read `Step0Complete` from `SiteStatuses` for multi-site path (AC: 4)
-- [ ] Task 9: Verify single-site `reconcileResyncGate` is unchanged (AC: 6)
-- [ ] Task 10: Update `observeResyncPending` test helper to read from `SiteStatuses` (AC: 7)
-- [ ] Task 11: Update unit tests in `reconciler_test.go` for SiteStatuses assertions (AC: 2, 3, 4, 5)
-- [ ] Task 12: Run `make lint-fix && make test` — all unit tests pass (AC: 1-6)
-- [ ] Task 13: Build, deploy, and run planned-snapshot e2e test (AC: 5, 7)
+- [x] Task 1: Add `SiteCoordinationStatus` type and `SiteStatuses` field to `DRExecutionStatus` in `pkg/apis/soteria.io/v1alpha1/types.go` (AC: 1)
+- [x] Task 2: Run `make manifests generate` to regenerate CRDs and DeepCopy (AC: 1)
+- [x] Task 3: Add helper functions for reading/writing site coordination status (e.g., `getSiteStatus`, `setSiteStatus`, `getOtherSiteStatus`) in reconciler (AC: 2, 3, 4)
+- [x] Task 4: Update `reconcileStep0` to write `VMsStopped` and `Step0Complete` to `siteStatuses[localSite]` instead of `Conditions` (AC: 2)
+- [x] Task 5: Update `reconcileStep0ResyncGate` to read `ResyncComplete` from `siteStatuses[otherSite]` and write `Step0Complete` to `siteStatuses[localSite]` (AC: 2, 4)
+- [x] Task 6: Update `reconcileTargetSiteResyncGate` to read `VMsStopped` and `Step0Complete` from `siteStatuses[otherSite]`, write `ResyncPending` and `ResyncComplete` to `siteStatuses[localSite]` (AC: 3, 4)
+- [x] Task 7: Update `Reconcile` and `reconcileWaveExecution` routing logic to read from `SiteStatuses` instead of `Conditions` for multi-site coordination checks (AC: 4)
+- [x] Task 8: Update `reconcileResume` to read `Step0Complete` from `SiteStatuses` for multi-site path (AC: 4)
+- [x] Task 9: Verify single-site `reconcileResyncGate` is unchanged (AC: 6)
+- [x] Task 10: Update `observeResyncPending` test helper to read from `SiteStatuses` (AC: 7)
+- [x] Task 11: Update unit tests in `reconciler_test.go` for SiteStatuses assertions (AC: 2, 3, 4, 5)
+- [x] Task 12: Run `make lint-fix && make test` — all unit tests pass (AC: 1-6)
+- [x] Task 13: Build, deploy, and run planned-snapshot e2e test (AC: 5, 7)
+
+### Review Findings
+
+- [x] [Review][Dismiss] Single-site planned migration deadlocks when `LocalSite` is set — dismissed: `dispatchByRole` prevents single-site plans from reaching the multi-site resync gate
+- [x] [Review][Patch] Upgrade path breaks in-flight multi-site executions that still store Step 0 state only in `Conditions` — fixed: added legacy Conditions fallback at five gate locations
+- [x] [Review][Patch] Source Step 0 can bypass the target-owned `ResyncComplete` handshake — fixed: removed local `checkResyncComplete` fallback from `reconcileStep0ResyncGate`
 
 ## Technical Notes
 

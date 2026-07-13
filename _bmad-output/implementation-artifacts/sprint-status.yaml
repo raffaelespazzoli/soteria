@@ -422,4 +422,4 @@ development_status:
   15-7-console-plugin-standalone-mode: done
   15-8-soteria-operator-deployment: done
   15-9-full-lifecycle-e2e-test: done
-  15-10-site-owned-coordination-status: ready
+  15-10-site-owned-coordination-status: done
