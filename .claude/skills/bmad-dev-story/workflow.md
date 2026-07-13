@@ -473,6 +473,10 @@ Load config from `{project-root}/_bmad/bmm/config.yaml` and resolve:
 
   <step n="9.5" goal="Verify all integration tests pass as final completion gate">
     <critical>Integration tests MUST be 100% successful to consider the story done — this is a mandatory final gate</critical>
+    <critical>E2E / multisite tests are NOT a mandatory completion gate. They may be run opportunistically
+      but their instability must NOT block story completion. If a story task references an e2e test,
+      running it is best-effort — a pass is great, a failure due to infrastructure or flakiness does
+      not prevent the story from moving to review.</critical>
     <action>Determine how to run integration tests for this repo (infer from project structure, e.g., `make test-integration`, `npm run test:integration`)</action>
     <action>Run the full integration test suite</action>
     <check if="any integration tests fail">
