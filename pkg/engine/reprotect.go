@@ -27,13 +27,21 @@ limitations under the License.
 // workloads. No waves, no VMManager dependency. All volume groups are
 // processed in a single pass.
 //
-// Workflow:
+// Two-sided design:
+//
+//	Active site (Owner): runs Execute — verifies local VRs are in a valid
+//	  role (Source or Target) and monitors replication health. Does NOT
+//	  demote or resync its own VRs.
+//
+//	Passive site (ReprotectPassive): runs reconcileReprotectPassive in the
+//	  DRExecution reconciler — demotes stale primaries (StopReplication)
+//	  and verifies they become secondary with healthy replication.
+//
+// Workflow (active site):
 //
 //	Phase 1 — State verification: for each VG, check replication role via
-//	  GetReplicationStatus. If already secondary (RoleTarget — expected after
-//	  planned failover), proceed. If stale primary (RoleSource — post-disaster),
-//	  call ResyncVolume to initiate sync from the new primary. No blocking
-//	  wait — health monitoring handles progress tracking. Verification
+//	  GetReplicationStatus. Both RoleSource (primary, legitimate on active
+//	  site) and RoleTarget (secondary) pass verification. Verification
 //	  failures mark the VG as failed; if ALL VGs fail, the execution fails.
 //
 //	Phase 2 — Health monitoring: poll GetReplicationStatus at configurable
@@ -139,13 +147,14 @@ func (h *ReprotectHandler) healthTimeout() time.Duration {
 	return defaultHealthTimeout
 }
 
-// Execute runs the two-phase re-protect workflow: state verification followed
-// by health monitoring. Phase 1 reads each VG's replication role: RoleTarget
-// (expected after planned failover) passes verification; RoleSource (stale
-// primary after disaster) triggers ResyncVolume to sync from the new primary.
-// Returns a ReprotectResult and nil on normal completion (including timeout).
-// Returns a non-nil error only for context cancellation or when all VGs fail
-// state verification.
+// Execute runs the two-phase re-protect workflow on the active (Owner) site:
+// state verification followed by health monitoring. Phase 1 reads each VG's
+// replication role — both RoleSource (primary, expected on active site) and
+// RoleTarget (secondary) pass verification. The Owner site never demotes or
+// resyncs its own VRs; stale-primary correction is handled by the passive
+// site's reconcileReprotectPassive. Returns a ReprotectResult and nil on
+// normal completion (including timeout). Returns a non-nil error only for
+// context cancellation or when all VGs fail state verification.
 func (h *ReprotectHandler) Execute(ctx context.Context, input ReprotectInput) (*ReprotectResult, error) {
 	logger := log.FromContext(ctx)
 	setupStart := time.Now()
@@ -160,13 +169,13 @@ func (h *ReprotectHandler) Execute(ctx context.Context, input ReprotectInput) (*
 	}
 
 	// Phase 1: State verification — read each VG's current replication role.
-	// RoleTarget (expected after planned failover) passes verification.
-	// RoleSource (stale primary after disaster) triggers ResyncVolume to
-	// initiate sync from the new primary — fire-and-forget, no blocking wait.
+	// On the active (Owner) site, VRs should be Source (primary) or Target
+	// (secondary). Both are valid — the Owner site does NOT demote or resync
+	// its own VRs. Stale-primary correction is the passive site's job
+	// (RoleReprotectPassive).
 	var successfulVGs []VolumeGroupEntry
 	var failedVGNames []string
 	var steps []soteriav1alpha1.StepStatus
-	var resyncRequested bool
 
 	for _, vg := range input.VolumeGroups {
 		if ctx.Err() != nil {
@@ -200,30 +209,14 @@ func (h *ReprotectHandler) Execute(ctx context.Context, input ReprotectInput) (*
 			successfulVGs = append(successfulVGs, vg)
 
 		case drivers.RoleSource:
-			// Post-disaster: stale primary. Kick off resync to pull from new primary.
-			logger.Info("Stale primary detected, requesting resync",
-				"vg", vg.Info.Name)
-			resyncErr := vg.Driver.ResyncVolume(ctx, vg.VGID)
-			if resyncErr != nil {
-				logger.Info("ResyncVolume failed for stale primary",
-					"vg", vg.Info.Name, "error", resyncErr)
-				steps = append(steps, soteriav1alpha1.StepStatus{
-					Name:      StepReprotectStateVerification,
-					Status:    reprotectStatusFailed,
-					Message:   fmt.Sprintf("ResyncVolume failed for %s: %v", vg.Info.Name, resyncErr),
-					Timestamp: &now,
-				})
-				failedVGNames = append(failedVGNames, vg.Info.Name)
-				continue
-			}
+			logger.Info("VG confirmed in primary state (active site)", "vg", vg.Info.Name)
 			steps = append(steps, soteriav1alpha1.StepStatus{
 				Name:      StepReprotectStateVerification,
 				Status:    reprotectStatusSucceeded,
-				Message:   fmt.Sprintf("Resync requested for stale primary %s", vg.Info.Name),
+				Message:   fmt.Sprintf("Verified %s in primary state (active site)", vg.Info.Name),
 				Timestamp: &now,
 			})
 			successfulVGs = append(successfulVGs, vg)
-			resyncRequested = true
 
 		default:
 			logger.Info("Unexpected replication role during reprotect",
@@ -251,26 +244,6 @@ func (h *ReprotectHandler) Execute(ctx context.Context, input ReprotectInput) (*
 			Steps:       steps,
 		}
 		return result, fmt.Errorf("all volume groups failed state verification during re-protect")
-	}
-
-	// Yield after ResyncVolume: if any VG went through the stale-primary path,
-	// return ErrResyncRequested so the reconciler yields and waits for VR/VGR
-	// watch events to confirm resync completion. On the next reconcile,
-	// Execute is called again (idempotent replay) — Phase 1 will see RoleTarget
-	// and proceed to Phase 2.
-	if resyncRequested {
-		logger.Info("Resync requested on stale primaries, yielding for completion",
-			"plan", input.Plan.Name,
-			"succeeded", len(successfulVGs), "failed", len(failedVGNames))
-		h.writeCheckpoint(ctx, input.Execution)
-		result := &ReprotectResult{
-			SetupSucceeded: len(successfulVGs),
-			SetupFailed:    len(failedVGNames),
-			TotalVGs:       len(input.VolumeGroups),
-			FailedVGs:      failedVGNames,
-			Steps:          steps,
-		}
-		return result, ErrResyncRequested
 	}
 
 	// Phase 2: Health monitoring.

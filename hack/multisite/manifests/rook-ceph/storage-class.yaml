@@ -1,6 +1,16 @@
-# StorageClass for Rook-Ceph RBD volumes with mirroring support.
+# StorageClasses for Rook-Ceph RBD volumes with mirroring support.
 # exclusive-lock feature is required for RBD mirroring.
-# journaling is NOT needed when using mirroringMode: snapshot.
+#
+# rook-ceph-block: default SC for snapshot-based mirroring.
+#   Uses the kernel rbd driver (krbd) which is faster but does not
+#   support the "journaling" image feature.
+#
+# rook-ceph-block-journal: SC for journal-based mirroring.
+#   Uses the userspace rbd-nbd mapper because enabling journal-mode
+#   mirroring adds the "journaling" image feature, which krbd cannot
+#   mount. Requires the nbd kernel module and rbd-nbd binary on the
+#   node (both present in Rook CSI node plugin images by default).
+---
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
@@ -11,6 +21,26 @@ parameters:
   pool: mirrored-pool
   imageFormat: "2"
   imageFeatures: layering,exclusive-lock
+  csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
+  csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner
+  csi.storage.k8s.io/controller-expand-secret-namespace: rook-ceph
+  csi.storage.k8s.io/node-stage-secret-name: rook-csi-rbd-node
+  csi.storage.k8s.io/node-stage-secret-namespace: rook-ceph
+reclaimPolicy: Delete
+allowVolumeExpansion: true
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: rook-ceph-block-journal
+provisioner: rook-ceph.rbd.csi.ceph.com
+parameters:
+  clusterID: rook-ceph
+  pool: mirrored-pool
+  imageFormat: "2"
+  imageFeatures: layering,exclusive-lock
+  mounter: rbd-nbd
   csi.storage.k8s.io/provisioner-secret-name: rook-csi-rbd-provisioner
   csi.storage.k8s.io/provisioner-secret-namespace: rook-ceph
   csi.storage.k8s.io/controller-expand-secret-name: rook-csi-rbd-provisioner

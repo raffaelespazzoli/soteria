@@ -559,13 +559,20 @@ func TestReprotect_SecondaryState_SkipsResync(t *testing.T) {
 	}
 }
 
-func TestReprotect_StalePrimary_CallsResyncVolume(t *testing.T) {
+func TestReprotect_PrimaryOnActiveSite_PassesVerification(t *testing.T) {
 	d := fake.New()
-	// Phase 1: RoleSource (stale primary — post-disaster).
+	// Phase 1: RoleSource (primary on active site — legitimate).
 	d.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
 		ReplicationStatus: &drivers.ReplicationStatus{
 			Role:   drivers.RoleSource,
-			Health: drivers.HealthSyncing,
+			Health: drivers.HealthHealthy,
+		},
+	})
+	// Phase 2: health monitoring polls until healthy.
+	d.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleSource,
+			Health: drivers.HealthHealthy,
 		},
 	})
 
@@ -579,45 +586,45 @@ func TestReprotect_StalePrimary_CallsResyncVolume(t *testing.T) {
 	vgs := []VolumeGroupEntry{makeVGEntry("vg-1", d, "vg-1")}
 
 	result, err := h.Execute(context.Background(), newReprotectInput(vgs))
-	if !errors.Is(err, ErrResyncRequested) {
-		t.Fatalf("expected ErrResyncRequested, got: %v", err)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 	if result.SetupSucceeded != 1 {
 		t.Errorf("expected 1 succeeded, got %d", result.SetupSucceeded)
 	}
-	if !d.Called("ResyncVolume") {
-		t.Error("expected ResyncVolume to be called for stale primary")
+	if result.Result() != soteriav1alpha1.ExecutionResultSucceeded {
+		t.Errorf("expected Succeeded, got %s", result.Result())
 	}
-	if d.CallCount("ResyncVolume") != 1 {
-		t.Errorf("expected 1 ResyncVolume call, got %d", d.CallCount("ResyncVolume"))
+	if d.Called("ResyncVolume") {
+		t.Error("Owner site should never call ResyncVolume during reprotect")
+	}
+	if d.Called("StopReplication") {
+		t.Error("Owner site should never call StopReplication during reprotect")
 	}
 	if d.Called("SetSource") {
 		t.Error("SetSource should not be called by reprotect")
 	}
 }
 
-func TestReprotect_StalePrimary_ResumeAfterResync(t *testing.T) {
-	// Simulates the two-call pattern: first call yields (ErrResyncRequested),
-	// second call (after VR/VGR watch event) sees RoleTarget and completes.
+func TestReprotect_PrimaryOnActiveSite_HealthMonitoring(t *testing.T) {
 	d := fake.New()
-	// Call 1 — Phase 1: RoleSource → ResyncVolume → yield.
+	// Phase 1: RoleSource (primary on active site) passes verification.
 	d.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
 		ReplicationStatus: &drivers.ReplicationStatus{
 			Role:   drivers.RoleSource,
 			Health: drivers.HealthSyncing,
 		},
 	})
-	// Call 2 — Phase 1 (idempotent replay): RoleTarget (resync completed).
+	// Phase 2: health monitoring — first poll syncing, then healthy.
 	d.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
 		ReplicationStatus: &drivers.ReplicationStatus{
-			Role:   drivers.RoleTarget,
+			Role:   drivers.RoleSource,
 			Health: drivers.HealthSyncing,
 		},
 	})
-	// Call 2 — Phase 2: health monitoring sees healthy.
 	d.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
 		ReplicationStatus: &drivers.ReplicationStatus{
-			Role:   drivers.RoleTarget,
+			Role:   drivers.RoleSource,
 			Health: drivers.HealthHealthy,
 		},
 	})
@@ -632,39 +639,24 @@ func TestReprotect_StalePrimary_ResumeAfterResync(t *testing.T) {
 	vgs := []VolumeGroupEntry{makeVGEntry("vg-1", d, "vg-1")}
 	input := newReprotectInput(vgs)
 
-	// First call: yields with ErrResyncRequested.
 	result, err := h.Execute(context.Background(), input)
-	if !errors.Is(err, ErrResyncRequested) {
-		t.Fatalf("first call: expected ErrResyncRequested, got: %v", err)
-	}
-	if result.SetupSucceeded != 1 {
-		t.Errorf("first call: expected 1 succeeded, got %d", result.SetupSucceeded)
-	}
-	if !d.Called("ResyncVolume") {
-		t.Error("first call: expected ResyncVolume to be called")
-	}
-
-	// Second call (simulates reconcile after VR/VGR watch event):
-	// Phase 1 sees RoleTarget → no resync → Phase 2 runs and completes.
-	result, err = h.Execute(context.Background(), input)
 	if err != nil {
-		t.Fatalf("second call: unexpected error: %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
 	if result.Result() != soteriav1alpha1.ExecutionResultSucceeded {
-		t.Errorf("second call: expected Succeeded, got %s", result.Result())
+		t.Errorf("expected Succeeded, got %s", result.Result())
 	}
 	if result.HealthyVGs != 1 {
-		t.Errorf("second call: expected 1 healthy, got %d", result.HealthyVGs)
+		t.Errorf("expected 1 healthy, got %d", result.HealthyVGs)
 	}
-	// ResyncVolume should not have been called again on the second invocation.
-	if d.CallCount("ResyncVolume") != 1 {
-		t.Errorf("expected 1 total ResyncVolume call (idempotent), got %d", d.CallCount("ResyncVolume"))
+	if d.Called("ResyncVolume") {
+		t.Error("Owner site should never call ResyncVolume during reprotect")
 	}
 }
 
-func TestReprotect_MixedStates_SomeSecondary_SomePrimary(t *testing.T) {
+func TestReprotect_MixedRoles_BothPass_ErrorVGFails(t *testing.T) {
 	d1 := fake.New()
-	// VG-1: RoleTarget (secondary — passes verification without resync).
+	// VG-1: RoleTarget (secondary — passes verification).
 	d1.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
 		ReplicationStatus: &drivers.ReplicationStatus{
 			Role:   drivers.RoleTarget,
@@ -673,7 +665,7 @@ func TestReprotect_MixedStates_SomeSecondary_SomePrimary(t *testing.T) {
 	})
 
 	d2 := fake.New()
-	// VG-2: RoleSource (stale primary — triggers ResyncVolume).
+	// VG-2: RoleSource (primary on active site — passes verification).
 	d2.OnGetReplicationStatus("vg-2").ReturnResult(fake.Response{
 		ReplicationStatus: &drivers.ReplicationStatus{
 			Role:   drivers.RoleSource,
@@ -698,10 +690,9 @@ func TestReprotect_MixedStates_SomeSecondary_SomePrimary(t *testing.T) {
 		makeVGEntry("vg-3", d3, "vg-3"),
 	}
 
-	// Mixed state with a stale primary → yields with ErrResyncRequested.
 	result, err := h.Execute(context.Background(), newReprotectInput(vgs))
-	if !errors.Is(err, ErrResyncRequested) {
-		t.Fatalf("expected ErrResyncRequested (has stale primary), got: %v", err)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 	if result.SetupSucceeded != 2 {
 		t.Errorf("expected 2 succeeded, got %d", result.SetupSucceeded)
@@ -713,13 +704,11 @@ func TestReprotect_MixedStates_SomeSecondary_SomePrimary(t *testing.T) {
 		t.Errorf("expected FailedVGs=[vg-3], got %v", result.FailedVGs)
 	}
 
-	// VG-1 (secondary) should NOT have triggered ResyncVolume.
 	if d1.Called("ResyncVolume") {
-		t.Error("VG-1 (secondary) should not call ResyncVolume")
+		t.Error("VG-1 should not call ResyncVolume during reprotect")
 	}
-	// VG-2 (stale primary) should have triggered ResyncVolume.
-	if !d2.Called("ResyncVolume") {
-		t.Error("VG-2 (stale primary) should call ResyncVolume")
+	if d2.Called("ResyncVolume") {
+		t.Error("VG-2 should not call ResyncVolume during reprotect")
 	}
 }
 
@@ -743,7 +732,7 @@ func TestReprotect_EmptyVolumeGroups(t *testing.T) {
 
 func TestReprotect_DriverCallsMade(t *testing.T) {
 	d := fake.New()
-	// Phase 1: RoleSource → triggers ResyncVolume → yields.
+	// Phase 1: RoleSource (primary on active site) passes verification.
 	d.OnGetReplicationStatus("vg-1").ReturnResult(fake.Response{
 		ReplicationStatus: &drivers.ReplicationStatus{
 			Role:   drivers.RoleSource,
@@ -759,8 +748,8 @@ func TestReprotect_DriverCallsMade(t *testing.T) {
 	vgs := []VolumeGroupEntry{makeVGEntry("vg-1", d, "vg-1")}
 
 	_, err := h.Execute(context.Background(), newReprotectInput(vgs))
-	if !errors.Is(err, ErrResyncRequested) {
-		t.Fatalf("expected ErrResyncRequested, got: %v", err)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 
 	if d.Called("SetSource") {
@@ -772,11 +761,8 @@ func TestReprotect_DriverCallsMade(t *testing.T) {
 	if !d.Called("GetReplicationStatus") {
 		t.Error("expected GetReplicationStatus to be called")
 	}
-	if !d.Called("ResyncVolume") {
-		t.Error("expected ResyncVolume to be called for stale primary")
-	}
-	if d.CallCount("ResyncVolume") != 1 {
-		t.Errorf("expected 1 ResyncVolume call, got %d", d.CallCount("ResyncVolume"))
+	if d.Called("ResyncVolume") {
+		t.Error("Owner site should never call ResyncVolume during reprotect")
 	}
 }
 

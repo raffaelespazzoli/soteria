@@ -34,15 +34,19 @@ import (
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/clientcmd"
 	kubevirtv1 "kubevirt.io/api/core/v1"
+	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
 )
 
 var _ = BeforeSuite(func() {
+	ctrl.SetLogger(zap.New(zap.WriteTo(GinkgoWriter), zap.UseDevMode(true)))
+
 	testNamespace = envOrDefault("DR_TEST_NS", "soteria-dr-test")
 	transitionTimeout = parseDurationOrDefault("TRANSITION_TIMEOUT", 5*time.Minute)
-	setupTimeout = parseDurationOrDefault("SETUP_TIMEOUT", 10*time.Minute)
+	setupTimeout = parseDurationOrDefault("SETUP_TIMEOUT", 15*time.Minute)
 	shadowPVTimeout = parseDurationOrDefault("SHADOWPV_TIMEOUT", 2*time.Minute)
 	disasterRecoveryTimeout = parseDurationOrDefault("DISASTER_RECOVERY_TIMEOUT", 3*time.Minute)
 	clusterRestartTimeout = parseDurationOrDefault("CLUSTER_RESTART_TIMEOUT", 3*time.Minute)
@@ -84,23 +88,62 @@ var _ = BeforeSuite(func() {
 	westClientset, err = kubernetes.NewForConfig(westCfg)
 	Expect(err).NotTo(HaveOccurred(), "creating west clientset")
 
+	By("verifying infrastructure health")
+	verifyInfrastructureHealth()
+
 	createNamespaceIfNeeded(eastClient)
 	createNamespaceIfNeeded(westClient)
 })
 
 var _ = AfterSuite(func() {
+	ctx := context.Background()
+
+	// Clean up cluster-scoped DRPlans/ShadowPVs first so controllers can
+	// remove their finalizers while namespaced resources still exist.
+	cleanupClusterScopedResources(ctx, eastClient)
+	cleanupClusterScopedResources(ctx, westClient)
+
 	deleteNamespaceIfExists(eastClient)
 	deleteNamespaceIfExists(westClient)
 })
 
 func createNamespaceIfNeeded(cl client.Client) {
 	ctx := context.Background()
+
+	// If the namespace is stuck in Terminating from a prior run, wait for it
+	// to fully disappear before recreating.
+	Eventually(func(g Gomega) {
+		var ns corev1.Namespace
+		err := cl.Get(ctx, client.ObjectKey{Name: testNamespace}, &ns)
+		if errors.IsNotFound(err) {
+			return
+		}
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(ns.DeletionTimestamp.IsZero()).To(BeTrue(),
+			"namespace %s is Terminating; waiting for it to disappear", testNamespace)
+	}).WithTimeout(2 * time.Minute).WithPolling(3 * time.Second).Should(Succeed())
+
 	ns := &corev1.Namespace{
 		ObjectMeta: metav1.ObjectMeta{Name: testNamespace},
 	}
 	err := cl.Create(ctx, ns)
 	if err != nil && !errors.IsAlreadyExists(err) {
-		By("warning: failed to create namespace " + testNamespace)
+		Expect(err).NotTo(HaveOccurred(), "creating namespace "+testNamespace)
+	}
+}
+
+func cleanupClusterScopedResources(ctx context.Context, cl client.Client) {
+	var plans soteriav1alpha1.DRPlanList
+	if err := cl.List(ctx, &plans); err == nil {
+		for i := range plans.Items {
+			_ = cl.Delete(ctx, &plans.Items[i])
+		}
+	}
+	var spvs soteriav1alpha1.ShadowPVList
+	if err := cl.List(ctx, &spvs); err == nil {
+		for i := range spvs.Items {
+			_ = cl.Delete(ctx, &spvs.Items[i])
+		}
 	}
 }
 

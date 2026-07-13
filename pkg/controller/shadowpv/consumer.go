@@ -124,6 +124,16 @@ func (r *ShadowPVConsumerReconciler) reconcilePV(
 		}
 	}
 
+	// Clear the source cluster's ClaimRef UID so the PV starts as Available
+	// rather than Released (which would cause the PV controller to delete it
+	// when ReclaimPolicy is Delete). Keep Name+Namespace to reserve the PV
+	// for the intended PVC on the target cluster.
+	if pvSpec.ClaimRef != nil {
+		pvSpec.ClaimRef.UID = ""
+		pvSpec.ClaimRef.ResourceVersion = ""
+	}
+	pvSpec.PersistentVolumeReclaimPolicy = corev1.PersistentVolumeReclaimRetain
+
 	pv := &corev1.PersistentVolume{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: entry.PVName,

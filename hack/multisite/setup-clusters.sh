@@ -27,7 +27,7 @@
 # Environment Variables:
 #   EAST_CLUSTER_NAME   Name of the east cluster profile (default: east)
 #   WEST_CLUSTER_NAME   Name of the west cluster profile (default: west)
-#   CILIUM_VERSION      Cilium Helm chart version to install (default: latest)
+#   CILIUM_VERSION      Cilium Helm chart version to install (default: 1.19.5)
 #   NODE_CPUS           vCPUs per node (default: 2)
 #   MASTER_MEMORY       Memory for control-plane node in MB (default: 7168)
 #   WORKER_MEMORY       Memory for worker nodes in MB (default: 5120)
@@ -44,10 +44,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # ---------------------------------------------------------------------------
 EAST_CLUSTER_NAME="${EAST_CLUSTER_NAME:-east}"
 WEST_CLUSTER_NAME="${WEST_CLUSTER_NAME:-west}"
-CILIUM_VERSION="${CILIUM_VERSION:-}"
+CILIUM_VERSION="${CILIUM_VERSION:-1.19.5}"
 NODE_CPUS="${NODE_CPUS:-2}"
 MASTER_MEMORY="${MASTER_MEMORY:-7168}"
-WORKER_MEMORY="${WORKER_MEMORY:-5120}"
+WORKER_MEMORY="${WORKER_MEMORY:-6144}"
 DISK_SIZE="${DISK_SIZE:-30g}"
 KUBECONFIG_DIR="${KUBECONFIG_DIR:-${SCRIPT_DIR}/.kubeconfigs}"
 CONNECTIVITY_TEST="${CONNECTIVITY_TEST:-1}"

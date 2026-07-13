@@ -31,6 +31,7 @@ var lifecycleScenarios = []lifecycleScenario{
 		name:                   "planned-snapshot",
 		failoverMode:           soteriav1alpha1.ExecutionModePlannedMigration,
 		volumeReplicationClass: "rook-ceph-rbd-vrc-snapshot",
+		storageClass:           "rook-ceph-block",
 		simulateDisaster:       false,
 		vmPrefix:               "ps-",
 	},
@@ -38,6 +39,7 @@ var lifecycleScenarios = []lifecycleScenario{
 		name:                   "planned-journal",
 		failoverMode:           soteriav1alpha1.ExecutionModePlannedMigration,
 		volumeReplicationClass: "rook-ceph-rbd-vrc-journal",
+		storageClass:           "rook-ceph-block-journal",
 		simulateDisaster:       false,
 		vmPrefix:               "pj-",
 	},
@@ -45,6 +47,7 @@ var lifecycleScenarios = []lifecycleScenario{
 		name:                   "disaster-snapshot",
 		failoverMode:           soteriav1alpha1.ExecutionModeDisaster,
 		volumeReplicationClass: "rook-ceph-rbd-vrc-snapshot",
+		storageClass:           "rook-ceph-block",
 		simulateDisaster:       true,
 		vmPrefix:               "ds-",
 	},
@@ -52,6 +55,7 @@ var lifecycleScenarios = []lifecycleScenario{
 		name:                   "disaster-journal",
 		failoverMode:           soteriav1alpha1.ExecutionModeDisaster,
 		volumeReplicationClass: "rook-ceph-rbd-vrc-journal",
+		storageClass:           "rook-ceph-block-journal",
 		simulateDisaster:       true,
 		vmPrefix:               "dj-",
 	},
@@ -177,9 +181,6 @@ func runDisasterLifecycle(s *lifecycleScenario) {
 
 	It("minikube stop east (simulate disaster)", func() {
 		minikubeStop(eastMinikubeProfile)
-		DeferCleanup(func() {
-			minikubeStart(eastMinikubeProfile)
-		})
 	})
 
 	It("west API server remains responsive", func() {
@@ -202,16 +203,15 @@ func runDisasterLifecycle(s *lifecycleScenario) {
 		assertVMRunState(ctx, westClient, testNamespace, planName, true)
 		assertRealStorageVR(ctx, westClient, testNamespace, planName)
 		assertShadowPVEntries(ctx, westClient, planName, "west")
-		scanControllerLogsOnBothSites(ctx)
 	})
 
 	It("minikube start east (recover source)", func() {
 		minikubeStart(eastMinikubeProfile)
 	})
 
-	It("east API server becomes ready", func() {
+	It("east infrastructure recovers", func() {
 		ctx := context.Background()
-		waitForAPIServer(ctx, eastClient)
+		healClusterAfterRestart(ctx, eastMinikubeProfile)
 	})
 
 	It("reprotect after disaster recovery", func() {

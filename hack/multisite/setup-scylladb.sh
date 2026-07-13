@@ -42,8 +42,9 @@
 #   EAST_CLUSTER_NAME     Name of the east Minikube profile (default: east)
 #   WEST_CLUSTER_NAME     Name of the west Minikube profile (default: west)
 #   NAMESPACE             Namespace for ScyllaDB deployment (default: soteria)
-#   CERT_MANAGER_VERSION  cert-manager Helm chart version (default: v1.20.2)
-#   SCYLLA_OPERATOR_NS    scylla-operator namespace (default: scylla-operator)
+#   CERT_MANAGER_VERSION    cert-manager Helm chart version (default: v1.20.3)
+#   SCYLLA_OPERATOR_VERSION scylla-operator Helm chart version (default: v1.21.0)
+#   SCYLLA_OPERATOR_NS      scylla-operator namespace (default: scylla-operator)
 #   SMOKE_TEST            Set to "0" to skip the convergence smoke test
 #   MEMBERS_PER_RACK      ScyllaDB members per rack (default: 1)
 
@@ -60,7 +61,8 @@ EAST_CONTEXT="${EAST_CLUSTER_NAME}"
 WEST_CONTEXT="${WEST_CLUSTER_NAME}"
 NAMESPACE="${NAMESPACE:-soteria}"
 
-CERT_MANAGER_VERSION="${CERT_MANAGER_VERSION:-v1.20.2}"
+CERT_MANAGER_VERSION="${CERT_MANAGER_VERSION:-v1.20.3}"
+SCYLLA_OPERATOR_VERSION="${SCYLLA_OPERATOR_VERSION:-v1.21.0}"
 SCYLLA_OPERATOR_NS="${SCYLLA_OPERATOR_NS:-scylla-operator}"
 SMOKE_TEST="${SMOKE_TEST:-1}"
 MEMBERS_PER_RACK="${MEMBERS_PER_RACK:-1}"
@@ -303,10 +305,16 @@ deploy_scylla_operator() {
   helm repo add scylla https://scylla-operator-charts.storage.googleapis.com/stable 2>/dev/null || true
   helm repo update scylla 2>/dev/null || true
 
+  local scylla_version_args=()
+  if [[ -n "${SCYLLA_OPERATOR_VERSION}" ]]; then
+    scylla_version_args=(--version "${SCYLLA_OPERATOR_VERSION}")
+  fi
+
   helm upgrade --install scylla-operator scylla/scylla-operator \
     --create-namespace \
     --namespace "${SCYLLA_OPERATOR_NS}" \
     --kube-context "${ctx}" \
+    "${scylla_version_args[@]+"${scylla_version_args[@]}"}" \
     --wait --timeout 5m
 
   info "  ${ctx}: waiting for scylla-operator deployments..."
@@ -502,6 +510,18 @@ patch_scylladb_sts "${WEST_CONTEXT}"
 wait_scylladb_ready "${WEST_CONTEXT}" || fatal "West ScyllaDB did not recover after TLS patch"
 
 # ---------------------------------------------------------------------------
+# Task 5b: Patch east with west external seed for symmetric reconnection
+# ---------------------------------------------------------------------------
+# East bootstrapped without externalSeeds (standalone seed DC). Now that west
+# has joined, add the west seed so east can rediscover west after partitions.
+echo ""
+info "=== Adding west seed to east for symmetric reconnection ==="
+keast -n "${NAMESPACE}" patch scyllaclusters.scylla.scylladb.com soteria-scylladb \
+  --type=merge -p "{\"spec\":{\"externalSeeds\":[\"soteria-scylladb-west-rack1-0.soteria.svc.clusterset.local\"]}}"
+info "East ScyllaDB patched with west external seed"
+wait_scylladb_ready "${EAST_CONTEXT}" || fatal "East ScyllaDB did not recover after symmetric seed patch"
+
+# ---------------------------------------------------------------------------
 # Task 6: Multi-DC convergence smoke test
 # ---------------------------------------------------------------------------
 if [[ "${SMOKE_TEST}" == "0" ]]; then
@@ -548,22 +568,25 @@ else
     info "Running CQL cross-DC replication test..."
     EAST_IP=$(keast -n "${NAMESPACE}" get pod "${EAST_POD}" -o jsonpath='{.status.podIP}')
     CQL_WRITE_OK=false
-    for _ in $(seq 1 12); do
-      if keast -n "${NAMESPACE}" exec "${EAST_POD}" -c scylla -- \
+    cql_err=""
+    for ci in $(seq 1 24); do
+      cql_err=$(keast -n "${NAMESPACE}" exec "${EAST_POD}" -c scylla -- \
         cqlsh "${EAST_IP}" -e "CREATE KEYSPACE IF NOT EXISTS smoke_test WITH replication = {'class': 'NetworkTopologyStrategy', 'east': 1, 'west': 1};" \
-        2>/dev/null \
-      && keast -n "${NAMESPACE}" exec "${EAST_POD}" -c scylla -- \
+        2>&1) \
+      && cql_err=$(keast -n "${NAMESPACE}" exec "${EAST_POD}" -c scylla -- \
         cqlsh "${EAST_IP}" -e "CREATE TABLE IF NOT EXISTS smoke_test.test_table (id int PRIMARY KEY, value text);" \
-        2>/dev/null \
-      && keast -n "${NAMESPACE}" exec "${EAST_POD}" -c scylla -- \
+        2>&1) \
+      && cql_err=$(keast -n "${NAMESPACE}" exec "${EAST_POD}" -c scylla -- \
         cqlsh "${EAST_IP}" -e "INSERT INTO smoke_test.test_table (id, value) VALUES (1, 'cross-dc-test');" \
-        2>/dev/null; then
-        CQL_WRITE_OK=true
-        break
+        2>&1) \
+      && { CQL_WRITE_OK=true; break; }
+      if [[ $((ci % 4)) -eq 0 ]]; then
+        info "  Attempt ${ci}/24: CQL write not ready yet, retrying..."
       fi
       sleep 5
     done
     if [[ "${CQL_WRITE_OK}" != "true" ]]; then
+      error "Last CQL error: ${cql_err}"
       fatal "CQL write on east failed after retries"
     fi
 

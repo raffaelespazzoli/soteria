@@ -20,6 +20,7 @@ package multisite_test
 
 import (
 	"context"
+	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -41,6 +42,7 @@ var _ = Describe("DRPlan Convergence via ShadowPV Pipeline", Ordered, Serial, fu
 		scenario = &lifecycleScenario{
 			name:                   "convergence",
 			volumeReplicationClass: "rook-ceph-rbd-vrc-snapshot",
+			storageClass:           "rook-ceph-block",
 			vmPrefix:               "conv-",
 		}
 	})
@@ -54,15 +56,17 @@ var _ = Describe("DRPlan Convergence via ShadowPV Pipeline", Ordered, Serial, fu
 	})
 
 	It("DRPlan initially has DisksConsistent=False", func() {
-		var plan soteriav1alpha1.DRPlan
-		Expect(eastClient.Get(ctx, client.ObjectKey{
-			Name: scenario.planName(),
-		}, &plan)).To(Succeed())
+		Eventually(func(g Gomega) {
+			var plan soteriav1alpha1.DRPlan
+			g.Expect(eastClient.Get(ctx, client.ObjectKey{
+				Name: scenario.planName(),
+			}, &plan)).To(Succeed())
 
-		cond := meta.FindStatusCondition(plan.Status.Conditions, "DisksConsistent")
-		Expect(cond).NotTo(BeNil(), "DisksConsistent condition should be present")
-		Expect(cond.Status).To(Equal(metav1.ConditionFalse),
-			"DisksConsistent should initially be False (west has no PVCs yet)")
+			cond := meta.FindStatusCondition(plan.Status.Conditions, "DisksConsistent")
+			g.Expect(cond).NotTo(BeNil(), "DisksConsistent condition should be present")
+			g.Expect(cond.Status).To(Equal(metav1.ConditionFalse),
+				"DisksConsistent should initially be False (west has no PVCs yet)")
+		}).WithTimeout(30 * time.Second).WithPolling(2 * time.Second).Should(Succeed())
 	})
 
 	It("ShadowPV publisher creates ShadowPV resources", func() {
@@ -70,12 +74,12 @@ var _ = Describe("DRPlan Convergence via ShadowPV Pipeline", Ordered, Serial, fu
 	})
 
 	It("ShadowPV consumer creates PVs on west", func() {
-		pvNames := waitForShadowPVConsumerPVs(ctx, westClient, scenario.planName())
+		pvNames := waitForShadowPVConsumerPVs(ctx, eastClient, westClient, scenario.planName())
 		Expect(pvNames).NotTo(BeEmpty())
 	})
 
 	It("west PVCs are created bound to ShadowPV-provisioned PVs", func() {
-		pvNames := waitForShadowPVConsumerPVs(ctx, westClient, scenario.planName())
+		pvNames := waitForShadowPVConsumerPVs(ctx, eastClient, westClient, scenario.planName())
 		createWestPVCsFromShadowPVs(ctx, westClient, scenario.vmPrefix, pvNames)
 	})
 

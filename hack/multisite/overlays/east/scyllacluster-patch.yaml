@@ -1,9 +1,8 @@
-# East discovers west via Cilium Cluster Mesh DNS.
-# Symmetric seeds: both DCs can survive independently and rejoin.
+# East is the seed DC — it bootstraps first with no external seeds.
+# After west joins, setup-scylladb.sh patches east to add the west
+# seed for symmetric reconnection after network partitions.
 - op: replace
   path: /spec/datacenter/name
   value: east
-- op: replace
+- op: remove
   path: /spec/externalSeeds
-  value:
-    - soteria-scylladb-west-rack1-0.soteria.svc.clusterset.local

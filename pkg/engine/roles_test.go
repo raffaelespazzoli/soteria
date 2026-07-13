@@ -90,13 +90,13 @@ func TestReconcileRole_AllCombinations(t *testing.T) {
 		{soteriav1alpha1.PhaseFailingOver, soteriav1alpha1.ExecutionModeReprotect, west, RoleOwner},
 		{soteriav1alpha1.PhaseFailingOver, soteriav1alpha1.ExecutionModeReprotect, east, RoleNone},
 
-		// Reprotecting: target is west (secondary). No Step 0 for reprotect.
+		// Reprotecting: target is west (secondary). Passive site participates in reprotect.
 		{soteriav1alpha1.PhaseReprotecting, soteriav1alpha1.ExecutionModePlannedMigration, west, RoleOwner},
 		{soteriav1alpha1.PhaseReprotecting, soteriav1alpha1.ExecutionModePlannedMigration, east, RoleNone},
 		{soteriav1alpha1.PhaseReprotecting, soteriav1alpha1.ExecutionModeDisaster, west, RoleOwner},
 		{soteriav1alpha1.PhaseReprotecting, soteriav1alpha1.ExecutionModeDisaster, east, RoleNone},
 		{soteriav1alpha1.PhaseReprotecting, soteriav1alpha1.ExecutionModeReprotect, west, RoleOwner},
-		{soteriav1alpha1.PhaseReprotecting, soteriav1alpha1.ExecutionModeReprotect, east, RoleNone},
+		{soteriav1alpha1.PhaseReprotecting, soteriav1alpha1.ExecutionModeReprotect, east, RoleReprotectPassive},
 
 		// FailingBack: target is east (primary).
 		// west→east failback: west is source, east is target.
@@ -107,13 +107,13 @@ func TestReconcileRole_AllCombinations(t *testing.T) {
 		{soteriav1alpha1.PhaseFailingBack, soteriav1alpha1.ExecutionModeReprotect, east, RoleOwner},
 		{soteriav1alpha1.PhaseFailingBack, soteriav1alpha1.ExecutionModeReprotect, west, RoleNone},
 
-		// ReprotectingBack: target is east (primary). No Step 0.
+		// ReprotectingBack: target is east (primary). Passive site participates in reprotect.
 		{soteriav1alpha1.PhaseReprotectingBack, soteriav1alpha1.ExecutionModePlannedMigration, east, RoleOwner},
 		{soteriav1alpha1.PhaseReprotectingBack, soteriav1alpha1.ExecutionModePlannedMigration, west, RoleNone},
 		{soteriav1alpha1.PhaseReprotectingBack, soteriav1alpha1.ExecutionModeDisaster, east, RoleOwner},
 		{soteriav1alpha1.PhaseReprotectingBack, soteriav1alpha1.ExecutionModeDisaster, west, RoleNone},
 		{soteriav1alpha1.PhaseReprotectingBack, soteriav1alpha1.ExecutionModeReprotect, east, RoleOwner},
-		{soteriav1alpha1.PhaseReprotectingBack, soteriav1alpha1.ExecutionModeReprotect, west, RoleNone},
+		{soteriav1alpha1.PhaseReprotectingBack, soteriav1alpha1.ExecutionModeReprotect, west, RoleReprotectPassive},
 
 		// Rest states: always RoleNone regardless of mode or site.
 		{soteriav1alpha1.PhaseSteadyState, soteriav1alpha1.ExecutionModePlannedMigration, east, RoleNone},
@@ -188,6 +188,7 @@ func TestRole_String(t *testing.T) {
 		{RoleNone, "None"},
 		{RoleOwner, "Owner"},
 		{RoleStep0, "Step0"},
+		{RoleReprotectPassive, "ReprotectPassive"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {

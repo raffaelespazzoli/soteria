@@ -29,9 +29,10 @@
 # Environment Variables:
 #   EAST_CLUSTER_NAME   Name of the east Minikube profile (default: east)
 #   WEST_CLUSTER_NAME   Name of the west Minikube profile (default: west)
-#   ROOK_CHART_VERSION  Rook Helm chart version (default: latest)
-#   SMOKE_TEST          Set to "0" to skip the replication smoke test
-#   CSI_ADDONS_TAG      CSI Addons release tag (default: v0.14.0)
+#   ROOK_CHART_VERSION       Rook Helm chart version (default: v1.20.2)
+#   CEPH_CSI_DRIVERS_VERSION ceph-csi-drivers Helm chart version (default: 1.0.4)
+#   SMOKE_TEST               Set to "0" to skip the replication smoke test
+#   CSI_ADDONS_TAG           CSI Addons release tag (default: v0.14.0)
 
 set -euo pipefail
 
@@ -42,7 +43,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # ---------------------------------------------------------------------------
 EAST_CLUSTER_NAME="${EAST_CLUSTER_NAME:-east}"
 WEST_CLUSTER_NAME="${WEST_CLUSTER_NAME:-west}"
-ROOK_CHART_VERSION="${ROOK_CHART_VERSION:-}"
+ROOK_CHART_VERSION="${ROOK_CHART_VERSION:-v1.20.2}"
+CEPH_CSI_DRIVERS_VERSION="${CEPH_CSI_DRIVERS_VERSION:-1.0.4}"
 SMOKE_TEST="${SMOKE_TEST:-1}"
 CSI_ADDONS_TAG="${CSI_ADDONS_TAG:-v0.14.0}"
 
@@ -181,10 +183,16 @@ deploy_csi_drivers() {
   helm repo add ceph-csi-operator https://ceph.github.io/ceph-csi-operator 2>/dev/null || true
   helm repo update ceph-csi-operator
 
+  local csi_version_args=()
+  if [[ -n "${CEPH_CSI_DRIVERS_VERSION}" ]]; then
+    csi_version_args=(--version "${CEPH_CSI_DRIVERS_VERSION}")
+  fi
+
   helm upgrade --install --namespace rook-ceph \
     ceph-csi-drivers ceph-csi-operator/ceph-csi-drivers \
     --kube-context "${context}" \
     --values "${MANIFESTS_DIR}/csi-drivers-values.yaml" \
+    "${csi_version_args[@]+"${csi_version_args[@]}"}" \
     --wait --timeout 5m
 
   info "ceph-csi-drivers chart deployed on '${cluster_name}'"
@@ -646,10 +654,28 @@ replication_smoke_test() {
   # Rewrite the pool ID in the volume handle for the west cluster.
   # Handle format: <ver>-<clusterID-len-hex>-<clusterID>-<poolID-hex-16>-<uuid>
   # Pool IDs may differ between clusters (e.g., east pool 1, west pool 2).
-  local west_pool_id
-  west_pool_id="$(kwest exec -n rook-ceph deployment/rook-ceph-tools -- \
-    ceph osd pool ls detail --format json 2>/dev/null \
-    | python3 -c "import json,sys; pools=json.load(sys.stdin); print(next(p['pool_id'] for p in pools if p['pool_name']=='mirrored-pool'))")"
+  local west_pool_id=""
+  local pool_retries=12
+  local pool_delay=10
+  for ((pi=1; pi<=pool_retries; pi++)); do
+    local pool_json
+    pool_json="$(kwest exec -n rook-ceph deployment/rook-ceph-tools -- \
+      ceph osd pool ls detail --format json 2>/dev/null || true)"
+    if [[ -n "${pool_json}" ]]; then
+      west_pool_id="$(echo "${pool_json}" \
+        | python3 -c "import json,sys; pools=json.load(sys.stdin); print(next(p['pool_id'] for p in pools if p['pool_name']=='mirrored-pool'))" 2>/dev/null || true)"
+      if [[ -n "${west_pool_id}" ]]; then
+        break
+      fi
+    fi
+    if [[ $((pi % 3)) -eq 0 ]]; then
+      info "  Attempt ${pi}/${pool_retries}: waiting for west pool ID lookup..."
+    fi
+    sleep "${pool_delay}"
+  done
+  if [[ -z "${west_pool_id}" ]]; then
+    fatal "Could not retrieve mirrored-pool pool ID from west cluster after $((pool_retries * pool_delay))s"
+  fi
   local west_pool_hex
   west_pool_hex="$(printf '%016x' "${west_pool_id}")"
   # Replace the 16-hex-char pool field (characters after the clusterID segment)
@@ -1083,10 +1109,14 @@ main() {
   wait_csi_drivers "${EAST_CONTEXT}" "${EAST_CLUSTER_NAME}"
   wait_csi_drivers "${WEST_CONTEXT}" "${WEST_CLUSTER_NAME}"
 
-  # Deploy toolbox for Ceph CLI access
+  # Deploy toolbox for Ceph CLI access and wait for readiness
   info "Deploying Ceph toolbox on both clusters..."
   kubectl --context "${EAST_CONTEXT}" apply -f "${MANIFESTS_DIR}/ceph-toolbox.yaml"
   kubectl --context "${WEST_CONTEXT}" apply -f "${MANIFESTS_DIR}/ceph-toolbox.yaml"
+  info "Waiting for Ceph toolbox readiness on both clusters..."
+  kubectl --context "${EAST_CONTEXT}" -n rook-ceph rollout status deployment/rook-ceph-tools --timeout=300s
+  kubectl --context "${WEST_CONTEXT}" -n rook-ceph rollout status deployment/rook-ceph-tools --timeout=300s
+  info "Ceph toolbox ready on both clusters"
 
   # Task 3: Export mon and OSD services via MCS-API
   export_ceph_services "${EAST_CONTEXT}" "${EAST_CLUSTER_NAME}"
@@ -1125,8 +1155,8 @@ main() {
   info "VolumeReplicationClasses:"
   info "  kubectl --context ${EAST_CONTEXT} get volumereplicationclass rook-ceph-rbd-vrc-snapshot rook-ceph-rbd-vrc-journal"
   info ""
-  info "StorageClass:"
-  info "  kubectl --context ${EAST_CONTEXT} get storageclass rook-ceph-block"
+  info "StorageClasses:"
+  info "  kubectl --context ${EAST_CONTEXT} get storageclass rook-ceph-block rook-ceph-block-journal"
   info ""
   info "Teardown:"
   info "  ./hack/multisite/setup-rook-ceph.sh teardown"

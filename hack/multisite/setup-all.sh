@@ -38,35 +38,37 @@
 #   KUBECONFIG_DIR        Directory for generated kubeconfigs (default: ./hack/multisite/.kubeconfigs)
 #
 #   setup-clusters.sh:
-#   CILIUM_VERSION        Cilium Helm chart version
-#   NODE_CPUS             vCPUs per node (default: 2)
-#   MASTER_MEMORY         Memory for control-plane node in MB (default: 7168)
-#   WORKER_MEMORY         Memory for worker nodes in MB (default: 5120)
-#   DISK_SIZE             Disk size per node (default: 30g)
-#   CONNECTIVITY_TEST     Set to "0" to skip cross-cluster connectivity test
+#   CILIUM_VERSION           Cilium Helm chart version (default: 1.19.5)
+#   NODE_CPUS                vCPUs per node (default: 2)
+#   MASTER_MEMORY            Memory for control-plane node in MB (default: 7168)
+#   WORKER_MEMORY            Memory for worker nodes in MB (default: 5120)
+#   DISK_SIZE                Disk size per node (default: 30g)
+#   CONNECTIVITY_TEST        Set to "0" to skip cross-cluster connectivity test
 #
 #   setup-rook-ceph.sh:
-#   ROOK_CHART_VERSION    Rook Helm chart version (default: latest)
-#   CSI_ADDONS_TAG        CSI Addons release tag (default: v0.14.0)
-#   SMOKE_TEST            Set to "0" to skip smoke tests (also used by kubevirt, scylladb)
+#   ROOK_CHART_VERSION       Rook Helm chart version (default: v1.20.2)
+#   CEPH_CSI_DRIVERS_VERSION ceph-csi-drivers Helm chart version (default: 1.0.4)
+#   CSI_ADDONS_TAG           CSI Addons release tag (default: v0.14.0)
+#   SMOKE_TEST               Set to "0" to skip smoke tests (also used by kubevirt, scylladb)
 #
 #   setup-kubevirt.sh:
-#   KUBEVIRT_VERSION      KubeVirt release to deploy (default: fetched from stable.txt)
-#   CDI_VERSION           CDI release to deploy (default: fetched from GitHub)
+#   KUBEVIRT_VERSION         KubeVirt release to deploy (default: fetched from stable.txt)
+#   CDI_VERSION              CDI release to deploy (default: fetched from GitHub)
 #
 #   validate-fedora-vm.sh:
-#   FEDORA_IMAGE          Fedora container disk image (default: quay.io/containerdisks/fedora:latest)
-#   CIRROS_IMAGE          Cirros container disk for pre-caching
-#   VM_MEMORY             Memory for the test VM (default: 256Mi)
-#   VM_BOOT_TIMEOUT       Timeout in seconds for VM to reach Running (default: 300)
-#   GUEST_AGENT_TIMEOUT   Timeout in seconds for guest agent check (default: 300)
-#   SKIP_CLEANUP          Set to "1" to skip cleanup of test resources
+#   FEDORA_IMAGE             Fedora container disk image (default: quay.io/containerdisks/fedora:latest)
+#   CIRROS_IMAGE             Cirros container disk for pre-caching
+#   VM_MEMORY                Memory for the test VM (default: 256Mi)
+#   VM_BOOT_TIMEOUT          Timeout in seconds for VM to reach Running (default: 300)
+#   GUEST_AGENT_TIMEOUT      Timeout in seconds for guest agent check (default: 300)
+#   SKIP_CLEANUP             Set to "1" to skip cleanup of test resources
 #
 #   setup-scylladb.sh:
-#   NAMESPACE             Namespace for ScyllaDB deployment (default: soteria)
-#   CERT_MANAGER_VERSION  cert-manager Helm chart version (default: v1.20.2)
-#   SCYLLA_OPERATOR_NS    scylla-operator namespace (default: scylla-operator)
-#   MEMBERS_PER_RACK      ScyllaDB members per rack (default: 1)
+#   NAMESPACE                Namespace for ScyllaDB deployment (default: soteria)
+#   CERT_MANAGER_VERSION     cert-manager Helm chart version (default: v1.20.3)
+#   SCYLLA_OPERATOR_VERSION  scylla-operator Helm chart version (default: v1.21.0)
+#   SCYLLA_OPERATOR_NS       scylla-operator namespace (default: scylla-operator)
+#   MEMBERS_PER_RACK         ScyllaDB members per rack (default: 1)
 
 set -euo pipefail
 

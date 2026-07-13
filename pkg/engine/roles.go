@@ -19,9 +19,12 @@ limitations under the License.
 // During a DR transition, exactly one site owns the execution (the target
 // site — the one becoming active). In planned migration mode, the source
 // site has a limited Step 0 role (stop all origin VMs) before handing off
-// to the target. In disaster mode, the source site does
-// nothing (it may be down). These functions are stateless and fully testable
-// with table-driven tests — no API calls or side effects.
+// to the target. In disaster mode, the source site does nothing (it may be
+// down). During reprotect phases, the inactive site gets a
+// RoleReprotectPassive role: it ensures local VRs are secondary (demoting
+// stale primaries after disaster) and verifies replication health.
+// These functions are stateless and fully testable with table-driven tests —
+// no API calls or side effects.
 
 package engine
 
@@ -41,6 +44,10 @@ const (
 	// RoleStep0 means this site runs Step 0 only (planned migration source):
 	// stop VMs, stop replication, wait for sync, then set Step0Complete.
 	RoleStep0
+	// RoleReprotectPassive is the inactive site's role during reprotect.
+	// It ensures local VRs are secondary (demoting stale primaries after
+	// disaster) and verifies replication health.
+	RoleReprotectPassive
 )
 
 // String returns a human-readable representation for logging.
@@ -50,6 +57,8 @@ func (r Role) String() string {
 		return "Owner"
 	case RoleStep0:
 		return "Step0"
+	case RoleReprotectPassive:
+		return "ReprotectPassive"
 	default:
 		return "None"
 	}
@@ -78,8 +87,10 @@ func TargetSiteForPhase(phase, primarySite, secondarySite string) string {
 //
 // The target site (becoming active) is always the Owner. The source site
 // gets RoleStep0 only in planned_migration mode (for FailingOver and
-// FailingBack phases). In all other cases (disaster mode, reprotect
-// phases, rest states), the non-target site gets RoleNone.
+// FailingBack phases). During reprotect phases, the non-target site gets
+// RoleReprotectPassive to ensure its local VRs are secondary and healthy.
+// In all other cases (disaster failover, rest states), the non-target site
+// gets RoleNone.
 func ReconcileRole(
 	phase string,
 	mode soteriav1alpha1.ExecutionMode,
@@ -102,6 +113,17 @@ func ReconcileRole(
 		case soteriav1alpha1.PhaseFailingOver,
 			soteriav1alpha1.PhaseFailingBack:
 			return RoleStep0
+		}
+	}
+
+	// Inactive site participates in reprotect: ensures local VRs are
+	// secondary (correcting stale primaries after disaster) and verifies
+	// replication health.
+	if mode == soteriav1alpha1.ExecutionModeReprotect {
+		switch phase {
+		case soteriav1alpha1.PhaseReprotecting,
+			soteriav1alpha1.PhaseReprotectingBack:
+			return RoleReprotectPassive
 		}
 	}
 

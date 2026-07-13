@@ -88,11 +88,12 @@ type FailoverConfig struct {
 	// SetSource → StartVM.
 	GracefulShutdown bool
 
-	// SkipResync makes PreExecute stop VMs but skip ResyncVolume calls.
+	// SkipResync makes PreExecute skip ResyncVolume calls on target VGs.
 	// Used in multi-site mode where the source site cannot access target
 	// VR/VGR CRs — the target site calls ResyncVolume on its own local VRs.
-	// PreExecute still returns ErrResyncRequested to signal the reconciler
-	// that the resync coordination flow should proceed.
+	// PreExecute still calls StopReplication on LOCAL source VGs to demote
+	// the primary images (creating the final mirror snapshot that the
+	// target needs to replay), then returns ErrResyncRequested.
 	SkipResync bool
 }
 
@@ -173,7 +174,31 @@ func (h *FailoverHandler) PreExecute(ctx context.Context, groups []ExecutionGrou
 	}
 
 	if h.Config.SkipResync {
-		logger.Info("Step 0: VMs stopped, skipping local ResyncVolume (multi-site: target site will resync)")
+		// Demote local primary VRs so the mirroring daemon creates a final
+		// mirror snapshot. The target secondary must replay this snapshot
+		// before it can be promoted. Without this demote the secondary stays
+		// "not ready" forever because the primary keeps the image locked.
+		type vgKey struct{ name, namespace string }
+		seenVG := make(map[vgKey]bool)
+		for _, g := range groups {
+			for _, vg := range g.Chunk.VolumeGroups {
+				k := vgKey{name: vg.Name, namespace: vg.Namespace}
+				if seenVG[k] {
+					continue
+				}
+				seenVG[k] = true
+
+				driver := g.DriverForVG(vg.Name)
+				vgID, err := resolveVolumeGroupID(ctx, driver, g.DriverType, vg)
+				if err != nil {
+					return fmt.Errorf("resolving volume group %s for StopReplication: %w", vg.Name, err)
+				}
+				if err := driver.StopReplication(ctx, vgID); err != nil {
+					return fmt.Errorf("demoting volume group %s in Step 0: %w", vg.Name, err)
+				}
+			}
+		}
+		logger.Info("Step 0: VMs stopped, local VRs demoted (target site will resync)")
 		return ErrResyncRequested
 	}
 
