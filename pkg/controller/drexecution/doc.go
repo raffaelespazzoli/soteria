@@ -22,10 +22,10 @@ limitations under the License.
 // The controller watches VirtualMachine, VolumeReplication, and VolumeGroupReplication
 // resources in addition to DRExecution objects. VM watches drive the wave readiness
 // gate (detecting when VMs reach Running). VR/VGR watches drive the event-driven
-// resync gate for planned migration Step 0: after PreExecute calls ResyncVolume,
-// the controller sets a ResyncPending condition and waits for VR/VGR status changes
-// (state=Secondary + health=Healthy) instead of polling. A configurable resync
+// demotion health gate for planned migration Step 0: after PreExecute stops VMs and
+// calls StopReplication (demoting source VRs), the controller waits for VR health
+// (role=Target, health=Healthy) before signalling DemotionComplete. A configurable
 // timeout (DRPlan.Spec.ResyncTimeout, default 10m) acts as a safety net. In multi-site
-// mode, the target site monitors local VR/VGR status and sets ResyncComplete for the
-// source site, which then calls StopReplication and sets Step0Complete.
+// mode, the source site sets DemotionComplete after confirming VR health; the target
+// site then promotes its VRs (SetSource) and sets Step0Complete.
 package drexecution

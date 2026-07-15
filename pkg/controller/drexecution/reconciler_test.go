@@ -71,7 +71,8 @@ func TestDRExecutionReconciler_ResumeInProgress_EmitsEvent(t *testing.T) {
 			StartTime: &now,
 			Result:    "", // In-progress — needs resume.
 			SiteStatuses: map[string]soteriav1alpha1.SiteCoordinationStatus{
-				"dc-west": {Step0Complete: true, LastUpdated: &now},
+				"dc-west": {DemotionComplete: true, LastUpdated: &now},
+				"dc-east": {Step0Complete: true, LastUpdated: &now},
 			},
 			Waves: []soteriav1alpha1.WaveStatus{
 				{
@@ -540,19 +541,21 @@ func TestDRExecutionReconciler_RoleStep0_PlannedMigration(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify Step0Complete was set in SiteStatuses.
+	// Verify DemotionComplete was set in SiteStatuses (source sets DemotionComplete,
+	// target sets Step0Complete in the new 2-signal protocol).
 	var fetched soteriav1alpha1.DRExecution
 	if err := cl.Get(context.Background(), client.ObjectKey{Name: "exec-step0"}, &fetched); err != nil {
 		t.Fatalf("fetching execution: %v", err)
 	}
 	eastStatus := getSiteStatus(&fetched, "east")
-	if !eastStatus.Step0Complete {
-		t.Error("expected siteStatuses[east].step0Complete to be set")
+	if !eastStatus.DemotionComplete {
+		t.Error("expected siteStatuses[east].demotionComplete to be set")
 	}
 }
 
 func TestDRExecutionReconciler_RoleStep0_Idempotent(t *testing.T) {
-	// If Step0Complete is already set, reconcileStep0 returns immediately.
+	// If DemotionComplete is already set and target has Step0Complete,
+	// reconcileStep0 returns immediately.
 	now := metav1.Now()
 	exec := &soteriav1alpha1.DRExecution{
 		ObjectMeta: metav1.ObjectMeta{Name: "exec-step0-idem"},
@@ -563,7 +566,8 @@ func TestDRExecutionReconciler_RoleStep0_Idempotent(t *testing.T) {
 		Status: soteriav1alpha1.DRExecutionStatus{
 			StartTime: &now,
 			SiteStatuses: map[string]soteriav1alpha1.SiteCoordinationStatus{
-				"east": {Step0Complete: true, LastUpdated: &now},
+				"east": {DemotionComplete: true, LastUpdated: &now},
+				"west": {Step0Complete: true, LastUpdated: &now},
 			},
 		},
 	}
@@ -675,7 +679,8 @@ func TestDRExecutionReconciler_PlannedMigration_OwnerProceedsAfterStep0(t *testi
 				},
 			},
 			SiteStatuses: map[string]soteriav1alpha1.SiteCoordinationStatus{
-				"east": {Step0Complete: true, LastUpdated: &now},
+				"east": {DemotionComplete: true, LastUpdated: &now},
+				"west": {Step0Complete: true, LastUpdated: &now},
 			},
 		},
 	}
@@ -697,8 +702,8 @@ func TestDRExecutionReconciler_PlannedMigration_OwnerProceedsAfterStep0(t *testi
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// With Step0Complete set and no WaveExecutor, it should proceed through
-	// resume (no-op) and return without requeue.
+	// With Step0Complete set on local site and no WaveExecutor, it should
+	// proceed through resume (no-op) and return without requeue.
 	if result.RequeueAfter == 5*time.Second {
 		t.Error("should NOT requeue with 5s when Step0Complete is already present")
 	}
@@ -769,7 +774,8 @@ func TestDRExecutionReconciler_ResumePath_ProceedsAfterStep0Complete(t *testing.
 				},
 			},
 			SiteStatuses: map[string]soteriav1alpha1.SiteCoordinationStatus{
-				"east": {Step0Complete: true, LastUpdated: &now},
+				"east": {DemotionComplete: true, LastUpdated: &now},
+				"west": {Step0Complete: true, LastUpdated: &now},
 			},
 		},
 	}
@@ -1898,13 +1904,13 @@ func TestBuildVolumeGroupEntries_VolumeGroupNotFound(t *testing.T) {
 	}
 }
 
-// --- Resync gate tests (Story 15.2) ---
+// --- VR health check tests ---
 
-func TestCheckResyncComplete_NoWaveExecutor_ReturnsTrue(t *testing.T) {
+func TestCheckVRsHealthy_NoWaveExecutor_ReturnsTrue(t *testing.T) {
 	r := &DRExecutionReconciler{}
 	plan := &soteriav1alpha1.DRPlan{}
 
-	complete, err := r.checkResyncComplete(context.Background(), plan)
+	complete, err := r.checkVRsHealthy(context.Background(), plan)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1913,7 +1919,7 @@ func TestCheckResyncComplete_NoWaveExecutor_ReturnsTrue(t *testing.T) {
 	}
 }
 
-func TestCheckResyncComplete_NoWaves_ReturnsTrue(t *testing.T) {
+func TestCheckVRsHealthy_NoWaves_ReturnsTrue(t *testing.T) {
 	fakeDriver := fakedrv.New()
 	registry := drivers.NewRegistry()
 	registry.RegisterDriver("noop", func() drivers.StorageProvider { return fakeDriver })
@@ -1923,7 +1929,7 @@ func TestCheckResyncComplete_NoWaves_ReturnsTrue(t *testing.T) {
 	}
 	plan := &soteriav1alpha1.DRPlan{}
 
-	complete, err := r.checkResyncComplete(context.Background(), plan)
+	complete, err := r.checkVRsHealthy(context.Background(), plan)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1932,7 +1938,7 @@ func TestCheckResyncComplete_NoWaves_ReturnsTrue(t *testing.T) {
 	}
 }
 
-func TestCheckResyncComplete_HealthSyncing_ReturnsFalse(t *testing.T) {
+func TestCheckVRsHealthy_HealthSyncing_ReturnsFalse(t *testing.T) {
 	fakeDriver := fakedrv.New()
 	vgID := drivers.VolumeGroupIDFor("noop", "ns1", "vg-db")
 	fakeDriver.OnGetReplicationStatus(vgID).ReturnResult(fakedrv.Response{
@@ -1961,7 +1967,7 @@ func TestCheckResyncComplete_HealthSyncing_ReturnsFalse(t *testing.T) {
 		},
 	}
 
-	complete, err := r.checkResyncComplete(context.Background(), plan)
+	complete, err := r.checkVRsHealthy(context.Background(), plan)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -1970,7 +1976,7 @@ func TestCheckResyncComplete_HealthSyncing_ReturnsFalse(t *testing.T) {
 	}
 }
 
-func TestCheckResyncComplete_HealthHealthy_ReturnsTrue(t *testing.T) {
+func TestCheckVRsHealthy_HealthHealthy_ReturnsTrue(t *testing.T) {
 	fakeDriver := fakedrv.New()
 	vgID := drivers.VolumeGroupIDFor("noop", "ns1", "vg-db")
 	fakeDriver.OnGetReplicationStatus(vgID).ReturnResult(fakedrv.Response{
@@ -1999,7 +2005,7 @@ func TestCheckResyncComplete_HealthHealthy_ReturnsTrue(t *testing.T) {
 		},
 	}
 
-	complete, err := r.checkResyncComplete(context.Background(), plan)
+	complete, err := r.checkVRsHealthy(context.Background(), plan)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -2008,7 +2014,7 @@ func TestCheckResyncComplete_HealthHealthy_ReturnsTrue(t *testing.T) {
 	}
 }
 
-func TestCheckResyncComplete_VGNotFound_ReturnsTrue(t *testing.T) {
+func TestCheckVRsHealthy_VGNotFound_ReturnsTrue(t *testing.T) {
 	fakeDriver := fakedrv.New()
 	vgID := drivers.VolumeGroupIDFor("noop", "ns1", "vg-db")
 	fakeDriver.OnGetReplicationStatus(vgID).Return(drivers.ErrVolumeGroupNotFound)
@@ -2032,7 +2038,7 @@ func TestCheckResyncComplete_VGNotFound_ReturnsTrue(t *testing.T) {
 		},
 	}
 
-	complete, err := r.checkResyncComplete(context.Background(), plan)
+	complete, err := r.checkVRsHealthy(context.Background(), plan)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -2042,7 +2048,7 @@ func TestCheckResyncComplete_VGNotFound_ReturnsTrue(t *testing.T) {
 }
 
 func TestReconcileResyncGate_Timeout_FailsExecution(t *testing.T) {
-	now := metav1.Now()
+	past := metav1.NewTime(metav1.Now().Add(-15 * time.Minute))
 	exec := &soteriav1alpha1.DRExecution{
 		ObjectMeta: metav1.ObjectMeta{Name: "exec-resync-timeout"},
 		Spec: soteriav1alpha1.DRExecutionSpec{
@@ -2052,28 +2058,40 @@ func TestReconcileResyncGate_Timeout_FailsExecution(t *testing.T) {
 		Status: soteriav1alpha1.DRExecutionStatus{
 			Phase:     soteriav1alpha1.ExecutionPhaseExecuting,
 			IsActive:  true,
-			StartTime: &now,
-			Conditions: []metav1.Condition{
-				{
-					Type:               ConditionResyncPending,
-					Status:             metav1.ConditionTrue,
-					Reason:             "ResyncRequested",
-					LastTransitionTime: metav1.NewTime(now.Add(-15 * time.Minute)),
-				},
-			},
+			StartTime: &past,
 		},
 	}
+	// VRs still syncing → not healthy.
+	fakeDriver := fakedrv.New()
+	vgID := drivers.VolumeGroupIDFor("noop", "ns1", "vg-db")
+	fakeDriver.OnGetReplicationStatus(vgID).ReturnResult(fakedrv.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleTarget,
+			Health: drivers.HealthSyncing,
+		},
+	})
+	registry := drivers.NewRegistry()
+	registry.RegisterDriver("noop", func() drivers.StorageProvider { return fakeDriver })
+
 	plan := &soteriav1alpha1.DRPlan{
 		ObjectMeta: metav1.ObjectMeta{Name: "plan-1"},
 		Spec: soteriav1alpha1.DRPlanSpec{
 			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
 		},
+		Status: soteriav1alpha1.DRPlanStatus{
+			Waves: []soteriav1alpha1.WaveInfo{
+				{Groups: []soteriav1alpha1.VolumeGroupInfo{
+					{Name: "vg-db", Namespace: "ns1"},
+				}},
+			},
+		},
 	}
 
 	c := newTestClient(exec, plan)
 	r := &DRExecutionReconciler{
-		Client: c,
-		Scheme: newTestScheme(),
+		Client:       c,
+		Scheme:       newTestScheme(),
+		WaveExecutor: &engine.WaveExecutor{Registry: registry},
 	}
 
 	result, err := r.reconcileResyncGate(context.Background(), exec, plan)
@@ -2091,58 +2109,59 @@ func TestReconcileResyncGate_Timeout_FailsExecution(t *testing.T) {
 	}
 }
 
-func TestReconcileResyncGate_Complete_SetsStep0Complete(t *testing.T) {
-	now := metav1.Now()
-	exec := &soteriav1alpha1.DRExecution{
-		ObjectMeta: metav1.ObjectMeta{Name: "exec-resync-complete"},
-		Spec: soteriav1alpha1.DRExecutionSpec{
-			PlanName: "plan-1",
-			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
-		},
-		Status: soteriav1alpha1.DRExecutionStatus{
-			Phase:     soteriav1alpha1.ExecutionPhaseExecuting,
-			IsActive:  true,
-			StartTime: &now,
-			Conditions: []metav1.Condition{
-				{
-					Type:               ConditionResyncPending,
-					Status:             metav1.ConditionTrue,
-					Reason:             "ResyncRequested",
-					LastTransitionTime: now,
+func TestReconcileResyncGate_SetsStep0Complete(t *testing.T) {
+	tests := []struct {
+		name     string
+		execName string
+	}{
+		{"with nil WaveExecutor", "exec-resync-nowaveexec"},
+		{"default reconciler", "exec-resync-complete"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			now := metav1.Now()
+			exec := &soteriav1alpha1.DRExecution{
+				ObjectMeta: metav1.ObjectMeta{Name: tt.execName},
+				Spec: soteriav1alpha1.DRExecutionSpec{
+					PlanName: "plan-1",
+					Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
 				},
-			},
-		},
-	}
-	plan := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-1"},
-		Spec: soteriav1alpha1.DRPlanSpec{
-			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
-		},
-	}
+				Status: soteriav1alpha1.DRExecutionStatus{
+					Phase:     soteriav1alpha1.ExecutionPhaseExecuting,
+					IsActive:  true,
+					StartTime: &now,
+				},
+			}
+			plan := &soteriav1alpha1.DRPlan{
+				ObjectMeta: metav1.ObjectMeta{Name: "plan-1"},
+				Spec: soteriav1alpha1.DRPlanSpec{
+					VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
+				},
+			}
 
-	c := newTestClient(exec, plan)
-	r := &DRExecutionReconciler{
-		Client: c,
-		Scheme: newTestScheme(),
-	}
+			c := newTestClient(exec, plan)
+			r := &DRExecutionReconciler{
+				Client: c,
+				Scheme: newTestScheme(),
+			}
 
-	result, err := r.reconcileResyncGate(context.Background(), exec, plan)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result.RequeueAfter == 0 {
-		t.Error("expected RequeueAfter > 0 to continue wave execution")
-	}
+			result, err := r.reconcileResyncGate(context.Background(), exec, plan)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if result.RequeueAfter == 0 {
+				t.Error("expected RequeueAfter > 0 to continue wave execution")
+			}
 
-	var fetched soteriav1alpha1.DRExecution
-	if err := c.Get(context.Background(), client.ObjectKeyFromObject(exec), &fetched); err != nil {
-		t.Fatalf("failed to fetch execution: %v", err)
-	}
-	if !meta.IsStatusConditionTrue(fetched.Status.Conditions, "Step0Complete") {
-		t.Error("expected Step0Complete condition to be set after resync complete")
-	}
-	if meta.IsStatusConditionTrue(fetched.Status.Conditions, ConditionResyncPending) {
-		t.Error("expected ResyncPending condition to be removed after resync complete")
+			var fetched soteriav1alpha1.DRExecution
+			if err := c.Get(context.Background(), client.ObjectKeyFromObject(exec), &fetched); err != nil {
+				t.Fatalf("failed to fetch execution: %v", err)
+			}
+			if !meta.IsStatusConditionTrue(fetched.Status.Conditions, "Step0Complete") {
+				t.Error("expected Step0Complete condition to be set after VRs healthy")
+			}
+		})
 	}
 }
 
@@ -2170,14 +2189,6 @@ func TestReconcileResyncGate_Incomplete_Waits(t *testing.T) {
 			Phase:     soteriav1alpha1.ExecutionPhaseExecuting,
 			IsActive:  true,
 			StartTime: &now,
-			Conditions: []metav1.Condition{
-				{
-					Type:               ConditionResyncPending,
-					Status:             metav1.ConditionTrue,
-					Reason:             "ResyncRequested",
-					LastTransitionTime: now,
-				},
-			},
 		},
 	}
 	plan := &soteriav1alpha1.DRPlan{
@@ -2206,7 +2217,7 @@ func TestReconcileResyncGate_Incomplete_Waits(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if result.RequeueAfter == 0 {
-		t.Error("expected RequeueAfter > 0 to wait for resync")
+		t.Error("expected RequeueAfter > 0 to wait for VR health")
 	}
 
 	var fetched soteriav1alpha1.DRExecution
@@ -2214,78 +2225,11 @@ func TestReconcileResyncGate_Incomplete_Waits(t *testing.T) {
 		t.Fatalf("failed to fetch execution: %v", err)
 	}
 	if meta.IsStatusConditionTrue(fetched.Status.Conditions, "Step0Complete") {
-		t.Error("Step0Complete should NOT be set while resync is incomplete")
-	}
-	if !meta.IsStatusConditionTrue(fetched.Status.Conditions, ConditionResyncPending) {
-		t.Error("ResyncPending should still be set while resync is incomplete")
+		t.Error("Step0Complete should NOT be set while VRs are not healthy")
 	}
 }
 
-func TestReconcile_ResyncPendingResume_ReEvaluatesVRStatus(t *testing.T) {
-	now := metav1.Now()
-	exec := &soteriav1alpha1.DRExecution{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   "exec-resume-resync",
-			Labels: map[string]string{soteriav1alpha1.PlanNameLabel: "plan-1"},
-		},
-		Spec: soteriav1alpha1.DRExecutionSpec{
-			PlanName: "plan-1",
-			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
-		},
-		Status: soteriav1alpha1.DRExecutionStatus{
-			Phase:     soteriav1alpha1.ExecutionPhaseExecuting,
-			IsActive:  true,
-			StartTime: &now,
-			Conditions: []metav1.Condition{
-				{
-					Type:               ConditionResyncPending,
-					Status:             metav1.ConditionTrue,
-					Reason:             "ResyncRequested",
-					LastTransitionTime: now,
-				},
-				{
-					Type:   "Progressing",
-					Status: metav1.ConditionTrue,
-					Reason: "ExecutionStarted",
-				},
-			},
-		},
-	}
-	plan := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-1"},
-		Spec: soteriav1alpha1.DRPlanSpec{
-			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
-		},
-		Status: soteriav1alpha1.DRPlanStatus{
-			Phase: soteriav1alpha1.PhaseSteadyState,
-		},
-	}
-
-	c := newTestClient(exec, plan)
-	r := &DRExecutionReconciler{
-		Client: c,
-		Scheme: newTestScheme(),
-	}
-
-	result, err := r.Reconcile(context.Background(), ctrl.Request{
-		NamespacedName: types.NamespacedName{Name: "exec-resume-resync"},
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// With no WaveExecutor, checkResyncComplete returns true → should set Step0Complete.
-	var fetched soteriav1alpha1.DRExecution
-	if err := c.Get(context.Background(), client.ObjectKeyFromObject(exec), &fetched); err != nil {
-		t.Fatalf("failed to fetch execution: %v", err)
-	}
-	if !meta.IsStatusConditionTrue(fetched.Status.Conditions, "Step0Complete") {
-		t.Error("expected Step0Complete after resync gate completes on resume")
-	}
-	_ = result
-}
-
-func TestReconcileTargetSiteResyncGate_WaitsForVMsStopped(t *testing.T) {
+func TestReconcileTargetStep0_WaitsForDemotionComplete(t *testing.T) {
 	now := metav1.Now()
 	exec := &soteriav1alpha1.DRExecution{
 		ObjectMeta: metav1.ObjectMeta{
@@ -2315,24 +2259,24 @@ func TestReconcileTargetSiteResyncGate_WaitsForVMsStopped(t *testing.T) {
 	c := newTestClient(exec, plan)
 	r := &DRExecutionReconciler{Client: c, Scheme: newTestScheme(), LocalSite: "dc-east"}
 
-	result, err := r.reconcileTargetSiteResyncGate(context.Background(), exec, plan)
+	result, err := r.reconcileTargetStep0(context.Background(), exec, plan)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if result.RequeueAfter != 5*time.Second {
-		t.Errorf("expected 5s requeue while waiting for VMsStopped, got %v", result.RequeueAfter)
+		t.Errorf("expected 5s requeue while waiting for DemotionComplete, got %v", result.RequeueAfter)
 	}
 }
 
-func TestReconcileTargetSiteResyncGate_InitiatesResync(t *testing.T) {
+func TestReconcileTargetStep0_PromotesAndSetsStep0Complete(t *testing.T) {
 	now := metav1.Now()
 	exec := &soteriav1alpha1.DRExecution{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   "exec-target-init",
-			Labels: map[string]string{soteriav1alpha1.PlanNameLabel: "plan-target-init"},
+			Name:   "exec-target-promote",
+			Labels: map[string]string{soteriav1alpha1.PlanNameLabel: "plan-target-promote"},
 		},
 		Spec: soteriav1alpha1.DRExecutionSpec{
-			PlanName: "plan-target-init",
+			PlanName: "plan-target-promote",
 			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
 		},
 		Status: soteriav1alpha1.DRExecutionStatus{
@@ -2340,12 +2284,12 @@ func TestReconcileTargetSiteResyncGate_InitiatesResync(t *testing.T) {
 			IsActive:  true,
 			StartTime: &now,
 			SiteStatuses: map[string]soteriav1alpha1.SiteCoordinationStatus{
-				"dc-west": {VMsStopped: true, LastUpdated: &now},
+				"dc-west": {DemotionComplete: true, LastUpdated: &now},
 			},
 		},
 	}
 	plan := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-target-init"},
+		ObjectMeta: metav1.ObjectMeta{Name: "plan-target-promote"},
 		Spec: soteriav1alpha1.DRPlanSpec{
 			PrimarySite:             "dc-west",
 			SecondarySite:           "dc-east",
@@ -2357,7 +2301,7 @@ func TestReconcileTargetSiteResyncGate_InitiatesResync(t *testing.T) {
 	c := newTestClient(exec, plan)
 	r := &DRExecutionReconciler{Client: c, Scheme: newTestScheme(), LocalSite: "dc-east"}
 
-	_, err := r.reconcileTargetSiteResyncGate(context.Background(), exec, plan)
+	_, err := r.reconcileTargetStep0(context.Background(), exec, plan)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -2367,70 +2311,12 @@ func TestReconcileTargetSiteResyncGate_InitiatesResync(t *testing.T) {
 		t.Fatalf("failed to fetch execution: %v", err)
 	}
 	eastStatus := getSiteStatus(&fetched, "dc-east")
-	if !eastStatus.ResyncPending {
-		t.Error("expected siteStatuses[dc-east].resyncPending=true after target initiates resync")
-	}
-	if eastStatus.ResyncComplete {
-		t.Error("siteStatuses[dc-east].resyncComplete should not be set on the first call")
+	if !eastStatus.Step0Complete {
+		t.Error("expected siteStatuses[dc-east].step0Complete=true after target promotes VRs")
 	}
 }
 
-func TestReconcileTargetSiteResyncGate_SetsResyncComplete(t *testing.T) {
-	now := metav1.Now()
-	exec := &soteriav1alpha1.DRExecution{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   "exec-target-complete",
-			Labels: map[string]string{soteriav1alpha1.PlanNameLabel: "plan-target2"},
-		},
-		Spec: soteriav1alpha1.DRExecutionSpec{
-			PlanName: "plan-target2",
-			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
-		},
-		Status: soteriav1alpha1.DRExecutionStatus{
-			Phase:     soteriav1alpha1.ExecutionPhaseExecuting,
-			IsActive:  true,
-			StartTime: &now,
-			SiteStatuses: map[string]soteriav1alpha1.SiteCoordinationStatus{
-				"dc-west": {VMsStopped: true, LastUpdated: &now},
-				"dc-east": {ResyncPending: true, LastUpdated: &now},
-			},
-		},
-	}
-	plan := &soteriav1alpha1.DRPlan{
-		ObjectMeta: metav1.ObjectMeta{Name: "plan-target2"},
-		Spec: soteriav1alpha1.DRPlanSpec{
-			PrimarySite:             "dc-west",
-			SecondarySite:           "dc-east",
-			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
-		},
-		Status: soteriav1alpha1.DRPlanStatus{Phase: soteriav1alpha1.PhaseSteadyState},
-	}
-
-	c := newTestClient(exec, plan)
-	r := &DRExecutionReconciler{Client: c, Scheme: newTestScheme(), LocalSite: "dc-east"}
-
-	result, err := r.reconcileTargetSiteResyncGate(context.Background(), exec, plan)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result.RequeueAfter != 5*time.Second {
-		t.Errorf("expected 5s requeue after setting ResyncComplete, got %v", result.RequeueAfter)
-	}
-
-	var fetched soteriav1alpha1.DRExecution
-	if err := c.Get(context.Background(), client.ObjectKeyFromObject(exec), &fetched); err != nil {
-		t.Fatalf("failed to fetch execution: %v", err)
-	}
-	eastStatus := getSiteStatus(&fetched, "dc-east")
-	if !eastStatus.ResyncComplete {
-		t.Error("expected siteStatuses[dc-east].resyncComplete=true after target site resync completion")
-	}
-	if eastStatus.ResyncPending {
-		t.Error("expected siteStatuses[dc-east].resyncPending=false after target site resync completion")
-	}
-}
-
-func TestReconcileTargetSiteResyncGate_AlreadyComplete_WaitsForStep0(t *testing.T) {
+func TestReconcileTargetStep0_AlreadyComplete_Noop(t *testing.T) {
 	now := metav1.Now()
 	exec := &soteriav1alpha1.DRExecution{
 		ObjectMeta: metav1.ObjectMeta{
@@ -2446,8 +2332,8 @@ func TestReconcileTargetSiteResyncGate_AlreadyComplete_WaitsForStep0(t *testing.
 			IsActive:  true,
 			StartTime: &now,
 			SiteStatuses: map[string]soteriav1alpha1.SiteCoordinationStatus{
-				"dc-west": {VMsStopped: true, LastUpdated: &now},
-				"dc-east": {ResyncComplete: true, LastUpdated: &now},
+				"dc-west": {DemotionComplete: true, LastUpdated: &now},
+				"dc-east": {Step0Complete: true, LastUpdated: &now},
 			},
 		},
 	}
@@ -2464,12 +2350,12 @@ func TestReconcileTargetSiteResyncGate_AlreadyComplete_WaitsForStep0(t *testing.
 	c := newTestClient(exec, plan)
 	r := &DRExecutionReconciler{Client: c, Scheme: newTestScheme(), LocalSite: "dc-east"}
 
-	result, err := r.reconcileTargetSiteResyncGate(context.Background(), exec, plan)
+	result, err := r.reconcileTargetStep0(context.Background(), exec, plan)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.RequeueAfter != 5*time.Second {
-		t.Errorf("expected 5s requeue waiting for Step0Complete, got %v", result.RequeueAfter)
+	if result.RequeueAfter != 0 {
+		t.Errorf("expected no requeue when Step0Complete already set, got %v", result.RequeueAfter)
 	}
 }
 
@@ -2551,149 +2437,6 @@ func TestMapVRToDRExecution(t *testing.T) {
 				t.Errorf("expected request for %s, got %s", tc.wantName, reqs[0].Name)
 			}
 		})
-	}
-}
-
-// --- Source VR health gate tests (Story 15.x) ---
-
-func TestCheckSourceVRsHealthy_NoWaveExecutor_ReturnsTrue(t *testing.T) {
-	r := &DRExecutionReconciler{}
-	plan := &soteriav1alpha1.DRPlan{}
-
-	healthy, err := r.checkSourceVRsHealthy(context.Background(), plan)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !healthy {
-		t.Error("expected trivially healthy when WaveExecutor is nil")
-	}
-}
-
-func TestCheckSourceVRsHealthy_NoWaves_ReturnsTrue(t *testing.T) {
-	fakeDriver := fakedrv.New()
-	registry := drivers.NewRegistry()
-	registry.RegisterDriver("noop", func() drivers.StorageProvider { return fakeDriver })
-
-	r := &DRExecutionReconciler{
-		WaveExecutor: &engine.WaveExecutor{Registry: registry},
-	}
-	plan := &soteriav1alpha1.DRPlan{}
-
-	healthy, err := r.checkSourceVRsHealthy(context.Background(), plan)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !healthy {
-		t.Error("expected trivially healthy when no waves exist")
-	}
-}
-
-func TestCheckSourceVRsHealthy_Degraded_ReturnsFalse(t *testing.T) {
-	fakeDriver := fakedrv.New()
-	vgID := drivers.VolumeGroupIDFor("noop", "ns1", "vg-db")
-	fakeDriver.OnGetReplicationStatus(vgID).ReturnResult(fakedrv.Response{
-		ReplicationStatus: &drivers.ReplicationStatus{
-			Role:   drivers.RoleSource,
-			Health: drivers.HealthDegraded,
-		},
-	})
-
-	registry := drivers.NewRegistry()
-	registry.RegisterDriver("noop", func() drivers.StorageProvider { return fakeDriver })
-
-	r := &DRExecutionReconciler{
-		WaveExecutor: &engine.WaveExecutor{Registry: registry},
-	}
-	plan := &soteriav1alpha1.DRPlan{
-		Spec: soteriav1alpha1.DRPlanSpec{
-			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
-		},
-		Status: soteriav1alpha1.DRPlanStatus{
-			Waves: []soteriav1alpha1.WaveInfo{
-				{Groups: []soteriav1alpha1.VolumeGroupInfo{
-					{Name: "vg-db", Namespace: "ns1"},
-				}},
-			},
-		},
-	}
-
-	healthy, err := r.checkSourceVRsHealthy(context.Background(), plan)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if healthy {
-		t.Error("expected unhealthy when VG health is Degraded")
-	}
-}
-
-func TestCheckSourceVRsHealthy_Healthy_ReturnsTrue(t *testing.T) {
-	fakeDriver := fakedrv.New()
-	vgID := drivers.VolumeGroupIDFor("noop", "ns1", "vg-db")
-	fakeDriver.OnGetReplicationStatus(vgID).ReturnResult(fakedrv.Response{
-		ReplicationStatus: &drivers.ReplicationStatus{
-			Role:   drivers.RoleSource,
-			Health: drivers.HealthHealthy,
-		},
-	})
-
-	registry := drivers.NewRegistry()
-	registry.RegisterDriver("noop", func() drivers.StorageProvider { return fakeDriver })
-
-	r := &DRExecutionReconciler{
-		WaveExecutor: &engine.WaveExecutor{Registry: registry},
-	}
-	plan := &soteriav1alpha1.DRPlan{
-		Spec: soteriav1alpha1.DRPlanSpec{
-			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
-		},
-		Status: soteriav1alpha1.DRPlanStatus{
-			Waves: []soteriav1alpha1.WaveInfo{
-				{Groups: []soteriav1alpha1.VolumeGroupInfo{
-					{Name: "vg-db", Namespace: "ns1"},
-				}},
-			},
-		},
-	}
-
-	healthy, err := r.checkSourceVRsHealthy(context.Background(), plan)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !healthy {
-		t.Error("expected healthy when VG is RoleSource + HealthHealthy")
-	}
-}
-
-func TestCheckSourceVRsHealthy_NotFound_SkipsVG(t *testing.T) {
-	fakeDriver := fakedrv.New()
-	vgID := drivers.VolumeGroupIDFor("noop", "ns1", "vg-db")
-	fakeDriver.OnGetReplicationStatus(vgID).Return(drivers.ErrVolumeGroupNotFound)
-
-	registry := drivers.NewRegistry()
-	registry.RegisterDriver("noop", func() drivers.StorageProvider { return fakeDriver })
-
-	r := &DRExecutionReconciler{
-		WaveExecutor: &engine.WaveExecutor{Registry: registry},
-	}
-	plan := &soteriav1alpha1.DRPlan{
-		Spec: soteriav1alpha1.DRPlanSpec{
-			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
-		},
-		Status: soteriav1alpha1.DRPlanStatus{
-			Waves: []soteriav1alpha1.WaveInfo{
-				{Groups: []soteriav1alpha1.VolumeGroupInfo{
-					{Name: "vg-db", Namespace: "ns1"},
-				}},
-			},
-		},
-	}
-
-	healthy, err := r.checkSourceVRsHealthy(context.Background(), plan)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !healthy {
-		t.Error("expected healthy when VG not found (skip)")
 	}
 }
 

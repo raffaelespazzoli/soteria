@@ -67,12 +67,10 @@ limitations under the License.
 //     planned_migration → {GracefulShutdown: true}
 //     disaster          → {GracefulShutdown: false}
 //     When GracefulShutdown=true, PreExecute runs Step 0: (1) stop all origin VMs,
-//     then (2) ResyncVolume on each target VG to trigger final data sync before
-//     promotion. PreExecute returns ErrResyncRequested to signal the reconciler
-//     that resync has been initiated and the engine should wait for VR/VGR
-//     completion events before proceeding. StopReplication (demote to secondary)
-//     is deferred to the reconciler's resync gate, which calls it only after all
-//     target VRs confirm resync completion — guaranteeing zero data loss.
+//     then (2) StopReplication on each source VG to demote primary to secondary.
+//     The rbd-mirror daemon auto-syncs the demotion snapshot to the target.
+//     The reconciler then waits for VR health (Completed=True, Degraded=False)
+//     before signalling DemotionComplete and letting the target site promote.
 //     When GracefulShutdown=false (disaster),
 //     PreExecute is a no-op because the origin site may be unreachable.
 //     Per-group execution is a single unified path for both modes:

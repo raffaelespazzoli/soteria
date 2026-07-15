@@ -1207,10 +1207,10 @@ func assertShadowPVEntries(
 	}
 }
 
-func observeResyncPending(
+func observeDemotionComplete(
 	ctx context.Context, cl client.Client, execName string, timeout time.Duration,
 ) {
-	resyncSeen := false
+	demotionSeen := false
 	lastPrinted := ""
 	Eventually(func(g Gomega) {
 		var exec soteriav1alpha1.DRExecution
@@ -1218,8 +1218,8 @@ func observeResyncPending(
 
 		summary := fmt.Sprintf("result=%q startTime=%v siteStatuses={", exec.Status.Result, exec.Status.StartTime != nil)
 		for site, ss := range exec.Status.SiteStatuses {
-			summary += fmt.Sprintf("%s: vmsStopped=%v step0=%v resyncPending=%v resyncComplete=%v, ",
-				site, ss.VMsStopped, ss.Step0Complete, ss.ResyncPending, ss.ResyncComplete)
+			summary += fmt.Sprintf("%s: demotionComplete=%v step0=%v, ",
+				site, ss.DemotionComplete, ss.Step0Complete)
 		}
 		summary += "}"
 		if summary != lastPrinted {
@@ -1228,31 +1228,31 @@ func observeResyncPending(
 		}
 
 		for _, ss := range exec.Status.SiteStatuses {
-			if ss.ResyncPending {
-				resyncSeen = true
+			if ss.DemotionComplete {
+				demotionSeen = true
 				break
 			}
 		}
-		g.Expect(resyncSeen || exec.Status.Result != "").To(BeTrue(),
-			"waiting for ResyncPending in SiteStatuses or execution completion")
+		g.Expect(demotionSeen || exec.Status.Result != "").To(BeTrue(),
+			"waiting for DemotionComplete in SiteStatuses or execution completion")
 	}).WithTimeout(timeout).WithPolling(2 * time.Second).Should(Succeed())
 
-	if !resyncSeen {
-		GinkgoWriter.Printf("  [info] ResyncPending resolved too fast to observe\n")
+	if !demotionSeen {
+		GinkgoWriter.Printf("  [info] DemotionComplete resolved too fast to observe\n")
 		return
 	}
 
 	Eventually(func(g Gomega) {
 		var exec soteriav1alpha1.DRExecution
 		g.Expect(cl.Get(ctx, client.ObjectKey{Name: execName}, &exec)).To(Succeed())
-		pending := false
+		step0Done := false
 		for _, ss := range exec.Status.SiteStatuses {
-			if ss.ResyncPending {
-				pending = true
+			if ss.Step0Complete {
+				step0Done = true
 				break
 			}
 		}
-		g.Expect(pending).To(BeFalse(), "ResyncPending should resolve in SiteStatuses")
+		g.Expect(step0Done).To(BeTrue(), "Step0Complete should become true in SiteStatuses")
 	}).WithTimeout(timeout).WithPolling(2 * time.Second).Should(Succeed())
 }
 

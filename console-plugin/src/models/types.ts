@@ -212,10 +212,8 @@ export interface DRExecutionSpec {
 }
 
 export interface SiteCoordinationStatus {
-  vmsStopped?: boolean;
+  demotionComplete?: boolean;
   step0Complete?: boolean;
-  resyncPending?: boolean;
-  resyncComplete?: boolean;
   lastUpdated?: string;
 }
 

@@ -470,21 +470,15 @@ type DRExecutionSpec struct {
 // the DRExecution's SiteStatuses map, eliminating ScyllaDB LWW conflicts
 // from concurrent cross-site status patches.
 type SiteCoordinationStatus struct {
-	// VMsStopped is set by the source site (Step0) after stopping all VMs
-	// during planned migration. Signals the target site to begin resync.
-	VMsStopped bool `json:"vmsStopped,omitempty"`
-	// Step0Complete is set by the source site (Step0) after resync completes
-	// and StopReplication has demoted local primary VRs. Signals the target
-	// site to proceed with wave execution (SetSource + StartVM).
+	// DemotionComplete is set by the source site (Step0) after all local
+	// primary VRs have been demoted to secondary AND the demotion snapshot
+	// has been confirmed synced (Completed=True, Degraded=False).
+	// Signals the target site to promote its VRs to primary.
+	DemotionComplete bool `json:"demotionComplete,omitempty"`
+	// Step0Complete is set by the target site after promoting its VRs to
+	// primary. Signals the source site that Step 0 is done and waves can
+	// proceed.
 	Step0Complete bool `json:"step0Complete,omitempty"`
-	// ResyncPending is set by the target site (Owner) after calling
-	// ResyncVolume on its local secondary VR/VGR CRs. Indicates the
-	// target is waiting for VR status watches to confirm resync completion.
-	ResyncPending bool `json:"resyncPending,omitempty"`
-	// ResyncComplete is set by the target site (Owner) after all local
-	// VRs have completed resync. Signals the source site to proceed
-	// with StopReplication and Step0Complete.
-	ResyncComplete bool `json:"resyncComplete,omitempty"`
 	// LastUpdated records when this site last wrote to its coordination status.
 	// +optional
 	LastUpdated *metav1.Time `json:"lastUpdated,omitempty"`

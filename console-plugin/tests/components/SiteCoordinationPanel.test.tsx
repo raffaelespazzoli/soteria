@@ -44,8 +44,8 @@ function makeReprotectExecution(
 describe('SiteCoordinationPanel', () => {
   it('renders source and target lanes for planned migration', () => {
     const exec = makePlannedExecution({
-      east: { vmsStopped: true },
-      west: { resyncPending: true },
+      east: { demotionComplete: true },
+      west: {},
     });
 
     render(
@@ -66,10 +66,9 @@ describe('SiteCoordinationPanel', () => {
       <SiteCoordinationPanel execution={exec} sourceSite="east" targetSite="west" />,
     );
 
-    expect(screen.getByText('Stopping VMs')).toBeInTheDocument();
-    expect(screen.getByText('Handoff Complete')).toBeInTheDocument();
-    expect(screen.getByText('Syncing Volumes')).toBeInTheDocument();
-    expect(screen.getByText('Volumes Synced')).toBeInTheDocument();
+    expect(screen.getByText('Demoting Volumes')).toBeInTheDocument();
+    expect(screen.getByText('Demotion Synced')).toBeInTheDocument();
+    expect(screen.getByText('Promoting Volumes')).toBeInTheDocument();
   });
 
   it('returns null for disaster mode', () => {
@@ -91,8 +90,8 @@ describe('SiteCoordinationPanel', () => {
   it('hides when all steps complete and waves have started', () => {
     const exec = makePlannedExecution(
       {
-        east: { vmsStopped: true, step0Complete: true },
-        west: { resyncPending: true, resyncComplete: true },
+        east: { demotionComplete: true },
+        west: { step0Complete: true },
       },
       [{ waveIndex: 0, groups: [] }],
     );
@@ -106,8 +105,8 @@ describe('SiteCoordinationPanel', () => {
 
   it('stays visible when all steps complete but no waves yet', () => {
     const exec = makePlannedExecution({
-      east: { vmsStopped: true, step0Complete: true },
-      west: { resyncPending: true, resyncComplete: true },
+      east: { demotionComplete: true },
+      west: { step0Complete: true },
     });
 
     render(
@@ -117,23 +116,19 @@ describe('SiteCoordinationPanel', () => {
     expect(screen.getByTestId('site-coordination-panel')).toBeInTheDocument();
   });
 
-  it('renders passive lane for reprotect mode', () => {
-    const exec = makeReprotectExecution({
-      west: { resyncComplete: false },
-    });
+  it('returns null for reprotect mode (no coordination steps)', () => {
+    const exec = makeReprotectExecution({});
 
-    render(
+    const { container } = render(
       <SiteCoordinationPanel execution={exec} sourceSite="east" targetSite="west" />,
     );
 
-    expect(screen.getByText('Passive')).toBeInTheDocument();
-    expect(screen.getByText('Ensuring Replication')).toBeInTheDocument();
-    expect(screen.queryByText('Source')).not.toBeInTheDocument();
+    expect(container.innerHTML).toBe('');
   });
 
   it('has no accessibility violations', async () => {
     const exec = makePlannedExecution({
-      east: { vmsStopped: true },
+      east: { demotionComplete: true },
       west: {},
     });
 

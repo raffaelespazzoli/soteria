@@ -98,7 +98,7 @@ func runPlannedLifecycle(s *lifecycleScenario) {
 		createDRExecution(ctx, eastClient, execName, planName,
 			soteriav1alpha1.ExecutionModePlannedMigration)
 
-		observeResyncPending(ctx, eastClient, execName, transitionTimeout)
+		observeDemotionComplete(ctx, eastClient, execName, transitionTimeout)
 		waitForExecResult(ctx, eastClient, execName,
 			soteriav1alpha1.ExecutionResultSucceeded, transitionTimeout)
 
@@ -136,7 +136,7 @@ func runPlannedLifecycle(s *lifecycleScenario) {
 		createDRExecution(ctx, cl, execName, planName,
 			soteriav1alpha1.ExecutionModePlannedMigration)
 
-		observeResyncPending(ctx, cl, execName, transitionTimeout)
+		observeDemotionComplete(ctx, cl, execName, transitionTimeout)
 		waitForExecResult(ctx, cl, execName,
 			soteriav1alpha1.ExecutionResultSucceeded, transitionTimeout)
 

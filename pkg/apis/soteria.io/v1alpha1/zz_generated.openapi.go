@@ -1634,30 +1634,16 @@ func schema_pkg_apis_soteriaio_v1alpha1_SiteCoordinationStatus(ref common.Refere
 				Description: "SiteCoordinationStatus holds coordination signals written exclusively by one site's controller. Each site writes only to its own entry in the DRExecution's SiteStatuses map, eliminating ScyllaDB LWW conflicts from concurrent cross-site status patches.",
 				Type:        []string{"object"},
 				Properties: map[string]spec.Schema{
-					"vmsStopped": {
+					"demotionComplete": {
 						SchemaProps: spec.SchemaProps{
-							Description: "VMsStopped is set by the source site (Step0) after stopping all VMs during planned migration. Signals the target site to begin resync.",
+							Description: "DemotionComplete is set by the source site (Step0) after all local primary VRs have been demoted to secondary AND the demotion snapshot has been confirmed synced (Completed=True, Degraded=False). Signals the target site to promote its VRs to primary.",
 							Type:        []string{"boolean"},
 							Format:      "",
 						},
 					},
 					"step0Complete": {
 						SchemaProps: spec.SchemaProps{
-							Description: "Step0Complete is set by the source site (Step0) after resync completes and StopReplication has demoted local primary VRs. Signals the target site to proceed with wave execution (SetSource + StartVM).",
-							Type:        []string{"boolean"},
-							Format:      "",
-						},
-					},
-					"resyncPending": {
-						SchemaProps: spec.SchemaProps{
-							Description: "ResyncPending is set by the target site (Owner) after calling ResyncVolume on its local secondary VR/VGR CRs. Indicates the target is waiting for VR status watches to confirm resync completion.",
-							Type:        []string{"boolean"},
-							Format:      "",
-						},
-					},
-					"resyncComplete": {
-						SchemaProps: spec.SchemaProps{
-							Description: "ResyncComplete is set by the target site (Owner) after all local VRs have completed resync. Signals the source site to proceed with StopReplication and Step0Complete.",
+							Description: "Step0Complete is set by the target site after promoting its VRs to primary. Signals the source site that Step 0 is done and waves can proceed.",
 							Type:        []string{"boolean"},
 							Format:      "",
 						},

@@ -17,23 +17,16 @@ interface SiteStep {
   done: boolean;
 }
 
-function getSourceSteps(site: SiteCoordinationStatus | undefined): SiteStep[] {
+function getSourceSteps(sourceStatus: SiteCoordinationStatus | undefined): SiteStep[] {
   return [
-    { label: 'Stopping VMs', done: !!site?.vmsStopped },
-    { label: 'Handoff Complete', done: !!site?.step0Complete },
+    { label: 'Demoting Volumes', done: !!sourceStatus?.demotionComplete },
+    { label: 'Demotion Synced', done: !!sourceStatus?.demotionComplete },
   ];
 }
 
 function getTargetSteps(site: SiteCoordinationStatus | undefined): SiteStep[] {
   return [
-    { label: 'Syncing Volumes', done: !!site?.resyncPending },
-    { label: 'Volumes Synced', done: !!site?.resyncComplete },
-  ];
-}
-
-function getReprotectPassiveSteps(site: SiteCoordinationStatus | undefined): SiteStep[] {
-  return [
-    { label: 'Ensuring Replication', done: !!site?.resyncComplete },
+    { label: 'Promoting Volumes', done: !!site?.step0Complete },
   ];
 }
 
@@ -153,7 +146,9 @@ const SiteCoordinationPanel: React.FC<SiteCoordinationPanelProps> = ({
   const sourceSteps = isPlanned ? getSourceSteps(sourceStatus) : [];
   const targetSteps = isPlanned
     ? getTargetSteps(targetStatus)
-    : getReprotectPassiveSteps(targetStatus);
+    : [];
+
+  if (sourceSteps.length === 0 && targetSteps.length === 0) return null;
 
   const allComplete = [...sourceSteps, ...targetSteps].every((s) => s.done);
   const wavesStarted = (execution.status?.waves?.length ?? 0) > 0;
@@ -181,14 +176,16 @@ const SiteCoordinationPanel: React.FC<SiteCoordinationPanelProps> = ({
               />
             </SplitItem>
           )}
-          <SplitItem isFilled>
-            <SiteLane
-              label={isPlanned ? 'Target' : 'Passive'}
-              siteName={targetSite}
-              steps={targetSteps}
-              lastUpdated={targetStatus?.lastUpdated}
-            />
-          </SplitItem>
+          {targetSteps.length > 0 && (
+            <SplitItem isFilled>
+              <SiteLane
+                label={isPlanned ? 'Target' : 'Passive'}
+                siteName={targetSite}
+                steps={targetSteps}
+                lastUpdated={targetStatus?.lastUpdated}
+              />
+            </SplitItem>
+          )}
         </Split>
       </CardBody>
     </Card>

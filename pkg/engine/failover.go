@@ -37,14 +37,11 @@ limitations under the License.
 // When GracefulShutdown=true (planned migration), PreExecute runs Step 0:
 //
 //  1. Stop all origin VMs (graceful shutdown).
-//  2. Call ResyncVolume on all target VGs to pull un-replicated data.
-//  3. Return ErrResyncRequested — the reconciler waits for VR/VGR status
-//     watches to confirm resync completion before calling StopReplication
-//     (demote source to secondary). This event-driven gate guarantees zero
-//     data loss during planned migrations with asynchronous replication.
-//
-// StopReplication is NOT called in PreExecute — it moves to the reconciler
-// and is invoked only after all target VRs confirm resync completion.
+//  2. Call StopReplication on all source VGs (demote primary to secondary).
+//     The demotion snapshot is automatically synced to the target by the
+//     rbd-mirror daemon — no explicit ResyncVolume is needed.
+//  3. Return nil. The reconciler then waits for VR health confirmation
+//     (Completed=True, Degraded=False) before signalling DemotionComplete.
 //
 // When GracefulShutdown=false (disaster), PreExecute is a no-op because the
 // origin site may be unreachable.
@@ -69,32 +66,16 @@ const (
 	StepWaitVMReady = "WaitVMReady"
 )
 
-// ErrResyncRequested is returned by PreExecute when ResyncVolume has been called
-// on target VGs and the reconciler must wait for VR/VGR status watches to
-// confirm resync completion before calling StopReplication (demote source).
-// The reconciler checks errors.Is(err, ErrResyncRequested) and sets the
-// ResyncPending condition instead of failing the execution.
-var ErrResyncRequested = errors.New("resync requested, awaiting completion")
-
 // FailoverConfig drives FailoverHandler behavior without mode-string switching.
 type FailoverConfig struct {
-	// GracefulShutdown enables Step 0 (stop VMs + resync target VGs).
-	// When true (planned migration), PreExecute stops all origin VMs,
-	// calls ResyncVolume on each target VG to pull un-replicated data,
-	// and returns ErrResyncRequested so the reconciler waits for resync
-	// completion before calling StopReplication (demote source).
+	// GracefulShutdown enables Step 0 (stop VMs + demote source VGs).
+	// When true (planned migration), PreExecute stops all origin VMs
+	// and calls StopReplication on each source VG to demote primary to
+	// secondary. The demotion snapshot is auto-synced by rbd-mirror.
 	// When false (disaster), PreExecute is a no-op because the origin site
 	// may be unreachable. Per-group execution is identical in both modes:
 	// SetSource → StartVM.
 	GracefulShutdown bool
-
-	// SkipResync makes PreExecute skip ResyncVolume calls on target VGs.
-	// Used in multi-site mode where the source site cannot access target
-	// VR/VGR CRs — the target site calls ResyncVolume on its own local VRs.
-	// PreExecute still calls StopReplication on LOCAL source VGs to demote
-	// the primary images (creating the final mirror snapshot that the
-	// target needs to replay), then returns ErrResyncRequested.
-	SkipResync bool
 }
 
 // FailoverHandler implements DRGroupHandler for both planned migration and
@@ -131,14 +112,10 @@ func resolveVolumeGroupID(
 // When GracefulShutdown=true (planned migration):
 //
 //  1. Stop all origin VMs (graceful shutdown).
-//  2. Call ResyncVolume on each target VG to pull un-replicated data from the
-//     current primary. The driver sets spec.replicationState=resync on the
-//     target VR/VGR CRs — the actual data sync is performed asynchronously
-//     by the CSI Addons sidecar.
-//  3. Return ErrResyncRequested so the reconciler sets the ResyncPending
-//     condition and waits for VR/VGR status watches to confirm completion.
-//     StopReplication (demote source) is called by the reconciler only after
-//     resync completes — never in PreExecute.
+//  2. Call StopReplication on each source VG to demote primary to secondary.
+//     The rbd-mirror daemon auto-syncs the demotion snapshot to the target.
+//  3. Return nil. The reconciler waits for VR health (Completed=True,
+//     Degraded=False) before signalling DemotionComplete.
 func (h *FailoverHandler) PreExecute(ctx context.Context, groups []ExecutionGroup) error {
 	if !h.Config.GracefulShutdown {
 		return nil
@@ -173,39 +150,6 @@ func (h *FailoverHandler) PreExecute(ctx context.Context, groups []ExecutionGrou
 		}
 	}
 
-	if h.Config.SkipResync {
-		// Demote local primary VRs so the mirroring daemon creates a final
-		// mirror snapshot. The target secondary must replay this snapshot
-		// before it can be promoted. Without this demote the secondary stays
-		// "not ready" forever because the primary keeps the image locked.
-		type vgKey struct{ name, namespace string }
-		seenVG := make(map[vgKey]bool)
-		for _, g := range groups {
-			for _, vg := range g.Chunk.VolumeGroups {
-				k := vgKey{name: vg.Name, namespace: vg.Namespace}
-				if seenVG[k] {
-					continue
-				}
-				seenVG[k] = true
-
-				driver := g.DriverForVG(vg.Name)
-				vgID, err := resolveVolumeGroupID(ctx, driver, g.DriverType, vg)
-				if err != nil {
-					return fmt.Errorf("resolving volume group %s for StopReplication: %w", vg.Name, err)
-				}
-				if err := driver.StopReplication(ctx, vgID); err != nil {
-					return fmt.Errorf("demoting volume group %s in Step 0: %w", vg.Name, err)
-				}
-			}
-		}
-		logger.Info("Step 0: VMs stopped, local VRs demoted (target site will resync)")
-		return ErrResyncRequested
-	}
-
-	// Request data resync on target VGs. The driver patches
-	// spec.replicationState=resync on the target VR/VGR CRs; the actual data
-	// pull is asynchronous. The reconciler waits for VR/VGR status watches
-	// before calling StopReplication.
 	type vgKey struct{ name, namespace string }
 	seenVG := make(map[vgKey]bool)
 	for _, g := range groups {
@@ -223,17 +167,16 @@ func (h *FailoverHandler) PreExecute(ctx context.Context, groups []ExecutionGrou
 			driver := g.DriverForVG(vg.Name)
 			vgID, err := resolveVolumeGroupID(ctx, driver, g.DriverType, vg)
 			if err != nil {
-				return fmt.Errorf("resolving volume group %s in Step 0: %w", vg.Name, err)
+				return fmt.Errorf("resolving volume group %s for StopReplication: %w", vg.Name, err)
 			}
-
-			if err := driver.ResyncVolume(ctx, vgID); err != nil {
-				return fmt.Errorf("requesting resync for volume group %s in Step 0: %w", vg.Name, err)
+			if err := driver.StopReplication(ctx, vgID); err != nil {
+				return fmt.Errorf("demoting volume group %s in Step 0: %w", vg.Name, err)
 			}
 		}
 	}
 
-	logger.Info("Step 0: resync requested on target VGs, awaiting completion")
-	return ErrResyncRequested
+	logger.Info("Step 0: VMs stopped, source VRs demoted")
+	return nil
 }
 
 // ExecuteGroup implements DRGroupHandler for a single DRGroup within a wave.
