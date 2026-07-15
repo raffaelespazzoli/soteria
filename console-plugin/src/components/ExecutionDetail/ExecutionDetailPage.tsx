@@ -4,12 +4,13 @@ import { useProvider } from '../../providers';
 import { Redirect } from 'react-router-dom';
 import DRBreadcrumb from '../shared/DRBreadcrumb';
 import ToastContainer from '../shared/ToastContainer';
-import { useDRExecutions } from '../../hooks/useDRResources';
+import { useDRExecutions, useDRPlan } from '../../hooks/useDRResources';
 import { useRetryDRGroup } from '../../hooks/useRetryDRGroup';
 import { useExecutionNotifications } from '../../hooks/useExecutionNotifications';
 import { DRGroupResultValue } from '../../models/types';
 import { useRouteParamName } from '../../hooks/useRouteParamName';
 import ExecutionHeader from './ExecutionHeader';
+import SiteCoordinationPanel from './SiteCoordinationPanel';
 import WaveProgressStep from './WaveProgressStep';
 import ExecutionSummary from './ExecutionSummary';
 
@@ -33,6 +34,7 @@ const ExecutionDetailPage: React.FC<ExecutionDetailPageProps> = (props) => {
   );
   useExecutionNotifications();
   const planName = execution?.spec?.planName ?? '';
+  const [plan] = useDRPlan(planName);
 
   const waves = execution?.status?.waves ?? [];
   const hasAnyInProgress = waves.some((w) =>
@@ -137,6 +139,17 @@ const ExecutionDetailPage: React.FC<ExecutionDetailPageProps> = (props) => {
           isRetryDisabled={retryDisabled}
           retryTooltip={retryTooltipText}
         />
+        {plan && (
+          <SiteCoordinationPanel
+            execution={execution}
+            sourceSite={plan.status?.activeSite ?? plan.spec.primarySite}
+            targetSite={
+              (plan.status?.activeSite ?? plan.spec.primarySite) === plan.spec.primarySite
+                ? plan.spec.secondarySite
+                : plan.spec.primarySite
+            }
+          />
+        )}
         <ProgressStepper isVertical aria-label="Execution wave progress">
           {waves.map((wave, idx) => (
             <WaveProgressStep

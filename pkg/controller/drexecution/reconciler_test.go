@@ -2554,6 +2554,149 @@ func TestMapVRToDRExecution(t *testing.T) {
 	}
 }
 
+// --- Source VR health gate tests (Story 15.x) ---
+
+func TestCheckSourceVRsHealthy_NoWaveExecutor_ReturnsTrue(t *testing.T) {
+	r := &DRExecutionReconciler{}
+	plan := &soteriav1alpha1.DRPlan{}
+
+	healthy, err := r.checkSourceVRsHealthy(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !healthy {
+		t.Error("expected trivially healthy when WaveExecutor is nil")
+	}
+}
+
+func TestCheckSourceVRsHealthy_NoWaves_ReturnsTrue(t *testing.T) {
+	fakeDriver := fakedrv.New()
+	registry := drivers.NewRegistry()
+	registry.RegisterDriver("noop", func() drivers.StorageProvider { return fakeDriver })
+
+	r := &DRExecutionReconciler{
+		WaveExecutor: &engine.WaveExecutor{Registry: registry},
+	}
+	plan := &soteriav1alpha1.DRPlan{}
+
+	healthy, err := r.checkSourceVRsHealthy(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !healthy {
+		t.Error("expected trivially healthy when no waves exist")
+	}
+}
+
+func TestCheckSourceVRsHealthy_Degraded_ReturnsFalse(t *testing.T) {
+	fakeDriver := fakedrv.New()
+	vgID := drivers.VolumeGroupIDFor("noop", "ns1", "vg-db")
+	fakeDriver.OnGetReplicationStatus(vgID).ReturnResult(fakedrv.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleSource,
+			Health: drivers.HealthDegraded,
+		},
+	})
+
+	registry := drivers.NewRegistry()
+	registry.RegisterDriver("noop", func() drivers.StorageProvider { return fakeDriver })
+
+	r := &DRExecutionReconciler{
+		WaveExecutor: &engine.WaveExecutor{Registry: registry},
+	}
+	plan := &soteriav1alpha1.DRPlan{
+		Spec: soteriav1alpha1.DRPlanSpec{
+			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
+		},
+		Status: soteriav1alpha1.DRPlanStatus{
+			Waves: []soteriav1alpha1.WaveInfo{
+				{Groups: []soteriav1alpha1.VolumeGroupInfo{
+					{Name: "vg-db", Namespace: "ns1"},
+				}},
+			},
+		},
+	}
+
+	healthy, err := r.checkSourceVRsHealthy(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if healthy {
+		t.Error("expected unhealthy when VG health is Degraded")
+	}
+}
+
+func TestCheckSourceVRsHealthy_Healthy_ReturnsTrue(t *testing.T) {
+	fakeDriver := fakedrv.New()
+	vgID := drivers.VolumeGroupIDFor("noop", "ns1", "vg-db")
+	fakeDriver.OnGetReplicationStatus(vgID).ReturnResult(fakedrv.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleSource,
+			Health: drivers.HealthHealthy,
+		},
+	})
+
+	registry := drivers.NewRegistry()
+	registry.RegisterDriver("noop", func() drivers.StorageProvider { return fakeDriver })
+
+	r := &DRExecutionReconciler{
+		WaveExecutor: &engine.WaveExecutor{Registry: registry},
+	}
+	plan := &soteriav1alpha1.DRPlan{
+		Spec: soteriav1alpha1.DRPlanSpec{
+			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
+		},
+		Status: soteriav1alpha1.DRPlanStatus{
+			Waves: []soteriav1alpha1.WaveInfo{
+				{Groups: []soteriav1alpha1.VolumeGroupInfo{
+					{Name: "vg-db", Namespace: "ns1"},
+				}},
+			},
+		},
+	}
+
+	healthy, err := r.checkSourceVRsHealthy(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !healthy {
+		t.Error("expected healthy when VG is RoleSource + HealthHealthy")
+	}
+}
+
+func TestCheckSourceVRsHealthy_NotFound_SkipsVG(t *testing.T) {
+	fakeDriver := fakedrv.New()
+	vgID := drivers.VolumeGroupIDFor("noop", "ns1", "vg-db")
+	fakeDriver.OnGetReplicationStatus(vgID).Return(drivers.ErrVolumeGroupNotFound)
+
+	registry := drivers.NewRegistry()
+	registry.RegisterDriver("noop", func() drivers.StorageProvider { return fakeDriver })
+
+	r := &DRExecutionReconciler{
+		WaveExecutor: &engine.WaveExecutor{Registry: registry},
+	}
+	plan := &soteriav1alpha1.DRPlan{
+		Spec: soteriav1alpha1.DRPlanSpec{
+			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
+		},
+		Status: soteriav1alpha1.DRPlanStatus{
+			Waves: []soteriav1alpha1.WaveInfo{
+				{Groups: []soteriav1alpha1.VolumeGroupInfo{
+					{Name: "vg-db", Namespace: "ns1"},
+				}},
+			},
+		},
+	}
+
+	healthy, err := r.checkSourceVRsHealthy(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !healthy {
+		t.Error("expected healthy when VG not found (skip)")
+	}
+}
+
 func TestVRStatusChangePredicate_FiltersCorrectly(t *testing.T) {
 	pred := vrStatusChangePredicate()
 

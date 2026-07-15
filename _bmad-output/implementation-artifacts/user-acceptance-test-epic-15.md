@@ -440,6 +440,31 @@ After deploying the two-sided reprotect fix (UAT-15.009) and Step 0 demotion fix
 | INFRA-15.003 | ScyllaDB symmetric seeds | — | **APPLIED** |
 | INFRA-15.004 | Log scanner conflict filter | — | **APPLIED** |
 | INFRA-15.005 | Pre-test infrastructure health guard | — | **APPLIED** |
+| INFRA-15.006 | ScyllaDB CA: cert-manager managed secret | — | **APPLIED** |
+| INFRA-15.007 | Pre-test stale resource cleanup guard | — | **APPLIED** |
+
+### INFRA-15.006: ScyllaDB CA — cert-manager managed secret (replaces manual ConfigMap)
+
+- **Problem:** The `scylladb-combined-ca` ConfigMap was created once during setup by concatenating two CA certs. When cert-manager rotated its CA, the ConfigMap went stale, causing TLS `EOF` errors on ScyllaDB connections after any controller redeployment.
+- **Root cause:** The ConfigMap is a static snapshot; Kubernetes does not auto-update ConfigMap contents when upstream secrets change.
+- **Fix:** Replaced the ConfigMap volume source with a secret-backed volume referencing `scylladb-serving-tls` (cert-manager managed). Kubernetes auto-updates secret-backed volumes when the secret changes.
+- **Files changed:**
+  - `hack/multisite/overlays/base/scylladb-tls-patch.yaml` — `combined-ca` volume: `configMap` → `secret`
+  - `hack/multisite/setup-scylladb.sh` — removed `create_combined_ca()`, replaced with `wait_for_ca_secret()`, updated STS patch
+
+### INFRA-15.007: Pre-test stale resource cleanup guard
+
+- **Problem:** Manual cleanup of left-over resources (stuck namespaces, orphaned PVs, stale VolumeAttachments, orphaned RBD images) was required before every test re-run.
+- **Fix:** Added `cleanupStaleTestResources()` guard to `BeforeSuite`, called after `verifyInfrastructureHealth()` and before namespace creation. The guard handles:
+  1. Cluster-scoped DR resources (DRPlans, DRExecutions, ShadowPVs) with finalizer stripping
+  2. Stuck test namespaces (strips VR/VGR/PVC finalizers to unblock Terminating state)
+  3. Stale VolumeAttachments referencing deleted PVs
+  4. Orphaned PVs (Released/Failed or stuck Terminating with test namespace ClaimRef)
+  5. Orphaned RBD mirror images (cross-references against live PVs to avoid touching ScyllaDB images)
+- **Safety:** RBD image cleanup builds a set of image names from all live PV CSI volume attributes. Only images not referenced by any PV are removed — ScyllaDB PVs in `mirrored-pool` are never touched.
+- **Files changed:**
+  - `test/multisite/helpers_test.go` — added `cleanupStaleTestResources()` and sub-functions
+  - `test/multisite/setup_test.go` — wired guard into `BeforeSuite`
 
 ## Next Steps
 

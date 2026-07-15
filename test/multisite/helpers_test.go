@@ -44,6 +44,321 @@ import (
 )
 
 // ---------------------------------------------------------------------------
+// Stale test resource cleanup guard
+// ---------------------------------------------------------------------------
+
+// cleanupStaleTestResources removes left-over resources from a previous test
+// run under normal (non-crash) conditions. It is called in BeforeSuite after
+// verifyInfrastructureHealth and before namespace creation.
+//
+// Cleanup order matters:
+//  1. Cluster-scoped DR resources (DRPlans, DRExecutions, ShadowPVs)
+//  2. Stuck test namespaces (strip finalizers on blocking sub-resources)
+//  3. Stale VolumeAttachments referencing deleted PVs
+//  4. Orphaned PersistentVolumes (Released/Failed or test-labeled)
+//  5. Orphaned RBD mirror images (not referenced by any live PV)
+func cleanupStaleTestResources() {
+	ctx := context.Background()
+	cleaned := false
+
+	for _, pair := range []struct {
+		name string
+		cl   client.Client
+	}{
+		{"east", eastClient},
+		{"west", westClient},
+	} {
+		if cleanupClusterScopedDRResources(ctx, pair.cl, pair.name) {
+			cleaned = true
+		}
+		if cleanupStaleNamespace(ctx, pair.cl, pair.name) {
+			cleaned = true
+		}
+		if cleanupStaleVolumeAttachments(pair.name) {
+			cleaned = true
+		}
+		if cleanupOrphanedPVs(ctx, pair.cl, pair.name) {
+			cleaned = true
+		}
+		if cleanupOrphanedRBDImages(ctx, pair.cl, pair.name) {
+			cleaned = true
+		}
+	}
+
+	if cleaned {
+		GinkgoWriter.Printf("  [guard] Stale test resources cleaned up\n")
+	} else {
+		GinkgoWriter.Printf("  [guard] No stale test resources found\n")
+	}
+}
+
+// cleanupClusterScopedDRResources deletes DRPlans, DRExecutions, and ShadowPVs,
+// stripping finalizers if they block deletion.
+func cleanupClusterScopedDRResources(ctx context.Context, cl client.Client, site string) bool {
+	cleaned := false
+
+	var plans soteriav1alpha1.DRPlanList
+	if err := cl.List(ctx, &plans); err == nil {
+		for i := range plans.Items {
+			GinkgoWriter.Printf("  [cleanup:%s] Deleting stale DRPlan %s\n", site, plans.Items[i].Name)
+			forceDelete(ctx, cl, &plans.Items[i])
+			cleaned = true
+		}
+	}
+
+	var execs soteriav1alpha1.DRExecutionList
+	if err := cl.List(ctx, &execs); err == nil {
+		for i := range execs.Items {
+			GinkgoWriter.Printf("  [cleanup:%s] Deleting stale DRExecution %s\n", site, execs.Items[i].Name)
+			forceDelete(ctx, cl, &execs.Items[i])
+			cleaned = true
+		}
+	}
+
+	var spvs soteriav1alpha1.ShadowPVList
+	if err := cl.List(ctx, &spvs); err == nil {
+		for i := range spvs.Items {
+			GinkgoWriter.Printf("  [cleanup:%s] Deleting stale ShadowPV %s\n", site, spvs.Items[i].Name)
+			forceDelete(ctx, cl, &spvs.Items[i])
+			cleaned = true
+		}
+	}
+
+	return cleaned
+}
+
+// forceDelete deletes an object and strips its finalizers if it gets stuck.
+func forceDelete(ctx context.Context, cl client.Client, obj client.Object) {
+	_ = cl.Delete(ctx, obj)
+
+	// Give the controller a moment to process the deletion.
+	time.Sleep(2 * time.Second)
+
+	fresh := obj.DeepCopyObject().(client.Object)
+	if err := cl.Get(ctx, client.ObjectKeyFromObject(obj), fresh); err != nil {
+		return
+	}
+	if fresh.GetDeletionTimestamp().IsZero() {
+		return
+	}
+	if len(fresh.GetFinalizers()) > 0 {
+		GinkgoWriter.Printf("  [cleanup] Stripping finalizers from %s %s\n",
+			fresh.GetObjectKind().GroupVersionKind().Kind, fresh.GetName())
+		fresh.SetFinalizers(nil)
+		_ = cl.Update(ctx, fresh)
+	}
+}
+
+// cleanupStaleNamespace handles a test namespace stuck in Terminating by
+// stripping finalizers on resources that block deletion.
+func cleanupStaleNamespace(ctx context.Context, cl client.Client, site string) bool {
+	var ns corev1.Namespace
+	if err := cl.Get(ctx, client.ObjectKey{Name: testNamespace}, &ns); err != nil {
+		return false
+	}
+	if ns.DeletionTimestamp.IsZero() && ns.Status.Phase != corev1.NamespaceTerminating {
+		// Namespace exists but is not stuck — delete it normally for a clean slate.
+		GinkgoWriter.Printf("  [cleanup:%s] Deleting existing namespace %s\n", site, testNamespace)
+		_ = cl.Delete(ctx, &ns)
+		waitForNamespaceDeletion(ctx, cl, site)
+		return true
+	}
+
+	GinkgoWriter.Printf("  [cleanup:%s] Namespace %s is stuck in Terminating, stripping finalizers\n",
+		site, testNamespace)
+
+	// VolumeReplication CRs are the most common blocker.
+	var vrList replicationv1alpha1.VolumeReplicationList
+	if err := cl.List(ctx, &vrList, client.InNamespace(testNamespace)); err == nil {
+		for i := range vrList.Items {
+			if len(vrList.Items[i].GetFinalizers()) > 0 {
+				vrList.Items[i].SetFinalizers(nil)
+				_ = cl.Update(ctx, &vrList.Items[i])
+			}
+		}
+	}
+
+	// VolumeGroupReplication CRs
+	stripFinalizersByShell(site, "volumegroupreplications.replication.storage.openshift.io")
+
+	// PVCs with protection finalizers
+	var pvcList corev1.PersistentVolumeClaimList
+	if err := cl.List(ctx, &pvcList, client.InNamespace(testNamespace)); err == nil {
+		for i := range pvcList.Items {
+			if len(pvcList.Items[i].GetFinalizers()) > 0 {
+				pvcList.Items[i].SetFinalizers(nil)
+				_ = cl.Update(ctx, &pvcList.Items[i])
+			}
+		}
+	}
+
+	waitForNamespaceDeletion(ctx, cl, site)
+	return true
+}
+
+func waitForNamespaceDeletion(ctx context.Context, cl client.Client, site string) {
+	Eventually(func(g Gomega) {
+		var ns corev1.Namespace
+		err := cl.Get(ctx, client.ObjectKey{Name: testNamespace}, &ns)
+		g.Expect(errors.IsNotFound(err)).To(BeTrue(),
+			"namespace %s on %s should be fully deleted", testNamespace, site)
+	}).WithTimeout(2 * time.Minute).WithPolling(3 * time.Second).Should(Succeed())
+}
+
+func stripFinalizersByShell(site, resourceType string) {
+	ctx := "--context=" + site
+	out := runOutput("kubectl", ctx, "-n", testNamespace, "get", resourceType,
+		"-o", "jsonpath={.items[*].metadata.name}")
+	names := strings.Fields(strings.TrimSpace(out))
+	for _, name := range names {
+		if name == "" {
+			continue
+		}
+		runOutput("kubectl", ctx, "-n", testNamespace, "patch", resourceType, name,
+			"--type=json", "-p", `[{"op":"remove","path":"/metadata/finalizers"}]`)
+	}
+}
+
+// cleanupStaleVolumeAttachments deletes VolumeAttachments whose referenced PV
+// no longer exists or is in a terminal state.
+func cleanupStaleVolumeAttachments(site string) bool {
+	ctxFlag := "--context=" + site
+	out := runOutput("kubectl", ctxFlag, "get", "volumeattachments",
+		"-o", "jsonpath={range .items[*]}{.metadata.name}={.spec.source.persistentVolumeName}\n{end}")
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	cleaned := false
+	for _, line := range lines {
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 || parts[0] == "" {
+			continue
+		}
+		vaName, pvName := parts[0], parts[1]
+		if pvName == "" {
+			continue
+		}
+		checkOut := runOutput("kubectl", ctxFlag, "get", "pv", pvName,
+			"--no-headers", "--ignore-not-found")
+		checkOut = strings.TrimSpace(checkOut)
+		pvGone := checkOut == ""
+		pvTerminal := strings.Contains(checkOut, "Released") ||
+			strings.Contains(checkOut, "Terminating") ||
+			strings.Contains(checkOut, "Failed")
+		if !pvGone && !pvTerminal {
+			continue
+		}
+		GinkgoWriter.Printf("  [cleanup:%s] Deleting stale VolumeAttachment %s (PV %s gone)\n",
+			site, vaName, pvName)
+		runOutput("kubectl", ctxFlag, "patch", "volumeattachment", vaName,
+			"--type=json", "-p", `[{"op":"remove","path":"/metadata/finalizers"}]`)
+		runOutput("kubectl", ctxFlag, "delete", "volumeattachment", vaName,
+			"--ignore-not-found", "--wait=false")
+		cleaned = true
+	}
+	return cleaned
+}
+
+// cleanupOrphanedPVs deletes PVs in Released/Failed state or stuck Terminating.
+func cleanupOrphanedPVs(ctx context.Context, cl client.Client, site string) bool {
+	var pvList corev1.PersistentVolumeList
+	if err := cl.List(ctx, &pvList); err != nil {
+		return false
+	}
+	cleaned := false
+	for i := range pvList.Items {
+		pv := &pvList.Items[i]
+		phase := pv.Status.Phase
+		isTestPV := pv.Spec.ClaimRef != nil && pv.Spec.ClaimRef.Namespace == testNamespace
+
+		if phase == corev1.VolumeReleased || phase == corev1.VolumeFailed {
+			if !isTestPV {
+				continue
+			}
+			GinkgoWriter.Printf("  [cleanup:%s] Deleting %s PV %s\n", site, phase, pv.Name)
+			forceDelete(ctx, cl, pv)
+			cleaned = true
+		} else if !pv.DeletionTimestamp.IsZero() && isTestPV {
+			GinkgoWriter.Printf("  [cleanup:%s] Force-deleting stuck PV %s\n", site, pv.Name)
+			forceDelete(ctx, cl, pv)
+			cleaned = true
+		}
+	}
+	return cleaned
+}
+
+// cleanupOrphanedRBDImages removes RBD images from mirrored-pool that are
+// not referenced by any live PV on the cluster. This handles images orphaned
+// when PVs are force-deleted (reclaimPolicy: Retain on west, or finalizer
+// stripping on either side).
+func cleanupOrphanedRBDImages(ctx context.Context, cl client.Client, site string) bool {
+	ctxFlag := "--context=" + site
+
+	// Build set of RBD image names referenced by live PVs.
+	livePVImages := make(map[string]bool)
+	var pvList corev1.PersistentVolumeList
+	if err := cl.List(ctx, &pvList); err == nil {
+		for _, pv := range pvList.Items {
+			if pv.Spec.CSI == nil {
+				continue
+			}
+			if imgName, ok := pv.Spec.CSI.VolumeAttributes["imageName"]; ok {
+				livePVImages[imgName] = true
+			}
+		}
+	}
+
+	// List all images in mirrored-pool.
+	out := runOutput("kubectl", ctxFlag, "-n", "rook-ceph",
+		"exec", "deploy/rook-ceph-tools", "--",
+		"rbd", "ls", "mirrored-pool")
+	images := strings.Split(strings.TrimSpace(out), "\n")
+	if len(images) == 0 || (len(images) == 1 && images[0] == "") {
+		return false
+	}
+
+	cleaned := false
+	for _, img := range images {
+		img = strings.TrimSpace(img)
+		if img == "" {
+			continue
+		}
+		if livePVImages[img] {
+			continue
+		}
+		GinkgoWriter.Printf("  [cleanup:%s] Removing orphaned RBD image %s\n", site, img)
+
+		// Disable mirroring first (required before removal of mirrored images).
+		runOutput("kubectl", ctxFlag, "-n", "rook-ceph",
+			"exec", "deploy/rook-ceph-tools", "--",
+			"rbd", "mirror", "image", "disable", "mirrored-pool/"+img, "--force")
+
+		// Purge snapshots.
+		runOutput("kubectl", ctxFlag, "-n", "rook-ceph",
+			"exec", "deploy/rook-ceph-tools", "--",
+			"rbd", "snap", "purge", "mirrored-pool/"+img)
+
+		// Remove the image.
+		rmOut := runOutput("kubectl", ctxFlag, "-n", "rook-ceph",
+			"exec", "deploy/rook-ceph-tools", "--",
+			"rbd", "rm", "mirrored-pool/"+img)
+		if strings.Contains(rmOut, "error") || strings.Contains(rmOut, "No such file") {
+			// Fallback: trash the image.
+			runOutput("kubectl", ctxFlag, "-n", "rook-ceph",
+				"exec", "deploy/rook-ceph-tools", "--",
+				"rbd", "trash", "mv", "mirrored-pool/"+img)
+		}
+		cleaned = true
+	}
+
+	// Purge the trash.
+	if cleaned {
+		runOutput("kubectl", ctxFlag, "-n", "rook-ceph",
+			"exec", "deploy/rook-ceph-tools", "--",
+			"rbd", "trash", "purge", "mirrored-pool")
+	}
+	return cleaned
+}
+
+// ---------------------------------------------------------------------------
 // Scenario definition
 // ---------------------------------------------------------------------------
 

@@ -358,43 +358,23 @@ wait_scylladb_ready() {
 }
 
 # ---------------------------------------------------------------------------
-# Helper: create combined CA trust bundle for mTLS
+# Helper: wait for cert-manager CA secret to be available
 # ---------------------------------------------------------------------------
-create_combined_ca() {
+wait_for_ca_secret() {
   local ctx="$1"
-  local CM_CA="" OP_CA=""
-  info "  ${ctx}: waiting for cert-manager and operator secrets..."
+  info "  ${ctx}: waiting for cert-manager CA secret (scylladb-serving-tls)..."
   for _ in $(seq 1 60); do
     local raw_ca
     raw_ca=$(kubectl --context "${ctx}" -n "${NAMESPACE}" \
       get secret scylladb-serving-tls -o jsonpath='{.data.ca\.crt}' 2>/dev/null) || true
     if [[ -n "${raw_ca}" ]]; then
-      CM_CA=$(echo "${raw_ca}" | base64 -d 2>/dev/null) || true
-    fi
-    OP_CA=$(kubectl --context "${ctx}" -n "${NAMESPACE}" \
-      get configmap soteria-scylladb-local-client-ca \
-      -o jsonpath='{.data.ca-bundle\.crt}' 2>/dev/null) || true
-    if [[ -n "${CM_CA}" && -n "${OP_CA}" ]]; then
-      break
+      info "  ${ctx}: cert-manager CA secret available"
+      return 0
     fi
     sleep 5
   done
-  if [[ -z "${CM_CA}" || -z "${OP_CA}" ]]; then
-    warn "  ${ctx}: could not build combined CA (cert-manager or operator secret missing)"
-    return 1
-  fi
-  kubectl --context "${ctx}" -n "${NAMESPACE}" apply -f - <<CAEOF
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: scylladb-combined-ca
-  namespace: ${NAMESPACE}
-data:
-  ca-bundle.crt: |
-$(echo "${CM_CA}" | sed 's/^/    /')
-$(echo "${OP_CA}" | sed 's/^/    /')
-CAEOF
-  info "  ${ctx}: combined CA ConfigMap created"
+  warn "  ${ctx}: cert-manager CA secret not found after 5 minutes"
+  return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -451,7 +431,7 @@ patch_scylladb_sts() {
   kubectl --context "${ctx}" -n "${NAMESPACE}" patch "${STS}" --type=json -p "[
     {\"op\":\"add\",\"path\":\"/spec/template/spec/volumes/-\",\"value\":{\"name\":\"certmanager-serving\",\"secret\":{\"secretName\":\"scylladb-serving-tls\"}}},
     {\"op\":\"add\",\"path\":\"/spec/template/spec/volumes/-\",\"value\":{\"name\":\"certmanager-ca\",\"secret\":{\"secretName\":\"scylladb-serving-tls\",\"items\":[{\"key\":\"ca.crt\",\"path\":\"ca-bundle.crt\"}]}}},
-    {\"op\":\"add\",\"path\":\"/spec/template/spec/volumes/-\",\"value\":{\"name\":\"combined-ca\",\"configMap\":{\"name\":\"scylladb-combined-ca\"}}}
+    {\"op\":\"add\",\"path\":\"/spec/template/spec/volumes/-\",\"value\":{\"name\":\"combined-ca\",\"secret\":{\"secretName\":\"scylladb-serving-tls\",\"items\":[{\"key\":\"ca.crt\",\"path\":\"ca-bundle.crt\"}]}}}
   ]"
   kubectl --context "${ctx}" -n "${NAMESPACE}" patch "${STS}" --type=json -p "[
     {\"op\":\"add\",\"path\":\"/spec/template/spec/containers/${SCYLLA_IDX}/volumeMounts/-\",\"value\":{\"name\":\"certmanager-serving\",\"mountPath\":\"/etc/scylla/certmanager-tls\",\"readOnly\":true}},
@@ -474,9 +454,9 @@ kubectl --context "${EAST_CONTEXT}" apply --server-side --force-conflicts \
   -k "${OVERLAYS_DIR}/east"
 
 # ---------------------------------------------------------------------------
-# Task 4.8-4.9: Combined CA + wait for east readiness
+# Task 4.8-4.9: CA secret + wait for east readiness
 # ---------------------------------------------------------------------------
-create_combined_ca "${EAST_CONTEXT}"
+wait_for_ca_secret "${EAST_CONTEXT}"
 wait_scylladb_ready "${EAST_CONTEXT}" || fatal "East ScyllaDB did not become ready"
 
 # ---------------------------------------------------------------------------
@@ -496,9 +476,9 @@ kubectl --context "${WEST_CONTEXT}" apply --server-side --force-conflicts \
   -k "${OVERLAYS_DIR}/west"
 
 # ---------------------------------------------------------------------------
-# Task 4.12: Combined CA + wait for west readiness
+# Task 4.12: CA secret + wait for west readiness
 # ---------------------------------------------------------------------------
-create_combined_ca "${WEST_CONTEXT}"
+wait_for_ca_secret "${WEST_CONTEXT}"
 wait_scylladb_ready "${WEST_CONTEXT}" || fatal "West ScyllaDB did not become ready"
 
 # ---------------------------------------------------------------------------

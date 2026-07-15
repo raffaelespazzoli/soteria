@@ -29,6 +29,7 @@ const mockUseDRExecutions = jest.fn();
 
 jest.mock('../../src/hooks/useDRResources', () => ({
   useDRExecutions: () => mockUseDRExecutions(),
+  useDRPlan: () => [undefined, false, null],
 }));
 
 const now = Date.now();

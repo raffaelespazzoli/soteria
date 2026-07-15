@@ -104,8 +104,7 @@ describe('getPreflightData', () => {
 
     it('generates correct summary for reprotect', () => {
       const data = getPreflightData(makePlan(), 'reprotect', []);
-      expect(data.actionSummary).toContain('Demote volumes');
-      expect(data.actionSummary).toContain('replication resync');
+      expect(data.actionSummary).toContain('Ensure that replication is re-established');
     });
 
     it('generates correct summary for failback with Step 0 framing', () => {
@@ -117,8 +116,7 @@ describe('getPreflightData', () => {
 
     it('generates correct summary for restore', () => {
       const data = getPreflightData(makePlan(), 'restore', []);
-      expect(data.actionSummary).toContain('Demote volumes');
-      expect(data.actionSummary).toContain('replication resync');
+      expect(data.actionSummary).toContain('Ensure that replication is re-established');
     });
   });
 

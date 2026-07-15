@@ -18,8 +18,11 @@
           - key: ca.crt
             path: ca-bundle.crt
     - name: combined-ca
-      configMap:
-        name: scylladb-combined-ca
+      secret:
+        secretName: scylladb-serving-tls
+        items:
+          - key: ca.crt
+            path: ca-bundle.crt
 - op: add
   path: /spec/datacenter/racks/0/volumeMounts
   value:

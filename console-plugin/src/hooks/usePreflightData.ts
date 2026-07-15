@@ -37,12 +37,12 @@ function getActionSummary(
     case 'planned_migration':
       return `Step 0: Stop VMs on ${activeSite} → wait for final replication sync → promote volumes on ${secondarySite} → start VMs wave by wave`;
     case 'reprotect':
-      return 'Demote volumes on old active site, initiate replication resync, monitor until healthy';
+      return `Ensure that replication is re-established to ${activeSite === primarySite ? secondarySite : primarySite}`;
     case 'failback':
     case 'planned_failback':
       return `Step 0: Stop VMs on ${activeSite} → wait for final replication sync → promote volumes on ${primarySite} → start VMs wave by wave`;
     case 'restore':
-      return 'Demote volumes on old active site, initiate replication resync, monitor until healthy';
+      return `Ensure that replication is re-established to ${activeSite === primarySite ? secondarySite : primarySite}`;
     default:
       return '';
   }

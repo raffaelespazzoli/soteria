@@ -91,6 +91,9 @@ var _ = BeforeSuite(func() {
 	By("verifying infrastructure health")
 	verifyInfrastructureHealth()
 
+	By("cleaning up stale test resources from previous runs")
+	cleanupStaleTestResources()
+
 	createNamespaceIfNeeded(eastClient)
 	createNamespaceIfNeeded(westClient)
 })

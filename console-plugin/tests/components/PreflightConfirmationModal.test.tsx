@@ -26,7 +26,7 @@ const mockPlannedMigrationData: PreflightData = {
 const mockReprotectData: PreflightData = {
   ...mockFailoverData,
   actionSummary:
-    'Demote volumes on old active site, initiate replication resync, monitor until healthy',
+    'Ensure that replication is re-established to dc2-prod',
 };
 
 const mockFailbackData: PreflightData = {

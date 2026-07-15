@@ -1600,11 +1600,16 @@ func (r *DRExecutionReconciler) dispatchByRole(
 }
 
 // reconcileReprotectPassive runs on the inactive site during reprotect.
-// It ensures local VRs are in the correct secondary role (demoting stale
-// primaries after disaster) and verifies replication health. After planned
-// migration the VRs are already secondary, so this is a no-op verification.
+// It ensures local VRs are in the correct secondary role and verifies
+// replication health.
+//
+// After planned migration the VRs are already secondary and receiving
+// replication from the new primary — this is typically a no-op that just
+// confirms health.
+//
 // After disaster recovery the VRs may still be in a stale primary state
-// because the site was down during failover; this function demotes them.
+// because the site was down during failover; this function demotes them
+// to secondary and then waits for replication health.
 func (r *DRExecutionReconciler) reconcileReprotectPassive(
 	ctx context.Context,
 	exec *soteriav1alpha1.DRExecution,
@@ -1647,7 +1652,7 @@ func (r *DRExecutionReconciler) reconcileReprotectPassive(
 		switch status.Role {
 		case drivers.RoleTarget:
 			if status.Health != drivers.HealthHealthy {
-				logger.Info("VG is secondary but not yet healthy",
+				logger.Info("VG is secondary, waiting for healthy replication",
 					"vg", vg.Info.Name, "health", status.Health)
 				allHealthy = false
 			} else {
@@ -1689,8 +1694,10 @@ func (r *DRExecutionReconciler) reconcileReprotectPassive(
 //     local primary VRs so the mirroring daemon creates a final snapshot)
 //     → returns ErrResyncRequested
 //  2. Set VMsStopped condition (signals target site to call ResyncVolume)
-//  3. On re-reconcile, VMsStopped gate routes to reconcileStep0ResyncGate which
-//     waits for ResyncComplete (set by target site), then sets Step0Complete
+//  3. On re-reconcile, VMsStopped gate routes to reconcileStep0ResyncGate
+//     which waits for ResyncComplete (set by target site), then sets
+//     Step0Complete. No additional StopReplication is needed — VRs were
+//     already demoted in step 1.
 //
 // This method is idempotent — if Step0Complete is already set, it returns
 // immediately without touching the DRExecution again.
@@ -1722,6 +1729,36 @@ func (r *DRExecutionReconciler) reconcileStep0(
 	}
 
 	logger.Info("Running Step 0 (source site planned migration)")
+
+	// Pre-flight health gate: before stopping VMs and demoting VRs, verify
+	// that all source VRs are healthy. After a reprotect direction change
+	// the mirroring daemon needs time to stabilise the new sync direction.
+	// Starting StopReplication on unhealthy/degraded VRs causes the target
+	// secondary to attempt a resync with no usable primary snapshot, leading
+	// to indefinite resync hangs.
+	if healthy, err := r.checkSourceVRsHealthy(ctx, plan); err != nil {
+		logger.Error(err, "Source VR health check failed, will retry")
+		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+	} else if !healthy {
+		resyncTimeout := defaultResyncTimeout
+		if plan.Spec.ResyncTimeout != nil {
+			resyncTimeout = plan.Spec.ResyncTimeout.Duration
+		}
+		if localStatus.LastUpdated != nil && time.Since(localStatus.LastUpdated.Time) > resyncTimeout {
+			logger.Info("Source VR health gate timed out, proceeding with Step 0 anyway",
+				"timeout", resyncTimeout)
+		} else {
+			if localStatus.LastUpdated == nil {
+				execPatch := client.MergeFrom(exec.DeepCopy())
+				setSiteStatus(exec, r.LocalSite, localStatus)
+				if err := r.Status().Patch(ctx, exec, execPatch); err != nil {
+					logger.Error(err, "Failed to set health gate timestamp")
+					return ctrl.Result{}, err
+				}
+			}
+			return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
+		}
+	}
 
 	// Multi-site source uses SkipResync=true: PreExecute only stops VMs,
 	// the target site calls ResyncVolume on its own local VR/VGR CRs.
@@ -1842,35 +1879,11 @@ func (r *DRExecutionReconciler) reconcileStep0ResyncGate(
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 
-	logger.Info("Resync complete, calling StopReplication on local primary VRs")
+	logger.Info("Resync complete on target site, setting Step0Complete")
 
-	// StopReplication on source VGs.
-	if r.WaveExecutor != nil {
-		allGroups, err := r.WaveExecutor.BuildExecutionGroups(ctx, plan)
-		if err != nil {
-			logger.Error(err, "Failed to build execution groups for StopReplication")
-			return ctrl.Result{}, err
-		}
-
-		type vgKey struct{ name, namespace string }
-		seenVG := make(map[vgKey]bool)
-		for _, g := range allGroups {
-			for _, vg := range g.Chunk.VolumeGroups {
-				k := vgKey{name: vg.Name, namespace: vg.Namespace}
-				if seenVG[k] {
-					continue
-				}
-				seenVG[k] = true
-
-				driver := g.DriverForVG(vg.Name)
-				vgID := drivers.VolumeGroupIDFor(g.DriverType, vg.Namespace, vg.Name)
-				if err := driver.StopReplication(ctx, vgID); err != nil {
-					logger.Error(err, "StopReplication failed", "volumeGroup", vg.Name)
-					return ctrl.Result{}, fmt.Errorf("demoting volume group %s: %w", vg.Name, err)
-				}
-			}
-		}
-	}
+	// StopReplication was already called in PreExecute (SkipResync=true path)
+	// which demoted local VRs from primary to secondary. No need to call it
+	// again — proceed directly to Step0Complete.
 
 	// Set Step0Complete in this site's coordination status.
 	execPatch := client.MergeFrom(exec.DeepCopy())
@@ -1882,9 +1895,9 @@ func (r *DRExecutionReconciler) reconcileStep0ResyncGate(
 	}
 
 	r.event(exec, corev1.EventTypeNormal, "Step0Completed", "PlannedMigration",
-		fmt.Sprintf("Source site Step 0 completed for plan %s (resync + StopReplication)", plan.Name))
+		fmt.Sprintf("Source site Step 0 completed for plan %s", plan.Name))
 
-	logger.Info("Step 0 completed (resync + StopReplication), source site work is done")
+	logger.Info("Step 0 completed, source site work is done")
 	return ctrl.Result{}, nil
 }
 
@@ -1893,9 +1906,8 @@ func (r *DRExecutionReconciler) reconcileStep0ResyncGate(
 // siteStatuses[otherSite] (source has stopped VMs), then calls ResyncVolume
 // on its LOCAL secondary VR/VGR CRs. After resync completes, it sets
 // ResyncComplete in siteStatuses[localSite] so the source site can proceed
-// to StopReplication and Step0Complete. The target site then waits for
-// Step0Complete from siteStatuses[otherSite] before proceeding with wave
-// execution.
+// to Step0Complete. The target site then waits for Step0Complete from
+// siteStatuses[otherSite] before proceeding with wave execution.
 func (r *DRExecutionReconciler) reconcileTargetSiteResyncGate(
 	ctx context.Context, exec *soteriav1alpha1.DRExecution, plan *soteriav1alpha1.DRPlan,
 ) (ctrl.Result, error) {
@@ -2138,6 +2150,59 @@ func (r *DRExecutionReconciler) checkResyncComplete(
 			// (Secondary) AND health=Healthy. Any other state (Source role,
 			// Syncing, Degraded, Unknown) means resync is not yet confirmed.
 			if status.Role != drivers.RoleTarget || status.Health != drivers.HealthHealthy {
+				return false, nil
+			}
+		}
+	}
+
+	return true, nil
+}
+
+// checkSourceVRsHealthy verifies that all source (primary) VRs are healthy
+// before Step 0 proceeds. Returns true when every VG in plan.Status.Waves is
+// either RoleSource+HealthHealthy, RoleNonReplicated, or not found. Returns
+// false when any VG has a degraded, syncing, or unknown health state.
+// This prevents Step 0 from demoting VRs that haven't yet established a
+// stable replication direction after a reprotect.
+func (r *DRExecutionReconciler) checkSourceVRsHealthy(
+	ctx context.Context, plan *soteriav1alpha1.DRPlan,
+) (bool, error) {
+	if r.WaveExecutor == nil || len(plan.Status.Waves) == 0 {
+		return true, nil
+	}
+
+	logger := log.FromContext(ctx)
+	driverType := plan.Spec.VolumeReplicationDriver.Type
+
+	seen := make(map[string]bool)
+	for _, wave := range plan.Status.Waves {
+		for _, vg := range wave.Groups {
+			key := vg.Namespace + "/" + vg.Name
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+
+			drv, err := r.WaveExecutor.ResolveVGDriver(ctx, driverType)
+			if err != nil {
+				return false, fmt.Errorf("resolving driver for VG %s: %w", vg.Name, err)
+			}
+
+			vgID := drivers.VolumeGroupIDFor(driverType, vg.Namespace, vg.Name)
+			status, err := drv.GetReplicationStatus(ctx, vgID)
+			if err != nil {
+				if errors.Is(err, drivers.ErrVolumeGroupNotFound) {
+					continue
+				}
+				return false, fmt.Errorf("checking source VR health for VG %s: %w", vg.Name, err)
+			}
+
+			if status.Role == drivers.RoleNonReplicated {
+				continue
+			}
+			if status.Role != drivers.RoleSource || status.Health != drivers.HealthHealthy {
+				logger.Info("Source VR not yet healthy, waiting for replication to stabilise",
+					"volumeGroup", vg.Name, "role", status.Role, "health", status.Health)
 				return false, nil
 			}
 		}

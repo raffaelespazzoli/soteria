@@ -211,6 +211,14 @@ export interface DRExecutionSpec {
   mode: DRExecutionMode;
 }
 
+export interface SiteCoordinationStatus {
+  vmsStopped?: boolean;
+  step0Complete?: boolean;
+  resyncPending?: boolean;
+  resyncComplete?: boolean;
+  lastUpdated?: string;
+}
+
 export interface DRExecutionStatus {
   phase?: DRExecutionPhase;
   isActive: boolean;
@@ -219,6 +227,7 @@ export interface DRExecutionStatus {
   startTime?: string;
   completionTime?: string;
   conditions?: Condition[];
+  siteStatuses?: Record<string, SiteCoordinationStatus>;
 }
 
 export interface WaveStatus {
