@@ -71,6 +71,52 @@ const mockActive: DRExecution = {
   },
 };
 
+const mockReprotectSucceeded: DRExecution = {
+  apiVersion: 'soteria.io/v1alpha1',
+  kind: 'DRExecution',
+  metadata: { name: 'test-reprotect', uid: '4' },
+  spec: { planName: 'erp-full-stack', mode: 'reprotect' },
+  status: {
+    isActive: false,
+    phase: 'Succeeded',
+    result: 'Succeeded',
+    startTime: new Date(now - 41 * 1000).toISOString(),
+    completionTime: new Date(now).toISOString(),
+    conditions: [
+      {
+        type: 'ReprotectPhase',
+        status: 'True',
+        reason: 'Complete',
+        message: 'Role setup: 6/6, healthy: 6/6',
+        lastTransitionTime: new Date(now).toISOString(),
+      },
+    ],
+  },
+};
+
+const mockReprotectFailed: DRExecution = {
+  apiVersion: 'soteria.io/v1alpha1',
+  kind: 'DRExecution',
+  metadata: { name: 'test-reprotect-fail', uid: '5' },
+  spec: { planName: 'erp-full-stack', mode: 'reprotect' },
+  status: {
+    isActive: false,
+    phase: 'Failed',
+    result: 'Failed',
+    startTime: new Date(now - 120 * 1000).toISOString(),
+    completionTime: new Date(now).toISOString(),
+    conditions: [
+      {
+        type: 'ReprotectPhase',
+        status: 'False',
+        reason: 'RoleSetupFailed',
+        message: 'Role setup: 4/6, healthy: 4/6',
+        lastTransitionTime: new Date(now).toISOString(),
+      },
+    ],
+  },
+};
+
 describe('ExecutionSummary', () => {
   it('renders VM count and duration for succeeded execution', () => {
     render(<ExecutionSummary execution={mockSucceeded} />);
@@ -115,6 +161,23 @@ describe('ExecutionSummary', () => {
 
   it('passes jest-axe (active — empty render)', async () => {
     const { container } = render(<ExecutionSummary execution={mockActive} />);
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it('renders reprotect summary for succeeded reprotect execution', () => {
+    render(<ExecutionSummary execution={mockReprotectSucceeded} />);
+    expect(screen.getByText(/Replication re-protected in/)).toBeInTheDocument();
+    expect(screen.getByText(/Role setup: 6\/6, healthy: 6\/6/)).toBeInTheDocument();
+  });
+
+  it('renders failure message for failed reprotect execution', () => {
+    render(<ExecutionSummary execution={mockReprotectFailed} />);
+    expect(screen.getByText(/Re-protect failed/)).toBeInTheDocument();
+    expect(screen.getByText(/Role setup: 4\/6, healthy: 4\/6/)).toBeInTheDocument();
+  });
+
+  it('passes jest-axe (reprotect succeeded)', async () => {
+    const { container } = render(<ExecutionSummary execution={mockReprotectSucceeded} />);
     expect(await axe(container)).toHaveNoViolations();
   });
 });

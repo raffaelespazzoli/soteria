@@ -398,7 +398,50 @@ After deploying the two-sided reprotect fix (UAT-15.009) and Step 0 demotion fix
 - **Root Cause:** Both sites write coordination signals to the same `status.Conditions` array. JSON Merge Patch replaces the entire array on each write. With ScyllaDB LWW, concurrent writes from different sites within the same second result in one write being silently discarded.
 - **Evidence:** Post-failure inspection of the DRExecution on east showed `conditions=[Progressing, VMsStopped, ResyncComplete]` — exactly west's write result, with east's `Step0Complete` absent despite east logging successful completion.
 - **Fix:** Story 15.10 — Split coordination signals into site-owned `SiteStatuses` map keyed by site name. Each controller writes only to `siteStatuses[localSite]`, reading from `siteStatuses[otherSite]`. Different JSON paths eliminate LWW conflicts.
-- **Status:** **OPEN** — Story 15.10 written, implementation pending.
+- **Status:** **RESOLVED** — Story 15.10 implemented and validated in Run 8.
+
+---
+
+### Run 8 — Full Planned-Snapshot Lifecycle (2026-07-17)
+
+After deploying Stories 15.10 (site-owned `SiteStatuses` map) and 15.11 (remove ResyncVolume from planned migration), a fresh test scenario was deployed manually and all 4 transitions were run sequentially via the console UI.
+
+**Scenario:** `ps-app` — 6 VMs (wave 1: `ps-db`, wave 2: `ps-appserver-1/2`, wave 3: `ps-webserver-1/2/3`), `rook-ceph-block` StorageClass, `rook-ceph-rbd-vrc-snapshot` VRC, `csi-extension` driver.
+
+**Convergence:** PASS — DRPlan converged to all conditions healthy (Ready, SitesInSync, DisksConsistent, ReplicationHealthy). ShadowPV pipeline created 6 PVs on west. VRs: 6 Primary on east, 6 Secondary on west. RBD mirroring: 6 images replaying.
+
+**Results:**
+
+| Transition | Execution Name | Mode | Result | Duration |
+|------------|---------------|------|--------|----------|
+| T1 | `ps-app-planned-migration-1784268980811` | planned_migration | Succeeded | 1m54s |
+| T2 | `ps-app-reprotect-1784270079652` | reprotect | Succeeded | 41s |
+| T3 | `ps-app-planned-failback-1784270481398` | planned_migration | Succeeded | 1m52s |
+| T4 | `ps-app-restore-1784270629531` | reprotect | Succeeded | 45s |
+
+**Post-T4 state:** DRPlan back to `SteadyState`, `activeSite=east`. East VRs: 6 Primary, all VMs Running. West VRs: 6 Secondary, all VMs Stopped. Full lifecycle round-trip confirmed.
+
+**Key observations:**
+- Story 15.10 (site-owned SiteStatuses) eliminated the UAT-15.011 LWW race — T1 completed cleanly without Step0Complete being overwritten.
+- Story 15.11 simplified planned migration by removing ResyncVolume, relying on Step 0 demotion (StopReplication) for final snapshot.
+- T1/T3 durations (~1m52-54s) consistent across both directions.
+- T2/T4 reprotect durations (~41-45s) consistent and fast.
+
+#### UAT-15.012 — SiteCoordinationPanel Shows Spinners After Completion
+
+- **Severity:** Minor (cosmetic)
+- **Description:** After T1 completed, the execution detail page showed two spinning wheels for "Demoting Volumes" and "Promoting Volumes" even though both steps were done. Root cause: `ExecutionDetailPage` derives `sourceSite`/`targetSite` from the DRPlan's current `activeSite`, which flips after migration. After T1 (east→west), `activeSite=west`, so the panel looked up `siteStatuses["west"]` for source (expected `demotionComplete`) and `siteStatuses["east"]` for target (expected `step0Complete`) — both undefined because the actual source was east.
+- **Fix:** Changed the `SiteCoordinationPanel` guard to not render for terminal executions (`!execution.status?.isActive`). The panel is a real-time coordination progress indicator; completed executions have the wave stepper and summary section for review.
+- **Files Changed:** `console-plugin/src/components/ExecutionDetail/SiteCoordinationPanel.tsx`, `console-plugin/tests/components/SiteCoordinationPanel.test.tsx`
+- **Status:** **RESOLVED**
+
+#### UAT-15.013 — ExecutionSummary Shows "0 VMs Recovered" for Reprotect
+
+- **Severity:** Minor (cosmetic)
+- **Description:** After T2 reprotect completed, the execution summary panel showed "0 VMs recovered in 41s". Root cause: the `ExecutionSummary` component counts VMs from `status.waves`, but reprotect executions have no waves — the work is at the volume group level. The "VMs recovered" language is also semantically wrong for reprotect (no VMs are recovered; replication protection is re-established).
+- **Fix:** Made `ExecutionSummary` mode-aware. For reprotect executions, the summary now shows "Replication re-protected in {duration} ({ReprotectPhase condition message})" instead of "0 VMs recovered".
+- **Files Changed:** `console-plugin/src/components/ExecutionDetail/ExecutionSummary.tsx`, `console-plugin/tests/components/ExecutionSummary.test.tsx`
+- **Status:** **RESOLVED**
 
 ---
 
@@ -406,11 +449,11 @@ After deploying the two-sided reprotect fix (UAT-15.009) and Step 0 demotion fix
 
 **Convergence test (Test 1):** PASS — DRPlan converges to healthy state via ShadowPV pipeline.
 
-**Planned-snapshot lifecycle (Test 2):**
-- T1 (planned migration east→west): PASS (when LWW race doesn't occur) / FAIL (intermittent UAT-15.011)
-- T2 (reprotect on west): PASS — two-sided reprotect confirmed working (50s)
-- T3 (planned migration west→east): PASS (execution succeeds, VM scheduling can be slow)
-- T4 (reprotect on east): Not yet validated (T3 VM scheduling timeout in Run 7a)
+**Planned-snapshot lifecycle (Test 2):** **PASS** — Full 4-transition lifecycle (T1→T2→T3→T4) completed successfully in Run 8.
+- T1 (planned migration east→west): PASS (1m54s)
+- T2 (reprotect on west): PASS (41s)
+- T3 (planned migration west→east): PASS (1m52s)
+- T4 (reprotect on east): PASS (45s)
 
 **Planned-journal lifecycle (Test 3):** Not yet attempted.
 
@@ -434,7 +477,9 @@ After deploying the two-sided reprotect fix (UAT-15.009) and Step 0 demotion fix
 | UAT-15.008 | DRPlan reports healthy before target site VRs exist | Critical | **RESOLVED** (test fix) |
 | UAT-15.009 | Reprotect handler demotes active site's primary VRs | Critical | **RESOLVED** (two-sided reprotect) |
 | UAT-15.010 | Source site must demote VRs in Step 0 | Critical | **RESOLVED** |
-| UAT-15.011 | ScyllaDB LWW race overwrites Step0Complete | Critical | **OPEN** — Story 15.10 |
+| UAT-15.011 | ScyllaDB LWW race overwrites Step0Complete | Critical | **RESOLVED** — Story 15.10 |
+| UAT-15.012 | SiteCoordinationPanel spinners after completion | Minor | **RESOLVED** (console fix) |
+| UAT-15.013 | ExecutionSummary "0 VMs recovered" for reprotect | Minor | **RESOLVED** (console fix) |
 | INFRA-15.001 | Worker node memory increase | — | **APPLIED** |
 | INFRA-15.002 | RBD NBD mounter for journal mirroring | — | **APPLIED** |
 | INFRA-15.003 | ScyllaDB symmetric seeds | — | **APPLIED** |
@@ -468,7 +513,8 @@ After deploying the two-sided reprotect fix (UAT-15.009) and Step 0 demotion fix
 
 ## Next Steps
 
-1. Implement Story 15.10 (site-owned coordination status) to fix UAT-15.011.
-2. Build, deploy, and run planned-snapshot full lifecycle (T1–T4).
+1. ~~Implement Story 15.10 (site-owned coordination status) to fix UAT-15.011.~~ **DONE**
+2. ~~Build, deploy, and run planned-snapshot full lifecycle (T1–T4).~~ **DONE** (Run 8)
 3. Proceed to Tests 3-5 (planned-journal, disaster-snapshot, disaster-journal).
 4. Validate per-transition assertions (Duration, Phase, conditions) and real-storage assertions (lastSyncTime on VR CRs).
+5. Run automated e2e test suite (`test/multisite/`) against the same environment.

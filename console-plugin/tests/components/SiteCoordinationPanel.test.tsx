@@ -126,6 +126,31 @@ describe('SiteCoordinationPanel', () => {
     expect(container.innerHTML).toBe('');
   });
 
+  it('returns null for terminal execution (isActive=false)', () => {
+    const exec: DRExecution = {
+      apiVersion: 'soteria.io/v1alpha1',
+      kind: 'DRExecution',
+      metadata: { name: 'done-exec', uid: '4' },
+      spec: { planName: 'test-plan', mode: 'planned_migration' },
+      status: {
+        isActive: false,
+        phase: 'Succeeded',
+        result: 'Succeeded',
+        siteStatuses: {
+          east: { demotionComplete: true },
+          west: { step0Complete: true },
+        },
+        waves: [{ waveIndex: 0, groups: [] }],
+      },
+    };
+
+    const { container } = render(
+      <SiteCoordinationPanel execution={exec} sourceSite="west" targetSite="east" />,
+    );
+
+    expect(container.innerHTML).toBe('');
+  });
+
   it('has no accessibility violations', async () => {
     const exec = makePlannedExecution({
       east: { demotionComplete: true },

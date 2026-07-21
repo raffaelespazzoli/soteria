@@ -520,7 +520,7 @@ else
   if [[ -n "${EAST_POD}" ]]; then
     info "Waiting for multi-DC cluster convergence (${EXPECTED_NODES} UN nodes)..."
     CONVERGED=false
-    for i in $(seq 1 60); do
+    for i in $(seq 1 120); do
       node_count=$(keast -n "${NAMESPACE}" \
         exec "${EAST_POD}" -c scylla -- nodetool status 2>/dev/null \
         | grep -c "^UN" || true)
@@ -534,13 +534,15 @@ else
         CONVERGED=true
         break
       fi
-      if [[ ${i} -eq 60 ]]; then
-        keast -n "${NAMESPACE}" \
-          exec "${EAST_POD}" -c scylla -- nodetool status 2>/dev/null || true
+      if (( i % 12 == 0 )); then
+        info "  Attempt ${i}/120: ${node_count} UN node(s) so far (waiting for ${EXPECTED_NODES})..."
       fi
       sleep 5
     done
     if [[ "${CONVERGED}" != "true" ]]; then
+      error "Final nodetool status output:"
+      keast -n "${NAMESPACE}" \
+        exec "${EAST_POD}" -c scylla -- nodetool status 2>/dev/null || true
       fatal "Multi-DC convergence failed — only ${node_count} UN nodes detected (expected >=${EXPECTED_NODES})"
     fi
 

@@ -137,7 +137,7 @@ const SiteCoordinationPanel: React.FC<SiteCoordinationPanelProps> = ({
   const siteStatuses = execution.status?.siteStatuses;
 
   if (mode === ExecutionMode.Disaster) return null;
-  if (!siteStatuses && !execution.status?.isActive) return null;
+  if (!execution.status?.isActive) return null;
 
   const sourceStatus = siteStatuses?.[sourceSite];
   const targetStatus = siteStatuses?.[targetSite];

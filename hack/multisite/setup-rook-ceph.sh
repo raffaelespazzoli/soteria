@@ -425,6 +425,113 @@ exchange_peer_secrets() {
   info "Peer secrets exchanged"
 }
 
+cleanup_stale_smoke_test() {
+  local test_ns="rook-ceph-test"
+  local needs_cleanup=false
+
+  if keast get ns "${test_ns}" >/dev/null 2>&1 || kwest get ns "${test_ns}" >/dev/null 2>&1; then
+    needs_cleanup=true
+  fi
+
+  # Check for orphaned PVs that reference the smoke-test namespace.  These
+  # survive namespace deletion when the PV has Retain reclaim policy, and can
+  # capture unrelated PVCs (same StorageClass) on subsequent runs.
+  for ctx in "${EAST_CONTEXT}" "${WEST_CONTEXT}"; do
+    local orphan_pvs
+    orphan_pvs="$(kubectl --context "${ctx}" get pv -o json 2>/dev/null \
+      | jq -r '.items[] | select(.spec.claimRef.namespace=="'"${test_ns}"'") | .metadata.name' 2>/dev/null)" || true
+    if [[ -n "${orphan_pvs}" ]]; then
+      needs_cleanup=true
+    fi
+  done
+
+  # Also check for orphaned mirror images (RBD images persist at the Ceph level
+  # even after K8s resources are deleted, especially on the secondary/west side).
+  for ctx in "${EAST_CONTEXT}" "${WEST_CONTEXT}"; do
+    local toolbox
+    toolbox=$(kubectl --context "${ctx}" -n rook-ceph get pod -l app=rook-ceph-tools \
+      -o jsonpath='{.items[0].metadata.name}' 2>/dev/null) || true
+    if [[ -n "${toolbox}" ]]; then
+      local img_health
+      img_health=$(kubectl --context "${ctx}" -n rook-ceph exec "${toolbox}" -- \
+        rbd mirror pool status mirrored-pool 2>/dev/null | grep "image health:" | awk '{print $NF}') || true
+      if [[ "${img_health}" == "ERROR" ]]; then
+        needs_cleanup=true
+      fi
+    fi
+  done
+
+  if [[ "${needs_cleanup}" != "true" ]]; then
+    return 0
+  fi
+
+  info "Cleaning up stale smoke-test resources from a previous run..."
+
+  # 1. Strip finalizers from VolumeReplications and PVCs, then delete namespace.
+  #    Order matters: VR finalizers block VR deletion, VR's pvc-protection finalizer
+  #    on the PVC blocks PVC deletion, and both block namespace deletion.
+  for ctx in "${EAST_CONTEXT}" "${WEST_CONTEXT}"; do
+    kubectl --context "${ctx}" -n "${test_ns}" get volumereplication \
+      -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null \
+      | while read -r vr; do
+          [[ -z "${vr}" ]] && continue
+          kubectl --context "${ctx}" -n "${test_ns}" patch volumereplication "${vr}" \
+            -p '{"metadata":{"finalizers":null}}' --type=merge 2>/dev/null || true
+        done
+    kubectl --context "${ctx}" -n "${test_ns}" delete volumereplication --all --timeout=30s 2>/dev/null || true
+
+    kubectl --context "${ctx}" -n "${test_ns}" get pvc \
+      -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null \
+      | while read -r pvc; do
+          [[ -z "${pvc}" ]] && continue
+          kubectl --context "${ctx}" -n "${test_ns}" patch pvc "${pvc}" \
+            -p '{"metadata":{"finalizers":null}}' 2>/dev/null || true
+        done
+    kubectl --context "${ctx}" -n "${test_ns}" delete pvc --all --timeout=30s 2>/dev/null || true
+
+    kubectl --context "${ctx}" delete ns "${test_ns}" --ignore-not-found --timeout=60s 2>/dev/null || true
+  done
+  # Force-finalize stuck namespaces
+  for ctx in "${EAST_CONTEXT}" "${WEST_CONTEXT}"; do
+    if kubectl --context "${ctx}" get ns "${test_ns}" >/dev/null 2>&1; then
+      kubectl --context "${ctx}" get ns "${test_ns}" -o json \
+        | jq '.spec.finalizers = []' \
+        | kubectl --context "${ctx}" replace --raw "/api/v1/namespaces/${test_ns}/finalize" -f - 2>/dev/null || true
+    fi
+  done
+  # Remove orphaned pre-provisioned PVs on both clusters
+  for ctx in "${EAST_CONTEXT}" "${WEST_CONTEXT}"; do
+    kubectl --context "${ctx}" get pv -o json 2>/dev/null \
+      | jq -r '.items[] | select(.spec.claimRef.namespace=="'"${test_ns}"'") | .metadata.name' \
+      | while read -r pv; do
+          [[ -z "${pv}" ]] && continue
+          kubectl --context "${ctx}" patch pv "${pv}" -p '{"metadata":{"finalizers":null}}' 2>/dev/null || true
+          kubectl --context "${ctx}" delete pv "${pv}" --timeout=30s 2>/dev/null || true
+        done
+  done
+
+  # 2. Remove orphaned RBD images from the Ceph pool on both clusters
+  for ctx in "${EAST_CONTEXT}" "${WEST_CONTEXT}"; do
+    local toolbox
+    toolbox=$(kubectl --context "${ctx}" -n rook-ceph get pod -l app=rook-ceph-tools \
+      -o jsonpath='{.items[0].metadata.name}' 2>/dev/null) || true
+    [[ -z "${toolbox}" ]] && continue
+    kubectl --context "${ctx}" -n rook-ceph exec "${toolbox}" -- \
+      rbd mirror pool status mirrored-pool 2>/dev/null \
+      | grep -E "^[a-z]" | awk -F: '{print $1}' \
+      | while read -r img; do
+          [[ -z "${img}" ]] && continue
+          info "  ${ctx}: removing orphaned mirror image ${img}"
+          kubectl --context "${ctx}" -n rook-ceph exec "${toolbox}" -- \
+            rbd mirror image disable "mirrored-pool/${img}" --force 2>/dev/null || true
+          kubectl --context "${ctx}" -n rook-ceph exec "${toolbox}" -- \
+            rbd rm "mirrored-pool/${img}" 2>/dev/null || true
+        done
+  done
+
+  info "Stale smoke-test resources cleaned up"
+}
+
 wait_mirror_healthy() {
   info "Waiting for RBD mirror pool status to be healthy on both clusters..."
 
@@ -683,6 +790,10 @@ replication_smoke_test() {
   info "  Adjusted volume handle for west pool ID ${west_pool_id}: ${volume_handle}"
 
   info "  Creating pre-provisioned PV on west (image: ${image_name})..."
+  if kwest get pv "${pv_name}" >/dev/null 2>&1; then
+    kwest patch pv "${pv_name}" -p '{"metadata":{"finalizers":null}}' 2>/dev/null || true
+    kwest delete pv "${pv_name}" --timeout=30s 2>/dev/null || true
+  fi
   kwest apply -f - <<EOF
 apiVersion: v1
 kind: PersistentVolume
@@ -693,7 +804,7 @@ spec:
     storage: ${pv_size}
   accessModes:
     - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Retain
+  persistentVolumeReclaimPolicy: Delete
   storageClassName: rook-ceph-block
   volumeMode: Filesystem
   csi:
@@ -715,6 +826,12 @@ spec:
 EOF
 
   info "  Creating PVC on west (binding to pre-provisioned PV)..."
+  # Delete any orphaned PVC left from a force-finalized namespace (volumeName is
+  # immutable, so kubectl apply fails if one exists bound to a different PV).
+  if kwest -n "${test_ns}" get pvc test-pvc >/dev/null 2>&1; then
+    kwest -n "${test_ns}" patch pvc test-pvc -p '{"metadata":{"finalizers":null}}' 2>/dev/null || true
+    kwest -n "${test_ns}" delete pvc test-pvc --timeout=30s 2>/dev/null || true
+  fi
   kwest apply -f - <<EOF
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -752,6 +869,11 @@ EOF
 
   # Create VolumeReplication CR on west (secondary)
   info "  Creating VolumeReplication CR (secondary) on west..."
+  if kwest -n "${test_ns}" get volumereplication test-vr >/dev/null 2>&1; then
+    kwest -n "${test_ns}" patch volumereplication test-vr \
+      -p '{"metadata":{"finalizers":null}}' --type=merge 2>/dev/null || true
+    kwest -n "${test_ns}" delete volumereplication test-vr --timeout=30s 2>/dev/null || true
+  fi
   kwest apply -f - <<EOF
 apiVersion: replication.storage.openshift.io/v1alpha1
 kind: VolumeReplication
@@ -812,12 +934,6 @@ EOF
   fi
 
   info "  Replication smoke test PASSED (east=Primary, west=Secondary, image replaying)"
-  info ""
-  info "  Test resources remain in namespace '${test_ns}' on both clusters."
-  info "  To clean up manually:"
-  info "    kubectl --context ${EAST_CONTEXT} delete ns ${test_ns}"
-  info "    kubectl --context ${WEST_CONTEXT} delete ns ${test_ns}"
-  info "    kubectl --context ${WEST_CONTEXT} delete pv ${pv_name}"
   return 0
 }
 
@@ -1019,6 +1135,53 @@ failover_smoke_test() {
 }
 
 # ---------------------------------------------------------------------------
+# Post-test cleanup
+# ---------------------------------------------------------------------------
+cleanup_smoke_test_resources() {
+  local test_ns="rook-ceph-test"
+
+  if ! keast get ns "${test_ns}" >/dev/null 2>&1 && ! kwest get ns "${test_ns}" >/dev/null 2>&1; then
+    return 0
+  fi
+
+  info "Cleaning up smoke-test resources..."
+  for ctx in "${EAST_CONTEXT}" "${WEST_CONTEXT}"; do
+    kubectl --context "${ctx}" -n "${test_ns}" get volumereplication \
+      -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null \
+      | while read -r vr; do
+          [[ -z "${vr}" ]] && continue
+          kubectl --context "${ctx}" -n "${test_ns}" patch volumereplication "${vr}" \
+            -p '{"metadata":{"finalizers":null}}' --type=merge 2>/dev/null || true
+        done
+    kubectl --context "${ctx}" -n "${test_ns}" delete volumereplication --all --timeout=30s 2>/dev/null || true
+    kubectl --context "${ctx}" -n "${test_ns}" get pvc \
+      -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null \
+      | while read -r pvc; do
+          [[ -z "${pvc}" ]] && continue
+          kubectl --context "${ctx}" -n "${test_ns}" patch pvc "${pvc}" \
+            -p '{"metadata":{"finalizers":null}}' 2>/dev/null || true
+        done
+    kubectl --context "${ctx}" -n "${test_ns}" delete pvc --all --timeout=30s 2>/dev/null || true
+    kubectl --context "${ctx}" delete ns "${test_ns}" --ignore-not-found --timeout=60s 2>/dev/null || true
+  done
+  for ctx in "${EAST_CONTEXT}" "${WEST_CONTEXT}"; do
+    if kubectl --context "${ctx}" get ns "${test_ns}" >/dev/null 2>&1; then
+      kubectl --context "${ctx}" get ns "${test_ns}" -o json \
+        | jq '.spec.finalizers = []' \
+        | kubectl --context "${ctx}" replace --raw "/api/v1/namespaces/${test_ns}/finalize" -f - 2>/dev/null || true
+    fi
+    kubectl --context "${ctx}" get pv -o json 2>/dev/null \
+      | jq -r '.items[] | select(.spec.claimRef.namespace=="'"${test_ns}"'") | .metadata.name' \
+      | while read -r leftover_pv; do
+          [[ -z "${leftover_pv}" ]] && continue
+          kubectl --context "${ctx}" patch pv "${leftover_pv}" -p '{"metadata":{"finalizers":null}}' 2>/dev/null || true
+          kubectl --context "${ctx}" delete pv "${leftover_pv}" --timeout=30s 2>/dev/null || true
+        done
+  done
+  info "Smoke-test resources cleaned up"
+}
+
+# ---------------------------------------------------------------------------
 # Cleanup / Teardown
 # ---------------------------------------------------------------------------
 teardown_rook_ceph() {
@@ -1130,6 +1293,11 @@ main() {
 
   # Task 5: Peer exchange
   exchange_peer_secrets
+
+  # Clean up stale smoke-test resources from previous runs — a split-brain
+  # image left behind causes mirror health=ERROR and blocks wait_mirror_healthy.
+  cleanup_stale_smoke_test
+
   wait_mirror_healthy
 
   # Task 7: VolumeReplicationClass + StorageClass
@@ -1141,6 +1309,9 @@ main() {
 
   # Task 9: Failover smoke test
   failover_smoke_test
+
+  # Clean up smoke-test resources so they don't interfere with subsequent runs
+  cleanup_smoke_test_resources
 
   echo
   info "=== Rook-Ceph Setup Complete ==="
