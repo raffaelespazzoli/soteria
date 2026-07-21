@@ -751,26 +751,31 @@ func (r *DRPlanReconciler) reconcilePassiveSite(
 	}
 	sortDiscoveredVMs(discoveredVMs)
 
-	discovery := &soteriav1alpha1.SiteDiscovery{
-		VMs:               discoveredVMs,
-		DiscoveredVMCount: len(discoveredVMs),
-		LastDiscoveryTime: metav1.Now(),
-	}
-
 	if err := r.Get(ctx, req.NamespacedName, plan); err != nil {
 		return ctrl.Result{}, err
 	}
 
-	patch := client.MergeFrom(plan.DeepCopy())
-	setSiteDiscovery(plan, siteField, discovery)
+	existing := getSiteDiscovery(plan, siteField)
+	if existing != nil && reflect.DeepEqual(existing.VMs, discoveredVMs) {
+		logger.V(1).Info("Passive site VMs unchanged, skipping patch")
+	} else {
+		discovery := &soteriav1alpha1.SiteDiscovery{
+			VMs:               discoveredVMs,
+			DiscoveredVMCount: len(discoveredVMs),
+			LastDiscoveryTime: metav1.Now(),
+		}
 
-	if err := r.Status().Patch(ctx, plan, patch); err != nil {
-		logger.Error(err, "Failed to patch passive site SiteDiscovery")
-		return ctrl.Result{}, err
+		patch := client.MergeFrom(plan.DeepCopy())
+		setSiteDiscovery(plan, siteField, discovery)
+
+		if err := r.Status().Patch(ctx, plan, patch); err != nil {
+			logger.Error(err, "Failed to patch passive site SiteDiscovery")
+			return ctrl.Result{}, err
+		}
+
+		logger.V(1).Info("Passive site discovery written",
+			"siteField", siteField, "vmCount", len(discoveredVMs))
 	}
-
-	logger.V(1).Info("Passive site discovery written",
-		"siteField", siteField, "vmCount", len(discoveredVMs))
 
 	// Create/update VR/VGR objects on the passive site using waves persisted
 	// in plan status by the active site. The passive site always gets secondary
@@ -793,6 +798,39 @@ func setSiteDiscovery(plan *soteriav1alpha1.DRPlan, siteField string, discovery 
 	case siteFieldSecondary:
 		plan.Status.SecondarySiteDiscovery = discovery
 	}
+}
+
+// getSiteDiscovery returns the SiteDiscovery stored in the plan for the given site role.
+func getSiteDiscovery(plan *soteriav1alpha1.DRPlan, siteField string) *soteriav1alpha1.SiteDiscovery {
+	switch siteField {
+	case siteFieldPrimary:
+		return plan.Status.PrimarySiteDiscovery
+	case siteFieldSecondary:
+		return plan.Status.SecondarySiteDiscovery
+	default:
+		return nil
+	}
+}
+
+// siteDiscoveryChanged returns true if the VMs discovered in the current waves
+// differ from the VMs stored in the plan's SiteDiscovery for the local site.
+// This gates status writes to prevent ScyllaDB LWW races where a recovering
+// site's controller could clobber the surviving site's correct plan state.
+func (r *DRPlanReconciler) siteDiscoveryChanged(plan *soteriav1alpha1.DRPlan, waves []soteriav1alpha1.WaveInfo) bool {
+	if r.LocalSite == "" || waves == nil {
+		return false
+	}
+	siteField := r.siteDiscoveryField(plan)
+	if siteField == "" {
+		return false
+	}
+	existing := getSiteDiscovery(plan, siteField)
+	if existing == nil {
+		return true
+	}
+	newVMs := collectVMsFromWaves(waves)
+	sortDiscoveredVMs(newVMs)
+	return !reflect.DeepEqual(existing.VMs, newVMs)
 }
 
 // sortDiscoveredVMs sorts by Namespace then Name for deterministic output.
@@ -1579,7 +1617,7 @@ func (r *DRPlanReconciler) updateStatus(
 
 	extraCondChanged := detectExtraConditionChanges(plan.Status.Conditions, sitesInSyncCond)
 
-	siteDiscoveryDue := r.LocalSite != "" && r.siteDiscoveryField(plan) != ""
+	siteDiscoveryDue := r.siteDiscoveryChanged(plan, waves)
 	anyChanged := conditionChanged || wavesChanged || countChanged ||
 		genChanged || reportChanged || healthChanged || siteDiscoveryDue || extraCondChanged
 	if !anyChanged {
@@ -1617,17 +1655,15 @@ func (r *DRPlanReconciler) updateStatus(
 		meta.RemoveStatusCondition(&plan.Status.Conditions, conditionTypeReplicationHealthy)
 	}
 
-	if r.LocalSite != "" && waves != nil {
+	if siteDiscoveryDue && waves != nil {
 		siteField := r.siteDiscoveryField(plan)
-		if siteField != "" {
-			allVMs := collectVMsFromWaves(waves)
-			sortDiscoveredVMs(allVMs)
-			setSiteDiscovery(plan, siteField, &soteriav1alpha1.SiteDiscovery{
-				VMs:               allVMs,
-				DiscoveredVMCount: len(allVMs),
-				LastDiscoveryTime: metav1.Now(),
-			})
-		}
+		allVMs := collectVMsFromWaves(waves)
+		sortDiscoveredVMs(allVMs)
+		setSiteDiscovery(plan, siteField, &soteriav1alpha1.SiteDiscovery{
+			VMs:               allVMs,
+			DiscoveredVMCount: len(allVMs),
+			LastDiscoveryTime: metav1.Now(),
+		})
 	}
 
 	if err := r.Status().Patch(ctx, plan, patch); err != nil {
@@ -1716,8 +1752,8 @@ func detectExtraConditionChanges(existing []metav1.Condition, incoming []metav1.
 }
 
 // vmRelevantChangePredicate filters VM events to only those that affect DRPlan
-// composition: creates, deletes, and label changes. Status-only updates are
-// ignored to avoid unnecessary reconciliation cycles.
+// composition: creates, deletes, label changes, and volume/disk topology changes.
+// Status-only updates are ignored to avoid unnecessary reconciliation cycles.
 func vmRelevantChangePredicate() predicate.Predicate {
 	return predicate.Funcs{
 		CreateFunc: func(_ event.CreateEvent) bool {
@@ -1727,7 +1763,24 @@ func vmRelevantChangePredicate() predicate.Predicate {
 			return true
 		},
 		UpdateFunc: func(e event.UpdateEvent) bool {
-			return !reflect.DeepEqual(e.ObjectOld.GetLabels(), e.ObjectNew.GetLabels())
+			if !reflect.DeepEqual(e.ObjectOld.GetLabels(), e.ObjectNew.GetLabels()) {
+				return true
+			}
+			oldVM, ok1 := e.ObjectOld.(*kubevirtv1.VirtualMachine)
+			newVM, ok2 := e.ObjectNew.(*kubevirtv1.VirtualMachine)
+			if ok1 && ok2 {
+				if oldVM.Spec.Template == nil && newVM.Spec.Template == nil {
+					return false
+				}
+				if oldVM.Spec.Template == nil || newVM.Spec.Template == nil {
+					return true
+				}
+				return !reflect.DeepEqual(
+					oldVM.Spec.Template.Spec.Volumes,
+					newVM.Spec.Template.Spec.Volumes,
+				)
+			}
+			return false
 		},
 		GenericFunc: func(_ event.GenericEvent) bool {
 			return true

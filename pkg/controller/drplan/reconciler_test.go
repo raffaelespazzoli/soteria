@@ -479,6 +479,155 @@ func TestVMRelevantChangePredicate_Generic(t *testing.T) {
 	}
 }
 
+func TestVMRelevantChangePredicate_Update_VolumeAdded(t *testing.T) {
+	p := vmRelevantChangePredicate()
+	labels := map[string]string{"soteria.io/drplan": "plan-1"}
+	old := &kubevirtv1.VirtualMachine{
+		ObjectMeta: metav1.ObjectMeta{Labels: labels},
+		Spec: kubevirtv1.VirtualMachineSpec{
+			Template: &kubevirtv1.VirtualMachineInstanceTemplateSpec{
+				Spec: kubevirtv1.VirtualMachineInstanceSpec{
+					Volumes: []kubevirtv1.Volume{
+						{Name: "rootdisk", VolumeSource: kubevirtv1.VolumeSource{
+							PersistentVolumeClaim: &kubevirtv1.PersistentVolumeClaimVolumeSource{
+								PersistentVolumeClaimVolumeSource: corev1.PersistentVolumeClaimVolumeSource{ClaimName: "pvc-root"},
+							},
+						}},
+					},
+				},
+			},
+		},
+	}
+	new := &kubevirtv1.VirtualMachine{
+		ObjectMeta: metav1.ObjectMeta{Labels: labels},
+		Spec: kubevirtv1.VirtualMachineSpec{
+			Template: &kubevirtv1.VirtualMachineInstanceTemplateSpec{
+				Spec: kubevirtv1.VirtualMachineInstanceSpec{
+					Volumes: []kubevirtv1.Volume{
+						{Name: "rootdisk", VolumeSource: kubevirtv1.VolumeSource{
+							PersistentVolumeClaim: &kubevirtv1.PersistentVolumeClaimVolumeSource{
+								PersistentVolumeClaimVolumeSource: corev1.PersistentVolumeClaimVolumeSource{ClaimName: "pvc-root"},
+							},
+						}},
+						{Name: "datadisk", VolumeSource: kubevirtv1.VolumeSource{
+							PersistentVolumeClaim: &kubevirtv1.PersistentVolumeClaimVolumeSource{
+								PersistentVolumeClaimVolumeSource: corev1.PersistentVolumeClaimVolumeSource{ClaimName: "pvc-data"},
+							},
+						}},
+					},
+				},
+			},
+		},
+	}
+	if !p.Update(event.UpdateEvent{ObjectOld: old, ObjectNew: new}) {
+		t.Error("Update with new disk volume should return true")
+	}
+}
+
+func TestVMRelevantChangePredicate_Update_VolumeUnchanged(t *testing.T) {
+	p := vmRelevantChangePredicate()
+	labels := map[string]string{"soteria.io/drplan": "plan-1"}
+	volumes := []kubevirtv1.Volume{
+		{Name: "rootdisk", VolumeSource: kubevirtv1.VolumeSource{
+			PersistentVolumeClaim: &kubevirtv1.PersistentVolumeClaimVolumeSource{
+				PersistentVolumeClaimVolumeSource: corev1.PersistentVolumeClaimVolumeSource{ClaimName: "pvc-root"},
+			},
+		}},
+	}
+	old := &kubevirtv1.VirtualMachine{
+		ObjectMeta: metav1.ObjectMeta{Labels: labels},
+		Spec: kubevirtv1.VirtualMachineSpec{
+			Template: &kubevirtv1.VirtualMachineInstanceTemplateSpec{
+				Spec: kubevirtv1.VirtualMachineInstanceSpec{Volumes: volumes},
+			},
+		},
+	}
+	new := &kubevirtv1.VirtualMachine{
+		ObjectMeta: metav1.ObjectMeta{Labels: labels},
+		Spec: kubevirtv1.VirtualMachineSpec{
+			Template: &kubevirtv1.VirtualMachineInstanceTemplateSpec{
+				Spec: kubevirtv1.VirtualMachineInstanceSpec{Volumes: volumes},
+			},
+		},
+	}
+	if p.Update(event.UpdateEvent{ObjectOld: old, ObjectNew: new}) {
+		t.Error("Update with identical volumes and labels should return false")
+	}
+}
+
+func TestVMRelevantChangePredicate_Update_VolumeRemoved(t *testing.T) {
+	p := vmRelevantChangePredicate()
+	labels := map[string]string{"soteria.io/drplan": "plan-1"}
+	old := &kubevirtv1.VirtualMachine{
+		ObjectMeta: metav1.ObjectMeta{Labels: labels},
+		Spec: kubevirtv1.VirtualMachineSpec{
+			Template: &kubevirtv1.VirtualMachineInstanceTemplateSpec{
+				Spec: kubevirtv1.VirtualMachineInstanceSpec{
+					Volumes: []kubevirtv1.Volume{
+						{Name: "rootdisk", VolumeSource: kubevirtv1.VolumeSource{
+							PersistentVolumeClaim: &kubevirtv1.PersistentVolumeClaimVolumeSource{
+								PersistentVolumeClaimVolumeSource: corev1.PersistentVolumeClaimVolumeSource{ClaimName: "pvc-root"},
+							},
+						}},
+						{Name: "datadisk", VolumeSource: kubevirtv1.VolumeSource{
+							PersistentVolumeClaim: &kubevirtv1.PersistentVolumeClaimVolumeSource{
+								PersistentVolumeClaimVolumeSource: corev1.PersistentVolumeClaimVolumeSource{ClaimName: "pvc-data"},
+							},
+						}},
+					},
+				},
+			},
+		},
+	}
+	new := &kubevirtv1.VirtualMachine{
+		ObjectMeta: metav1.ObjectMeta{Labels: labels},
+		Spec: kubevirtv1.VirtualMachineSpec{
+			Template: &kubevirtv1.VirtualMachineInstanceTemplateSpec{
+				Spec: kubevirtv1.VirtualMachineInstanceSpec{
+					Volumes: []kubevirtv1.Volume{
+						{Name: "rootdisk", VolumeSource: kubevirtv1.VolumeSource{
+							PersistentVolumeClaim: &kubevirtv1.PersistentVolumeClaimVolumeSource{
+								PersistentVolumeClaimVolumeSource: corev1.PersistentVolumeClaimVolumeSource{ClaimName: "pvc-root"},
+							},
+						}},
+					},
+				},
+			},
+		},
+	}
+	if !p.Update(event.UpdateEvent{ObjectOld: old, ObjectNew: new}) {
+		t.Error("Update with disk volume removed should return true")
+	}
+}
+
+func TestVMRelevantChangePredicate_Update_TemplateNilToNonNil(t *testing.T) {
+	p := vmRelevantChangePredicate()
+	labels := map[string]string{"soteria.io/drplan": "plan-1"}
+	old := &kubevirtv1.VirtualMachine{
+		ObjectMeta: metav1.ObjectMeta{Labels: labels},
+		Spec:       kubevirtv1.VirtualMachineSpec{Template: nil},
+	}
+	new := &kubevirtv1.VirtualMachine{
+		ObjectMeta: metav1.ObjectMeta{Labels: labels},
+		Spec: kubevirtv1.VirtualMachineSpec{
+			Template: &kubevirtv1.VirtualMachineInstanceTemplateSpec{
+				Spec: kubevirtv1.VirtualMachineInstanceSpec{
+					Volumes: []kubevirtv1.Volume{
+						{Name: "rootdisk", VolumeSource: kubevirtv1.VolumeSource{
+							PersistentVolumeClaim: &kubevirtv1.PersistentVolumeClaimVolumeSource{
+								PersistentVolumeClaimVolumeSource: corev1.PersistentVolumeClaimVolumeSource{ClaimName: "pvc-root"},
+							},
+						}},
+					},
+				},
+			},
+		},
+	}
+	if !p.Update(event.UpdateEvent{ObjectOld: old, ObjectNew: new}) {
+		t.Error("Update with Template going from nil to non-nil should return true")
+	}
+}
+
 func TestReconcile_VMLevel_IndividualVolumeGroups(t *testing.T) {
 	plan := newTestPlan()
 	vms := []engine.VMReference{
@@ -1367,6 +1516,216 @@ func TestReconcile_ActiveSite_PreservesPeerSiteDiscovery(t *testing.T) {
 	if !updated.Status.SecondarySiteDiscovery.LastDiscoveryTime.Equal(&peerTime) {
 		t.Errorf("SecondarySiteDiscovery.LastDiscoveryTime = %v, want %v (peer's original time)",
 			updated.Status.SecondarySiteDiscovery.LastDiscoveryTime, peerTime)
+	}
+}
+
+// ---------- siteDiscoveryChanged unit tests ----------
+
+func TestSiteDiscoveryChanged_NilExisting_ReturnsTrue(t *testing.T) {
+	plan := newTestPlan()
+	waves := []soteriav1alpha1.WaveInfo{
+		{WaveKey: "1", VMs: []soteriav1alpha1.DiscoveredVM{
+			{Name: "vm-1", Namespace: "default"},
+		}},
+	}
+
+	r := &DRPlanReconciler{LocalSite: testPrimarySite}
+	if !r.siteDiscoveryChanged(plan, waves) {
+		t.Error("siteDiscoveryChanged should return true when no prior discovery exists")
+	}
+}
+
+func TestSiteDiscoveryChanged_SameVMs_ReturnsFalse(t *testing.T) {
+	plan := newTestPlan()
+	plan.Status.PrimarySiteDiscovery = &soteriav1alpha1.SiteDiscovery{
+		VMs: []soteriav1alpha1.DiscoveredVM{
+			{Name: "vm-1", Namespace: "default"},
+			{Name: "vm-2", Namespace: "ns-b"},
+		},
+		DiscoveredVMCount: 2,
+		LastDiscoveryTime: metav1.NewTime(time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)),
+	}
+
+	waves := []soteriav1alpha1.WaveInfo{
+		{WaveKey: "1", VMs: []soteriav1alpha1.DiscoveredVM{
+			{Name: "vm-2", Namespace: "ns-b"},
+			{Name: "vm-1", Namespace: "default"},
+		}},
+	}
+
+	r := &DRPlanReconciler{LocalSite: testPrimarySite}
+	if r.siteDiscoveryChanged(plan, waves) {
+		t.Error("siteDiscoveryChanged should return false when VMs are identical (after sort)")
+	}
+}
+
+func TestSiteDiscoveryChanged_DifferentVMs_ReturnsTrue(t *testing.T) {
+	plan := newTestPlan()
+	plan.Status.PrimarySiteDiscovery = &soteriav1alpha1.SiteDiscovery{
+		VMs: []soteriav1alpha1.DiscoveredVM{
+			{Name: "vm-1", Namespace: "default"},
+			{Name: "vm-2", Namespace: "ns-b"},
+		},
+		DiscoveredVMCount: 2,
+		LastDiscoveryTime: metav1.Now(),
+	}
+
+	waves := []soteriav1alpha1.WaveInfo{
+		{WaveKey: "1", VMs: []soteriav1alpha1.DiscoveredVM{
+			{Name: "vm-1", Namespace: "default"},
+			{Name: "vm-2", Namespace: "ns-b"},
+			{Name: "vm-3", Namespace: "ns-b"},
+		}},
+	}
+
+	r := &DRPlanReconciler{LocalSite: testPrimarySite}
+	if !r.siteDiscoveryChanged(plan, waves) {
+		t.Error("siteDiscoveryChanged should return true when a VM was added")
+	}
+}
+
+func TestSiteDiscoveryChanged_NoLocalSite_ReturnsFalse(t *testing.T) {
+	plan := newTestPlan()
+	waves := []soteriav1alpha1.WaveInfo{
+		{WaveKey: "1", VMs: []soteriav1alpha1.DiscoveredVM{
+			{Name: "vm-1", Namespace: "default"},
+		}},
+	}
+
+	r := &DRPlanReconciler{LocalSite: ""}
+	if r.siteDiscoveryChanged(plan, waves) {
+		t.Error("siteDiscoveryChanged should return false when not site-aware")
+	}
+}
+
+func TestSiteDiscoveryChanged_NilWaves_ReturnsFalse(t *testing.T) {
+	plan := newTestPlan()
+	plan.Status.PrimarySiteDiscovery = &soteriav1alpha1.SiteDiscovery{
+		VMs: []soteriav1alpha1.DiscoveredVM{
+			{Name: "vm-1", Namespace: "default"},
+		},
+		DiscoveredVMCount: 1,
+		LastDiscoveryTime: metav1.Now(),
+	}
+
+	r := &DRPlanReconciler{LocalSite: testPrimarySite}
+	if r.siteDiscoveryChanged(plan, nil) {
+		t.Error("siteDiscoveryChanged should return false when waves is nil (discovery-error path)")
+	}
+}
+
+func TestSiteDiscoveryChanged_DiskTopologyDiffers_ReturnsTrue(t *testing.T) {
+	plan := newTestPlan()
+	plan.Status.PrimarySiteDiscovery = &soteriav1alpha1.SiteDiscovery{
+		VMs: []soteriav1alpha1.DiscoveredVM{
+			{Name: "vm-1", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{
+				{Name: "rootdisk", PVCName: "pvc-root", StorageClass: "ceph-rbd"},
+			}},
+		},
+		DiscoveredVMCount: 1,
+		LastDiscoveryTime: metav1.Now(),
+	}
+
+	waves := []soteriav1alpha1.WaveInfo{
+		{WaveKey: "1", VMs: []soteriav1alpha1.DiscoveredVM{
+			{Name: "vm-1", Namespace: "default", Disks: []soteriav1alpha1.DiscoveredDisk{
+				{Name: "rootdisk", PVCName: "pvc-root", StorageClass: "ceph-rbd"},
+				{Name: "datadisk", PVCName: "pvc-data", StorageClass: "ceph-rbd"},
+			}},
+		}},
+	}
+
+	r := &DRPlanReconciler{LocalSite: testPrimarySite}
+	if !r.siteDiscoveryChanged(plan, waves) {
+		t.Error("siteDiscoveryChanged should return true when disk topology differs")
+	}
+}
+
+func TestReconcile_ActiveSite_UnchangedVMs_SkipsStatusWrite(t *testing.T) {
+	plan := newTestPlan()
+	vms := []engine.VMReference{
+		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+		{Name: "vm-2", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+	}
+
+	r, c := newReconcilerWithSite([]client.Object{plan}, &mockVMDiscoverer{vms: vms}, testPrimarySite)
+
+	// First reconcile: writes everything (fresh plan).
+	_, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: planKey})
+	if err != nil {
+		t.Fatalf("First reconcile error: %v", err)
+	}
+
+	var afterFirst soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &afterFirst); err != nil {
+		t.Fatalf("Failed to get plan after first reconcile: %v", err)
+	}
+	if afterFirst.Status.PrimarySiteDiscovery == nil {
+		t.Fatal("PrimarySiteDiscovery should be populated after first reconcile")
+	}
+	firstDiscoveryTime := afterFirst.Status.PrimarySiteDiscovery.LastDiscoveryTime
+
+	// Second reconcile: same VMs, nothing changed.
+	_, err = r.Reconcile(context.Background(), ctrl.Request{NamespacedName: planKey})
+	if err != nil {
+		t.Fatalf("Second reconcile error: %v", err)
+	}
+
+	var afterSecond soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &afterSecond); err != nil {
+		t.Fatalf("Failed to get plan after second reconcile: %v", err)
+	}
+	if afterSecond.Status.PrimarySiteDiscovery == nil {
+		t.Fatal("PrimarySiteDiscovery should still be present")
+	}
+
+	if !afterSecond.Status.PrimarySiteDiscovery.LastDiscoveryTime.Equal(&firstDiscoveryTime) {
+		t.Errorf("LastDiscoveryTime should NOT be refreshed when VMs are unchanged; got %v, want %v",
+			afterSecond.Status.PrimarySiteDiscovery.LastDiscoveryTime, firstDiscoveryTime)
+	}
+}
+
+func TestReconcile_PassiveSite_UnchangedVMs_SkipsPatch(t *testing.T) {
+	plan := newTestPlan()
+	vms := []engine.VMReference{
+		{Name: "vm-1", Namespace: "default", Labels: map[string]string{"soteria.io/wave": "1"}},
+		{Name: "vm-2", Namespace: "ns-b", Labels: map[string]string{"soteria.io/wave": "1"}},
+	}
+
+	r, c := newReconcilerWithSite([]client.Object{plan}, &mockVMDiscoverer{vms: vms}, testSecondarySite)
+
+	// First reconcile: writes passive discovery.
+	_, err := r.Reconcile(context.Background(), ctrl.Request{NamespacedName: planKey})
+	if err != nil {
+		t.Fatalf("First reconcile error: %v", err)
+	}
+
+	var afterFirst soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &afterFirst); err != nil {
+		t.Fatalf("Failed to get plan after first reconcile: %v", err)
+	}
+	if afterFirst.Status.SecondarySiteDiscovery == nil {
+		t.Fatal("SecondarySiteDiscovery should be populated after first reconcile")
+	}
+	firstDiscoveryTime := afterFirst.Status.SecondarySiteDiscovery.LastDiscoveryTime
+
+	// Second reconcile: same VMs, nothing changed.
+	_, err = r.Reconcile(context.Background(), ctrl.Request{NamespacedName: planKey})
+	if err != nil {
+		t.Fatalf("Second reconcile error: %v", err)
+	}
+
+	var afterSecond soteriav1alpha1.DRPlan
+	if err := c.Get(context.Background(), planKey, &afterSecond); err != nil {
+		t.Fatalf("Failed to get plan after second reconcile: %v", err)
+	}
+	if afterSecond.Status.SecondarySiteDiscovery == nil {
+		t.Fatal("SecondarySiteDiscovery should still be present")
+	}
+
+	if !afterSecond.Status.SecondarySiteDiscovery.LastDiscoveryTime.Equal(&firstDiscoveryTime) {
+		t.Errorf("LastDiscoveryTime should NOT be refreshed when VMs are unchanged; got %v, want %v",
+			afterSecond.Status.SecondarySiteDiscovery.LastDiscoveryTime, firstDiscoveryTime)
 	}
 }
 
