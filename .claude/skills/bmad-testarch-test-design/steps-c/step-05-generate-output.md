@@ -130,7 +130,9 @@ Epic-level mode remains single-worker by default (one output artifact).
 Ensure the outputs include:
 
 - Risk assessment matrix
+- NFR planning summary (thresholds, missing thresholds, planned evidence, and NFR-derived risks) — when NFRs are in scope
 - Coverage matrix and priorities
+- NFR coverage and planned evidence mapping — when NFRs are in scope
 - Execution strategy
 - Resource estimates (ranges)
 - Quality gate criteria
@@ -196,8 +198,11 @@ Summarize:
 
   ```yaml
   ---
+  workflowStatus: 'completed'
+  totalSteps: 5
   stepsCompleted: ['step-05-generate-output']
   lastStep: 'step-05-generate-output'
+  nextStep: ''
   lastSaved: '{date}'
   ---
   ```
@@ -205,8 +210,11 @@ Summarize:
   Then write this step's output below the frontmatter.
 
 - **If `{progressFile}` already exists**, update:
+  - Set `workflowStatus: 'completed'`
+  - Set `totalSteps: 5`
   - Add `'step-05-generate-output'` to `stepsCompleted` array (only if not already present)
   - Set `lastStep: 'step-05-generate-output'`
+  - Set `nextStep: ''`
   - Set `lastSaved: '{date}'`
   - Append this step's output to the appropriate section of the document.
 
@@ -220,3 +228,11 @@ Summarize:
 
 - Skipped sequence steps or missing outputs
   **Master Rule:** Skipping steps is FORBIDDEN.
+
+## On Complete
+
+Run: `python3 {project-root}/_bmad/scripts/resolve_customization.py --skill {skill-root} --key workflow.on_complete`
+
+If the resolver succeeds and returns a non-empty `workflow.on_complete`, execute that value as the final terminal instruction before exiting.
+
+If the resolver fails, returns no output, or resolves an empty value, skip the hook and exit normally.

@@ -1,6 +1,9 @@
 ---
+workflowStatus: ''
+totalSteps: 5
 stepsCompleted: []
 lastStep: ''
+nextStep: ''
 lastSaved: ''
 ---
 
@@ -70,6 +73,21 @@ lastSaved: ''
 - **DATA**: Data Integrity (loss, corruption, inconsistency)
 - **BUS**: Business Impact (UX harm, logic errors, revenue)
 - **OPS**: Operations (deployment, config, monitoring)
+
+---
+
+## NFR Planning
+
+**Purpose:** Capture epic-specific NFR thresholds, planned validation, and evidence expected for later `nfr-assess`. This is not a final evidence audit.
+
+| NFR Category    | Requirement / Threshold | Risk Link | Planned Validation                         | Evidence Needed                  |
+| --------------- | ----------------------- | --------- | ------------------------------------------ | -------------------------------- |
+| Security        | {Requirement}           | {R-ID}    | {API/E2E/SAST/DAST validation}             | {Test report, scan, audit log}   |
+| Performance     | {Requirement}           | {R-ID}    | {Load/stress/baseline validation}          | {k6/APM/Lighthouse report}       |
+| Reliability     | {Requirement}           | {R-ID}    | {Error/retry/failover validation}          | {Burn-in, logs, monitoring data} |
+| Maintainability | {Requirement}           | {R-ID}    | {Coverage/static analysis/docs validation} | {Coverage or quality report}     |
+
+**Unknown thresholds:** {List missing NFR thresholds or mark N/A. Do not invent values.}
 
 ---
 
@@ -244,6 +262,7 @@ lastSaved: ''
 - [ ] No high-risk (≥6) items unmitigated
 - [ ] Security tests (SEC category) pass 100%
 - [ ] Performance targets met (PERF category)
+- [ ] Planned NFR evidence exists or `nfr-assess` has documented CONCERNS/waivers
 
 ---
 

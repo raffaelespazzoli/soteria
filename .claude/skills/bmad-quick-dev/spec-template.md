@@ -3,7 +3,8 @@ title: '{title}'
 type: 'feature' # feature | bugfix | refactor | chore
 created: '{date}'
 status: 'draft' # draft | ready-for-dev | in-progress | in-review | done
-context: [] # optional: max 3 project-wide standards/docs. NO source code files.
+review_loop_iteration: 0 # incremented by step-04 before each review loopback
+context: [] # optional: `{project-root}/`-prefixed paths to project-wide standards/docs the implementation agent should load. Keep short — only what isn't already distilled into the spec body.
 ---
 
 <!-- Target: 900–1300 tokens. Above 1600 = high risk of context rot.

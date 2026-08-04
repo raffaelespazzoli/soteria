@@ -4,13 +4,21 @@ lastStep: ''
 lastSaved: ''
 workflowType: 'testarch-trace'
 inputDocuments: []
+coverageBasis: ''
+oracleConfidence: ''
+oracleResolutionMode: ''
+oracleSources: []
+externalPointerStatus: ''
 ---
 
-# Traceability Matrix & Gate Decision - Story {STORY_ID}
+# Traceability Matrix & Gate Decision - {TRACE_TARGET_LABEL}
 
-**Story:** {STORY_TITLE}
+**Target:** {TRACE_TARGET_LABEL}
 **Date:** {DATE}
 **Evaluator:** {user_name or TEA Agent}
+**Coverage Oracle:** {COVERAGE_BASIS}
+**Oracle Confidence:** {ORACLE_CONFIDENCE}
+**Oracle Sources:** {ORACLE_SOURCES}
 
 ---
 
@@ -670,7 +678,7 @@ traceability_and_gate:
 - **Test Design:** {TEST_DESIGN_PATH} (if available)
 - **Tech Spec:** {TECH_SPEC_PATH} (if available)
 - **Test Results:** {TEST_RESULTS_PATH}
-- **NFR Assessment:** {NFR_FILE_PATH} (if available)
+- **NFR Evidence Audit:** {NFR_FILE_PATH} (if available)
 - **Test Files:** {TEST_DIR_PATH}
 
 ---

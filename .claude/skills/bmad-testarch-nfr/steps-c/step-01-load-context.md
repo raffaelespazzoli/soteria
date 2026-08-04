@@ -1,7 +1,7 @@
 ---
 name: 'step-01-load-context'
 description: 'Load NFR requirements, evidence sources, and knowledge base'
-nextStepFile: './step-02-define-thresholds.md'
+nextStepFile: '{skill-root}/steps-c/step-02-define-thresholds.md'
 knowledgeIndex: './resources/tea-index.csv'
 outputFile: '{test_artifacts}/nfr-assessment.md'
 ---
@@ -10,7 +10,7 @@ outputFile: '{test_artifacts}/nfr-assessment.md'
 
 ## STEP GOAL
 
-Gather NFR requirements, evidence sources, and knowledge fragments needed for assessment.
+Gather NFR requirements, evidence sources, and knowledge fragments needed for the evidence audit.
 
 ## MANDATORY EXECUTION RULES
 

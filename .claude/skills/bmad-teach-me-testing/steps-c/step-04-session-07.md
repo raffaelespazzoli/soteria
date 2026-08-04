@@ -5,7 +5,7 @@ description: 'Session 7: Advanced Patterns - Menu-driven knowledge fragment expl
 progressFile: '{test_artifacts}/teaching-progress/{user_name}-tea-progress.yaml'
 sessionNotesTemplate: '../templates/session-notes-template.md'
 sessionNotesFile: '{test_artifacts}/tea-academy/{user_name}/session-07-notes.md'
-nextStepFile: './step-03-session-menu.md'
+nextStepFile: '{skill-root}/steps-c/step-03-session-menu.md'
 advancedElicitationTask: '{project-root}/_bmad/core/workflows/advanced-elicitation/workflow.xml'
 partyModeWorkflow: '{project-root}/_bmad/core/workflows/party-mode/workflow.md'
 ---
@@ -118,7 +118,7 @@ Set session-07-advanced `status: 'in-progress'` (only first time).
 - test-levels-framework.md - Unit/Integration/E2E
 - test-priorities-matrix.md - P0-P3 coverage targets
 - probability-impact.md - Probability × impact scoring
-- nfr-criteria.md - NFR assessment definitions
+- nfr-criteria.md - NFR evidence audit definitions
 
 **5. Authentication & Security (3 fragments)**
 

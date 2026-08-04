@@ -1,7 +1,7 @@
 ---
 name: 'step-03-quality-evaluation'
 description: 'Orchestrate adaptive quality dimension checks (agent-team, subagent, or sequential)'
-nextStepFile: './step-03f-aggregate-scores.md'
+nextStepFile: '{skill-root}/steps-c/step-03f-aggregate-scores.md'
 ---
 
 # Step 3: Orchestrate Adaptive Quality Evaluation
@@ -238,8 +238,8 @@ Load next step: `{nextStepFile}`
 The aggregation step (3F) will:
 
 - Read all 4 subagent outputs
-- Calculate weighted overall score (0-100)
 - Aggregate violations by severity
+- Calculate the overall score (0-100) from the deduction ledger
 - Generate review report with top suggestions
 
 ---

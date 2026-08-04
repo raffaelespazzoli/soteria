@@ -68,12 +68,13 @@ Validate against `checklist.md` and fix any gaps.
 
 ## 4. Save Progress
 
-**Save this step's accumulated work to `{outputFile}`.**
+**Save this step's accumulated work to `{outputFile}`.** When `output_file_override` is non-empty it IS `{outputFile}`, replacing the step frontmatter default.
 
 - **If `{outputFile}` does not exist** (first save), create it using the workflow template (if available) with YAML frontmatter:
 
   ```yaml
   ---
+  workflowType: 'testarch-test-review'
   stepsCompleted: ['step-04-generate-report']
   lastStep: 'step-04-generate-report'
   lastSaved: '{date}'
@@ -109,3 +110,11 @@ Report:
 
 - Skipped sequence steps or missing outputs
   **Master Rule:** Skipping steps is FORBIDDEN.
+
+## On Complete
+
+Run: `python3 {project-root}/_bmad/scripts/resolve_customization.py --skill {skill-root} --key workflow.on_complete`
+
+If the resolver succeeds and returns a non-empty `workflow.on_complete`, execute that value as the final terminal instruction before exiting.
+
+If the resolver fails, returns no output, or resolves an empty value, skip the hook and exit normally.
