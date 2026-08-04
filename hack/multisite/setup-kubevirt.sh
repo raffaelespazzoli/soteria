@@ -42,7 +42,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # ---------------------------------------------------------------------------
 EAST_CLUSTER_NAME="${EAST_CLUSTER_NAME:-east}"
 WEST_CLUSTER_NAME="${WEST_CLUSTER_NAME:-west}"
-KUBEVIRT_VERSION="${KUBEVIRT_VERSION:-}"
+KUBEVIRT_VERSION="${KUBEVIRT_VERSION:-v1.8.4}"
 CDI_VERSION="${CDI_VERSION:-}"
 SMOKE_TEST="${SMOKE_TEST:-1}"
 
