@@ -151,6 +151,11 @@ For each dependency layer (in topological order):
    STEP 3 — REVIEW FIXES: If code review requested changes, re-run dev-story
    to address review findings (it supports review continuation mode), then
    re-run code review. Repeat until approved or halted.
+   HARD CAP: maximum 5 review iterations per story. Track the iteration count
+   (first review = iteration 1). If iteration 5 still returns changes_requested:
+   apply only critical fixes (security, correctness, compilation), document
+   remaining findings as "Deferred Review Debt" in the story's Code Review
+   Record, and proceed to STEP 4. Output: ⚠️ Review cap reached (5/5 iterations).
 
    STEP 4 — COMMIT: When review approves, commit your changes:
    git add -A && git commit -m "feat(epic-{N}): {story_key} — {title}"
