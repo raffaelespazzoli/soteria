@@ -1938,7 +1938,10 @@ func TestCheckVRsHealthy_NoWaves_ReturnsTrue(t *testing.T) {
 	}
 }
 
-func TestCheckVRsHealthy_HealthSyncing_ReturnsFalse(t *testing.T) {
+func TestCheckVRsHealthy_RoleTarget_HealthSyncing_ReturnsTrue(t *testing.T) {
+	// After 15.13, role=Target alone is sufficient — health is not checked.
+	// Syncing + Target should return true because demotion is confirmed by
+	// state=Secondary (role=Target), not by health conditions.
 	fakeDriver := fakedrv.New()
 	vgID := drivers.VolumeGroupIDFor("noop", "ns1", "vg-db")
 	fakeDriver.OnGetReplicationStatus(vgID).ReturnResult(fakedrv.Response{
@@ -1971,8 +1974,126 @@ func TestCheckVRsHealthy_HealthSyncing_ReturnsFalse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	if !complete {
+		t.Error("expected complete when role=Target regardless of health (15.13)")
+	}
+}
+
+func TestCheckVRsHealthy_RoleTarget_HealthDegraded_ReturnsTrue(t *testing.T) {
+	// After demotion, VRs report Degraded because no sync cycle exists without
+	// an active primary. role=Target is sufficient.
+	fakeDriver := fakedrv.New()
+	vgID := drivers.VolumeGroupIDFor("noop", "ns1", "vg-db")
+	fakeDriver.OnGetReplicationStatus(vgID).ReturnResult(fakedrv.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleTarget,
+			Health: drivers.HealthDegraded,
+		},
+	})
+
+	registry := drivers.NewRegistry()
+	registry.RegisterDriver("noop", func() drivers.StorageProvider { return fakeDriver })
+
+	r := &DRExecutionReconciler{
+		WaveExecutor: &engine.WaveExecutor{Registry: registry},
+	}
+	plan := &soteriav1alpha1.DRPlan{
+		Spec: soteriav1alpha1.DRPlanSpec{
+			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
+		},
+		Status: soteriav1alpha1.DRPlanStatus{
+			Waves: []soteriav1alpha1.WaveInfo{
+				{Groups: []soteriav1alpha1.VolumeGroupInfo{
+					{Name: "vg-db", Namespace: "ns1"},
+				}},
+			},
+		},
+	}
+
+	complete, err := r.checkVRsHealthy(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !complete {
+		t.Error("expected complete when role=Target + health=Degraded (15.13)")
+	}
+}
+
+func TestCheckVRsHealthy_RoleTarget_HealthUnknown_ReturnsTrue(t *testing.T) {
+	// Unknown health with role=Target is acceptable — only role matters.
+	fakeDriver := fakedrv.New()
+	vgID := drivers.VolumeGroupIDFor("noop", "ns1", "vg-db")
+	fakeDriver.OnGetReplicationStatus(vgID).ReturnResult(fakedrv.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleTarget,
+			Health: drivers.HealthUnknown,
+		},
+	})
+
+	registry := drivers.NewRegistry()
+	registry.RegisterDriver("noop", func() drivers.StorageProvider { return fakeDriver })
+
+	r := &DRExecutionReconciler{
+		WaveExecutor: &engine.WaveExecutor{Registry: registry},
+	}
+	plan := &soteriav1alpha1.DRPlan{
+		Spec: soteriav1alpha1.DRPlanSpec{
+			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
+		},
+		Status: soteriav1alpha1.DRPlanStatus{
+			Waves: []soteriav1alpha1.WaveInfo{
+				{Groups: []soteriav1alpha1.VolumeGroupInfo{
+					{Name: "vg-db", Namespace: "ns1"},
+				}},
+			},
+		},
+	}
+
+	complete, err := r.checkVRsHealthy(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !complete {
+		t.Error("expected complete when role=Target + health=Unknown (15.13)")
+	}
+}
+
+func TestCheckVRsHealthy_RoleSource_ReturnsFalse(t *testing.T) {
+	// role=Source means demotion has not been confirmed yet — should return false.
+	fakeDriver := fakedrv.New()
+	vgID := drivers.VolumeGroupIDFor("noop", "ns1", "vg-db")
+	fakeDriver.OnGetReplicationStatus(vgID).ReturnResult(fakedrv.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleSource,
+			Health: drivers.HealthHealthy,
+		},
+	})
+
+	registry := drivers.NewRegistry()
+	registry.RegisterDriver("noop", func() drivers.StorageProvider { return fakeDriver })
+
+	r := &DRExecutionReconciler{
+		WaveExecutor: &engine.WaveExecutor{Registry: registry},
+	}
+	plan := &soteriav1alpha1.DRPlan{
+		Spec: soteriav1alpha1.DRPlanSpec{
+			VolumeReplicationDriver: soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"},
+		},
+		Status: soteriav1alpha1.DRPlanStatus{
+			Waves: []soteriav1alpha1.WaveInfo{
+				{Groups: []soteriav1alpha1.VolumeGroupInfo{
+					{Name: "vg-db", Namespace: "ns1"},
+				}},
+			},
+		},
+	}
+
+	complete, err := r.checkVRsHealthy(context.Background(), plan)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
 	if complete {
-		t.Error("expected incomplete when VG health is Syncing")
+		t.Error("expected incomplete when role=Source (demotion not confirmed)")
 	}
 }
 
@@ -2047,6 +2168,161 @@ func TestCheckVRsHealthy_VGNotFound_ReturnsTrue(t *testing.T) {
 	}
 }
 
+func TestReconcileStep0_DemotionTimeout(t *testing.T) {
+	// Multi-site planned migration: VRs stuck at role=Source past timeout
+	// should fail the execution with DemotionTimeout reason and name the
+	// pending VG.
+	past := metav1.NewTime(metav1.Now().Add(-15 * time.Minute))
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "exec-demotion-timeout"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-1",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+		Status: soteriav1alpha1.DRExecutionStatus{
+			Phase:     soteriav1alpha1.ExecutionPhaseExecuting,
+			IsActive:  true,
+			StartTime: &past,
+			Conditions: []metav1.Condition{
+				{
+					Type:               "Step0Started",
+					Status:             metav1.ConditionTrue,
+					Reason:             "PreExecuteCompleted",
+					LastTransitionTime: past,
+				},
+			},
+			SiteStatuses: map[string]soteriav1alpha1.SiteCoordinationStatus{
+				"east": {LastUpdated: &past},
+			},
+		},
+	}
+
+	// VRs still at role=Source → demotion not confirmed.
+	fakeDriver := fakedrv.New()
+	vgID := drivers.VolumeGroupIDFor("noop", "ns1", "vg-db")
+	fakeDriver.OnGetReplicationStatus(vgID).ReturnResult(fakedrv.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleSource,
+			Health: drivers.HealthHealthy,
+		},
+	})
+	registry := drivers.NewRegistry()
+	registry.RegisterDriver("noop", func() drivers.StorageProvider { return fakeDriver })
+
+	plan := newSiteAwarePlan("plan-1", "east", "west", soteriav1alpha1.PhaseSteadyState)
+	plan.Spec.VolumeReplicationDriver = soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"}
+	plan.Status.Waves = []soteriav1alpha1.WaveInfo{
+		{Groups: []soteriav1alpha1.VolumeGroupInfo{
+			{Name: "vg-db", Namespace: "ns1"},
+		}},
+	}
+
+	c := newTestClient(exec, plan)
+	r := &DRExecutionReconciler{
+		Client:         c,
+		Scheme:         newTestScheme(),
+		LocalSite:      "east",
+		WaveExecutor:   &engine.WaveExecutor{Registry: registry},
+		ResumeAnalyzer: &engine.ResumeAnalyzer{},
+		Handler:        &engine.NoOpHandler{},
+	}
+
+	result, err := r.reconcileStep0(context.Background(), exec, plan)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	_ = result
+
+	var fetched soteriav1alpha1.DRExecution
+	if err := c.Get(context.Background(), client.ObjectKeyFromObject(exec), &fetched); err != nil {
+		t.Fatalf("failed to fetch execution: %v", err)
+	}
+	if fetched.Status.Result != soteriav1alpha1.ExecutionResultFailed {
+		t.Errorf("expected Failed result on demotion timeout, got %q", fetched.Status.Result)
+	}
+	readyCond := meta.FindStatusCondition(fetched.Status.Conditions, "Ready")
+	if readyCond == nil || readyCond.Reason != "DemotionTimeout" {
+		reason := ""
+		if readyCond != nil {
+			reason = readyCond.Reason
+		}
+		t.Errorf("expected Ready=False condition with reason DemotionTimeout, got %q", reason)
+	}
+	if readyCond != nil && !strings.Contains(readyCond.Message, "vg-db") {
+		t.Errorf("timeout message should name pending VG vg-db, got %q",
+			readyCond.Message)
+	}
+}
+
+// TestReconcileStep0_RoleTargetNonHealthy_SetsDemotionComplete verifies AC5:
+// when VRs report role=Target but health is not Healthy (e.g. Degraded),
+// DemotionComplete must still be set because the gate only checks role.
+func TestReconcileStep0_RoleTargetNonHealthy_SetsDemotionComplete(t *testing.T) {
+	now := metav1.Now()
+	exec := &soteriav1alpha1.DRExecution{
+		ObjectMeta: metav1.ObjectMeta{Name: "exec-target-degraded"},
+		Spec: soteriav1alpha1.DRExecutionSpec{
+			PlanName: "plan-1",
+			Mode:     soteriav1alpha1.ExecutionModePlannedMigration,
+		},
+		Status: soteriav1alpha1.DRExecutionStatus{
+			Phase:     soteriav1alpha1.ExecutionPhaseExecuting,
+			IsActive:  true,
+			StartTime: &now,
+			SiteStatuses: map[string]soteriav1alpha1.SiteCoordinationStatus{
+				"east": {LastUpdated: &now},
+			},
+		},
+	}
+
+	fakeDriver := fakedrv.New()
+	vgID := drivers.VolumeGroupIDFor("noop", "ns1", "vg-db")
+	fakeDriver.OnGetReplicationStatus(vgID).ReturnResult(fakedrv.Response{
+		ReplicationStatus: &drivers.ReplicationStatus{
+			Role:   drivers.RoleTarget,
+			Health: drivers.HealthDegraded,
+		},
+	})
+	registry := drivers.NewRegistry()
+	registry.RegisterDriver("noop", func() drivers.StorageProvider { return fakeDriver })
+
+	plan := newSiteAwarePlan("plan-1", "east", "west", soteriav1alpha1.PhaseSteadyState)
+	plan.Spec.VolumeReplicationDriver = soteriav1alpha1.VolumeReplicationDriverConfig{Type: "noop"}
+	plan.Status.Waves = []soteriav1alpha1.WaveInfo{
+		{Groups: []soteriav1alpha1.VolumeGroupInfo{
+			{Name: "vg-db", Namespace: "ns1"},
+		}},
+	}
+
+	c := newTestClient(exec, plan)
+	r := &DRExecutionReconciler{
+		Client:         c,
+		Scheme:         newTestScheme(),
+		LocalSite:      "east",
+		WaveExecutor:   &engine.WaveExecutor{Registry: registry},
+		ResumeAnalyzer: &engine.ResumeAnalyzer{},
+		Handler:        &engine.NoOpHandler{},
+	}
+
+	_, err := r.reconcileStep0(context.Background(), exec, plan)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var fetched soteriav1alpha1.DRExecution
+	if err := c.Get(context.Background(), client.ObjectKeyFromObject(exec), &fetched); err != nil {
+		t.Fatalf("failed to fetch execution: %v", err)
+	}
+	siteStatus, ok := fetched.Status.SiteStatuses["east"]
+	if !ok {
+		t.Fatal("east site status not found")
+	}
+	if !siteStatus.DemotionComplete {
+		t.Error("expected DemotionComplete=true when VRs are role=Target " +
+			"with Degraded health, but got false")
+	}
+}
+
 func TestReconcileResyncGate_Timeout_FailsExecution(t *testing.T) {
 	past := metav1.NewTime(metav1.Now().Add(-15 * time.Minute))
 	exec := &soteriav1alpha1.DRExecution{
@@ -2061,13 +2337,13 @@ func TestReconcileResyncGate_Timeout_FailsExecution(t *testing.T) {
 			StartTime: &past,
 		},
 	}
-	// VRs still syncing → not healthy.
+	// VRs still at role=Source → demotion not confirmed (not yet Secondary).
 	fakeDriver := fakedrv.New()
 	vgID := drivers.VolumeGroupIDFor("noop", "ns1", "vg-db")
 	fakeDriver.OnGetReplicationStatus(vgID).ReturnResult(fakedrv.Response{
 		ReplicationStatus: &drivers.ReplicationStatus{
-			Role:   drivers.RoleTarget,
-			Health: drivers.HealthSyncing,
+			Role:   drivers.RoleSource,
+			Health: drivers.HealthHealthy,
 		},
 	})
 	registry := drivers.NewRegistry()
@@ -2166,12 +2442,13 @@ func TestReconcileResyncGate_SetsStep0Complete(t *testing.T) {
 }
 
 func TestReconcileResyncGate_Incomplete_Waits(t *testing.T) {
+	// VRs still at role=Source → demotion not confirmed (not yet Secondary).
 	fakeDriver := fakedrv.New()
 	vgID := drivers.VolumeGroupIDFor("noop", "ns1", "vg-db")
 	fakeDriver.OnGetReplicationStatus(vgID).ReturnResult(fakedrv.Response{
 		ReplicationStatus: &drivers.ReplicationStatus{
-			Role:   drivers.RoleTarget,
-			Health: drivers.HealthSyncing,
+			Role:   drivers.RoleSource,
+			Health: drivers.HealthHealthy,
 		},
 	})
 

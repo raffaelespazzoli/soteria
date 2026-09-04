@@ -354,8 +354,9 @@ func (r *DRExecutionReconciler) reconcileWaveExecution(
 	}
 
 	// Step 0 for planned migration (single-site path): run PreExecute
-	// (idempotent: StopVM + StopReplication), then check VR health, promote,
-	// and set Step0Complete via reconcileResyncGate.
+	// (idempotent: StopVM + StopReplication), then check VRs reached
+	// role=Target (state=Secondary), promote, and set Step0Complete via
+	// reconcileResyncGate.
 	if exec.Spec.Mode == soteriav1alpha1.ExecutionModePlannedMigration && !step0Done {
 		if ph, ok := hdl.(interface {
 			PreExecute(ctx context.Context, groups []engine.ExecutionGroup) error
@@ -374,15 +375,15 @@ func (r *DRExecutionReconciler) reconcileWaveExecution(
 					fmt.Sprintf("pre-execution failed: %v", err), plan)
 			}
 		}
-		// Anchor the health-wait timeout to PreExecute completion so that
-		// VM shutdown and demotion time do not consume the timeout budget.
+		// Anchor the demotion timeout to PreExecute completion so that
+		// VM shutdown time does not consume the timeout budget.
 		if !meta.IsStatusConditionTrue(exec.Status.Conditions, "Step0Started") {
 			execPatch := client.MergeFrom(exec.DeepCopy())
 			meta.SetStatusCondition(&exec.Status.Conditions, metav1.Condition{
 				Type:               "Step0Started",
 				Status:             metav1.ConditionTrue,
 				Reason:             "PreExecuteCompleted",
-				Message:            "Step 0 pre-execution completed, waiting for VR health",
+				Message:            "Step 0 pre-execution completed, waiting for VRs to reach Secondary",
 				ObservedGeneration: exec.Generation,
 			})
 			if err := r.Status().Patch(ctx, exec, execPatch); err != nil {
@@ -1643,9 +1644,11 @@ func (r *DRExecutionReconciler) reconcileReprotectPassive(
 //     Step0Complete from the target site.
 //  2. Guard: if execution not yet started, wait.
 //  3. Run PreExecute (stops VMs + StopReplication, returns nil on success).
-//  4. Check local VR health (role=Target, health=Healthy) via checkVRsHealthy.
-//  5. When healthy, set DemotionComplete in local site status.
-//  6. Wait for Step0Complete from the target site via reconcileSourceStep0Wait.
+//  4. Set Step0Started condition to anchor the demotion timeout baseline
+//     (so VM shutdown does not consume the timeout budget).
+//  5. Check local VRs reached role=Target (state=Secondary) via checkVRsHealthy.
+//  6. When confirmed, set DemotionComplete in local site status.
+//  7. Wait for Step0Complete from the target site via reconcileSourceStep0Wait.
 //
 // This method is idempotent — PreExecute operations (StopVM, StopReplication)
 // are safe to call multiple times.
@@ -1701,18 +1704,55 @@ func (r *DRExecutionReconciler) reconcileStep0(
 		}
 	}
 
-	// After PreExecute, check local VR health (demotion snapshot synced).
+	// Anchor the demotion timeout to PreExecute completion so that
+	// VM shutdown time does not consume the timeout budget.
+	if !meta.IsStatusConditionTrue(exec.Status.Conditions, "Step0Started") {
+		execPatch := client.MergeFrom(exec.DeepCopy())
+		meta.SetStatusCondition(&exec.Status.Conditions, metav1.Condition{
+			Type:               "Step0Started",
+			Status:             metav1.ConditionTrue,
+			Reason:             "PreExecuteCompleted",
+			Message:            "Step 0 pre-execution completed, waiting for VRs to reach Secondary",
+			ObservedGeneration: exec.Generation,
+		})
+		if err := r.Status().Patch(ctx, exec, execPatch); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
+
+	// After PreExecute, check local VRs reached role=Target (state=Secondary).
 	healthy, err := r.checkVRsHealthy(ctx, plan)
 	if err != nil {
-		logger.Error(err, "Demotion health check failed, will retry")
+		logger.Error(err, "Demotion role check failed, will retry")
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 	if !healthy {
-		logger.V(1).Info("Demoted VRs not yet healthy, waiting for sync")
+		// Check timeout: multi-site path must not hang indefinitely if VRs
+		// never reach state=Secondary after StopReplication.
+		step0Timeout := defaultStep0Timeout
+		if plan.Spec.ResyncTimeout != nil {
+			step0Timeout = plan.Spec.ResyncTimeout.Duration
+		}
+		baseline := exec.Status.StartTime
+		if step0Started := meta.FindStatusCondition(exec.Status.Conditions, "Step0Started"); step0Started != nil {
+			baseline = &step0Started.LastTransitionTime
+		}
+		if baseline != nil && time.Since(baseline.Time) > step0Timeout {
+			pending := r.pendingVGs(ctx, plan)
+			logger.Info("Demotion timeout exceeded, VRs did not reach Secondary state",
+				"timeout", step0Timeout, "pendingVGs", pending)
+			r.event(exec, corev1.EventTypeWarning, "DemotionTimeout", "PlannedMigration",
+				fmt.Sprintf("VRs did not reach state=Secondary within %s for plan %s",
+					step0Timeout, plan.Name))
+			return r.failExecution(ctx, exec, "DemotionTimeout",
+				fmt.Sprintf("VRs did not reach state=Secondary within %s; pending: %s",
+					step0Timeout, pending), plan)
+		}
+		logger.V(1).Info("Demoted VRs not yet Secondary, waiting")
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 
-	// Demotion confirmed healthy — set DemotionComplete in local site status.
+	// Demotion confirmed (role=Target / state=Secondary) — set DemotionComplete in local site status.
 	execPatch := client.MergeFrom(exec.DeepCopy())
 	localStatus.DemotionComplete = true
 	setSiteStatus(exec, r.LocalSite, localStatus)
@@ -1852,12 +1892,12 @@ func (r *DRExecutionReconciler) reconcileTargetStep0(
 // reconcileResyncGate handles the single-site Step 0 completion path for
 // planned migration. After PreExecute has stopped VMs and called
 // StopReplication (demoting source VRs), this method:
-//  1. Checks VR health (role=Target, health=Healthy) via checkVRsHealthy.
-//  2. When healthy, calls SetSource on all VGs to promote to primary.
+//  1. Checks VRs reached role=Target (state=Secondary) via checkVRsHealthy.
+//  2. When confirmed, calls SetSource on all VGs to promote to primary.
 //  3. Sets Step0Complete condition.
 //
-// If the timeout (plan.Spec.ResyncTimeout) expires before VRs are healthy,
-// the execution is failed.
+// If the timeout (plan.Spec.ResyncTimeout) expires before VRs reach
+// state=Secondary, the execution is failed.
 func (r *DRExecutionReconciler) reconcileResyncGate(
 	ctx context.Context, exec *soteriav1alpha1.DRExecution, plan *soteriav1alpha1.DRPlan,
 ) (ctrl.Result, error) {
@@ -1868,10 +1908,10 @@ func (r *DRExecutionReconciler) reconcileResyncGate(
 		step0Timeout = plan.Spec.ResyncTimeout.Duration
 	}
 
-	// Check VR health (demotion snapshot synced).
+	// Check VRs reached role=Target (state=Secondary).
 	healthy, err := r.checkVRsHealthy(ctx, plan)
 	if err != nil {
-		logger.Error(err, "Failed to check VR health")
+		logger.Error(err, "Failed to check VR role")
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 
@@ -1881,19 +1921,19 @@ func (r *DRExecutionReconciler) reconcileResyncGate(
 			baseline = &step0Started.LastTransitionTime
 		}
 		if baseline != nil && time.Since(baseline.Time) > step0Timeout {
-			logger.Info("VR health timeout exceeded", "timeout", step0Timeout)
+			logger.Info("Demotion timeout exceeded, VRs did not reach Secondary state", "timeout", step0Timeout)
 			r.event(exec, corev1.EventTypeWarning, "Step0Timeout", "PlannedMigration",
 				fmt.Sprintf("Step 0 timed out after %s for plan %s", step0Timeout, plan.Name))
 			return r.failExecution(ctx, exec, "Step0Timeout",
-				fmt.Sprintf("VRs did not reach healthy state within %s", step0Timeout), plan)
+				fmt.Sprintf("VRs did not reach state=Secondary within %s", step0Timeout), plan)
 		}
-		logger.V(1).Info("Demoted VRs not yet healthy, waiting")
+		logger.V(1).Info("Demoted VRs not yet Secondary, waiting")
 		return ctrl.Result{RequeueAfter: 10 * time.Second}, nil
 	}
 
-	logger.Info("VRs healthy, promoting to primary (SetSource)")
+	logger.Info("VRs confirmed Secondary, promoting to primary (SetSource)")
 
-	// VRs healthy — call SetSource on all VGs to promote to primary.
+	// VRs confirmed Secondary — call SetSource on all VGs to promote to primary.
 	if r.WaveExecutor != nil {
 		allGroups, err := r.WaveExecutor.BuildExecutionGroups(ctx, plan)
 		if err != nil {
@@ -1930,7 +1970,7 @@ func (r *DRExecutionReconciler) reconcileResyncGate(
 		Type:               "Step0Complete",
 		Status:             metav1.ConditionTrue,
 		Reason:             "DemotionAndPromotionCompleted",
-		Message:            "VRs demoted, confirmed healthy, and promoted to primary",
+		Message:            "VRs demoted, confirmed Secondary, and promoted to primary",
 		ObservedGeneration: exec.Generation,
 	})
 	if err := r.Status().Patch(ctx, exec, execPatch); err != nil {
@@ -1945,8 +1985,11 @@ func (r *DRExecutionReconciler) reconcileResyncGate(
 }
 
 // checkVRsHealthy checks whether all VR/VGR CRs for a plan show
-// role=Target and health=Healthy. After StopReplication (demotion), VRs
-// transition to Target role; this method waits until they are fully healthy.
+// role=Target (Secondary). After StopReplication (demotion), VRs transition
+// to state=Secondary which maps to role=Target. Health conditions
+// (Completed/Degraded) are not checked because, after demotion with no
+// active primary, CSI Addons cannot produce a valid health signal — the
+// demotion snapshot is delivered by rbd-mirror, not by a sync cycle.
 // When no VR/VGR CRs exist (noop driver), returns true immediately.
 func (r *DRExecutionReconciler) checkVRsHealthy(
 	ctx context.Context, plan *soteriav1alpha1.DRPlan,
@@ -1983,13 +2026,53 @@ func (r *DRExecutionReconciler) checkVRsHealthy(
 			if status.Role == drivers.RoleNonReplicated {
 				continue
 			}
-			if status.Role != drivers.RoleTarget || status.Health != drivers.HealthHealthy {
+			if status.Role != drivers.RoleTarget {
 				return false, nil
 			}
 		}
 	}
 
 	return true, nil
+}
+
+// pendingVGs returns a comma-separated list of VG names whose role is not yet
+// Target (Secondary). Used in timeout messages to identify blocking VGs.
+func (r *DRExecutionReconciler) pendingVGs(
+	ctx context.Context, plan *soteriav1alpha1.DRPlan,
+) string {
+	if r.WaveExecutor == nil || len(plan.Status.Waves) == 0 {
+		return ""
+	}
+
+	driverType := plan.Spec.VolumeReplicationDriver.Type
+
+	var pending []string
+	seen := make(map[string]bool)
+	for _, wave := range plan.Status.Waves {
+		for _, vg := range wave.Groups {
+			key := vg.Namespace + "/" + vg.Name
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+
+			drv, err := r.WaveExecutor.ResolveVGDriver(ctx, driverType)
+			if err != nil {
+				continue
+			}
+
+			vgID := drivers.VolumeGroupIDFor(driverType, vg.Namespace, vg.Name)
+			status, err := drv.GetReplicationStatus(ctx, vgID)
+			if err != nil || status.Role == drivers.RoleNonReplicated {
+				continue
+			}
+			if status.Role != drivers.RoleTarget {
+				pending = append(pending, vg.Name)
+			}
+		}
+	}
+
+	return strings.Join(pending, ", ")
 }
 
 func (r *DRExecutionReconciler) event(

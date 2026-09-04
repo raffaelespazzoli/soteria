@@ -375,9 +375,9 @@ func main() {
 
 	if err := (&shadowpv.ShadowPVConsumerReconciler{
 		Client:        mgr.GetClient(),
-		Scheme:    mgr.GetScheme(),
-		LocalSite: siteName,
-		APIReader: mgr.GetAPIReader(),
+		Scheme:        mgr.GetScheme(),
+		LocalSite:     siteName,
+		APIReader:     mgr.GetAPIReader(),
 		EventRecorder: mgr.GetEventRecorderFor("shadowpv-consumer"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "ShadowPVConsumer")

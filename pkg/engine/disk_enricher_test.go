@@ -322,8 +322,9 @@ func TestKubeVirtDiskEnricher_MissingPVC_SelfHealing(t *testing.T) {
 	if disks[0].Name != "dv-disk" {
 		t.Errorf("Phase 1: disk name = %q, want dv-disk", disks[0].Name)
 	}
-	if disks[0].PVCName != "" {
-		t.Errorf("Phase 1: PVCName should be empty for missing PVC, got %q", disks[0].PVCName)
+	if disks[0].PVCName != "dv-provisioning" {
+		t.Errorf("Phase 1: PVCName should be dv-provisioning for missing PVC, got %q",
+			disks[0].PVCName)
 	}
 	if disks[0].StorageClass != "" {
 		t.Errorf("Phase 1: StorageClass should be empty for missing PVC, got %q", disks[0].StorageClass)

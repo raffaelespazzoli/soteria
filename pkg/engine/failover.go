@@ -40,8 +40,8 @@ limitations under the License.
 //  2. Call StopReplication on all source VGs (demote primary to secondary).
 //     The demotion snapshot is automatically synced to the target by the
 //     rbd-mirror daemon — no explicit ResyncVolume is needed.
-//  3. Return nil. The reconciler then waits for VR health confirmation
-//     (Completed=True, Degraded=False) before signalling DemotionComplete.
+//  3. Return nil. The reconciler then waits for VRs to confirm
+//     role=Target (state=Secondary) before signalling DemotionComplete.
 //
 // When GracefulShutdown=false (disaster), PreExecute is a no-op because the
 // origin site may be unreachable.
@@ -114,8 +114,8 @@ func resolveVolumeGroupID(
 //  1. Stop all origin VMs (graceful shutdown).
 //  2. Call StopReplication on each source VG to demote primary to secondary.
 //     The rbd-mirror daemon auto-syncs the demotion snapshot to the target.
-//  3. Return nil. The reconciler waits for VR health (Completed=True,
-//     Degraded=False) before signalling DemotionComplete.
+//  3. Return nil. The reconciler waits for VRs to reach role=Target
+//     (state=Secondary) before signalling DemotionComplete.
 func (h *FailoverHandler) PreExecute(ctx context.Context, groups []ExecutionGroup) error {
 	if !h.Config.GracefulShutdown {
 		return nil

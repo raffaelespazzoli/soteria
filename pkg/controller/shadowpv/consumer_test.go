@@ -82,7 +82,8 @@ func testCephPVSpec(volumeHandle, poolName string) corev1.PersistentVolumeSpec {
 				Driver:       "rook-ceph.rbd.csi.ceph.com",
 				VolumeHandle: volumeHandle,
 				VolumeAttributes: map[string]string{
-					"pool": poolName,
+					"pool":      poolName,
+					"clusterID": "rook-ceph",
 				},
 			},
 		},

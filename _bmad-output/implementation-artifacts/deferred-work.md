@@ -26,3 +26,10 @@
 - VGR create failure after PVC labeling leaves orphan labels on PVCs — functionally harmless on retry but cosmetically stale.
 - Concurrent creates can race past `getByName` idempotency check — mitigated by single-threaded reconciler per object.
 - VR object naming (`csi-ext-<vgName>-<pvcName>`) may exceed K8s 253-char name limit for unusually long names — in practice well under the limit.
+
+## Deferred from: code review of 15-13-remove-demotion-health-gate-from-step0.md (2026-09-04)
+
+- GetReplicationStatus errors in `reconcileStep0` requeue with no elapsed-time check (`pkg/controller/drexecution/reconciler.go:1706`). Same gap exists on the single-site `reconcileResyncGate` error path; persistent driver/API failures can hang until a human intervenes.
+- CSI `aggregateVRStatus` still takes role from the first VolumeReplication CR only. Health aggregation used to mask a partial demotion; with health ignored, a multi-PVC VG can look demoted while sibling CRs remain Primary.
+- `SiteCoordinationStatus.DemotionComplete` field comment (and generated OpenAPI) still documents `Completed=True, Degraded=False`. Story 15.13 forbade API/struct changes; comment is now stale.
+- AC7 T1 planned migration on dr-poc ODF clusters was not executed (Task 8, out of agent scope).
