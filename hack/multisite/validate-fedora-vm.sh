@@ -30,8 +30,8 @@
 #   EAST_CLUSTER_NAME   Name of the east Minikube profile (default: east)
 #   WEST_CLUSTER_NAME   Name of the west Minikube profile (default: west)
 #   FEDORA_IMAGE        Fedora container disk image (default: quay.io/containerdisks/fedora:latest)
-#   CIRROS_IMAGE        Cirros container disk image for pre-caching (default: quay.io/kubevirt/cirros-container-disk-demo)
 #   VM_MEMORY           Memory for the test VM (default: 256Mi)
+#   DISK_SIZE           Root disk size (default: 5Gi)
 #   VM_BOOT_TIMEOUT     Timeout in seconds for VM to reach Running (default: 300)
 #   GUEST_AGENT_TIMEOUT Timeout in seconds for guest agent check (default: 300)
 #   SKIP_CLEANUP        Set to "1" to skip cleanup of test resources
@@ -46,8 +46,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 EAST_CLUSTER_NAME="${EAST_CLUSTER_NAME:-east}"
 WEST_CLUSTER_NAME="${WEST_CLUSTER_NAME:-west}"
 FEDORA_IMAGE="${FEDORA_IMAGE:-quay.io/containerdisks/fedora:latest}"
-CIRROS_IMAGE="${CIRROS_IMAGE:-quay.io/kubevirt/cirros-container-disk-demo}"
 VM_MEMORY="${VM_MEMORY:-256Mi}"
+DISK_SIZE="${DISK_SIZE:-5Gi}"
 VM_BOOT_TIMEOUT="${VM_BOOT_TIMEOUT:-300}"
 GUEST_AGENT_TIMEOUT="${GUEST_AGENT_TIMEOUT:-300}"
 SKIP_CLEANUP="${SKIP_CLEANUP:-0}"
@@ -56,8 +56,10 @@ BIN_DIR="${SCRIPT_DIR}/.bin"
 EAST_CONTEXT="${EAST_CLUSTER_NAME}"
 WEST_CONTEXT="${WEST_CLUSTER_NAME}"
 
+GOLDEN_NS="kubevirt-golden-images"
+GOLDEN_DV="fedora-golden"
 VM_NAME="fedora-validation"
-PVC_NAME="fedora-validation-data"
+DV_NAME="fedora-validation-rootdisk"
 VM_NAMESPACE="fedora-validation"
 RESOURCE_PROFILE_SOAK_SECONDS=30
 ACTIVE_CONTEXT=""
@@ -78,6 +80,9 @@ warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 fatal() { error "$@"; exit 1; }
 
+# shellcheck source=lib.sh
+source "${SCRIPT_DIR}/lib.sh"
+
 keast() { kubectl --context "${EAST_CONTEXT}" "$@"; }
 kwest() { kubectl --context "${WEST_CONTEXT}" "$@"; }
 
@@ -88,7 +93,8 @@ check_prerequisites() {
   info "Checking prerequisites..."
 
   command -v kubectl &>/dev/null || fatal "kubectl not found"
-  command -v minikube &>/dev/null || fatal "minikube not found. Install: https://minikube.sigs.k8s.io/"
+  ensure_minikube
+  command -v minikube &>/dev/null || fatal "minikube not available after download attempt"
   command -v jq &>/dev/null || fatal "jq not found. Install: https://jqlang.org/download/"
   command -v bc &>/dev/null || fatal "bc not found. Install it via your package manager."
 
@@ -128,64 +134,75 @@ check_prerequisites() {
 }
 
 # ---------------------------------------------------------------------------
-# Image pre-caching (Task 3)
+# Golden image management (Task 3)
+#
+# Imports the Fedora container disk image into a well-known "golden" PVC
+# once per cluster. Subsequent VM creation clones from this PVC, which is
+# near-instant with Ceph CSI cloning instead of re-downloading from the
+# registry each time.
 # ---------------------------------------------------------------------------
-list_cluster_nodes() {
-  local context="$1"
+ensure_golden_image_on_cluster() {
+  local context="$1" cluster_name="$2"
 
-  kubectl --context "${context}" get nodes \
-    -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null
-}
+  kubectl --context "${context}" create namespace "${GOLDEN_NS}" \
+    --dry-run=client -o yaml | kubectl --context "${context}" apply -f - >/dev/null
 
-pre_pull_image() {
-  local context="$1" profile="$2" image="$3"
-  info "Pre-pulling '${image}' on all nodes of '${profile}'..."
-  local nodes
-  nodes="$(list_cluster_nodes "${context}")"
-  if [[ -z "${nodes}" ]]; then
-    fatal "No Kubernetes nodes found for '${profile}'"
+  local phase
+  phase="$(kubectl --context "${context}" -n "${GOLDEN_NS}" get datavolume "${GOLDEN_DV}" \
+    -o jsonpath='{.status.phase}' 2>/dev/null || echo "")"
+  if [[ "${phase}" == "Succeeded" ]]; then
+    info "Golden image already exists on '${cluster_name}' (phase: Succeeded)"
+    return 0
   fi
-  for node in ${nodes}; do
-    info "  Pulling on node '${node}'..."
-    minikube ssh -p "${profile}" -n "${node}" -- \
-      "sudo crictl pull '${image}'" 2>/dev/null || fatal "Failed to pull '${image}' on ${node}"
-  done
-}
 
-verify_image_cached() {
-  local context="$1" profile="$2" image_pattern="$3"
-  info "Verifying image cache on '${profile}'..."
-  local nodes
-  nodes="$(list_cluster_nodes "${context}")"
-  [[ -n "${nodes}" ]] || fatal "No Kubernetes nodes found for '${profile}'"
-  for node in ${nodes}; do
-    if minikube ssh -p "${profile}" -n "${node}" -- \
-        "sudo crictl images 2>/dev/null | grep -q '${image_pattern}'" 2>/dev/null; then
-      info "  Image '${image_pattern}' cached on '${node}'"
-    else
-      fatal "Image '${image_pattern}' NOT found on '${node}' after pre-pull"
+  info "Importing golden Fedora image on '${cluster_name}'..."
+  kubectl --context "${context}" apply -f - <<EOF
+apiVersion: cdi.kubevirt.io/v1beta1
+kind: DataVolume
+metadata:
+  name: ${GOLDEN_DV}
+  namespace: ${GOLDEN_NS}
+spec:
+  source:
+    registry:
+      url: "docker://${FEDORA_IMAGE}"
+  storage:
+    accessModes: ["ReadWriteOnce"]
+    storageClassName: rook-ceph-block
+    resources:
+      requests:
+        storage: ${DISK_SIZE}
+EOF
+
+  info "Waiting for golden image import on '${cluster_name}'..."
+  local attempts=0 max_attempts=120
+  while [[ ${attempts} -lt ${max_attempts} ]]; do
+    phase="$(kubectl --context "${context}" -n "${GOLDEN_NS}" get datavolume "${GOLDEN_DV}" \
+      -o jsonpath='{.status.phase}' 2>/dev/null || echo "")"
+    if [[ "${phase}" == "Succeeded" ]]; then
+      info "Golden image import completed on '${cluster_name}'"
+      return 0
     fi
+    if [[ "${phase}" == "Failed" ]]; then
+      kubectl --context "${context}" -n "${GOLDEN_NS}" describe datavolume "${GOLDEN_DV}"
+      fatal "Golden image import FAILED on '${cluster_name}'"
+    fi
+    attempts=$((attempts + 1))
+    sleep 5
   done
+  kubectl --context "${context}" -n "${GOLDEN_NS}" describe datavolume "${GOLDEN_DV}"
+  fatal "Golden image import did not complete on '${cluster_name}' within timeout"
 }
 
-pre_cache_images() {
+ensure_golden_images() {
   info "============================================================"
-  info "Pre-caching container disk images"
+  info "Ensuring Fedora golden image exists on both clusters"
   info "============================================================"
 
-  # Pre-pull Fedora container disk on both clusters (Task 3.1)
-  pre_pull_image "${EAST_CONTEXT}" "${EAST_CLUSTER_NAME}" "${FEDORA_IMAGE}"
-  pre_pull_image "${WEST_CONTEXT}" "${WEST_CLUSTER_NAME}" "${FEDORA_IMAGE}"
+  ensure_golden_image_on_cluster "${EAST_CONTEXT}" "${EAST_CLUSTER_NAME}"
+  ensure_golden_image_on_cluster "${WEST_CONTEXT}" "${WEST_CLUSTER_NAME}"
 
-  # Verify Fedora image is cached (Task 3.2)
-  verify_image_cached "${EAST_CONTEXT}" "${EAST_CLUSTER_NAME}" "fedora"
-  verify_image_cached "${WEST_CONTEXT}" "${WEST_CLUSTER_NAME}" "fedora"
-
-  # Pre-pull cirros image as well (Task 3.3)
-  pre_pull_image "${EAST_CONTEXT}" "${EAST_CLUSTER_NAME}" "${CIRROS_IMAGE}"
-  pre_pull_image "${WEST_CONTEXT}" "${WEST_CLUSTER_NAME}" "${CIRROS_IMAGE}"
-
-  info "Image pre-caching complete"
+  info "Golden image ready on both clusters"
 }
 
 # ---------------------------------------------------------------------------
@@ -206,45 +223,51 @@ delete_namespace() {
 }
 
 # ---------------------------------------------------------------------------
-# Create test PVC (Task 1.4)
+# Clone golden image into validation rootdisk (Task 1.4)
 # ---------------------------------------------------------------------------
-create_test_pvc() {
+create_datavolume() {
   local context="$1" cluster_name="$2"
 
-  info "Creating test PVC '${PVC_NAME}' on '${cluster_name}'..."
+  info "Creating DataVolume '${DV_NAME}' on '${cluster_name}' (cloning from golden image)..."
 
   kubectl --context "${context}" apply -f - <<EOF
-apiVersion: v1
-kind: PersistentVolumeClaim
+apiVersion: cdi.kubevirt.io/v1beta1
+kind: DataVolume
 metadata:
-  name: ${PVC_NAME}
+  name: ${DV_NAME}
   namespace: ${VM_NAMESPACE}
 spec:
-  accessModes: ["ReadWriteOnce"]
-  storageClassName: rook-ceph-block
-  resources:
-    requests:
-      storage: 1Gi
+  source:
+    pvc:
+      namespace: ${GOLDEN_NS}
+      name: ${GOLDEN_DV}
+  storage:
+    accessModes: ["ReadWriteOnce"]
+    storageClassName: rook-ceph-block
+    resources:
+      requests:
+        storage: ${DISK_SIZE}
 EOF
 
-  info "Waiting for PVC '${PVC_NAME}' to bind on '${cluster_name}'..."
-  local attempts=0 max_attempts=30
+  info "Waiting for DataVolume '${DV_NAME}' clone to complete on '${cluster_name}'..."
+  local attempts=0 max_attempts=60
   while [[ ${attempts} -lt ${max_attempts} ]]; do
-    local pvc_phase
-    pvc_phase="$(kubectl --context "${context}" -n "${VM_NAMESPACE}" get pvc "${PVC_NAME}" \
+    local phase
+    phase="$(kubectl --context "${context}" -n "${VM_NAMESPACE}" get datavolume "${DV_NAME}" \
       -o jsonpath='{.status.phase}' 2>/dev/null || echo "")"
-    if [[ "${pvc_phase}" == "Bound" ]]; then
-      local sc
-      sc="$(kubectl --context "${context}" -n "${VM_NAMESPACE}" get pvc "${PVC_NAME}" \
-        -o jsonpath='{.spec.storageClassName}' 2>/dev/null)"
-      info "PVC '${PVC_NAME}' is Bound on '${cluster_name}' (StorageClass: ${sc})"
+    if [[ "${phase}" == "Succeeded" ]]; then
+      info "DataVolume '${DV_NAME}' clone completed on '${cluster_name}'"
       return 0
+    fi
+    if [[ "${phase}" == "Failed" ]]; then
+      kubectl --context "${context}" -n "${VM_NAMESPACE}" describe datavolume "${DV_NAME}"
+      fatal "DataVolume '${DV_NAME}' clone FAILED on '${cluster_name}'"
     fi
     attempts=$((attempts + 1))
     sleep 5
   done
-  kubectl --context "${context}" -n "${VM_NAMESPACE}" describe pvc "${PVC_NAME}"
-  fatal "PVC '${PVC_NAME}' did not bind on '${cluster_name}' within timeout"
+  kubectl --context "${context}" -n "${VM_NAMESPACE}" describe datavolume "${DV_NAME}"
+  fatal "DataVolume '${DV_NAME}' clone did not complete on '${cluster_name}' within timeout"
 }
 
 # ---------------------------------------------------------------------------
@@ -271,19 +294,13 @@ spec:
             memory: ${VM_MEMORY}
         devices:
           disks:
-            - name: bootdisk
-              disk:
-                bus: virtio
-            - name: datadisk
+            - name: rootdisk
               disk:
                 bus: virtio
       volumes:
-        - name: bootdisk
-          containerDisk:
-            image: ${FEDORA_IMAGE}
-        - name: datadisk
+        - name: rootdisk
           persistentVolumeClaim:
-            claimName: ${PVC_NAME}
+            claimName: ${DV_NAME}
 EOF
 
   info "Fedora VM '${VM_NAME}' created on '${cluster_name}'"
@@ -574,8 +591,8 @@ validate_cluster() {
   # Create dedicated namespace for validation
   ensure_namespace "${context}" "${cluster_name}"
 
-  # Create PVC and VM
-  create_test_pvc "${context}" "${cluster_name}"
+  # Create DataVolume (imports Fedora into Ceph PVC) and VM
+  create_datavolume "${context}" "${cluster_name}"
   create_fedora_vm "${context}" "${cluster_name}"
 
   # Wait for VM to boot
@@ -612,8 +629,8 @@ main() {
 
   check_prerequisites
 
-  # Pre-cache images on all nodes of both clusters
-  pre_cache_images
+  # Ensure golden Fedora image exists on both clusters
+  ensure_golden_images
 
   # Validate Fedora VM on each cluster
   validate_cluster "${EAST_CONTEXT}" "${EAST_CLUSTER_NAME}"

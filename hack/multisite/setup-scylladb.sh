@@ -548,10 +548,10 @@ else
 
     # 6.2: CQL cross-DC replication test
     info "Running CQL cross-DC replication test..."
-    EAST_IP=$(keast -n "${NAMESPACE}" get pod "${EAST_POD}" -o jsonpath='{.status.podIP}')
     CQL_WRITE_OK=false
     cql_err=""
     for ci in $(seq 1 24); do
+      EAST_IP=$(keast -n "${NAMESPACE}" get pod "${EAST_POD}" -o jsonpath='{.status.podIP}')
       cql_err=$(keast -n "${NAMESPACE}" exec "${EAST_POD}" -c scylla -- \
         cqlsh "${EAST_IP}" -e "CREATE KEYSPACE IF NOT EXISTS smoke_test WITH replication = {'class': 'NetworkTopologyStrategy', 'east': 1, 'west': 1};" \
         2>&1) \
@@ -579,9 +579,9 @@ else
       -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
 
     if [[ -n "${WEST_POD}" ]]; then
-      WEST_IP=$(kwest -n "${NAMESPACE}" get pod "${WEST_POD}" -o jsonpath='{.status.podIP}')
       RESULT=""
       for _ in $(seq 1 12); do
+        WEST_IP=$(kwest -n "${NAMESPACE}" get pod "${WEST_POD}" -o jsonpath='{.status.podIP}')
         RESULT=$(kwest -n "${NAMESPACE}" exec "${WEST_POD}" -c scylla -- \
           cqlsh "${WEST_IP}" -e "SELECT value FROM smoke_test.test_table WHERE id = 1;" \
           2>&1 || true)

@@ -91,6 +91,9 @@ warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 fatal() { error "$*"; exit 1; }
 
+# shellcheck source=lib.sh
+source "${SCRIPT_DIR}/lib.sh"
+
 keast() { kubectl --context "${EAST_CONTEXT}" "$@"; }
 kwest() { kubectl --context "${WEST_CONTEXT}" "$@"; }
 
@@ -104,7 +107,8 @@ kustomize_build() {
 info "=== Checking prerequisites ==="
 
 command -v kubectl &>/dev/null || fatal "kubectl not found"
-command -v minikube &>/dev/null || fatal "minikube not found"
+ensure_minikube
+command -v minikube &>/dev/null || fatal "minikube not available after download attempt"
 
 for profile in "${EAST_CLUSTER_NAME}" "${WEST_CLUSTER_NAME}"; do
   status=$(minikube status -p "${profile}" -f '{{.Host}}' 2>/dev/null) || true

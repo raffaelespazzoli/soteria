@@ -130,7 +130,6 @@ func main() {
 	fs.StringVar(&siteName, "site-name", "",
 		"The site name identifying this controller instance (required). "+
 			"Must match either primarySite or secondarySite of the DRPlans this controller reconciles.")
-
 	zapOpts := zap.Options{Development: true}
 	goFS := flag.NewFlagSet("", flag.ExitOnError)
 	zapOpts.BindFlags(goFS)
@@ -376,9 +375,9 @@ func main() {
 
 	if err := (&shadowpv.ShadowPVConsumerReconciler{
 		Client:        mgr.GetClient(),
-		Scheme:        mgr.GetScheme(),
-		LocalSite:     siteName,
-		APIReader:     mgr.GetAPIReader(),
+		Scheme:    mgr.GetScheme(),
+		LocalSite: siteName,
+		APIReader: mgr.GetAPIReader(),
 		EventRecorder: mgr.GetEventRecorderFor("shadowpv-consumer"),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "ShadowPVConsumer")

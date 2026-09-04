@@ -255,9 +255,11 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	// On the first reconcile the active site's SiteDiscovery is nil in the
 	// stored plan status because it is only persisted at the end of
 	// updateStatus. Populate it in-memory now so the agreement checks see
-	// current-cycle data instead of nil (fixes UAT-8.001). On subsequent
-	// reconciles the stored value already reflects the previous cycle's
-	// discovery and is left untouched.
+	// current-cycle data instead of nil (fixes UAT-8.001). Also refresh
+	// when the stored VM count diverges from the current discovery (e.g.
+	// after a controller crash that left stale counts); without this,
+	// evaluateSiteAgreement reads the stale count, exits early, and
+	// updateStatus is never reached — creating a permanent deadlock.
 	if r.LocalSite != "" {
 		siteField := r.siteDiscoveryField(&plan)
 		if siteField != "" {
@@ -267,7 +269,11 @@ func (r *DRPlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 			} else {
 				currentDiscovery = plan.Status.SecondarySiteDiscovery
 			}
-			if currentDiscovery == nil || currentDiscovery.LastDiscoveryTime.IsZero() {
+			discoveredCount := len(vms)
+			stale := currentDiscovery == nil ||
+				currentDiscovery.LastDiscoveryTime.IsZero() ||
+				currentDiscovery.DiscoveredVMCount != discoveredCount
+			if stale {
 				pendingVMs := collectVMsFromWaves(waves)
 				sortDiscoveredVMs(pendingVMs)
 				setSiteDiscovery(&plan, siteField, &soteriav1alpha1.SiteDiscovery{
@@ -873,11 +879,18 @@ func (r *DRPlanReconciler) evaluateSiteAgreement(
 			r.event(plan, "Warning", "SitesOutOfSync", sisCond.Message)
 		}
 
+		// Preserve in-memory SiteDiscovery before re-fetching the plan,
+		// so stale post-crash counts are corrected in the patch.
+		savedPrimary := plan.Status.PrimarySiteDiscovery
+		savedSecondary := plan.Status.SecondarySiteDiscovery
+
 		if err := r.Get(ctx, req.NamespacedName, plan); err != nil {
 			return nil, false, err
 		}
 
 		patch := client.MergeFrom(plan.DeepCopy())
+		plan.Status.PrimarySiteDiscovery = savedPrimary
+		plan.Status.SecondarySiteDiscovery = savedSecondary
 		plan.Status.Waves = nil
 		plan.Status.DiscoveredVMCount = 0
 		meta.SetStatusCondition(&plan.Status.Conditions, sisCond)
@@ -1148,10 +1161,13 @@ func compareDiskTopology(
 			continue
 		}
 
-		// Asymmetric disk presence: one side has disks, other doesn't.
-		// This indicates disk enrichment hasn't run yet on one site.
+		// Asymmetric disk presence or incomplete enrichment: one side
+		// has no disks, or disks exist but StorageClass is empty
+		// (PV chain not resolved yet, e.g. during bootstrap before
+		// ShadowPV consumer creates PVs on the passive site).
 		if (len(pDisks) > 0 && len(sDisks) == 0) ||
-			(len(pDisks) == 0 && len(sDisks) > 0) {
+			(len(pDisks) == 0 && len(sDisks) > 0) ||
+			hasUnenrichedDisks(pDisks) || hasUnenrichedDisks(sDisks) {
 			waitingVMs = append(waitingVMs, key)
 			continue
 		}
@@ -1193,6 +1209,17 @@ func compareDiskTopology(
 	cond.Reason = reasonDisksAgreed
 	cond.Message = "All VMs have matching disk topology across sites"
 	return true, cond
+}
+
+// hasUnenrichedDisks returns true if any disk has a PVC name but no
+// StorageClass, indicating the PV chain hasn't been resolved yet.
+func hasUnenrichedDisks(disks []soteriav1alpha1.DiscoveredDisk) bool {
+	for _, d := range disks {
+		if d.PVCName != "" && d.StorageClass == "" {
+			return true
+		}
+	}
+	return false
 }
 
 // compareDiskSets compares sorted disk lists for a single VM across sites.

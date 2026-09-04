@@ -43,7 +43,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # ---------------------------------------------------------------------------
 EAST_CLUSTER_NAME="${EAST_CLUSTER_NAME:-east}"
 WEST_CLUSTER_NAME="${WEST_CLUSTER_NAME:-west}"
-ROOK_CHART_VERSION="${ROOK_CHART_VERSION:-v1.20.2}"
+ROOK_CHART_VERSION="${ROOK_CHART_VERSION:-v1.20.6}"
 CEPH_CSI_DRIVERS_VERSION="${CEPH_CSI_DRIVERS_VERSION:-1.0.4}"
 SMOKE_TEST="${SMOKE_TEST:-1}"
 CSI_ADDONS_TAG="${CSI_ADDONS_TAG:-v0.14.0}"
@@ -64,6 +64,9 @@ info()  { echo -e "${GREEN}[INFO]${NC}  $*"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 fatal() { error "$@"; exit 1; }
+
+# shellcheck source=lib.sh
+source "${SCRIPT_DIR}/lib.sh"
 
 keast() { kubectl --context "${EAST_CONTEXT}" "$@"; }
 kwest() { kubectl --context "${WEST_CONTEXT}" "$@"; }
@@ -87,7 +90,8 @@ check_prerequisites() {
 
   command -v kubectl &>/dev/null || fatal "kubectl not found"
   command -v helm &>/dev/null || fatal "helm not found. Install: https://helm.sh/docs/intro/install/"
-  command -v minikube &>/dev/null || fatal "minikube not found. Install: https://minikube.sigs.k8s.io/"
+  ensure_minikube
+  command -v minikube &>/dev/null || fatal "minikube not available after download attempt"
   command -v envsubst &>/dev/null || fatal "envsubst not found (part of gettext)"
 
   # Verify Minikube clusters are running

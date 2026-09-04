@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Button, Progress, ProgressMeasureLocation, Spinner } from '@patternfly/react-core';
-import { useHistory } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { DRExecution, DRPlan } from '../../models/types';
 import { getEffectivePhase } from '../../utils/drPlanUtils';
 
@@ -30,7 +30,7 @@ const TransitionProgressBanner: React.FC<TransitionProgressBannerProps> = ({
   execution,
   optimisticExec,
 }) => {
-  const history = useHistory();
+  const navigate = useNavigate();
   const effectivePhase = getEffectivePhase(plan, execution ?? undefined);
   const restPhase = plan.status?.phase;
   const [elapsedState, setElapsedState] = useState({ text: '', ms: 0 });
@@ -139,7 +139,7 @@ const TransitionProgressBanner: React.FC<TransitionProgressBannerProps> = ({
           <strong>{estimatedRemaining}</strong>
         </span>
         {execDetailPath && (
-          <Button variant="link" isInline onClick={() => history.push(execDetailPath)}>
+          <Button variant="link" isInline onClick={() => navigate(execDetailPath)}>
             View execution details
           </Button>
         )}

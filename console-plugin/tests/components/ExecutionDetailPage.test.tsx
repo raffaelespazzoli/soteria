@@ -19,7 +19,7 @@ jest.mock('../../src/providers', () => ({
 jest.mock('react-router-dom', () => ({
   ...jest.requireActual('react-router-dom'),
   useParams: () => ({ name: 'erp-failover-1714327200000' }),
-  useHistory: () => ({ push: jest.fn() }),
+  useNavigate: () => jest.fn(),
   Link: ({ to, children }: { to: string; children: React.ReactNode }) => (
     <a href={to}>{children}</a>
   ),

@@ -12,7 +12,7 @@ jest.mock('@openshift-console/dynamic-plugin-sdk', () => ({
 const mockPush = jest.fn();
 jest.mock('react-router-dom', () => ({
   ...jest.requireActual('react-router-dom'),
-  useHistory: () => ({ push: mockPush }),
+  useNavigate: () => mockPush,
 }));
 
 const mockExecutions: DRExecution[] = [

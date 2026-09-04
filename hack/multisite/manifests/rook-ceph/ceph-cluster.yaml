@@ -22,7 +22,7 @@ spec:
     #   enabled: true
     #   clusterID: ${CLUSTER_ID}
   cephVersion:
-    image: quay.io/ceph/ceph:v19
+    image: quay.io/ceph/ceph:v20
     allowUnsupported: true
   dataDirHostPath: /data/rook
   mon:
@@ -38,6 +38,14 @@ spec:
     enabled: false
   monitoring:
     enabled: false
+  security:
+    cephx:
+      csi:
+        # Minikube KVM2 nodes run kernel 6.6 which does not support AES-256K
+        # krbd mounts (requires kernel 7.0+). Force legacy AES keys for CSI.
+        keyType: aes
+    keyRotation:
+      enabled: false
   storage:
     useAllNodes: true
     useAllDevices: false

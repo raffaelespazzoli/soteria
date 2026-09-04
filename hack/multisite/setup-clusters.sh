@@ -83,75 +83,8 @@ warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 fatal() { error "$@"; exit 1; }
 
-# ---------------------------------------------------------------------------
-# Binary download helpers
-# ---------------------------------------------------------------------------
-ensure_minikube() {
-  if command -v minikube &>/dev/null; then
-    return 0
-  fi
-
-  if [[ -x "${BIN_DIR}/minikube" ]]; then
-    export PATH="${BIN_DIR}:${PATH}"
-    return 0
-  fi
-
-  info "minikube not found — downloading to ${BIN_DIR}/..."
-  mkdir -p "${BIN_DIR}"
-
-  local os arch
-  os="$(uname -s | tr '[:upper:]' '[:lower:]')"
-  arch="$(uname -m)"
-  case "${arch}" in
-    x86_64)  arch="amd64" ;;
-    aarch64) arch="arm64" ;;
-  esac
-
-  curl -fsSL "https://storage.googleapis.com/minikube/releases/latest/minikube-${os}-${arch}" \
-    -o "${BIN_DIR}/minikube"
-  chmod +x "${BIN_DIR}/minikube"
-
-  export PATH="${BIN_DIR}:${PATH}"
-  info "minikube installed: $(minikube version --short 2>/dev/null)"
-}
-
-ensure_cilium_cli() {
-  if command -v cilium &>/dev/null; then
-    return 0
-  fi
-
-  if [[ -x "${BIN_DIR}/cilium" ]]; then
-    export PATH="${BIN_DIR}:${PATH}"
-    return 0
-  fi
-
-  info "cilium CLI not found — downloading to ${BIN_DIR}/..."
-  mkdir -p "${BIN_DIR}"
-
-  local os arch
-  os="$(uname -s | tr '[:upper:]' '[:lower:]')"
-  arch="$(uname -m)"
-  case "${arch}" in
-    x86_64)  arch="amd64" ;;
-    aarch64) arch="arm64" ;;
-  esac
-
-  local release_url="https://github.com/cilium/cilium-cli/releases/latest/download"
-  local tarball="cilium-${os}-${arch}.tar.gz"
-  local checksum_file="cilium-${os}-${arch}.tar.gz.sha256sum"
-
-  curl -fsSL "${release_url}/${tarball}" -o "${BIN_DIR}/${tarball}"
-  curl -fsSL "${release_url}/${checksum_file}" -o "${BIN_DIR}/${checksum_file}"
-
-  (cd "${BIN_DIR}" && sha256sum --check "${checksum_file}") || fatal "cilium CLI checksum verification failed"
-
-  tar -xzf "${BIN_DIR}/${tarball}" -C "${BIN_DIR}"
-  rm -f "${BIN_DIR}/${tarball}" "${BIN_DIR}/${checksum_file}"
-  chmod +x "${BIN_DIR}/cilium"
-
-  export PATH="${BIN_DIR}:${PATH}"
-  info "cilium CLI installed: $(cilium version --client 2>/dev/null | head -1)"
-}
+# shellcheck source=lib.sh
+source "${SCRIPT_DIR}/lib.sh"
 
 # ---------------------------------------------------------------------------
 # Prerequisite checks
@@ -191,10 +124,14 @@ create_cluster() {
 
   info "Creating Minikube KVM2 cluster '${name}' (4 nodes, ${NODE_CPUS} vCPU, master=${MASTER_MEMORY}MB / workers=${WORKER_MEMORY}MB RAM, ${DISK_SIZE} disk + extra disk)..."
 
-  # Create with worker memory; control-plane node is resized after creation
+  # Create with worker memory; control-plane node is resized after creation.
+  # CRI-O is required (not Docker) so that device_ownership_from_security_context
+  # works for CDI block-mode imports (non-root pods accessing block devices).
+  # CRI-O needs a CNI; kindnet supports multi-node and is replaced by Cilium.
   minikube start \
     --profile "${name}" \
     --driver=kvm2 \
+    --container-runtime=cri-o \
     --nodes=4 \
     --kvm-network=default \
     --network=soteria-network \
@@ -202,7 +139,7 @@ create_cluster() {
     --memory="${WORKER_MEMORY}" \
     --disk-size="${DISK_SIZE}" \
     --extra-disks=1 \
-    --cni=false \
+    --cni=kindnet \
     --extra-config=kubeadm.pod-network-cidr="${pod_cidr}" \
     --service-cluster-ip-range="${service_cidr}" \
     --extra-config=kubeadm.skip-phases=addon/kube-proxy
@@ -221,6 +158,27 @@ create_cluster() {
   fi
 
   info "Minikube cluster '${name}' created"
+
+  configure_crio_device_ownership "${name}"
+}
+
+# ---------------------------------------------------------------------------
+# CRI-O: enable device_ownership_from_security_context on all nodes
+# ---------------------------------------------------------------------------
+configure_crio_device_ownership() {
+  local cluster="$1"
+  info "Enabling device_ownership_from_security_context in CRI-O on '${cluster}'..."
+
+  local nodes
+  nodes="$(kubectl --context "${cluster}" get nodes -o jsonpath='{.items[*].metadata.name}')"
+
+  for node in ${nodes}; do
+    minikube ssh -p "${cluster}" -n "${node}" -- \
+      "sudo mkdir -p /etc/crio/crio.conf.d && printf '[crio.runtime]\ndevice_ownership_from_security_context = true\n' | sudo tee /etc/crio/crio.conf.d/10-device-ownership.conf >/dev/null && sudo systemctl restart crio" 2>/dev/null
+    info "  ${node}: configured and CRI-O restarted"
+  done
+
+  info "CRI-O device ownership configured on all nodes of '${cluster}'"
 }
 
 # ---------------------------------------------------------------------------
@@ -271,8 +229,52 @@ install_cilium() {
 # ---------------------------------------------------------------------------
 # MetalLB (LoadBalancer IPs for Cluster Mesh apiserver)
 # ---------------------------------------------------------------------------
+# Minikube KVM2 nodes share a libvirt /24 (e.g. 192.168.39.x). Discover the
+# prefix from node IPs and carve non-overlapping slices for east vs west.
+get_metallb_subnet_prefix() {
+  local cluster_name="$1"
+  local context="$2"
+  local prefix="" ip candidate
+
+  # minikube ip reflects the control-plane node on the libvirt network.
+  ip="$(minikube -p "${cluster_name}" ip 2>/dev/null || true)"
+  if [[ -n "${ip}" ]]; then
+    prefix="${ip%.*}"
+  fi
+
+  while IFS= read -r ip; do
+    [[ -z "${ip}" ]] && continue
+    candidate="${ip%.*}"
+    if [[ -z "${prefix}" ]]; then
+      prefix="${candidate}"
+    elif [[ "${candidate}" != "${prefix}" ]]; then
+      warn "Node IPs span multiple subnets on '${cluster_name}' (${prefix} vs ${candidate}); using ${prefix} for MetalLB"
+    fi
+  done < <(kubectl --context "${context}" get nodes \
+    -o jsonpath='{range .items[*]}{.status.addresses[?(@.type=="InternalIP")].address}{"\n"}{end}')
+
+  [[ -n "${prefix}" ]] || fatal "Could not determine node subnet for MetalLB on '${cluster_name}'"
+  echo "${prefix}"
+}
+
+metallb_lb_range_for_cluster() {
+  local cluster_name="$1" subnet_prefix="$2"
+  local lb_start lb_end
+
+  if [[ "${cluster_name}" == "${EAST_CLUSTER_NAME}" ]]; then
+    lb_start="${subnet_prefix}.230"
+    lb_end="${subnet_prefix}.254"
+  else
+    lb_start="${subnet_prefix}.215"
+    lb_end="${subnet_prefix}.229"
+  fi
+
+  echo "${lb_start} ${lb_end}"
+}
+
 deploy_metallb() {
   local cluster_name="$1"
+  local subnet_prefix lb_start lb_end
 
   info "Intsalling MetalLB on '${cluster_name}'..."
   kubectl --context "${cluster_name}" apply -f https://raw.githubusercontent.com/metallb/metallb/v0.16.1/config/manifests/metallb-native.yaml
@@ -280,20 +282,11 @@ deploy_metallb() {
   info "Waiting for MetalLB to be ready on '${cluster_name}'..."
   kubectl --context "${cluster_name}" wait --for=condition=ready pod -l app=metallb -n metallb-system --timeout=180s
 
-  # Derive an IP range from the cluster's node IP subnet.
-  # Minikube's private network assigns IPs in a /24; we reserve .200-.220 for LBs.
-  local subnet_prefix
-  subnet_prefix="192.168.122"
-  local lb_start_east="${subnet_prefix}.230"
-  local lb_end_east="${subnet_prefix}.254"  
-  local lb_start_west="${subnet_prefix}.215"
-  local lb_end_west="${subnet_prefix}.229"
+  subnet_prefix="$(get_metallb_subnet_prefix "${cluster_name}" "${cluster_name}")"
+  read -r lb_start lb_end <<<"$(metallb_lb_range_for_cluster "${cluster_name}" "${subnet_prefix}")"
 
-  info "Configuring MetalLB on '${cluster_name}' with range ${lb_start_east}-${lb_end_east} and ${lb_start_west}-${lb_end_west}..."
+  info "Configuring MetalLB on '${cluster_name}' with range ${lb_start}-${lb_end} (node subnet ${subnet_prefix}.0/24)..."
 
-
-
-if [[ "${cluster_name}" == "${EAST_CLUSTER_NAME}" ]]; then
   kubectl --context "${cluster_name}" apply -f - <<EOF
 apiVersion: metallb.io/v1beta1
 kind: IPAddressPool
@@ -302,20 +295,8 @@ metadata:
   namespace: metallb-system
 spec:
   addresses:
-    - ${lb_start_east}-${lb_end_east}
+    - ${lb_start}-${lb_end}
 EOF
-else
-  kubectl --context "${cluster_name}" apply -f - <<EOF
-apiVersion: metallb.io/v1beta1
-kind: IPAddressPool
-metadata:
-  name: default-pool
-  namespace: metallb-system
-spec:
-  addresses:
-    - ${lb_start_west}-${lb_end_west}
-EOF
-fi
 
 kubectl --context "${cluster_name}" apply -f - <<EOF
 apiVersion: metallb.io/v1beta1
@@ -387,14 +368,16 @@ connectivity_smoke_test() {
   kubectl --context "${WEST_CONTEXT}" create namespace "${test_ns}" --dry-run=client -o yaml | \
     kubectl --context "${WEST_CONTEXT}" apply -f -
 
+  local pod_overrides='{"spec":{"terminationGracePeriodSeconds":0,"containers":[{"name":"east-probe","image":"busybox:1.36","command":["sleep","300"],"securityContext":{"capabilities":{"add":["NET_RAW"]}}}]}}'
   if ! kubectl --context "${EAST_CONTEXT}" -n "${test_ns}" get pod east-probe &>/dev/null; then
     kubectl --context "${EAST_CONTEXT}" -n "${test_ns}" run east-probe \
-      --image=busybox:1.36 --restart=Never --overrides='{"spec":{"terminationGracePeriodSeconds":0}}' \
+      --image=busybox:1.36 --restart=Never --overrides="${pod_overrides}" \
       --command -- sleep 300
   fi
+  local pod_overrides_west='{"spec":{"terminationGracePeriodSeconds":0,"containers":[{"name":"west-probe","image":"busybox:1.36","command":["sleep","300"],"securityContext":{"capabilities":{"add":["NET_RAW"]}}}]}}'
   if ! kubectl --context "${WEST_CONTEXT}" -n "${test_ns}" get pod west-probe &>/dev/null; then
     kubectl --context "${WEST_CONTEXT}" -n "${test_ns}" run west-probe \
-      --image=busybox:1.36 --restart=Never --overrides='{"spec":{"terminationGracePeriodSeconds":0}}' \
+      --image=busybox:1.36 --restart=Never --overrides="${pod_overrides_west}" \
       --command -- sleep 300
   fi
 

@@ -176,7 +176,12 @@ func (r *ShadowPVConsumerReconciler) rewriteVolumeHandle(
 		return "", fmt.Errorf("no pool name in volumeAttributes for handle %s", volumeHandle)
 	}
 
-	localPoolID, err := r.resolveLocalPoolID(ctx, poolName, poolCache)
+	cephNS := volumeAttributes["clusterID"]
+	if cephNS == "" {
+		return "", fmt.Errorf("no clusterID in volumeAttributes for handle %s", volumeHandle)
+	}
+
+	localPoolID, err := r.resolveLocalPoolID(ctx, poolName, cephNS, poolCache)
 	if err != nil {
 		return "", err
 	}
@@ -189,9 +194,10 @@ func (r *ShadowPVConsumerReconciler) rewriteVolumeHandle(
 }
 
 func (r *ShadowPVConsumerReconciler) resolveLocalPoolID(
-	ctx context.Context, poolName string, cache map[string]int,
+	ctx context.Context, poolName string, cephNamespace string, cache map[string]int,
 ) (int, error) {
-	if id, ok := cache[poolName]; ok {
+	cacheKey := cephNamespace + "/" + poolName
+	if id, ok := cache[cacheKey]; ok {
 		return id, nil
 	}
 
@@ -199,15 +205,19 @@ func (r *ShadowPVConsumerReconciler) resolveLocalPoolID(
 	cbp.SetGroupVersionKind(schema.GroupVersionKind{
 		Group: "ceph.rook.io", Version: "v1", Kind: "CephBlockPool",
 	})
+	ns := cephNamespace
+	if ns == "" {
+		ns = "rook-ceph"
+	}
 	if err := r.APIReader.Get(ctx, client.ObjectKey{
-		Namespace: "rook-ceph", Name: poolName,
+		Namespace: ns, Name: poolName,
 	}, &cbp); err != nil {
 		return 0, fmt.Errorf("getting CephBlockPool %s: %w", poolName, err)
 	}
 
 	// Prefer status.poolID (int, newer Rook versions)
 	if poolID, found, err := unstructured.NestedInt64(cbp.Object, "status", "poolID"); err == nil && found {
-		cache[poolName] = int(poolID)
+		cache[cacheKey] = int(poolID)
 		return int(poolID), nil
 	}
 
@@ -216,12 +226,12 @@ func (r *ShadowPVConsumerReconciler) resolveLocalPoolID(
 	if poolNumStr, ok := info["poolNumber"]; ok {
 		poolID, err := strconv.Atoi(poolNumStr)
 		if err == nil {
-			cache[poolName] = poolID
+			cache[cacheKey] = poolID
 			return poolID, nil
 		}
 	}
 
-	return 0, fmt.Errorf("CephBlockPool %s has no pool ID in status", poolName)
+	return 0, fmt.Errorf("CephBlockPool %s/%s has no pool ID in status", ns, poolName)
 }
 
 func (r *ShadowPVConsumerReconciler) setConflictConditionWithRetry(

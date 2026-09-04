@@ -61,7 +61,7 @@ jest.mock('../../src/hooks/useCreateDRExecution', () => ({
 jest.mock('react-router-dom', () => ({
   ...jest.requireActual('react-router-dom'),
   useParams: () => ({ name: 'erp-full-stack' }),
-  useHistory: () => ({ push: jest.fn(), replace: jest.fn(), location: { search: '' } }),
+  useNavigate: () => jest.fn(),
   Link: ({ to, children }: { to: string; children: React.ReactNode }) => (
     <a href={to}>{children}</a>
   ),

@@ -78,7 +78,15 @@ func (e *KubeVirtDiskEnricher) EnrichDisks(
 		var pvc corev1.PersistentVolumeClaim
 		err := e.Reader.Get(ctx, types.NamespacedName{Name: pvcName, Namespace: namespace}, &pvc)
 		if apierrors.IsNotFound(err) {
-			disks = append(disks, soteriav1alpha1.DiscoveredDisk{Name: disk.Name})
+			// PVC doesn't exist yet (e.g. passive/secondary site before failover).
+			// Try to resolve the storage class from a pre-provisioned PV whose
+			// ClaimRef targets this PVC (created by the ShadowPV consumer).
+			sc := e.storageClassFromPV(ctx, pvcName, namespace)
+			disks = append(disks, soteriav1alpha1.DiscoveredDisk{
+				Name:         disk.Name,
+				PVCName:      pvcName,
+				StorageClass: sc,
+			})
 			continue
 		}
 		if err != nil {
@@ -96,6 +104,26 @@ func (e *KubeVirtDiskEnricher) EnrichDisks(
 		})
 	}
 	return disks, nil
+}
+
+// storageClassFromPV searches for a PV whose ClaimRef matches the given
+// PVC name/namespace and returns its StorageClassName. This covers the
+// passive-site case where ShadowPV consumer has pre-created PVs but
+// PVCs don't exist yet.
+func (e *KubeVirtDiskEnricher) storageClassFromPV(
+	ctx context.Context, pvcName, namespace string,
+) string {
+	var pvList corev1.PersistentVolumeList
+	if err := e.Reader.List(ctx, &pvList); err != nil {
+		return ""
+	}
+	for i := range pvList.Items {
+		ref := pvList.Items[i].Spec.ClaimRef
+		if ref != nil && ref.Name == pvcName && ref.Namespace == namespace {
+			return pvList.Items[i].Spec.StorageClassName
+		}
+	}
+	return ""
 }
 
 // NoOpDiskEnricher returns nil disks. Used with noop/fake drivers

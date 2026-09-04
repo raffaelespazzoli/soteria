@@ -1,12 +1,12 @@
 import { Alert, AlertActionCloseButton, AlertActionLink, AlertGroup } from '@patternfly/react-core';
-import { useHistory } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useToastNotifications } from '../../hooks/useToastNotifications';
 
 const MAX_VISIBLE = 4;
 
 const ToastContainer: React.FC = () => {
   const { toasts, removeToast } = useToastNotifications();
-  const history = useHistory();
+  const navigate = useNavigate();
 
   return (
     <AlertGroup isToast isLiveRegion>
@@ -20,7 +20,7 @@ const ToastContainer: React.FC = () => {
             toast.linkTo ? (
               <AlertActionLink
                 onClick={() => {
-                  history.push(toast.linkTo!);
+                  navigate(toast.linkTo!);
                   removeToast(toast.id);
                 }}
               >

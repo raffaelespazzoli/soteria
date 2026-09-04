@@ -10,7 +10,7 @@ const mockNavigate = jest.fn();
 jest.mock('react-router-dom', () => ({
   ...jest.requireActual('react-router-dom'),
   useLocation: () => ({ search: '', pathname: '/disaster-recovery' }),
-  useHistory: () => ({ replace: mockNavigate, push: mockNavigate, location: { search: '' } }),
+  useNavigate: () => mockNavigate,
   Link: ({ to, children }: { to: string; children: React.ReactNode }) => (
     <a href={to}>{children}</a>
   ),

@@ -63,6 +63,9 @@ warn()  { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 error() { echo -e "${RED}[ERROR]${NC} $*" >&2; }
 fatal() { error "$@"; exit 1; }
 
+# shellcheck source=lib.sh
+source "${SCRIPT_DIR}/lib.sh"
+
 keast() { kubectl --context "${EAST_CONTEXT}" "$@"; }
 kwest() { kubectl --context "${WEST_CONTEXT}" "$@"; }
 
@@ -73,7 +76,8 @@ check_prerequisites() {
   info "Checking prerequisites..."
 
   command -v kubectl &>/dev/null || fatal "kubectl not found"
-  command -v minikube &>/dev/null || fatal "minikube not found. Install: https://minikube.sigs.k8s.io/"
+  ensure_minikube
+  command -v minikube &>/dev/null || fatal "minikube not available after download attempt"
   command -v curl &>/dev/null || fatal "curl not found"
 
   if ! minikube status -p "${EAST_CLUSTER_NAME}" &>/dev/null 2>&1; then
@@ -452,44 +456,56 @@ EOF
 # ---------------------------------------------------------------------------
 smoke_test_pvc_disk() {
   local context="$1" cluster_name="$2"
+  local fedora_image="${FEDORA_IMAGE:-quay.io/containerdisks/fedora:latest}"
 
   info "Running PVC-backed disk smoke test on '${cluster_name}'..."
 
   kubectl --context "${context}" -n "${SMOKE_NS}" delete vm smoke-test-vm --ignore-not-found --timeout=60s 2>/dev/null || true
-  kubectl --context "${context}" -n "${SMOKE_NS}" delete pvc smoke-test-pvc --ignore-not-found --timeout=60s 2>/dev/null || true
+  kubectl --context "${context}" -n "${SMOKE_NS}" delete datavolume smoke-test-rootdisk --ignore-not-found --timeout=60s 2>/dev/null || true
+  kubectl --context "${context}" -n "${SMOKE_NS}" delete pvc smoke-test-rootdisk --ignore-not-found --timeout=60s 2>/dev/null || true
   sleep 2
 
+  info "Creating DataVolume to import Fedora into Ceph PVC on '${cluster_name}'..."
   kubectl --context "${context}" apply -f - <<EOF
-apiVersion: v1
-kind: PersistentVolumeClaim
+apiVersion: cdi.kubevirt.io/v1beta1
+kind: DataVolume
 metadata:
-  name: smoke-test-pvc
+  name: smoke-test-rootdisk
   namespace: ${SMOKE_NS}
 spec:
-  accessModes: ["ReadWriteOnce"]
-  storageClassName: rook-ceph-block
-  resources:
-    requests:
-      storage: 1Gi
+  source:
+    registry:
+      url: "docker://${fedora_image}"
+      pullMethod: node
+  storage:
+    accessModes: ["ReadWriteOnce"]
+    storageClassName: rook-ceph-block
+    resources:
+      requests:
+        storage: 5Gi
 EOF
 
-  info "Waiting for smoke-test-pvc to bind on '${cluster_name}'..."
-  local attempts=0 max_attempts=30
+  info "Waiting for DataVolume import to complete on '${cluster_name}'..."
+  local attempts=0 max_attempts=120
   while [[ ${attempts} -lt ${max_attempts} ]]; do
-    local pvc_phase
-    pvc_phase="$(kubectl --context "${context}" -n "${SMOKE_NS}" get pvc smoke-test-pvc \
+    local dv_phase
+    dv_phase="$(kubectl --context "${context}" -n "${SMOKE_NS}" get datavolume smoke-test-rootdisk \
       -o jsonpath='{.status.phase}' 2>/dev/null || echo "")"
-    if [[ "${pvc_phase}" == "Bound" ]]; then
-      info "smoke-test-pvc is Bound on '${cluster_name}'"
+    if [[ "${dv_phase}" == "Succeeded" ]]; then
+      info "DataVolume import completed on '${cluster_name}'"
       break
+    fi
+    if [[ "${dv_phase}" == "Failed" ]]; then
+      kubectl --context "${context}" -n "${SMOKE_NS}" describe datavolume smoke-test-rootdisk
+      fatal "DataVolume import FAILED on '${cluster_name}'"
     fi
     attempts=$((attempts + 1))
     sleep 5
   done
 
   if [[ ${attempts} -ge ${max_attempts} ]]; then
-    kubectl --context "${context}" -n "${SMOKE_NS}" describe pvc smoke-test-pvc
-    fatal "smoke-test-pvc did not bind on '${cluster_name}' within timeout"
+    kubectl --context "${context}" -n "${SMOKE_NS}" describe datavolume smoke-test-rootdisk
+    fatal "DataVolume import did not complete on '${cluster_name}' within timeout"
   fi
 
   kubectl --context "${context}" apply -f - <<EOF
@@ -508,19 +524,13 @@ spec:
             memory: 128Mi
         devices:
           disks:
-            - name: containerdisk
-              disk:
-                bus: virtio
-            - name: datadisk
+            - name: rootdisk
               disk:
                 bus: virtio
       volumes:
-        - name: containerdisk
-          containerDisk:
-            image: quay.io/kubevirt/cirros-container-disk-demo
-        - name: datadisk
+        - name: rootdisk
           persistentVolumeClaim:
-            claimName: smoke-test-pvc
+            claimName: smoke-test-rootdisk
 EOF
 
   info "Waiting for smoke-test-vm to reach 'Running' on '${cluster_name}'..."

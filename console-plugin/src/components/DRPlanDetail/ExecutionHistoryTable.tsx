@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { EmptyState, EmptyStateBody } from '@patternfly/react-core';
 import { CubesIcon } from '@patternfly/react-icons';
 import { Table, Thead, Tr, Th, Tbody, Td } from '@patternfly/react-table';
-import { useHistory } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import ExecutionResultBadge from '../shared/ExecutionResultBadge';
 import { DRExecution, DRExecutionResult } from '../../models/types';
 import { formatDuration } from '../../utils/formatters';
@@ -49,7 +49,7 @@ export const ExecutionHistoryTable: React.FC<ExecutionHistoryTableProps> = ({
   executions,
   planName,
 }) => {
-  const history = useHistory();
+  const navigate = useNavigate();
   const sorted = useMemo(() => {
     const filtered = executions.filter((e) => e.spec?.planName === planName);
     return [...filtered].sort(
@@ -79,7 +79,7 @@ export const ExecutionHistoryTable: React.FC<ExecutionHistoryTableProps> = ({
             <Tr
               key={exec.metadata?.name}
               isClickable
-              onRowClick={() => history.push(detailPath)}
+              onRowClick={() => navigate(detailPath)}
               style={{ cursor: 'pointer' }}
             >
               <Td dataLabel="Date">{formatDate(exec.status?.startTime)}</Td>

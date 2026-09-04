@@ -35,6 +35,12 @@ go.work
 hack/multisite/.bin/
 hack/multisite/.data/
 
+# Local Martin AWS ODF test-bed scripts (not for upstream)
+hack/martin/
+
+# Local graphify codebase graph output
+graphify-out/
+
 # Build outputs
 console-plugin/dist-standalone/
 

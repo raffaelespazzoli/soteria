@@ -5,3 +5,10 @@
 # Note: CSI driver configuration (including CSI Addons sidecars) is managed by
 # the ceph-csi-operator via the ceph-csi-drivers Helm chart. See
 # csi-drivers-values.yaml for those settings.
+
+csi:
+  cephcsi:
+    # v3.17.1 includes Ceph 20.2.4 base image with AES-256K key support.
+    # v3.17.0 ships with Ceph 20.2.1 which cannot decode AES-256K keys,
+    # causing "rados: ret=-22, Invalid argument" on PVC provisioning.
+    tag: v3.17.1

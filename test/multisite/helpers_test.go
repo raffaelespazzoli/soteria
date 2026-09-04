@@ -35,6 +35,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/utils/ptr"
 	kubevirtv1 "kubevirt.io/api/core/v1"
@@ -396,10 +398,16 @@ var baseVMs = []vmDef{
 func deployScenario(ctx context.Context, s *lifecycleScenario) {
 	planName := s.planName()
 
-	By("creating east data PVCs")
+	By("ensuring golden Fedora image exists on east")
+	ensureGoldenImage(ctx, eastClient)
+
+	By("cloning rootdisk DataVolumes from golden image")
 	for _, vm := range baseVMs {
-		createDataPVC(ctx, eastClient, s.vmPrefix+vm.name, s.storageClass)
+		createRootDiskDV(ctx, eastClient, s.vmPrefix+vm.name, s.storageClass)
 	}
+
+	By("waiting for DataVolume clones to complete")
+	waitForDataVolumes(ctx, eastClient, s.vmPrefix)
 
 	By("creating east VMs (runStrategy: Always)")
 	for _, vm := range baseVMs {
@@ -466,10 +474,10 @@ func teardownScenario(ctx context.Context, s *lifecycleScenario) {
 			ObjectMeta: metav1.ObjectMeta{Name: s.vmPrefix + vm.name, Namespace: testNamespace},
 		})
 		deleteIfExists(ctx, eastClient, &corev1.PersistentVolumeClaim{
-			ObjectMeta: metav1.ObjectMeta{Name: s.vmPrefix + vm.name + "-data", Namespace: testNamespace},
+			ObjectMeta: metav1.ObjectMeta{Name: s.vmPrefix + vm.name + "-rootdisk", Namespace: testNamespace},
 		})
 		deleteIfExists(ctx, westClient, &corev1.PersistentVolumeClaim{
-			ObjectMeta: metav1.ObjectMeta{Name: s.vmPrefix + vm.name + "-data", Namespace: testNamespace},
+			ObjectMeta: metav1.ObjectMeta{Name: s.vmPrefix + vm.name + "-rootdisk", Namespace: testNamespace},
 		})
 	}
 
@@ -500,26 +508,134 @@ func waitForVMsGone(ctx context.Context, cl client.Client, vmPrefix string) {
 // Resource factories
 // ---------------------------------------------------------------------------
 
-func createDataPVC(ctx context.Context, cl client.Client, vmName, sc string) {
-	pvc := &corev1.PersistentVolumeClaim{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      vmName + "-data",
-			Namespace: testNamespace,
-		},
-		Spec: corev1.PersistentVolumeClaimSpec{
-			AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
-			StorageClassName: ptr.To(sc),
-			Resources: corev1.VolumeResourceRequirements{
-				Requests: corev1.ResourceList{
-					corev1.ResourceStorage: resource.MustParse("1Gi"),
+const (
+	goldenImageNS   = "kubevirt-golden-images"
+	goldenImageName = "fedora-golden"
+)
+
+func ensureGoldenImage(ctx context.Context, cl client.Client) {
+	goldenNS := &corev1.Namespace{
+		ObjectMeta: metav1.ObjectMeta{Name: goldenImageNS},
+	}
+	err := cl.Create(ctx, goldenNS)
+	if err != nil && !errors.IsAlreadyExists(err) {
+		Expect(err).NotTo(HaveOccurred(), "creating golden image namespace")
+	}
+
+	existing := &unstructured.Unstructured{}
+	existing.SetGroupVersionKind(schema.GroupVersionKind{
+		Group: "cdi.kubevirt.io", Version: "v1beta1", Kind: "DataVolume",
+	})
+	err = cl.Get(ctx, client.ObjectKey{
+		Name: goldenImageName, Namespace: goldenImageNS,
+	}, existing)
+	if err == nil {
+		phase, _, _ := unstructured.NestedString(existing.Object, "status", "phase")
+		if phase == "Succeeded" {
+			return
+		}
+	}
+
+	dv := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "cdi.kubevirt.io/v1beta1",
+			"kind":       "DataVolume",
+			"metadata": map[string]interface{}{
+				"name":      goldenImageName,
+				"namespace": goldenImageNS,
+			},
+			"spec": map[string]interface{}{
+				"source": map[string]interface{}{
+					"registry": map[string]interface{}{
+						"url":        "docker://quay.io/containerdisks/fedora:latest",
+						"pullMethod": "node",
+					},
+				},
+				"storage": map[string]interface{}{
+					"accessModes":      []interface{}{"ReadWriteOnce"},
+					"storageClassName": "rook-ceph-block",
+					"resources": map[string]interface{}{
+						"requests": map[string]interface{}{
+							"storage": "5Gi",
+						},
+					},
 				},
 			},
 		},
 	}
-	err := cl.Create(ctx, pvc)
+	err = cl.Create(ctx, dv)
 	if err != nil && !errors.IsAlreadyExists(err) {
-		Expect(err).NotTo(HaveOccurred(), "creating PVC %s", pvc.Name)
+		Expect(err).NotTo(HaveOccurred(), "creating golden image DataVolume")
 	}
+
+	Eventually(func(g Gomega) {
+		obj := &unstructured.Unstructured{}
+		obj.SetGroupVersionKind(schema.GroupVersionKind{
+			Group: "cdi.kubevirt.io", Version: "v1beta1", Kind: "DataVolume",
+		})
+		g.Expect(cl.Get(ctx, client.ObjectKey{
+			Name: goldenImageName, Namespace: goldenImageNS,
+		}, obj)).To(Succeed())
+		phase, _, _ := unstructured.NestedString(obj.Object, "status", "phase")
+		g.Expect(phase).To(Equal("Succeeded"),
+			"golden image DV phase: got %s, want Succeeded", phase)
+	}).WithTimeout(10 * time.Minute).WithPolling(10 * time.Second).Should(Succeed())
+}
+
+func createRootDiskDV(ctx context.Context, cl client.Client, vmName, sc string) {
+	dvName := vmName + "-rootdisk"
+	dv := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "cdi.kubevirt.io/v1beta1",
+			"kind":       "DataVolume",
+			"metadata": map[string]interface{}{
+				"name":      dvName,
+				"namespace": testNamespace,
+			},
+			"spec": map[string]interface{}{
+				"source": map[string]interface{}{
+					"pvc": map[string]interface{}{
+						"namespace": goldenImageNS,
+						"name":      goldenImageName,
+					},
+				},
+				"storage": map[string]interface{}{
+					"accessModes":      []interface{}{"ReadWriteOnce"},
+					"storageClassName": sc,
+					"resources": map[string]interface{}{
+						"requests": map[string]interface{}{
+							"storage": "5Gi",
+						},
+					},
+				},
+			},
+		},
+	}
+	err := cl.Create(ctx, dv)
+	if err != nil && !errors.IsAlreadyExists(err) {
+		Expect(err).NotTo(HaveOccurred(), "creating DataVolume %s", dvName)
+	}
+}
+
+func waitForDataVolumes(ctx context.Context, cl client.Client, vmPrefix string) {
+	Eventually(func(g Gomega) {
+		for _, vm := range baseVMs {
+			dvName := vmPrefix + vm.name + "-rootdisk"
+			dv := &unstructured.Unstructured{}
+			dv.SetGroupVersionKind(schema.GroupVersionKind{
+				Group:   "cdi.kubevirt.io",
+				Version: "v1beta1",
+				Kind:    "DataVolume",
+			})
+			err := cl.Get(ctx, client.ObjectKey{
+				Name: dvName, Namespace: testNamespace,
+			}, dv)
+			g.Expect(err).NotTo(HaveOccurred(), "DataVolume %s not found", dvName)
+			phase, _, _ := unstructured.NestedString(dv.Object, "status", "phase")
+			g.Expect(phase).To(Equal("Succeeded"),
+				"DataVolume %s phase: got %s, want Succeeded", dvName, phase)
+		}
+	}).WithTimeout(5 * time.Minute).WithPolling(10 * time.Second).Should(Succeed())
 }
 
 func createVM(
@@ -554,13 +670,7 @@ func createVM(
 						Devices: kubevirtv1.Devices{
 							Disks: []kubevirtv1.Disk{
 								{
-									Name: "bootdisk",
-									DiskDevice: kubevirtv1.DiskDevice{
-										Disk: &kubevirtv1.DiskTarget{Bus: kubevirtv1.DiskBusVirtio},
-									},
-								},
-								{
-									Name: "datadisk",
+									Name: "rootdisk",
 									DiskDevice: kubevirtv1.DiskDevice{
 										Disk: &kubevirtv1.DiskTarget{Bus: kubevirtv1.DiskBusVirtio},
 									},
@@ -570,19 +680,11 @@ func createVM(
 					},
 					Volumes: []kubevirtv1.Volume{
 						{
-							Name: "bootdisk",
-							VolumeSource: kubevirtv1.VolumeSource{
-								ContainerDisk: &kubevirtv1.ContainerDiskSource{
-									Image: "quay.io/kubevirt/cirros-container-disk-demo:latest",
-								},
-							},
-						},
-						{
-							Name: "datadisk",
+							Name: "rootdisk",
 							VolumeSource: kubevirtv1.VolumeSource{
 								PersistentVolumeClaim: &kubevirtv1.PersistentVolumeClaimVolumeSource{
 									PersistentVolumeClaimVolumeSource: corev1.PersistentVolumeClaimVolumeSource{
-										ClaimName: name + "-data",
+										ClaimName: name + "-rootdisk",
 									},
 								},
 							},
@@ -685,7 +787,7 @@ func createWestPVCsFromShadowPVs(
 	ctx context.Context, cl client.Client, vmPrefix string, pvMap map[string]pvBindInfo,
 ) {
 	for _, vm := range baseVMs {
-		pvcName := vmPrefix + vm.name + "-data"
+		pvcName := vmPrefix + vm.name + "-rootdisk"
 		info, found := pvMap[pvcName]
 		Expect(found).To(BeTrue(),
 			"ShadowPV consumer PV for %s not found in PV map (available keys: %v)",
