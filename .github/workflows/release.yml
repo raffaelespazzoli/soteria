@@ -2,10 +2,12 @@
 # Release pipeline
 # Triggered by pushing a semver tag (vX.Y.Z or vX.Y.Z-rc1).
 #
-# Job graph:
-#   validate ─→ test ─┬→ build-images ───────────┬→ helm ─→ github-release
-#                      ├→ helmchart-test (Kind) ──┘              ↑
-#                      └→ docs ──────────────────────────────────┘
+# Job graph (maximises parallelism):
+#
+#   validate ─┬→ build-image (3 images × 4 platforms = 12 parallel) ─→ manifest-create ─┐
+#             ├→ test ─→ helmchart-test ─────────────────────────────────────────────────├→ helm ──┬→ github-release
+#             │                                                                          └→ docs ──┘
+#             └──────────────────────────────────────────────────────────────────────────────────────┘
 # ---------------------------------------------------------------------------
 name: release
 
@@ -23,7 +25,7 @@ permissions: {}
 env:
   REGISTRY: quay.io
   REGISTRY_ORG: raffaelespazzoli
-  BUILD_PLATFORMS: linux/amd64,linux/arm64,linux/ppc64le
+  BUILD_PLATFORMS: linux/amd64,linux/arm64,linux/ppc64le,linux/s390x
 
 jobs:
   # ── 1. Validate the semver tag ──────────────────────────────────────────
@@ -86,15 +88,37 @@ jobs:
           DOCKER_HOST: unix:///var/run/docker.sock
         run: make integration-scylladb
 
-  # ── 3. Build & push all container images ────────────────────────────────
-  build-images:
-    name: Build & push images
-    needs: [validate, test]
+  # ── 3. Build per-platform images (3 images × 4 platforms in parallel) ───
+  build-image:
+    name: "Build ${{ matrix.image.name }} (${{ matrix.platform }})"
+    needs: validate
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - name: soteria
+            context: "."
+            file: Dockerfile
+          - name: soteria-console-plugin
+            context: console-plugin/
+            file: console-plugin/Dockerfile
+          - name: soteria-standalone-ui
+            context: "."
+            file: console-plugin/Dockerfile.standalone
+        platform:
+          - linux/amd64
+          - linux/arm64
+          - linux/ppc64le
+          - linux/s390x
     steps:
       - uses: actions/checkout@v4
+
+      - name: Prepare platform pair
+        id: platform
+        run: echo "pair=$(echo '${{ matrix.platform }}' | tr '/' '-')" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -109,43 +133,65 @@ jobs:
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
-      - name: Build and push controller image
+      - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: .
-          file: Dockerfile
-          platforms: ${{ env.BUILD_PLATFORMS }}
+          context: ${{ matrix.image.context }}
+          file: ${{ matrix.image.file }}
+          platforms: ${{ matrix.platform }}
           push: true
           provenance: false
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/soteria:${{ needs.validate.outputs.version }}
-            ${{ needs.validate.outputs.is_prerelease == 'false' && format('{0}/{1}/soteria:latest', env.REGISTRY, env.REGISTRY_ORG) || '' }}
+          tags: "${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ matrix.image.name }}:${{ needs.validate.outputs.version }}-${{ steps.platform.outputs.pair }}"
+          cache-from: type=gha,scope=${{ matrix.image.name }}-${{ steps.platform.outputs.pair }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image.name }}-${{ steps.platform.outputs.pair }}
 
-      - name: Build and push console-plugin image
-        uses: docker/build-push-action@v6
+  # ── 4. Create multi-arch manifests ──────────────────────────────────────
+  manifest-create:
+    name: Create multi-arch manifests
+    needs: [validate, build-image, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to quay.io
+        uses: docker/login-action@v3
         with:
-          context: console-plugin/
-          file: console-plugin/Dockerfile
-          platforms: ${{ env.BUILD_PLATFORMS }}
-          push: true
-          provenance: false
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/soteria-console-plugin:${{ needs.validate.outputs.version }}
-            ${{ needs.validate.outputs.is_prerelease == 'false' && format('{0}/{1}/soteria-console-plugin:latest', env.REGISTRY, env.REGISTRY_ORG) || '' }}
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
 
-      - name: Build and push standalone-ui image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: console-plugin/Dockerfile.standalone
-          platforms: ${{ env.BUILD_PLATFORMS }}
-          push: true
-          provenance: false
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/soteria-standalone-ui:${{ needs.validate.outputs.version }}
-            ${{ needs.validate.outputs.is_prerelease == 'false' && format('{0}/{1}/soteria-standalone-ui:latest', env.REGISTRY, env.REGISTRY_ORG) || '' }}
+      - name: Create and push multi-arch manifests
+        env:
+          VERSION: ${{ needs.validate.outputs.version }}
+          IS_PRERELEASE: ${{ needs.validate.outputs.is_prerelease }}
+        run: |
+          IMAGES="soteria soteria-console-plugin soteria-standalone-ui"
+          PLATFORMS="linux-amd64 linux-arm64 linux-ppc64le linux-s390x"
 
-  # ── 4. Smoke-test the Helm chart on Kind ──────────────────────────────
+          for IMAGE in $IMAGES; do
+            FULL="${REGISTRY}/${REGISTRY_ORG}/${IMAGE}"
+
+            # Build the source list for this image
+            SOURCES=""
+            for PLAT in $PLATFORMS; do
+              SOURCES="${SOURCES} ${FULL}:${VERSION}-${PLAT}"
+            done
+
+            echo "::group::Creating manifest ${FULL}:${VERSION}"
+            docker buildx imagetools create -t "${FULL}:${VERSION}" $SOURCES
+            echo "::endgroup::"
+
+            if [ "$IS_PRERELEASE" = "false" ]; then
+              echo "::group::Creating manifest ${FULL}:latest"
+              docker buildx imagetools create -t "${FULL}:latest" $SOURCES
+              echo "::endgroup::"
+            fi
+          done
+
+  # ── 5. Smoke-test the Helm chart on Kind ──────────────────────────────
   helmchart-test:
     name: Helm chart smoke test
     needs: test
@@ -171,10 +217,10 @@ jobs:
           HELM_SMOKE_CLEANUP: "1"
         run: make helmchart-test
 
-  # ── 5. Publish the Helm chart ───────────────────────────────────────────
+  # ── 6. Publish the Helm chart ───────────────────────────────────────────
   helm:
     name: Publish Helm chart
-    needs: [validate, helmchart-test, build-images]
+    needs: [validate, manifest-create, helmchart-test]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -239,10 +285,10 @@ jobs:
           name: helm-chart
           path: /tmp/chart-package/*.tgz
 
-  # ── 6. Publish documentation ────────────────────────────────────────────
+  # ── 7. Publish documentation ────────────────────────────────────────────
   docs:
     name: Publish docs
-    needs: test
+    needs: [validate, manifest-create, helmchart-test]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -270,7 +316,7 @@ jobs:
           publish_dir: ./site
           keep_files: true
 
-  # ── 7. Create GitHub Release ────────────────────────────────────────────
+  # ── 8. Create GitHub Release ────────────────────────────────────────────
   github-release:
     name: GitHub Release
     needs: [validate, helm, docs]

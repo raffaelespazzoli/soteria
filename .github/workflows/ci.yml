@@ -82,6 +82,8 @@ jobs:
           push: false
           load: true
           tags: soteria:ci
+          cache-from: type=gha,scope=soteria-ci
+          cache-to: type=gha,mode=max,scope=soteria-ci
 
       - name: Build console-plugin image
         uses: docker/build-push-action@v6
@@ -91,6 +93,8 @@ jobs:
           push: false
           load: true
           tags: soteria-console-plugin:ci
+          cache-from: type=gha,scope=console-plugin-ci
+          cache-to: type=gha,mode=max,scope=console-plugin-ci
 
       - name: Build standalone-ui image
         uses: docker/build-push-action@v6
@@ -100,6 +104,8 @@ jobs:
           push: false
           load: true
           tags: soteria-standalone-ui:ci
+          cache-from: type=gha,scope=standalone-ui-ci
+          cache-to: type=gha,mode=max,scope=standalone-ui-ci
 
   # ── Build, deploy & smoke-test the Helm chart on Kind ─────────────────
   helmchart-test:
