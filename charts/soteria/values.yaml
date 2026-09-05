@@ -129,6 +129,9 @@ scylladb:
       # secretName: Name of the Kubernetes Secret containing TLS client
       # cert (tls.crt), key (tls.key), and CA (ca.crt).
       secretName: ""
+      # serverName: TLS server name for certificate verification.
+      # Overrides the hostname derived from contactPoints.
+      serverName: ""
 
 # -----------------------------------------------------------------------------
 # Networking configuration
