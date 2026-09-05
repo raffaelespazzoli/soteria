@@ -93,7 +93,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-06
-last_updated: 2026-09-05T05:30-04:00
+last_updated: 2026-09-05T07:15-04:00
 # 14.5 done: ScyllaDB Cross-DC Deployment on Rook-Ceph — hack/multisite/setup-scylladb.sh + hack/multisite/overlays/{base,east,west}/ directory. cert-manager v1.20.2 via OCI Helm, scylla-operator v1.21 via Helm, ScyllaDB 2026.1.3 with developerMode:true, one ScyllaCluster per Minikube cluster (east seed, west joins via externalSeeds), Cilium global service annotation service.cilium.io/global:"true" for cross-DC gossip, rook-ceph-block-xfs StorageClass (XFS-formatted, ScyllaDB requirement) replaces ontap-san-xfs, mTLS via cert-manager + combined-ca ConfigMap + STS volume patching workaround (same pattern as hack/stretched-local-test.sh), Kustomize overlays mirror hack/overlays/{base,etl6,etl7}/ structure, multi-DC convergence smoke test via nodetool status + CQL cross-DC read (~1 script, ~7 overlay files, ~1 manifest, ~1 README update). Code review: fixed jq prereq, CA readiness fail-fast, Cilium Mesh check, STS patch idempotency, smoke test now fatal on failure.
 # 14.4 done: Fedora VM Validation and Node Sizing — hack/multisite/validate-fedora-vm.sh. Pre-pulls Fedora container disk image (quay.io/containerdisks/fedora:latest) and cirros on all Minikube nodes via crictl pull, deploys single Fedora VM with container disk boot + rook-ceph-block PVC data disk (256Mi memory), waits for Running state + guest agent detection (graceful fallback if not installed), calculates comprehensive node sizing for 6-VM integration test (per-VM 200m/384Mi + per-node overhead 300m/1536Mi + shared components ~1350m/~3200Mi = ~10.1 GiB/~4.5 cores per cluster), checks current node allocatable resources vs requirements and warns if insufficient, recommends NODE_CPUS=4 WORKER_MEMORY=6144 MASTER_MEMORY=7168 with ~50% headroom, cleans up test VM and PVC, README updated with Fedora VM validation section + node sizing recommendations + troubleshooting, idempotent script following 14.1-14.3 conventions (~1 script, ~1 README update)
 # 14.7 updated: Test Scenario Setup + Full Lifecycle Integration Test — test/multisite/ directory with Ginkgo/Gomega suite (//go:build multisite). Two-client architecture (east+west via EAST_KUBECONFIG/WEST_KUBECONFIG env vars, contexts default to 'east'/'west' for Minikube), BeforeSuite deploys 6 VMs (Fedora container disk boot pre-cached from 14.4 + rook-ceph-block PVC data disk, wave structure from stretched-local-test.sh) + DRPlan fedora-app (csi-extension + rook-ceph-rbd-vrc), 4-transition lifecycle test mirroring UAT-13 pattern (SteadyState→FailedOver→DRedSteadyState→FailedBack→SteadyState), per-transition assertions (DRPlan phase/activeSite, VR primary/secondary, VM running/stopped, Duration populated, conditions healthy), real-storage assertions (non-zero lastSyncTime, measurable RPO), log scanning for checkpoint conflicts + immutability violations (verifies Story 13.7 fixes hold), configurable timeouts for real Ceph RBD timing (~3-4 Go files)
@@ -448,7 +448,7 @@ development_status:
   17-4-scylladb-overview: done
   17-5-scylladb-submariner: done
   17-6-scylladb-cilium: done
-  17-7-helm-installation: backlog  # blocked: needs Epic 16 chart
+  17-7-helm-installation: done
   17-8-architecture-overview: done
   17-9-dr-lifecycle: done
   17-10-storage-drivers: done
