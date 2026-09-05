@@ -73,8 +73,10 @@ jobs:
       - name: Run unit tests
         run: make test
 
-      - name: Increase inotify limits
-        run: sudo sysctl -w fs.inotify.max_user_instances=1024
+      - name: Increase kernel limits for ScyllaDB
+        run: |
+          sudo sysctl -w fs.inotify.max_user_instances=1024
+          sudo sysctl -w fs.aio-max-nr=262144
 
       - name: Run integration tests (envtest)
         run: make integration-envtest

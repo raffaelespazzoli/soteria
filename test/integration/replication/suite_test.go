@@ -44,7 +44,7 @@ const (
 	dc1Name         = "dc1"
 	dc2Name         = "dc2"
 	dc3Name         = "dc3"
-	scyllaImage     = "scylladb/scylla:latest"
+	scyllaImage     = "scylladb/scylla:2025.4"
 	cqlPort         = "9042/tcp"
 	startupTimeout  = 120 * time.Second
 	sessionTimeout  = 10 * time.Second
