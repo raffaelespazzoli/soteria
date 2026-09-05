@@ -1,0 +1,15 @@
+apiVersion: v1
+entries:
+  soteria:
+  - apiVersion: v2
+    appVersion: v0.1.0-rc1
+    created: "2026-09-05T22:52:23.564440412Z"
+    description: Storage-agnostic disaster recovery orchestrator for OpenShift Virtualization
+    digest: 90ff90e92078a7f52a12735b1a3d19c4738c6ee44bd0778e11afbb583f90b667
+    kubeVersion: '>=1.28.0'
+    name: soteria
+    type: application
+    urls:
+    - https://raffaelespazzoli.github.io/soteria/soteria-0.1.0-rc1.tgz
+    version: 0.1.0-rc1
+generated: "2026-09-05T22:52:23.56296488Z"
