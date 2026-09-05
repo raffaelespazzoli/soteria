@@ -444,7 +444,7 @@ development_status:
   epic-17: in-progress
   17-1-docs-site-setup: done
   17-2-landing-page: ready-for-dev
-  17-3-prerequisites-guide: ready-for-dev
+  17-3-prerequisites-guide: done
   17-4-scylladb-overview: ready-for-dev
   17-5-scylladb-submariner: ready-for-dev
   17-6-scylladb-cilium: ready-for-dev
