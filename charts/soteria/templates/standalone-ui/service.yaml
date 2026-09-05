@@ -1,0 +1,19 @@
+{{- if eq .Values.ui.mode "standalone" }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "soteria.fullname" . }}-standalone
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "soteria.labels" . | nindent 4 }}
+    app.kubernetes.io/component: console-standalone
+spec:
+  selector:
+    {{- include "soteria.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: console-standalone
+  ports:
+    - protocol: TCP
+      port: 8080
+      targetPort: 8080
+      name: http
+{{- end }}

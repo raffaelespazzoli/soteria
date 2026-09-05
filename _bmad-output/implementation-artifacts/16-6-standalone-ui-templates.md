@@ -1,6 +1,6 @@
 # Story 16.6: Standalone UI Templates
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -39,28 +39,28 @@ Then no standalone UI Deployment, Service, RBAC, or HTTPRoute is rendered
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create standalone UI Deployment template (AC: 1, 5)
-  - [ ] 1.1: Create `templates/standalone-ui/deployment.yaml` guarded by `{{- if eq .Values.ui.mode "standalone" }}`
-  - [ ] 1.2: Wire image from `ui.standalone.image.repository` and `ui.standalone.image.tag`
-  - [ ] 1.3: Set container port 8080 (HTTP) with `--addr=:8080` and `--static-dir=/opt/app-root/src` args
-  - [ ] 1.4: Set securityContext matching existing manifest: `runAsNonRoot`, `readOnlyRootFilesystem`, drop ALL capabilities
-  - [ ] 1.5: Add liveness/readiness probes against `/healthz` on port 8080
-  - [ ] 1.6: Set resources (requests: cpu 10m, mem 32Mi; limits: mem 64Mi)
-- [ ] Task 2: Create standalone UI Service template (AC: 2, 5)
-  - [ ] 2.1: Create `templates/standalone-ui/service.yaml` with HTTP on port 8080
-- [ ] Task 3: Create RBAC templates (AC: 3, 5)
-  - [ ] 3.1: Create `templates/standalone-ui/serviceaccount.yaml`
-  - [ ] 3.2: Create `templates/standalone-ui/clusterrole.yaml` mirroring rules from `hack/overlays/base/console-standalone.yaml` — read access to drplans, drexecutions, virtualmachines; create/patch on drexecutions
-  - [ ] 3.3: Create `templates/standalone-ui/clusterrolebinding.yaml`
-- [ ] Task 4: Create HTTPRoute template (AC: 4, 5)
-  - [ ] 4.1: Create `templates/standalone-ui/httproute.yaml` guarded by `ui.mode=standalone AND ui.standalone.gateway.name` being non-empty
-  - [ ] 4.2: Wire parentRef gateway name from `ui.standalone.gateway.name` and gatewayClassName from `ui.standalone.gateway.className`
-  - [ ] 4.3: Route all traffic (`path: /`, type: PathPrefix) to the standalone Service on port 8080
-- [ ] Task 5: Verify rendering (AC: 1–5)
-  - [ ] 5.1: Run `helm template` with `ui.mode=standalone, ui.standalone.gateway.name=my-gw` — verify all resources including HTTPRoute
-  - [ ] 5.2: Run `helm template` with `ui.mode=standalone, ui.standalone.gateway.name=""` — verify no HTTPRoute
-  - [ ] 5.3: Run `helm template` with `ui.mode=console-plugin` — verify no standalone resources
-  - [ ] 5.4: Run `helm template` with `ui.mode=none` — verify no standalone resources
+- [x] Task 1: Create standalone UI Deployment template (AC: 1, 5)
+  - [x] 1.1: Create `templates/standalone-ui/deployment.yaml` guarded by `{{- if eq .Values.ui.mode "standalone" }}`
+  - [x] 1.2: Wire image from `ui.standalone.image.repository` and `ui.standalone.image.tag`
+  - [x] 1.3: Set container port 8080 (HTTP) with `--addr=:8080` and `--static-dir=/opt/app-root/src` args
+  - [x] 1.4: Set securityContext matching existing manifest: `runAsNonRoot`, `readOnlyRootFilesystem`, drop ALL capabilities
+  - [x] 1.5: Add liveness/readiness probes against `/healthz` on port 8080
+  - [x] 1.6: Set resources (requests: cpu 10m, mem 32Mi; limits: mem 64Mi)
+- [x] Task 2: Create standalone UI Service template (AC: 2, 5)
+  - [x] 2.1: Create `templates/standalone-ui/service.yaml` with HTTP on port 8080
+- [x] Task 3: Create RBAC templates (AC: 3, 5)
+  - [x] 3.1: Create `templates/standalone-ui/serviceaccount.yaml`
+  - [x] 3.2: Create `templates/standalone-ui/clusterrole.yaml` mirroring rules from `hack/overlays/base/console-standalone.yaml` — read access to drplans, drexecutions, virtualmachines; create/patch on drexecutions
+  - [x] 3.3: Create `templates/standalone-ui/clusterrolebinding.yaml`
+- [x] Task 4: Create HTTPRoute template (AC: 4, 5)
+  - [x] 4.1: Create `templates/standalone-ui/httproute.yaml` guarded by `ui.mode=standalone AND ui.standalone.gateway.name` being non-empty
+  - [x] 4.2: Wire parentRef gateway name from `ui.standalone.gateway.name` and gatewayClassName from `ui.standalone.gateway.className`
+  - [x] 4.3: Route all traffic (`path: /`, type: PathPrefix) to the standalone Service on port 8080
+- [x] Task 5: Verify rendering (AC: 1–5)
+  - [x] 5.1: Run `helm template` with `ui.mode=standalone, ui.standalone.gateway.name=my-gw` — verify all resources including HTTPRoute
+  - [x] 5.2: Run `helm template` with `ui.mode=standalone, ui.standalone.gateway.name=""` — verify no HTTPRoute
+  - [x] 5.3: Run `helm template` with `ui.mode=console-plugin` — verify no standalone resources
+  - [x] 5.4: Run `helm template` with `ui.mode=none` — verify no standalone resources
 
 ## Dev Notes
 
@@ -159,9 +159,26 @@ Note: The Helm chart should only render the HTTPRoute, not the Gateway itself (t
 ## Dev Agent Record
 
 ### Agent Model Used
+Claude Opus 4.6
 
 ### Debug Log References
+None — clean implementation, all helm template verifications passed first try.
 
 ### Completion Notes List
+- Created 6 Helm templates under `charts/soteria/templates/standalone-ui/`
+- All templates guarded by `{{- if eq .Values.ui.mode "standalone" }}`
+- HTTPRoute additionally guarded by `.Values.ui.standalone.gateway.name` being non-empty
+- Deployment mirrors `hack/overlays/base/console-standalone.yaml`: securityContext, probes, resources
+- RBAC rules exactly match `soteria-console-reader` ClusterRole from reference manifest
+- Image tag defaults to `.Chart.AppVersion` when `ui.standalone.image.tag` is empty
+- All resources use standard `soteria.labels`, `soteria.selectorLabels`, and `soteria.fullname` helpers
+- Verified all 5 ACs via 4 `helm template` invocations
 
 ### File List
+- `charts/soteria/templates/standalone-ui/deployment.yaml` (NEW)
+- `charts/soteria/templates/standalone-ui/service.yaml` (NEW)
+- `charts/soteria/templates/standalone-ui/serviceaccount.yaml` (NEW)
+- `charts/soteria/templates/standalone-ui/clusterrole.yaml` (NEW)
+- `charts/soteria/templates/standalone-ui/clusterrolebinding.yaml` (NEW)
+- `charts/soteria/templates/standalone-ui/httproute.yaml` (NEW)
+- `_bmad-output/implementation-artifacts/16-6-standalone-ui-templates.md` (MODIFIED)
