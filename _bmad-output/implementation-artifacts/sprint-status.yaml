@@ -461,6 +461,6 @@ development_status:
   17-17-ui-execution-monitor: backlog  # blocked: needs UI screenshots
   17-18-api-reference-drplan: done
   17-19-api-reference-drexecution: done
-  17-20-helm-values-reference: backlog  # blocked: needs Epic 16 chart
+  17-20-helm-values-reference: done
   17-21-contributing-dev-setup: done
   17-22-contributing-storage-drivers: done
