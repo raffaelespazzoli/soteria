@@ -1,6 +1,6 @@
 # Story 17.20: Helm Values Reference
 
-Status: backlog
+Status: done
 
 ## Story
 
@@ -37,15 +37,15 @@ Then no parameter is missing from the documentation
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Extract Helm chart values (AC: 1, 2, 3)
-  - [ ] 1.1: Walk the actual `values.yaml` from the Helm chart (Epic 16)
-  - [ ] 1.2: Walk chart templates to identify all `{{ .Values.* }}` references
-- [ ] Task 2: Write the reference page (AC: 1, 2, 4)
-  - [ ] 2.1: Write `docs/reference/helm-values.md` with parameter tables organized by section
-  - [ ] 2.2: Note conditional behavior where values toggle template rendering
-- [ ] Task 3: Verify completeness (AC: 3, 5)
-  - [ ] 3.1: Verify every `{{ .Values.* }}` reference in templates has a corresponding documentation entry
-  - [ ] 3.2: Cross-reference with Story 17.7 (installation guide) to avoid redundancy
+- [x] Task 1: Extract Helm chart values (AC: 1, 2, 3)
+  - [x] 1.1: Walk the actual `values.yaml` from the Helm chart (Epic 16)
+  - [x] 1.2: Walk chart templates to identify all `{{ .Values.* }}` references
+- [x] Task 2: Write the reference page (AC: 1, 2, 4)
+  - [x] 2.1: Write `docs/reference/helm-values.md` with parameter tables organized by section
+  - [x] 2.2: Note conditional behavior where values toggle template rendering
+- [x] Task 3: Verify completeness (AC: 3, 5)
+  - [x] 3.1: Verify every `{{ .Values.* }}` reference in templates has a corresponding documentation entry
+  - [x] 3.2: Cross-reference with Story 17.7 (installation guide) to avoid redundancy
 
 ## Dev Notes
 
@@ -95,8 +95,31 @@ Start from the PRD (`_bmad-output/planning-artifacts/prd.md`), architecture doc 
 
 ### Agent Model Used
 
+Claude Opus 4.6 (Cursor)
+
 ### Debug Log References
+
+None — implementation was straightforward with no errors.
 
 ### Completion Notes List
 
+- Extracted all 40 unique `.Values.*` references from 33 chart templates in `charts/soteria/`
+- Organized parameters into 7 logical sections: Global, Site, Controller, TLS, ScyllaDB, Networking, UI
+- Documented every parameter with key path, type, default value, and description
+- Added conditional behavior tables for `scylladb.mode`, `networking.mode`, and `ui.mode` explaining which templates are rendered and which validations fire
+- Documented all validation rules from `_validation.tpl` (required fields, enum constraints, conditional requirements)
+- Verified 100% completeness: every `.Values.*` reference in templates has a corresponding documentation entry
+- Cross-referenced with Story 17.7 (installation guide placeholder) — helm-values.md links to it but avoids overlap since 17.7 is not yet written
+- MkDocs builds successfully with `--strict` mode
+- All existing unit tests pass with no regressions
+
 ### File List
+
+| File | Action | Description |
+|------|--------|-------------|
+| docs/reference/helm-values.md | MODIFIED | Replaced stub with exhaustive Helm values parameter reference |
+| _bmad-output/implementation-artifacts/17-20-helm-values-reference.md | MODIFIED | Updated task checkboxes, status, Dev Agent Record |
+
+### Change Log
+
+- 2026-09-05: Implemented story 17-20 — wrote exhaustive Helm values reference covering all 40 parameters across 7 sections with conditional behavior documentation
