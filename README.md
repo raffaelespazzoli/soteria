@@ -6,7 +6,7 @@ Soteria is an open-source, Kubernetes-native DR orchestrator that unifies failov
 
 ![DR Lifecycle](docs/screenshots/plan-detail.png)
 
-> **📖 Full documentation:** [raffaelespazzoli.github.io/soteria/docs](https://raffaelespazzoli.github.io/soteria/docs/)
+> **📖 Full documentation:** [raffaelespazzoli.github.io/soteria](https://raffaelespazzoli.github.io/soteria/)
 
 ## Quick Start
 
@@ -39,14 +39,14 @@ helm install soteria soteria/soteria \
   --set scylladb.managed.externalSeeds[0]=soteria-scylladb-client.soteria.svc.clusterset.local
 ```
 
-For the full installation walkthrough — including cert-manager CA bootstrap, networking setup, and all configuration options — see the [Helm Installation Guide](https://raffaelespazzoli.github.io/soteria/docs/installation/helm/).
+For the full installation walkthrough — including cert-manager CA bootstrap, networking setup, and all configuration options — see the [Helm Installation Guide](https://raffaelespazzoli.github.io/soteria/installation/helm/).
 
 ## Contributing
 
 We welcome contributions! The project uses Go 1.25, Ginkgo/Gomega for tests, and Podman (or Docker) for container builds.
 
 ```bash
-git clone https://github.com/soteria-project/soteria.git
+git clone https://github.com/raffaelespazzoli/soteria.git
 cd soteria
 make test              # Unit tests
 make integration       # Integration tests (ScyllaDB via testcontainers)
@@ -54,7 +54,7 @@ make helmchart-test    # Helm chart smoke test (Kind cluster)
 make lint              # Lint with golangci-lint
 ```
 
-For the full developer setup — including local Kind clusters, storage driver development, and debugging tips — see the [Developer Setup Guide](https://raffaelespazzoli.github.io/soteria/docs/contributing/dev-setup/).
+For the full developer setup — including local Kind clusters, storage driver development, and debugging tips — see the [Developer Setup Guide](https://raffaelespazzoli.github.io/soteria/contributing/dev-setup/).
 
 ## License
 

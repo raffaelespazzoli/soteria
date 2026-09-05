@@ -109,7 +109,14 @@ step "Building controller image (${CONTAINER_TOOL})"
 "${CONTAINER_TOOL}" build -t "${IMG}" -f "${ROOT_DIR}/Dockerfile" "${ROOT_DIR}"
 
 step "Loading image into Kind"
-"${KIND}" load docker-image "${IMG}" --name "${CLUSTER_NAME}"
+if [[ "${CONTAINER_TOOL}" == "podman" ]]; then
+  _archive=$(mktemp --suffix=.tar)
+  "${CONTAINER_TOOL}" save -o "${_archive}" "${IMG}"
+  "${KIND}" load image-archive "${_archive}" --name "${CLUSTER_NAME}"
+  rm -f "${_archive}"
+else
+  "${KIND}" load docker-image "${IMG}" --name "${CLUSTER_NAME}"
+fi
 
 # ---------------------------------------------------------------------------
 # 3. Install cert-manager

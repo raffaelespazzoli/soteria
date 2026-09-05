@@ -2,9 +2,9 @@ site_name: Soteria
 site_description: >-
   Open-source, Kubernetes-native disaster recovery orchestrator
   for OpenShift Virtualization.
-site_url: https://raffaelespazzoli.github.io/soteria/docs/
-repo_url: https://github.com/soteria-project/soteria
-repo_name: soteria-project/soteria
+site_url: https://raffaelespazzoli.github.io/soteria/
+repo_url: https://github.com/raffaelespazzoli/soteria
+repo_name: raffaelespazzoli/soteria
 edit_uri: edit/main/docs/
 
 theme:
