@@ -1,6 +1,6 @@
 # Story 16.4: ScyllaDB External (BYO) Wiring
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -37,27 +37,27 @@ Then the ScyllaDB resources disappear and the controller Deployment args switch 
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Add external mode args to controller Deployment (AC: 2, 5)
-  - [ ] 1.1: In `templates/controller/deployment.yaml`, add `{{- else if eq .Values.scylladb.mode "external" }}` block
-  - [ ] 1.2: Wire `--scylladb-contact-points={{ .Values.scylladb.external.contactPoints }}`
-  - [ ] 1.3: Wire `--scylladb-keyspace={{ .Values.scylladb.keyspace }}`
-  - [ ] 1.4: Wire `--scylladb-local-dc={{ .Values.scylladb.localDC }}` (if non-empty)
-  - [ ] 1.5: Wire `--scylladb-dc-replication={{ .Values.scylladb.dcReplication }}` (if non-empty)
-- [ ] Task 2: Add conditional TLS args (AC: 3, 4)
-  - [ ] 2.1: Add `{{- if .Values.scylladb.external.tls.enabled }}` guard for all `--scylladb-tls-*` args
-  - [ ] 2.2: Wire `--scylladb-tls-cert=/etc/soteria/scylladb-tls/tls.crt`
-  - [ ] 2.3: Wire `--scylladb-tls-key=/etc/soteria/scylladb-tls/tls.key`
-  - [ ] 2.4: Wire `--scylladb-tls-ca=/etc/soteria/scylladb-tls/ca.crt`
-  - [ ] 2.5: Wire `--scylladb-tls-server-name={{ .Values.scylladb.external.tls.serverName }}` (if set)
-- [ ] Task 3: Add conditional TLS volume and mount (AC: 3, 4)
-  - [ ] 3.1: Add volume `scylladb-external-tls` from Secret `{{ .Values.scylladb.external.tls.secretName }}`, guarded by `external.tls.enabled`
-  - [ ] 3.2: Add volumeMount at `/etc/soteria/scylladb-tls`, guarded by `external.tls.enabled`
-- [ ] Task 4: Verify no managed resources render (AC: 1)
-  - [ ] 4.1: Confirm `templates/scylladb/` templates are already guarded by `scylladb.mode=managed` (from Story 16.3)
-- [ ] Task 5: Verify rendering (AC: 1–5)
-  - [ ] 5.1: Run `helm template` with `scylladb.mode=external, external.tls.enabled=true` — verify TLS args and volumes
-  - [ ] 5.2: Run `helm template` with `scylladb.mode=external, external.tls.enabled=false` — verify no TLS args or volumes
-  - [ ] 5.3: Compare managed vs external renders to confirm correct resource diff
+- [x] Task 1: Add external mode args to controller Deployment (AC: 2, 5)
+  - [x] 1.1: In `templates/controller/deployment.yaml`, add `{{- else if eq .Values.scylladb.mode "external" }}` block
+  - [x] 1.2: Wire `--scylladb-contact-points={{ .Values.scylladb.external.contactPoints }}`
+  - [x] 1.3: Wire `--scylladb-keyspace={{ .Values.scylladb.keyspace }}`
+  - [x] 1.4: Wire `--scylladb-local-dc={{ .Values.scylladb.localDC }}` (if non-empty)
+  - [x] 1.5: Wire `--scylladb-dc-replication={{ .Values.scylladb.dcReplication }}` (if non-empty)
+- [x] Task 2: Add conditional TLS args (AC: 3, 4)
+  - [x] 2.1: Add `{{- if .Values.scylladb.external.tls.enabled }}` guard for all `--scylladb-tls-*` args
+  - [x] 2.2: Wire `--scylladb-tls-cert=/etc/soteria/scylladb-tls/tls.crt`
+  - [x] 2.3: Wire `--scylladb-tls-key=/etc/soteria/scylladb-tls/tls.key`
+  - [x] 2.4: Wire `--scylladb-tls-ca=/etc/soteria/scylladb-tls/ca.crt`
+  - [x] 2.5: Wire `--scylladb-tls-server-name={{ .Values.scylladb.external.tls.serverName }}` (if set)
+- [x] Task 3: Add conditional TLS volume and mount (AC: 3, 4)
+  - [x] 3.1: Add volume `scylladb-external-tls` from Secret `{{ .Values.scylladb.external.tls.secretName }}`, guarded by `external.tls.enabled`
+  - [x] 3.2: Add volumeMount at `/etc/soteria/scylladb-tls`, guarded by `external.tls.enabled`
+- [x] Task 4: Verify no managed resources render (AC: 1)
+  - [x] 4.1: Confirm `templates/scylladb/` templates are already guarded by `scylladb.mode=managed` (from Story 16.3)
+- [x] Task 5: Verify rendering (AC: 1–5)
+  - [x] 5.1: Run `helm template` with `scylladb.mode=external, external.tls.enabled=true` — verify TLS args and volumes
+  - [x] 5.2: Run `helm template` with `scylladb.mode=external, external.tls.enabled=false` — verify no TLS args or volumes
+  - [x] 5.3: Compare managed vs external renders to confirm correct resource diff
 
 ## Dev Notes
 
@@ -131,9 +131,22 @@ The existing kustomize overlay `hack/overlays/base/manager-args-patch.yaml` show
 ## Dev Agent Record
 
 ### Agent Model Used
+Claude Opus 4.6 (Cursor)
 
 ### Debug Log References
+None — implementation was straightforward with no debug issues.
 
 ### Completion Notes List
+- Changed `{{- else }}` to `{{- else if eq .Values.scylladb.mode "external" }}` for explicit mode matching (Task 1.1)
+- Tasks 1.2–1.5 (contact points, keyspace, localDC, dcReplication) were already wired from Story 16.2; verified correct
+- Added `--scylladb-tls-server-name` conditional arg using `{{- with }}` guard inside external TLS block (Task 2.5)
+- Tasks 2.1–2.4 (external TLS cert/key/ca with guard) were already wired from Story 16.2; verified correct
+- Tasks 3.1–3.2 (TLS volume and volumeMount) were already wired from Story 16.2; verified correct
+- Added `serverName` field to `values.yaml` under `scylladb.external.tls`
+- Confirmed all `templates/scylladb/` templates are guarded by `scylladb.mode=managed` (Task 4)
+- Verified helm template rendering: external+TLS, external-noTLS, managed vs external diff all correct
 
 ### File List
+- `charts/soteria/templates/controller/deployment.yaml` — MODIFIED (explicit `else if external`, added `--scylladb-tls-server-name`)
+- `charts/soteria/values.yaml` — MODIFIED (added `scylladb.external.tls.serverName` field)
+- `_bmad-output/implementation-artifacts/16-4-scylladb-external-wiring.md` — MODIFIED (task checkboxes, status, dev record)

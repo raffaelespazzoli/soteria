@@ -434,7 +434,7 @@ development_status:
   16-1-chart-skeleton-and-values: ready-for-dev
   16-2-controller-templates: ready-for-dev
   16-3-scylladb-managed-templates: done
-  16-4-scylladb-external-wiring: ready-for-dev
+  16-4-scylladb-external-wiring: review
   16-5-console-plugin-templates: done
   16-6-standalone-ui-templates: ready-for-dev
   16-7-install-script: ready-for-dev

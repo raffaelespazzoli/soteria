@@ -43,7 +43,7 @@ spec:
             - --disable-admission-plugins=ValidatingAdmissionPolicy,ValidatingAdmissionWebhook,MutatingAdmissionWebhook
             {{- if eq .Values.scylladb.mode "managed" }}
             - --scylladb-contact-points={{ include "soteria.fullname" . }}-scylladb-client.{{ .Release.Namespace }}.svc:9142
-            {{- else }}
+            {{- else if eq .Values.scylladb.mode "external" }}
             - --scylladb-contact-points={{ .Values.scylladb.external.contactPoints }}
             {{- end }}
             - --scylladb-keyspace={{ .Values.scylladb.keyspace }}
@@ -63,6 +63,9 @@ spec:
             - --scylladb-tls-cert=/etc/soteria/scylladb-tls/tls.crt
             - --scylladb-tls-key=/etc/soteria/scylladb-tls/tls.key
             - --scylladb-tls-ca=/etc/soteria/scylladb-tls/ca.crt
+            {{- with .Values.scylladb.external.tls.serverName }}
+            - --scylladb-tls-server-name={{ . }}
+            {{- end }}
             {{- end }}
           image: "{{ .Values.controller.image.repository }}:{{ .Values.controller.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
