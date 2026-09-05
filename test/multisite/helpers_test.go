@@ -31,6 +31,7 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
+	storagev1 "k8s.io/api/storage/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -151,25 +152,62 @@ func forceDelete(ctx context.Context, cl client.Client, obj client.Object) {
 	}
 }
 
-// cleanupStaleNamespace handles a test namespace stuck in Terminating by
-// stripping finalizers on resources that block deletion.
+// cleanupStaleNamespace deletes the test namespace if it exists, then unsticks
+// resources that commonly block deletion (KubeVirt VMs, PVCs, VolumeAttachments).
 func cleanupStaleNamespace(ctx context.Context, cl client.Client, site string) bool {
 	var ns corev1.Namespace
 	if err := cl.Get(ctx, client.ObjectKey{Name: testNamespace}, &ns); err != nil {
 		return false
 	}
 	if ns.DeletionTimestamp.IsZero() && ns.Status.Phase != corev1.NamespaceTerminating {
-		// Namespace exists but is not stuck — delete it normally for a clean slate.
 		GinkgoWriter.Printf("  [cleanup:%s] Deleting existing namespace %s\n", site, testNamespace)
 		_ = cl.Delete(ctx, &ns)
-		waitForNamespaceDeletion(ctx, cl, site)
-		return true
+	} else {
+		GinkgoWriter.Printf("  [cleanup:%s] Namespace %s is stuck in Terminating, stripping finalizers\n",
+			site, testNamespace)
 	}
 
-	GinkgoWriter.Printf("  [cleanup:%s] Namespace %s is stuck in Terminating, stripping finalizers\n",
-		site, testNamespace)
+	unstickTestNamespaceBlockers(ctx, cl, site)
+	waitForNamespaceDeletion(ctx, cl, site)
+	return true
+}
 
-	// VolumeReplication CRs are the most common blocker.
+func unstickTestNamespaceBlockers(ctx context.Context, cl client.Client, site string) {
+	var pods corev1.PodList
+	if err := cl.List(ctx, &pods, client.InNamespace(testNamespace)); err == nil {
+		for i := range pods.Items {
+			GinkgoWriter.Printf("  [cleanup:%s] Force-deleting leftover Pod %s\n",
+				site, pods.Items[i].Name)
+			runOutput("kubectl", "--context="+site, "-n", testNamespace,
+				"delete", "pod", pods.Items[i].Name,
+				"--force", "--grace-period=0", "--wait=false", "--ignore-not-found")
+		}
+	}
+
+	var vms kubevirtv1.VirtualMachineList
+	if err := cl.List(ctx, &vms, client.InNamespace(testNamespace)); err == nil {
+		for i := range vms.Items {
+			if len(vms.Items[i].GetFinalizers()) > 0 {
+				GinkgoWriter.Printf("  [cleanup:%s] Stripping finalizers from VM %s\n",
+					site, vms.Items[i].Name)
+				vms.Items[i].SetFinalizers(nil)
+				_ = cl.Update(ctx, &vms.Items[i])
+			}
+		}
+	}
+
+	var vmis kubevirtv1.VirtualMachineInstanceList
+	if err := cl.List(ctx, &vmis, client.InNamespace(testNamespace)); err == nil {
+		for i := range vmis.Items {
+			if len(vmis.Items[i].GetFinalizers()) > 0 {
+				GinkgoWriter.Printf("  [cleanup:%s] Stripping finalizers from VMI %s\n",
+					site, vmis.Items[i].Name)
+				vmis.Items[i].SetFinalizers(nil)
+				_ = cl.Update(ctx, &vmis.Items[i])
+			}
+		}
+	}
+
 	var vrList replicationv1alpha1.VolumeReplicationList
 	if err := cl.List(ctx, &vrList, client.InNamespace(testNamespace)); err == nil {
 		for i := range vrList.Items {
@@ -180,13 +218,15 @@ func cleanupStaleNamespace(ctx context.Context, cl client.Client, site string) b
 		}
 	}
 
-	// VolumeGroupReplication CRs
 	stripFinalizersByShell(site, "volumegroupreplications.replication.storage.openshift.io")
 
-	// PVCs with protection finalizers
+	testPVs := map[string]bool{}
 	var pvcList corev1.PersistentVolumeClaimList
 	if err := cl.List(ctx, &pvcList, client.InNamespace(testNamespace)); err == nil {
 		for i := range pvcList.Items {
+			if pvcList.Items[i].Spec.VolumeName != "" {
+				testPVs[pvcList.Items[i].Spec.VolumeName] = true
+			}
 			if len(pvcList.Items[i].GetFinalizers()) > 0 {
 				pvcList.Items[i].SetFinalizers(nil)
 				_ = cl.Update(ctx, &pvcList.Items[i])
@@ -194,8 +234,21 @@ func cleanupStaleNamespace(ctx context.Context, cl client.Client, site string) b
 		}
 	}
 
-	waitForNamespaceDeletion(ctx, cl, site)
-	return true
+	var vaList storagev1.VolumeAttachmentList
+	if err := cl.List(ctx, &vaList); err == nil {
+		for i := range vaList.Items {
+			pvName := ""
+			if vaList.Items[i].Spec.Source.PersistentVolumeName != nil {
+				pvName = *vaList.Items[i].Spec.Source.PersistentVolumeName
+			}
+			if pvName == "" || !testPVs[pvName] {
+				continue
+			}
+			GinkgoWriter.Printf("  [cleanup:%s] Deleting VolumeAttachment %s (PV %s)\n",
+				site, vaList.Items[i].Name, pvName)
+			forceDelete(ctx, cl, &vaList.Items[i])
+		}
+	}
 }
 
 func waitForNamespaceDeletion(ctx context.Context, cl client.Client, site string) {
@@ -401,13 +454,16 @@ func deployScenario(ctx context.Context, s *lifecycleScenario) {
 	By("ensuring golden Fedora image exists on east")
 	ensureGoldenImage(ctx, eastClient)
 
-	By("cloning rootdisk DataVolumes from golden image")
+	By("cloning a single Block rootdisk DataVolume per VM from the golden image")
 	for _, vm := range baseVMs {
-		createRootDiskDV(ctx, eastClient, s.vmPrefix+vm.name, s.storageClass)
+		createRootDiskDV(ctx, eastClient, s.vmPrefix+vm.name, vm.wave, planName, s.storageClass)
 	}
 
 	By("waiting for DataVolume clones to complete")
 	waitForDataVolumes(ctx, eastClient, s.vmPrefix)
+
+	By("flattening cloned RBD images so mirroring can be enabled")
+	flattenRBDImages(ctx, eastClient, s.vmPrefix, s.storageClass)
 
 	By("creating east VMs (runStrategy: Always)")
 	for _, vm := range baseVMs {
@@ -551,15 +607,7 @@ func ensureGoldenImage(ctx context.Context, cl client.Client) {
 						"pullMethod": "node",
 					},
 				},
-				"storage": map[string]interface{}{
-					"accessModes":      []interface{}{"ReadWriteOnce"},
-					"storageClassName": "rook-ceph-block",
-					"resources": map[string]interface{}{
-						"requests": map[string]interface{}{
-							"storage": "5Gi",
-						},
-					},
-				},
+				"storage": rootDiskStorageSpec("rook-ceph-block"),
 			},
 		},
 	}
@@ -582,7 +630,23 @@ func ensureGoldenImage(ctx context.Context, cl client.Client) {
 	}).WithTimeout(10 * time.Minute).WithPolling(10 * time.Second).Should(Succeed())
 }
 
-func createRootDiskDV(ctx context.Context, cl client.Client, vmName, sc string) {
+// rootDiskStorageSpec is the learned VM-disk shape: one 5Gi Block RBD volume
+// on the mirrored StorageClass. Per-VM disks are CDI clones of the golden PVC,
+// not registry imports.
+func rootDiskStorageSpec(storageClass string) map[string]interface{} {
+	return map[string]interface{}{
+		"accessModes":      []interface{}{"ReadWriteOnce"},
+		"storageClassName": storageClass,
+		"volumeMode":       "Block",
+		"resources": map[string]interface{}{
+			"requests": map[string]interface{}{
+				"storage": "5Gi",
+			},
+		},
+	}
+}
+
+func createRootDiskDV(ctx context.Context, cl client.Client, vmName, wave, planName, sc string) {
 	dvName := vmName + "-rootdisk"
 	dv := &unstructured.Unstructured{
 		Object: map[string]interface{}{
@@ -591,6 +655,10 @@ func createRootDiskDV(ctx context.Context, cl client.Client, vmName, sc string) 
 			"metadata": map[string]interface{}{
 				"name":      dvName,
 				"namespace": testNamespace,
+				"labels": map[string]interface{}{
+					soteriav1alpha1.DRPlanLabel: planName,
+					soteriav1alpha1.WaveLabel:   wave,
+				},
 			},
 			"spec": map[string]interface{}{
 				"source": map[string]interface{}{
@@ -599,15 +667,7 @@ func createRootDiskDV(ctx context.Context, cl client.Client, vmName, sc string) 
 						"name":      goldenImageName,
 					},
 				},
-				"storage": map[string]interface{}{
-					"accessModes":      []interface{}{"ReadWriteOnce"},
-					"storageClassName": sc,
-					"resources": map[string]interface{}{
-						"requests": map[string]interface{}{
-							"storage": "5Gi",
-						},
-					},
-				},
+				"storage": rootDiskStorageSpec(sc),
 			},
 		},
 	}
@@ -636,6 +696,62 @@ func waitForDataVolumes(ctx context.Context, cl client.Client, vmPrefix string) 
 				"DataVolume %s phase: got %s, want Succeeded", dvName, phase)
 		}
 	}).WithTimeout(5 * time.Minute).WithPolling(10 * time.Second).Should(Succeed())
+}
+
+// flattenRBDImages removes the CDI clone parent (-temp) from each VM rootdisk
+// RBD image. A parent snapshot blocks rbd-mirror enable, which is the same
+// step hack/multisite/setup-test-vms.sh runs after DataVolumes succeed.
+func flattenRBDImages(ctx context.Context, cl client.Client, vmPrefix, storageClass string) {
+	var sc storagev1.StorageClass
+	Expect(cl.Get(ctx, client.ObjectKey{Name: storageClass}, &sc)).To(Succeed(),
+		"StorageClass %s not found", storageClass)
+	pool := sc.Parameters["pool"]
+	Expect(pool).NotTo(BeEmpty(), "StorageClass %s has no pool parameter", storageClass)
+
+	ctxFlag := "--context=" + eastMinikubeProfile
+	flattened := 0
+	for _, vm := range baseVMs {
+		pvcName := vmPrefix + vm.name + "-rootdisk"
+		var pvc corev1.PersistentVolumeClaim
+		Expect(cl.Get(ctx, client.ObjectKey{
+			Name: pvcName, Namespace: testNamespace,
+		}, &pvc)).To(Succeed(), "PVC %s not found", pvcName)
+		if pvc.Spec.VolumeName == "" {
+			GinkgoWriter.Printf("  skipping flatten for %s: PVC has no bound volume\n", pvcName)
+			continue
+		}
+
+		var pv corev1.PersistentVolume
+		Expect(cl.Get(ctx, client.ObjectKey{Name: pvc.Spec.VolumeName}, &pv)).To(Succeed(),
+			"PV %s not found", pvc.Spec.VolumeName)
+		Expect(pv.Spec.CSI).NotTo(BeNil(), "PV %s is not a CSI volume", pv.Name)
+		imageName := pv.Spec.CSI.VolumeAttributes["imageName"]
+		if imageName == "" {
+			GinkgoWriter.Printf("  skipping flatten for %s: PV has no imageName\n", pvcName)
+			continue
+		}
+
+		info := runOutput("kubectl", ctxFlag, "-n", "rook-ceph",
+			"exec", "deploy/rook-ceph-tools", "--",
+			"rbd", "info", pool+"/"+imageName)
+		if !strings.Contains(info, "parent:") {
+			continue
+		}
+
+		GinkgoWriter.Printf("  flattening %s (%s/%s)\n", pvcName, pool, imageName)
+		out := runOutput("kubectl", ctxFlag, "-n", "rook-ceph",
+			"exec", "deploy/rook-ceph-tools", "--",
+			"rbd", "flatten", pool+"/"+imageName)
+		Expect(out).NotTo(ContainSubstring("error"),
+			"rbd flatten failed for %s/%s:\n%s", pool, imageName, out)
+		flattened++
+	}
+
+	if flattened > 0 {
+		GinkgoWriter.Printf("  flattened %d cloned RBD image(s)\n", flattened)
+	} else {
+		GinkgoWriter.Printf("  no images needed flattening\n")
+	}
 }
 
 func createVM(
@@ -739,6 +855,7 @@ func waitForShadowPVResources(ctx context.Context, cl client.Client, planName st
 type pvBindInfo struct {
 	pvName       string
 	storageClass string
+	volumeMode   corev1.PersistentVolumeMode
 }
 
 // waitForShadowPVConsumerPVs builds a PVC-name → pvBindInfo mapping by reading
@@ -765,21 +882,27 @@ func waitForShadowPVConsumerPVs(
 				if entry.PV.ClaimRef == nil || entry.PV.ClaimRef.Name == "" {
 					continue
 				}
+				mode := entry.PV.VolumeMode
+				if mode == nil || *mode == "" {
+					mode = ptr.To(corev1.PersistentVolumeBlock)
+				}
 				pvMap[entry.PV.ClaimRef.Name] = pvBindInfo{
 					pvName:       entry.PVName,
 					storageClass: entry.PV.StorageClassName,
+					volumeMode:   *mode,
 				}
 			}
 		}
-		g.Expect(pvMap).NotTo(BeEmpty(),
-			"ShadowPV entries should have ClaimRef for plan %s", planName)
+		g.Expect(pvMap).To(HaveLen(len(baseVMs)),
+			"expected %d ShadowPV PVC mappings for plan %s, got %d (%v)",
+			len(baseVMs), planName, len(pvMap), mapKeys(pvMap))
 
 		for pvcName, info := range pvMap {
 			var pv corev1.PersistentVolume
 			g.Expect(targetClient.Get(ctx, client.ObjectKey{Name: info.pvName}, &pv)).To(Succeed(),
 				"consumer PV %s (for PVC %s) should exist on target", info.pvName, pvcName)
 		}
-	}).WithTimeout(shadowPVTimeout).WithPolling(5 * time.Second).Should(Succeed())
+	}).WithTimeout(setupTimeout).WithPolling(5 * time.Second).Should(Succeed())
 	return pvMap
 }
 
@@ -801,10 +924,11 @@ func createWestPVCsFromShadowPVs(
 			Spec: corev1.PersistentVolumeClaimSpec{
 				AccessModes:      []corev1.PersistentVolumeAccessMode{corev1.ReadWriteOnce},
 				StorageClassName: ptr.To(info.storageClass),
+				VolumeMode:       ptr.To(info.volumeMode),
 				VolumeName:       info.pvName,
 				Resources: corev1.VolumeResourceRequirements{
 					Requests: corev1.ResourceList{
-						corev1.ResourceStorage: resource.MustParse("1Gi"),
+						corev1.ResourceStorage: resource.MustParse("5Gi"),
 					},
 				},
 			},
@@ -859,7 +983,7 @@ func verifyInfrastructureHealth() {
 		out = runOutput("kubectl", ctx, "-n", "rook-ceph",
 			"exec", "deploy/rook-ceph-tools", "--", "ceph", "health")
 		out = strings.TrimSpace(out)
-		if !strings.HasPrefix(out, "HEALTH_OK") {
+		if !cephHealthAcceptable(out) {
 			failures = append(failures,
 				fmt.Sprintf("[%s] Ceph not healthy: %s", profile, out))
 		}
@@ -907,6 +1031,34 @@ func verifyInfrastructureHealth() {
 	}
 
 	GinkgoWriter.Printf("  [guard] Infrastructure health verified: Cilium, Ceph, mirroring, ScyllaDB all OK\n")
+}
+
+// cephHealthAcceptable treats HEALTH_OK as passing. HEALTH_WARN is allowed only
+// when every reported issue is Ceph AUTH_INSECURE_* (aes CSI keys on this
+// Rook/minikube lab). PG, OSD, or MON warnings still fail the guard.
+func cephHealthAcceptable(status string) bool {
+	status = strings.TrimSpace(status)
+	if strings.HasPrefix(status, "HEALTH_OK") {
+		return true
+	}
+	if !strings.HasPrefix(status, "HEALTH_WARN") {
+		return false
+	}
+	rest := strings.TrimSpace(strings.TrimPrefix(status, "HEALTH_WARN"))
+	if rest == "" {
+		return false
+	}
+	for _, part := range strings.Split(rest, ";") {
+		p := strings.ToLower(strings.TrimSpace(part))
+		if p == "" {
+			continue
+		}
+		if strings.Contains(p, "insecure key") {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 // ---------------------------------------------------------------------------
@@ -961,7 +1113,7 @@ func waitForControllerReady(ctx context.Context, cs *kubernetes.Clientset, ns st
 			g.Expect(c.Ready).To(BeTrue(),
 				"container %s should be ready", c.Name)
 		}
-	}).WithTimeout(8 * time.Minute).WithPolling(5 * time.Second).Should(Succeed(),
+	}).WithTimeout(8*time.Minute).WithPolling(5*time.Second).Should(Succeed(),
 		"controller-manager in %s did not become ready", ns)
 	GinkgoWriter.Printf("  [infra] controller-manager ready in %s\n", ns)
 }
@@ -1028,8 +1180,8 @@ func waitForCephHealthy(profile string) {
 	Eventually(func(g Gomega) {
 		out := runOutput("kubectl", ctx, "-n", "rook-ceph",
 			"exec", "deploy/rook-ceph-tools", "--", "ceph", "health")
-		g.Expect(out).To(ContainSubstring("HEALTH_OK"),
-			"Ceph should be HEALTH_OK")
+		g.Expect(cephHealthAcceptable(strings.TrimSpace(out))).To(BeTrue(),
+			"Ceph should be HEALTH_OK (or AUTH_INSECURE-only WARN), got: %s", out)
 	}).WithTimeout(5 * time.Minute).WithPolling(10 * time.Second).Should(Succeed())
 
 	GinkgoWriter.Printf("  [infra] Ceph healthy on %s\n", profile)
@@ -1234,7 +1386,7 @@ func waitForVRsOnBothSites(ctx context.Context, planName string) {
 			g.Expect(len(vrList.Items)).To(BeNumerically(">=", expectedCount),
 				"%s: expected at least %d VRs for plan %s, got %d",
 				pair.name, expectedCount, planName, len(vrList.Items))
-		}).WithTimeout(setupTimeout).WithPolling(5 * time.Second).Should(Succeed(),
+		}).WithTimeout(setupTimeout).WithPolling(5*time.Second).Should(Succeed(),
 			"VolumeReplication CRs did not appear on %s for plan %s", pair.name, planName)
 	}
 }

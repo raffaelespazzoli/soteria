@@ -485,6 +485,7 @@ After deploying Stories 15.10 (site-owned `SiteStatuses` map) and 15.11 (remove 
 | INFRA-15.003 | ScyllaDB symmetric seeds | — | **APPLIED** |
 | INFRA-15.004 | Log scanner conflict filter | — | **APPLIED** |
 | INFRA-15.005 | Pre-test infrastructure health guard | — | **APPLIED** |
+| UAT-15.014 | ScyllaDB cross-site stale read causes redundant finishExecution | Major | **Open** |
 | INFRA-15.006 | ScyllaDB CA: cert-manager managed secret | — | **APPLIED** |
 | INFRA-15.007 | Pre-test stale resource cleanup guard | — | **APPLIED** |
 
@@ -511,10 +512,87 @@ After deploying Stories 15.10 (site-owned `SiteStatuses` map) and 15.11 (remove 
   - `test/multisite/helpers_test.go` — added `cleanupStaleTestResources()` and sub-functions
   - `test/multisite/setup_test.go` — wired guard into `BeforeSuite`
 
+---
+
+### Run 9 — Automated E2E Suite: planned-snapshot (2026-09-04)
+
+Ran the planned-snapshot lifecycle scenario via the automated multisite Ginkgo suite (`test/multisite/`) against the live minikube east/west environment.
+
+**Results:**
+
+| Spec | Result | Duration |
+|------|--------|----------|
+| T1: planned migration east→west | PASS | 5m5s |
+| T2: reprotect on west | PASS | 45s |
+| T3: planned migration west→east | PASS | 1m56s |
+| T4: reprotect on east | PASS | 45s |
+| ShadowPV entries consistent | PASS | <1s |
+| Controller logs check | **FAIL** | — |
+
+**Outcome:** 5 of 6 specs passed. The only failure was the controller-log-scanner spec detecting an immutability violation error in the east controller logs during T3.
+
+#### UAT-15.014 — ScyllaDB Cross-Site Stale Read Causes Redundant finishExecution
+
+- **Severity:** Major
+- **Description:** After T3 (`ps-t3-migrate`, planned migration west→east) completed with `Result=Succeeded`, the east controller's log scanner detected one `Reconciler error` entry:
+
+  ```
+  writing final execution status: DRExecution.soteria.io "ps-t3-migrate"
+  is invalid: status: Forbidden: DRExecution is immutable after completion
+  ```
+
+  The reconciler attempted a second `finishExecution` call on an execution that had already been completed by a previous reconcile pass.
+
+- **Root Cause — ScyllaDB cross-site replication lag:**
+
+  The reconciler has two stale-read guards:
+  1. **Line 123:** checks `exec.Status.Result` from the informer cache (`r.Get`)
+  2. **Line 159:** fresh-reads via `r.APIReader.Get` directly from the API server (bypasses informer cache, reads ScyllaDB)
+
+  Both guards protect against the **informer cache** lagging behind. However, with a single ScyllaDB node per site and CDC-based cross-site replication, there is a brief window where the **API server's own storage** returns stale data. The write (Result=Succeeded) originated on one site and the CDC replication to the other site's ScyllaDB node had not yet propagated.
+
+  **Race timeline:**
+  1. East reconcile A: all waves completed → `finishWaveExecution` → `finishExecution` → `persistStatus` writes `Result=Succeeded` to ScyllaDB ✅
+  2. Status write triggers a watch event → reconcile B enqueued
+  3. Reconcile B starts: `r.Get()` returns stale state (`Result=""`) from informer cache
+  4. Reconcile B: `r.APIReader.Get()` also returns stale state from ScyllaDB (CDC replication lag)
+  5. Both terminal guards bypassed → reconciler enters resume path
+  6. `findCurrentWave()` returns -1 (all groups terminal) → `finishWaveExecution` called again
+  7. `finishExecution` → `persistStatus` re-fetches (NOW gets `Result=Succeeded` from ScyllaDB)
+  8. `Status().Update()` → REST strategy `ValidateUpdate` sees `old.Result=Succeeded` → **FORBIDDEN**
+
+  This is the same class of issue as UAT-15.002 (ScyllaDB eventual consistency) and UAT-15.011 (LWW race), but at the `persistStatus` level rather than the condition-level.
+
+- **Proposed Fix — Stale-state guard in `persistStatus`:**
+
+  The standard controller-runtime contract is: if the object has changed since the informer snapshot, a new watch event is already enqueued and the reconciler will be re-invoked with fresh data. Therefore, when `persistStatus` re-fetches the DRExecution and discovers it is already in a fully-closed terminal state (`Succeeded` or `Failed`), the correct action is to **log the observation and return nil** — not to attempt the redundant write. The next reconcile pass (triggered by the watch event from the original successful write) will read the terminal state and short-circuit at line 123.
+
+  ```go
+  // In persistStatus (pkg/engine/executor.go), inside the retry loop,
+  // after re-fetching the DRExecution:
+  if exec.Status.Result == soteriav1alpha1.ExecutionResultSucceeded ||
+      exec.Status.Result == soteriav1alpha1.ExecutionResultFailed {
+      logger.V(1).Info("Execution already terminal after re-fetch, skipping redundant status write",
+          "result", exec.Status.Result)
+      return nil
+  }
+  ```
+
+  This is safe because:
+  - `PartiallySucceeded` is intentionally NOT guarded — the retry path needs to update status on re-opened executions.
+  - The guard runs inside the retry loop, so it only fires when the re-fetched (freshest available) state is terminal.
+  - No data is lost — the execution was already successfully completed by the previous reconcile pass.
+
+- **Files to Change:** `pkg/engine/executor.go` (`persistStatus` function)
+- **Status:** Open — fix not yet implemented
+
+---
+
 ## Next Steps
 
 1. ~~Implement Story 15.10 (site-owned coordination status) to fix UAT-15.011.~~ **DONE**
 2. ~~Build, deploy, and run planned-snapshot full lifecycle (T1–T4).~~ **DONE** (Run 8)
-3. Proceed to Tests 3-5 (planned-journal, disaster-snapshot, disaster-journal).
-4. Validate per-transition assertions (Duration, Phase, conditions) and real-storage assertions (lastSyncTime on VR CRs).
-5. Run automated e2e test suite (`test/multisite/`) against the same environment.
+3. ~~Run automated e2e test suite planned-snapshot.~~ **DONE** (Run 9 — 5/6 pass, UAT-15.014 open)
+4. Fix UAT-15.014 (stale-state guard in `persistStatus`).
+5. Proceed to Tests 3-5 (planned-journal, disaster-snapshot, disaster-journal).
+6. Validate per-transition assertions (Duration, Phase, conditions) and real-storage assertions (lastSyncTime on VR CRs).

@@ -428,3 +428,39 @@ development_status:
   15-11-remove-resyncvolume-from-planned-migration: done
   15-12-event-driven-discovery-eliminate-lww-race: done
   15-13-remove-demotion-health-gate-from-step0: done
+
+  # Epic 16: Helm Chart & Release Pipeline
+  epic-16: in-progress
+  16-1-chart-skeleton-and-values: ready-for-dev
+  16-2-controller-templates: ready-for-dev
+  16-3-scylladb-managed-templates: ready-for-dev
+  16-4-scylladb-external-wiring: ready-for-dev
+  16-5-console-plugin-templates: ready-for-dev
+  16-6-standalone-ui-templates: ready-for-dev
+  16-7-install-script: ready-for-dev
+  16-8-release-pipeline: ready-for-dev
+
+  # Epic 17: Documentation Site
+  epic-17: in-progress
+  17-1-docs-site-setup: ready-for-dev
+  17-2-landing-page: ready-for-dev
+  17-3-prerequisites-guide: ready-for-dev
+  17-4-scylladb-overview: ready-for-dev
+  17-5-scylladb-submariner: ready-for-dev
+  17-6-scylladb-cilium: ready-for-dev
+  17-7-helm-installation: backlog  # blocked: needs Epic 16 chart
+  17-8-architecture-overview: ready-for-dev
+  17-9-dr-lifecycle: ready-for-dev
+  17-10-storage-drivers: ready-for-dev
+  17-11-creating-a-drplan: ready-for-dev
+  17-12-waves-and-throttling: ready-for-dev
+  17-13-volume-grouping: ready-for-dev
+  17-14-executing-failover: ready-for-dev
+  17-15-ui-dashboard: backlog  # blocked: needs UI screenshots
+  17-16-ui-plan-detail: backlog  # blocked: needs UI screenshots
+  17-17-ui-execution-monitor: backlog  # blocked: needs UI screenshots
+  17-18-api-reference-drplan: ready-for-dev
+  17-19-api-reference-drexecution: ready-for-dev
+  17-20-helm-values-reference: backlog  # blocked: needs Epic 16 chart
+  17-21-contributing-dev-setup: ready-for-dev
+  17-22-contributing-storage-drivers: ready-for-dev

@@ -213,6 +213,75 @@ func TestFailoverHandler_Graceful_Step0_StopVMFails(t *testing.T) {
 	}
 }
 
+func TestFailoverHandler_Graceful_Step0_ReverseWaveShutdownOrder(t *testing.T) {
+	drv := fake.New()
+	for _, vgName := range []string{"vg-db", "vg-app1", "vg-app2", "vg-web1", "vg-web2", "vg-web3"} {
+		id := drivers.VolumeGroupID("noop-ns1/" + vgName)
+		drv.OnGetVolumeGroup(id).ReturnResult(fake.Response{
+			VolumeGroupInfo: &drivers.VolumeGroupInfo{ID: id, Name: vgName},
+		})
+	}
+
+	vm := newMockVMManager()
+	handler := &FailoverHandler{
+		VMManager: vm,
+		Config:    gracefulConfig(),
+	}
+
+	// Build 3 waves in ascending order (as BuildExecutionGroups returns):
+	// Wave 0: db, Wave 1: appservers, Wave 2: webservers
+	groups := []ExecutionGroup{
+		makeExecutionGroup("wave-1-group-0",
+			[]VMReference{{Name: "vm-db", Namespace: "ns1"}},
+			[]soteriav1alpha1.VolumeGroupInfo{makeVolumeGroupInfo("vg-db", "ns1", "vm-db")},
+			drv, 0),
+		makeExecutionGroup("wave-2-group-0",
+			[]VMReference{
+				{Name: "vm-app1", Namespace: "ns1"},
+				{Name: "vm-app2", Namespace: "ns1"},
+			},
+			[]soteriav1alpha1.VolumeGroupInfo{
+				makeVolumeGroupInfo("vg-app1", "ns1", "vm-app1"),
+				makeVolumeGroupInfo("vg-app2", "ns1", "vm-app2"),
+			},
+			drv, 1),
+		makeExecutionGroup("wave-3-group-0",
+			[]VMReference{
+				{Name: "vm-web1", Namespace: "ns1"},
+				{Name: "vm-web2", Namespace: "ns1"},
+				{Name: "vm-web3", Namespace: "ns1"},
+			},
+			[]soteriav1alpha1.VolumeGroupInfo{
+				makeVolumeGroupInfo("vg-web1", "ns1", "vm-web1"),
+				makeVolumeGroupInfo("vg-web2", "ns1", "vm-web2"),
+				makeVolumeGroupInfo("vg-web3", "ns1", "vm-web3"),
+			},
+			drv, 2),
+	}
+
+	if err := handler.PreExecute(context.Background(), groups); err != nil {
+		t.Fatalf("PreExecute failed: %v", err)
+	}
+
+	stops := vm.getStops()
+	// VMs should be stopped in reverse wave order: webservers first, then
+	// appservers, then db last — so dependants drain before dependencies.
+	expected := []string{
+		"ns1/vm-web3", "ns1/vm-web2", "ns1/vm-web1",
+		"ns1/vm-app2", "ns1/vm-app1",
+		"ns1/vm-db",
+	}
+	if len(stops) != len(expected) {
+		t.Fatalf("Expected %d VM stops, got %d: %v", len(expected), len(stops), stops)
+	}
+	for i, exp := range expected {
+		if stops[i] != exp {
+			t.Errorf("Stop order mismatch at index %d: expected %s, got %s\nFull order: %v",
+				i, exp, stops[i], stops)
+		}
+	}
+}
+
 func TestFailoverHandler_Graceful_PerGroup_SetSourceAndStartVM(t *testing.T) {
 	drv := fake.New()
 	drv.OnGetVolumeGroup("noop-ns1/vg-db").ReturnResult(fake.Response{

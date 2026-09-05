@@ -4,8 +4,8 @@ workflowCompleted: true
 completedAt: '2026-04-06'
 project_name: 'dr-orchestrator'
 user_name: 'Raffa'
-totalEpics: 14
-totalStories: 71
+totalEpics: 16
+totalStories: 101
 totalFRsCovered: 44
 totalNFRsAddressed: 19
 totalUXDRsCovered: 20
@@ -4036,3 +4036,159 @@ So that the platform is proven to work with real Ceph RBD volume replication inc
 - Additional assertions for Epic 15 features (AC12, AC13) supplement the original AC1-AC11
 - Depends on all other Epic 15 stories being complete
 - Scope: `test/multisite/` directory (~3-4 Go files)
+
+---
+
+## Epic 16: Helm Chart & Release Pipeline
+
+**Goal:** Package Soteria as a Helm chart that lets anyone deploy the operator on two Kubernetes clusters with a single `helm install` per cluster. Provide a release pipeline that builds container images, pushes them to Quay, and publishes the chart to GitHub Pages.
+
+**Scope:** Chart skeleton, controller templates, ScyllaDB managed/external templates, console plugin templates, standalone UI templates, multi-cluster install script, and release pipeline.
+
+**Dependencies:** Existing kustomize manifests, console-plugin code, standalone UI code.
+
+### Stories
+
+| ID | Title | Depends On | Status |
+|----|-------|-----------|--------|
+| 16.1 | Chart Skeleton & Values | — | draft |
+| 16.2 | Controller Templates | 16.1 | draft |
+| 16.3 | ScyllaDB Managed Templates | 16.1 | draft |
+| 16.4 | ScyllaDB External (BYO) Wiring | 16.2 | draft |
+| 16.5 | Console Plugin Templates | 16.1 | draft |
+| 16.6 | Standalone UI Templates | 16.1 | draft |
+| 16.7 | Multi-Cluster Install Script | 16.2, 16.3 | draft |
+| 16.8 | Release Pipeline & GitHub Pages | 16.1 | draft |
+
+### Story Details
+
+**Story 16.1 — Chart Skeleton & Values**
+Create `charts/soteria/Chart.yaml`, `values.yaml`, and `_helpers.tpl`. The values file implements the full schema: site (name, role), controller (image, replicas, resources, leaderElection), tls (issuerRef), scylladb (mode: managed|external, keyspace, localDC, managed/external configs), networking (mode: submariner|cilium), ui (mode: console-plugin|standalone|none, per-mode settings).
+
+**Story 16.2 — Controller Templates**
+Create Helm templates for the Soteria controller: Deployment, ServiceAccount, ClusterRole/ClusterRoleBinding, APIService with cert-manager CA injection, ValidatingWebhookConfiguration, Services (apiserver, webhook, metrics), cert-manager Certificates. Conditional ScyllaDB connection wiring based on `scylladb.mode`.
+
+**Story 16.3 — ScyllaDB Managed Templates**
+Templates for managed ScyllaDB (rendered when `scylladb.mode=managed`): ScyllaCluster CR, mTLS ConfigMap, cert-manager Certificate, conditional ServiceExport (Submariner) or global-service annotation (Cilium).
+
+**Story 16.4 — ScyllaDB External (BYO) Wiring**
+When `scylladb.mode=external`: no ScyllaDB resources rendered, controller uses external.contactPoints, conditional TLS secret mounting.
+
+**Story 16.5 — Console Plugin Templates**
+Templates for OCP console plugin (rendered when `ui.mode=console-plugin`): Deployment, Service, ConsolePlugin CR, cert-manager Certificate.
+
+**Story 16.6 — Standalone UI Templates**
+Templates for standalone UI (rendered when `ui.mode=standalone`): Deployment, Service, ServiceAccount, ClusterRole/Binding, optional Gateway API HTTPRoute.
+
+**Story 16.7 — Multi-Cluster Install Script**
+`scripts/install-soteria.sh` orchestrating two-cluster deployment: seed install → CA propagation → joining install. Supports `--networking`, `--ui-mode`, `--uninstall`. Validates prerequisites.
+
+**Story 16.8 — Release Pipeline & GitHub Pages**
+GitHub Actions workflow: on tag push, build+push 3 images to quay.io, publish chart via chart-releaser-action, create orphan gh-pages branch.
+
+---
+
+## Epic 17: Documentation Site
+
+**Goal:** Create a comprehensive documentation site (mkdocs-material, GitHub Pages) covering installation, architecture, usage, API reference, and contributor guides. Documentation follows a code-driven methodology: start from the PRD/architecture/UX spec as the conceptual base, then verify against actual code to document current behavior.
+
+**Scope:** 22 documentation pages spanning installation guides (prerequisites, ScyllaDB networking variants, Helm), architecture explanations (topology, DR lifecycle, storage drivers), usage guides (DRPlan creation, waves, volume grouping, failover execution, UI screens), reference (CRD API, Helm values), and contributing guides (dev setup, writing a driver).
+
+**Dependencies:** Epic 16 (Helm chart) for stories 17.7 and 17.20. UI instance access for screenshot-dependent stories 17.15–17.17.
+
+**Documentation Methodology:** Start from the PRD, architecture doc, or UX spec as the conceptual base. Then read the related implemented user stories and walk the actual code to document *current behavior*, not aspirational specs. Where the implementation diverges from the PRD, the code is the truth.
+
+### Stories
+
+| ID | Title | Depends On | Status |
+|----|-------|-----------|--------|
+| 17.1 | Docs Site Setup | — | draft |
+| 17.2 | Landing Page & Index | 17.1 | draft |
+| 17.3 | Prerequisites Guide | 17.1 | draft |
+| 17.4 | ScyllaDB Architecture Overview | 17.1 | draft |
+| 17.5 | ScyllaDB with Submariner | 17.1 | draft |
+| 17.6 | ScyllaDB with Cilium Cluster Mesh | 17.1 | draft |
+| 17.7 | Helm Chart Installation Guide | 17.1, Epic 16 | draft |
+| 17.8 | Architecture Overview | 17.1 | draft |
+| 17.9 | DR Lifecycle & State Machine | 17.1 | draft |
+| 17.10 | Storage Drivers Architecture | 17.1 | draft |
+| 17.11 | Creating a DRPlan | 17.1 | draft |
+| 17.12 | Waves & Throttling | 17.1 | draft |
+| 17.13 | Volume Grouping | 17.1 | draft |
+| 17.14 | Executing Failover | 17.1 | draft |
+| 17.15 | UI Guide — Dashboard | 17.1 (blocked: screenshots) | draft |
+| 17.16 | UI Guide — Plan Detail | 17.1 (blocked: screenshots) | draft |
+| 17.17 | UI Guide — Execution Monitor | 17.1 (blocked: screenshots) | draft |
+| 17.18 | API Reference — DRPlan | 17.1 | draft |
+| 17.19 | API Reference — DRExecution | 17.1 | draft |
+| 17.20 | Helm Values Reference | 17.1, Epic 16 | draft |
+| 17.21 | Contributing — Dev Setup | 17.1 | draft |
+| 17.22 | Contributing — Writing a Storage Driver | 17.1 | draft |
+
+### Story Details
+
+**Story 17.1 — Docs Site Setup**
+Initialize mkdocs-material site: `mkdocs.yml`, `docs/` directory, nav structure, GitHub Actions deploy workflow.
+
+**Story 17.2 — Landing Page & Index**
+What is Soteria, key capabilities, architecture summary, link map to all sections.
+
+**Story 17.3 — Prerequisites Guide**
+CSI Addons storage, VolumeReplicationClass/VolumeGroupReplicationClass, cert-manager, scylla-operator.
+
+**Story 17.4 — ScyllaDB Architecture Overview**
+Cross-DC topology, why ScyllaDB, NetworkTopologyStrategy, LOCAL_ONE consistency.
+
+**Story 17.5 — ScyllaDB with Submariner**
+Step-by-step deployment with ServiceExport, shared CA, mTLS. Source: `hack/stretched-local-test.sh`.
+
+**Story 17.6 — ScyllaDB with Cilium Cluster Mesh**
+Step-by-step with global-service annotation. Source: `hack/multisite/setup-scylladb.sh`.
+
+**Story 17.7 — Helm Chart Installation Guide**
+Helm repo setup, managed + BYO ScyllaDB install, install script, upgrade/uninstall. Blocked until Epic 16 complete.
+
+**Story 17.8 — Architecture Overview**
+Two-cluster topology diagram, component diagram, data flow.
+
+**Story 17.9 — DR Lifecycle & State Machine**
+4 rest states, 4 transitions, planned vs disaster, Mermaid state diagram. Verify against `pkg/engine/failover.go`.
+
+**Story 17.10 — Storage Drivers Architecture**
+StorageProvider interface, replication model, driver lifecycle, conformance suite.
+
+**Story 17.11 — Creating a DRPlan**
+DRPlan CRD walkthrough, label selector, wave label, maxConcurrentFailovers, how to assign a VM.
+
+**Story 17.12 — Waves & Throttling**
+Wave formation, sequential execution, DRGroup chunking, startup ordering.
+
+**Story 17.13 — Volume Grouping**
+Namespace-level vs VM-level, consistency annotation, constraints.
+
+**Story 17.14 — Executing Failover**
+Planned migration, disaster recovery, monitoring, partial success, retry.
+
+**Story 17.15 — UI Guide: Dashboard** (blocked: screenshots)
+Dashboard overview, status indicators, alert banners, cross-cluster table.
+
+**Story 17.16 — UI Guide: Plan Detail** (blocked: screenshots)
+Tabs, wave tree, VM list, action buttons, execution history.
+
+**Story 17.17 — UI Guide: Execution Monitor** (blocked: screenshots)
+Gantt chart, progress bars, DRGroup status, inline errors, retry action.
+
+**Story 17.18 — API Reference: DRPlan**
+Full CRD field reference from types.go + kubebuilder markers.
+
+**Story 17.19 — API Reference: DRExecution**
+Full CRD field reference, status conditions, DRGroupStatus, phase semantics.
+
+**Story 17.20 — Helm Values Reference**
+Annotated parameter reference for every `values.yaml` field. Blocked until Epic 16 complete.
+
+**Story 17.21 — Contributing: Dev Setup**
+Clone, prerequisites, Makefile targets, testing pyramid, CI, local dev.
+
+**Story 17.22 — Contributing: Writing a Storage Driver**
+Interface contract, step-by-step driver implementation, conformance suite walkthrough.

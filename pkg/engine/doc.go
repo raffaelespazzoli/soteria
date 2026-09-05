@@ -66,8 +66,9 @@ limitations under the License.
 //     — not the execution mode string. The controller maps mode → config:
 //     planned_migration → {GracefulShutdown: true}
 //     disaster          → {GracefulShutdown: false}
-//     When GracefulShutdown=true, PreExecute runs Step 0: (1) stop all origin VMs,
-//     then (2) StopReplication on each source VG to demote primary to secondary.
+//     When GracefulShutdown=true, PreExecute runs Step 0: (1) stop all origin VMs
+//     in reverse wave order (dependants before dependencies), then
+//     (2) StopReplication on each source VG to demote primary to secondary.
 //     The rbd-mirror daemon auto-syncs the demotion snapshot to the target.
 //     The reconciler then waits for VRs to confirm role=Target (state=Secondary)
 //     before signalling DemotionComplete and letting the target site promote.

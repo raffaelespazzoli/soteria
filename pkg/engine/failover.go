@@ -36,7 +36,8 @@ limitations under the License.
 //
 // When GracefulShutdown=true (planned migration), PreExecute runs Step 0:
 //
-//  1. Stop all origin VMs (graceful shutdown).
+//  1. Stop all origin VMs in reverse wave order (dependants before
+//     dependencies — e.g., webservers before database).
 //  2. Call StopReplication on all source VGs (demote primary to secondary).
 //     The demotion snapshot is automatically synced to the target by the
 //     rbd-mirror daemon — no explicit ResyncVolume is needed.
@@ -52,6 +53,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -111,7 +113,8 @@ func resolveVolumeGroupID(
 //
 // When GracefulShutdown=true (planned migration):
 //
-//  1. Stop all origin VMs (graceful shutdown).
+//  1. Stop all origin VMs in reverse wave order (dependants before
+//     dependencies — e.g., webservers before database).
 //  2. Call StopReplication on each source VG to demote primary to secondary.
 //     The rbd-mirror daemon auto-syncs the demotion snapshot to the target.
 //  3. Return nil. The reconciler waits for VRs to reach role=Target
@@ -140,7 +143,14 @@ func (h *FailoverHandler) PreExecute(ctx context.Context, groups []ExecutionGrou
 		}
 	}
 
-	logger.Info("Starting Step 0: stopping origin VMs", "vmCount", len(uniqueVMs))
+	// Reverse VM order so dependants stop before dependencies: webservers
+	// (last wave) stop first, database (first wave) stops last. Groups
+	// arrive in ascending wave order from BuildExecutionGroups; the startup
+	// path uses that same ascending order, but graceful shutdown needs the
+	// opposite so higher-tier services can drain before losing the DB.
+	slices.Reverse(uniqueVMs)
+
+	logger.Info("Starting Step 0: stopping origin VMs (reverse wave order)", "vmCount", len(uniqueVMs))
 	for _, vm := range uniqueVMs {
 		if ctx.Err() != nil {
 			return ctx.Err()
