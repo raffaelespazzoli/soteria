@@ -1,6 +1,6 @@
 # Story 17.21: Contributing: Development Setup
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -42,28 +42,28 @@ Then all commands, paths, and tool versions are accurate
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Research project tooling and conventions (AC: 1, 2, 6)
-  - [ ] 1.1: Read AGENTS.md for documented project conventions and CLI commands
-  - [ ] 1.2: Read `_bmad-output/project-context.md` for project overview, coding standards, package naming
-  - [ ] 1.3: Walk the Makefile for all available targets and their descriptions
-  - [ ] 1.4: Read `go.mod` for Go version and key dependencies
-- [ ] Task 2: Research testing infrastructure (AC: 3, 6)
-  - [ ] 2.1: Walk test infrastructure: `pkg/*/` test files for unit test patterns
-  - [ ] 2.2: Walk `test/multisite/` for multisite test patterns
-  - [ ] 2.3: Walk `test/e2e/` for end-to-end test setup
-  - [ ] 2.4: Walk `pkg/drivers/conformance/suite.go` for driver conformance tests
-- [ ] Task 3: Research CI pipeline (AC: 4, 6)
-  - [ ] 3.1: Walk `.github/workflows/test.yml` for unit/integration test pipeline
-  - [ ] 3.2: Walk `.github/workflows/lint.yml` for linting checks
-  - [ ] 3.3: Walk `.github/workflows/test-e2e.yml` for e2e test pipeline
-  - [ ] 3.4: Walk `.github/workflows/pr-operator.yml` for PR checks
-- [ ] Task 4: Research local dev workflow (AC: 5, 6)
-  - [ ] 4.1: Document `make dev-cluster` for local OpenShift dev with no-op driver
-  - [ ] 4.2: Document `make run` for running the controller locally against kubeconfig
-- [ ] Task 5: Write the documentation page (AC: 1, 2, 3, 4, 5)
-  - [ ] 5.1: Write `docs/contributing/development.md` covering clone, prerequisites, Makefile walkthrough, testing pyramid, CI structure, local development
-  - [ ] 5.2: Verify all documented commands work against the current codebase
-  - [ ] 5.3: Verify tool version requirements match go.mod, CI config
+- [x] Task 1: Research project tooling and conventions (AC: 1, 2, 6)
+  - [x] 1.1: Read AGENTS.md for documented project conventions and CLI commands
+  - [x] 1.2: Read `_bmad-output/project-context.md` for project overview, coding standards, package naming
+  - [x] 1.3: Walk the Makefile for all available targets and their descriptions
+  - [x] 1.4: Read `go.mod` for Go version and key dependencies
+- [x] Task 2: Research testing infrastructure (AC: 3, 6)
+  - [x] 2.1: Walk test infrastructure: `pkg/*/` test files for unit test patterns
+  - [x] 2.2: Walk `test/multisite/` for multisite test patterns
+  - [x] 2.3: Walk `test/e2e/` for end-to-end test setup
+  - [x] 2.4: Walk `pkg/drivers/conformance/suite.go` for driver conformance tests
+- [x] Task 3: Research CI pipeline (AC: 4, 6)
+  - [x] 3.1: Walk `.github/workflows/test.yml` for unit/integration test pipeline
+  - [x] 3.2: Walk `.github/workflows/lint.yml` for linting checks
+  - [x] 3.3: Walk `.github/workflows/test-e2e.yml` for e2e test pipeline
+  - [x] 3.4: Walk `.github/workflows/pr-operator.yml` for PR checks
+- [x] Task 4: Research local dev workflow (AC: 5, 6)
+  - [x] 4.1: Document `make dev-cluster` for local OpenShift dev with no-op driver
+  - [x] 4.2: Document `make run` for running the controller locally against kubeconfig
+- [x] Task 5: Write the documentation page (AC: 1, 2, 3, 4, 5)
+  - [x] 5.1: Write `docs/contributing/dev-setup.md` covering clone, prerequisites, Makefile walkthrough, testing pyramid, CI structure, local development
+  - [x] 5.2: Verify all documented commands work against the current codebase
+  - [x] 5.3: Verify tool version requirements match go.mod, CI config
 
 ## Dev Notes
 
@@ -132,8 +132,30 @@ Start from the PRD (`_bmad-output/planning-artifacts/prd.md`), architecture doc 
 
 ### Agent Model Used
 
+Claude Opus 4.6
+
 ### Debug Log References
+
+- No debug issues encountered — documentation-only story.
 
 ### Completion Notes List
 
+- ✅ Researched all source files: AGENTS.md, project-context.md, Makefile (30 targets), go.mod (Go 1.25.3), all 7 CI workflows, no-op driver, conformance suite, test directories
+- ✅ Wrote comprehensive dev setup guide at `docs/contributing/dev-setup.md` (~350 lines) covering all 6 ACs
+- ✅ Guide structure: Prerequisites → Clone & Build → Makefile Reference (6 tables) → Testing Pyramid (5 layers with ASCII diagram) → CI Pipeline (4 sections: push/PR, PRs to main, docs, releases) → Local Development (dev-cluster, make run, no-op driver, container builds) → Project Structure → Common Workflows
+- ✅ All documented commands verified against actual Makefile targets and CI workflow files
+- ✅ Go version (1.25), container tool (podman), envtest version, golangci-lint version all match go.mod and Makefile
+- ✅ MkDocs build passes in `--strict` mode with no errors
+- ✅ Wrote to `docs/contributing/dev-setup.md` (existing placeholder in mkdocs.yml nav) rather than `docs/contributing/development.md` (story spec) to match site navigation
+- ✅ All existing tests pass (`make test` green, exit code 0)
+
 ### File List
+
+| File | Action | Description |
+|------|--------|-------------|
+| docs/contributing/dev-setup.md | MODIFIED | Replaced placeholder with comprehensive dev setup guide |
+| _bmad-output/implementation-artifacts/17-21-contributing-dev-setup.md | MODIFIED | Updated task checkboxes, status, Dev Agent Record |
+
+### Change Log
+
+- 2026-09-05: Implemented story 17.21 — wrote comprehensive contributing/dev-setup guide covering prerequisites, clone/build, Makefile reference, testing pyramid, CI pipeline, and local development with no-op driver
