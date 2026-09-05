@@ -1,0 +1,16 @@
+{{- /* Webhook Service — port 443→9443, matching config/webhook/service.yaml */ -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "soteria.fullname" . }}-webhook
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "soteria.labels" . | nindent 4 }}
+spec:
+  ports:
+    - port: 443
+      targetPort: 9443
+      protocol: TCP
+  selector:
+    {{- include "soteria.selectorLabels" . | nindent 4 }}
+    control-plane: controller-manager

@@ -1,0 +1,136 @@
+{{- /*
+ClusterRole — mirrors config/rbac/role.yaml (auto-generated from kubebuilder markers).
+Keep rules in sync with the kustomize-generated RBAC manifests.
+*/ -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "soteria.fullname" . }}-manager-role
+  labels:
+    {{- include "soteria.labels" . | nindent 4 }}
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - namespaces
+      - persistentvolumeclaims
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - persistentvolumes
+    verbs:
+      - create
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - get
+  - apiGroups:
+      - ""
+      - events.k8s.io
+    resources:
+      - events
+    verbs:
+      - create
+      - patch
+  - apiGroups:
+      - ceph.rook.io
+    resources:
+      - cephblockpools
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - kubevirt.io
+    resources:
+      - virtualmachines
+    verbs:
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - replication.storage.openshift.io
+    resources:
+      - volumegroupreplications
+      - volumereplications
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - replication.storage.openshift.io
+    resources:
+      - volumegroupreplications/finalizers
+      - volumereplications/finalizers
+    verbs:
+      - update
+  - apiGroups:
+      - replication.storage.openshift.io
+    resources:
+      - volumegroupreplications/status
+      - volumereplications/status
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - soteria.io
+    resources:
+      - drexecutions
+      - drplans
+    verbs:
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - soteria.io
+    resources:
+      - drexecutions/status
+      - drplans/status
+      - shadowpvs/status
+    verbs:
+      - get
+      - patch
+      - update
+  - apiGroups:
+      - soteria.io
+    resources:
+      - drplans/finalizers
+    verbs:
+      - update
+  - apiGroups:
+      - soteria.io
+    resources:
+      - shadowpvs
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+  - apiGroups:
+      - storage.k8s.io
+    resources:
+      - storageclasses
+    verbs:
+      - get
+      - list

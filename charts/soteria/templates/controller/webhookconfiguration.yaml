@@ -1,0 +1,35 @@
+{{- /*
+ValidatingWebhookConfiguration — validates kubevirt.io/v1 VirtualMachines.
+Mirrors config/webhook/manifests.yaml.
+cert-manager injects the CA bundle from the webhook serving Certificate.
+*/ -}}
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: {{ include "soteria.fullname" . }}-validating-webhook
+  labels:
+    {{- include "soteria.labels" . | nindent 4 }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ include "soteria.fullname" . }}-webhook-serving
+webhooks:
+  - admissionReviewVersions:
+      - v1
+    clientConfig:
+      service:
+        name: {{ include "soteria.fullname" . }}-webhook
+        namespace: {{ .Release.Namespace }}
+        path: /validate-kubevirt-io-v1-virtualmachine
+    failurePolicy: Fail
+    matchPolicy: Exact
+    name: vvm.kb.io
+    rules:
+      - apiGroups:
+          - kubevirt.io
+        apiVersions:
+          - v1
+        operations:
+          - CREATE
+          - UPDATE
+        resources:
+          - virtualmachines
+    sideEffects: None

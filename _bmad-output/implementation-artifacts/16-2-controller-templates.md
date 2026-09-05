@@ -1,6 +1,6 @@
 # Story 16.2: Controller Templates
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -57,35 +57,35 @@ Then the container args use `external.contactPoints` and TLS Secret is condition
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create Deployment template (AC: 1, 8, 9)
-  - [ ] 1.1: Create `templates/controller/deployment.yaml` mirroring `config/manager/manager.yaml` structure — securityContext, probes, ports
-  - [ ] 1.2: Wire base container args: `--leader-elect`, `--health-probe-bind-address=:8081`, `--site-name`, `--secure-port`
-  - [ ] 1.3: Add conditional ScyllaDB args block for `scylladb.mode=managed` — contact points derived from in-cluster service name, mTLS volume mounts
-  - [ ] 1.4: Add conditional ScyllaDB args block for `scylladb.mode=external` — contact points from `external.contactPoints`, conditional TLS volume mount
-- [ ] Task 2: Create ServiceAccount template (AC: 2)
-  - [ ] 2.1: Create `templates/controller/serviceaccount.yaml` using `soteria.serviceAccountName` helper
-- [ ] Task 3: Create RBAC templates (AC: 3)
-  - [ ] 3.1: Create `templates/controller/clusterrole.yaml` mirroring all rules from `config/rbac/role.yaml`
-  - [ ] 3.2: Create `templates/controller/clusterrolebinding.yaml` binding to the ServiceAccount
-- [ ] Task 4: Create APIService template (AC: 4)
-  - [ ] 4.1: Create `templates/controller/apiservice.yaml` registering `v1alpha1.soteria.io` with `cert-manager.io/inject-ca-from` annotation pointing to apiserver Certificate
-- [ ] Task 5: Create Webhook template (AC: 5)
-  - [ ] 5.1: Create `templates/controller/webhookconfiguration.yaml` mirroring `config/webhook/manifests.yaml` with `cert-manager.io/inject-ca-from` annotation pointing to webhook Certificate
-- [ ] Task 6: Create Service templates (AC: 6)
-  - [ ] 6.1: Create `templates/controller/service-apiserver.yaml` — port 443→6443 (matching `config/apiservice/service.yaml`)
-  - [ ] 6.2: Create `templates/controller/service-webhook.yaml` — port 443→9443 (matching `config/webhook/service.yaml`)
-  - [ ] 6.3: Create `templates/controller/service-metrics.yaml` — port 8443
-- [ ] Task 7: Create Certificate templates (AC: 7)
-  - [ ] 7.1: Create `templates/controller/certificate-apiserver.yaml` referencing `tls.issuerRef` (based on `config/certmanager/ca-certificate.yaml` pattern)
-  - [ ] 7.2: Create `templates/controller/certificate-webhook.yaml` referencing `tls.issuerRef` (based on `config/certmanager/webhook-serving-cert.yaml`)
-  - [ ] 7.3: Create `templates/controller/certificate-metrics.yaml` referencing `tls.issuerRef` (based on `config/certmanager/metrics-serving-cert.yaml`)
-- [ ] Task 8: Add volume/volumeMount logic (AC: 8, 9)
-  - [ ] 8.1: Add apiserver-tls volume mount (always present) — `secretName: <release>-apiserver-tls`
-  - [ ] 8.2: Add managed ScyllaDB mTLS volume mounts: `scylladb-client-tls` Secret at `/etc/soteria/scylladb-client-tls`
-  - [ ] 8.3: Add external ScyllaDB TLS volume mount: conditional on `external.tls.enabled`, Secret at `/etc/soteria/scylladb-tls`
-- [ ] Task 9: Verify rendered output (AC: 1–9)
-  - [ ] 9.1: Run `helm template` with `scylladb.mode=managed` and verify all resources
-  - [ ] 9.2: Run `helm template` with `scylladb.mode=external` and verify controller args switch
+- [x] Task 1: Create Deployment template (AC: 1, 8, 9)
+  - [x] 1.1: Create `templates/controller/deployment.yaml` mirroring `config/manager/manager.yaml` structure — securityContext, probes, ports
+  - [x] 1.2: Wire base container args: `--leader-elect`, `--health-probe-bind-address=:8081`, `--site-name`, `--secure-port`
+  - [x] 1.3: Add conditional ScyllaDB args block for `scylladb.mode=managed` — contact points derived from in-cluster service name, mTLS volume mounts
+  - [x] 1.4: Add conditional ScyllaDB args block for `scylladb.mode=external` — contact points from `external.contactPoints`, conditional TLS volume mount
+- [x] Task 2: Create ServiceAccount template (AC: 2)
+  - [x] 2.1: Create `templates/controller/serviceaccount.yaml` using `soteria.serviceAccountName` helper
+- [x] Task 3: Create RBAC templates (AC: 3)
+  - [x] 3.1: Create `templates/controller/clusterrole.yaml` mirroring all rules from `config/rbac/role.yaml`
+  - [x] 3.2: Create `templates/controller/clusterrolebinding.yaml` binding to the ServiceAccount
+- [x] Task 4: Create APIService template (AC: 4)
+  - [x] 4.1: Create `templates/controller/apiservice.yaml` registering `v1alpha1.soteria.io` with `cert-manager.io/inject-ca-from` annotation pointing to apiserver Certificate
+- [x] Task 5: Create Webhook template (AC: 5)
+  - [x] 5.1: Create `templates/controller/webhookconfiguration.yaml` mirroring `config/webhook/manifests.yaml` with `cert-manager.io/inject-ca-from` annotation pointing to webhook Certificate
+- [x] Task 6: Create Service templates (AC: 6)
+  - [x] 6.1: Create `templates/controller/service-apiserver.yaml` — port 443→6443 (matching `config/apiservice/service.yaml`)
+  - [x] 6.2: Create `templates/controller/service-webhook.yaml` — port 443→9443 (matching `config/webhook/service.yaml`)
+  - [x] 6.3: Create `templates/controller/service-metrics.yaml` — port 8443
+- [x] Task 7: Create Certificate templates (AC: 7)
+  - [x] 7.1: Create `templates/controller/certificate-apiserver.yaml` referencing `tls.issuerRef` (based on `config/certmanager/ca-certificate.yaml` pattern)
+  - [x] 7.2: Create `templates/controller/certificate-webhook.yaml` referencing `tls.issuerRef` (based on `config/certmanager/webhook-serving-cert.yaml`)
+  - [x] 7.3: Create `templates/controller/certificate-metrics.yaml` referencing `tls.issuerRef` (based on `config/certmanager/metrics-serving-cert.yaml`)
+- [x] Task 8: Add volume/volumeMount logic (AC: 8, 9)
+  - [x] 8.1: Add apiserver-tls volume mount (always present) — `secretName: <release>-apiserver-tls`
+  - [x] 8.2: Add managed ScyllaDB mTLS volume mounts: `scylladb-client-tls` Secret at `/etc/soteria/scylladb-client-tls`
+  - [x] 8.3: Add external ScyllaDB TLS volume mount: conditional on `external.tls.enabled`, Secret at `/etc/soteria/scylladb-tls`
+- [x] Task 9: Verify rendered output (AC: 1–9)
+  - [x] 9.1: Run `helm template` with `scylladb.mode=managed` and verify all resources
+  - [x] 9.2: Run `helm template` with `scylladb.mode=external` and verify controller args switch
 
 ## Dev Notes
 
@@ -183,8 +183,39 @@ volumes:
 
 ### Agent Model Used
 
+Claude Opus 4.6
+
 ### Debug Log References
+
+N/A — clean implementation, no debugging required.
 
 ### Completion Notes List
 
+- All 12 controller templates created under `charts/soteria/templates/controller/`
+- Deployment wires all container args from values.yaml including conditional ScyllaDB modes
+- Managed mode: contact points derived from `{{ include "soteria.fullname" . }}-scylladb-client.{{ .Release.Namespace }}.svc:9142`, mTLS volumes mounted
+- External mode: contact points from `external.contactPoints`, TLS volume conditionally mounted from `external.tls.secretName`
+- RBAC ClusterRole rules are a 1:1 copy from `config/rbac/role.yaml`
+- APIService name is exactly `v1alpha1.soteria.io` (not release-prefixed) per Kubernetes convention
+- All cert-manager Certificates reference `tls.issuerRef` from values
+- `helm template` verified with managed mode, external mode with TLS, and external mode without TLS
+- `helm lint` passes cleanly
+- All existing Go unit tests pass (no regressions)
+
 ### File List
+
+| File | Action |
+|------|--------|
+| `charts/soteria/templates/controller/deployment.yaml` | NEW |
+| `charts/soteria/templates/controller/serviceaccount.yaml` | NEW |
+| `charts/soteria/templates/controller/clusterrole.yaml` | NEW |
+| `charts/soteria/templates/controller/clusterrolebinding.yaml` | NEW |
+| `charts/soteria/templates/controller/apiservice.yaml` | NEW |
+| `charts/soteria/templates/controller/webhookconfiguration.yaml` | NEW |
+| `charts/soteria/templates/controller/service-apiserver.yaml` | NEW |
+| `charts/soteria/templates/controller/service-webhook.yaml` | NEW |
+| `charts/soteria/templates/controller/service-metrics.yaml` | NEW |
+| `charts/soteria/templates/controller/certificate-apiserver.yaml` | NEW |
+| `charts/soteria/templates/controller/certificate-webhook.yaml` | NEW |
+| `charts/soteria/templates/controller/certificate-metrics.yaml` | NEW |
+| `_bmad-output/implementation-artifacts/16-2-controller-templates.md` | MODIFIED |

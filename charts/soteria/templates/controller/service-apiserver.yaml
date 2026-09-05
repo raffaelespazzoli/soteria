@@ -1,0 +1,16 @@
+{{- /* Apiserver Service — port 443→6443, matching config/apiservice/service.yaml */ -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "soteria.fullname" . }}-apiserver
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "soteria.labels" . | nindent 4 }}
+spec:
+  ports:
+    - port: 443
+      targetPort: {{ .Values.controller.apiserver.port }}
+      protocol: TCP
+  selector:
+    {{- include "soteria.selectorLabels" . | nindent 4 }}
+    control-plane: controller-manager
