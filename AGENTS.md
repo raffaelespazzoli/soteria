@@ -1,5 +1,10 @@
 # dr-orchestrator - AI Agent Guide
 
+## Critical Rules
+
+### Never Push to Git
+Do NOT run `git push` or any command that pushes commits or tags to a remote repository. The user handles all pushes manually. You may commit locally, but never push.
+
 ## Project Structure
 
 **Single-group layout (default):**

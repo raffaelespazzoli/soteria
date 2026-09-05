@@ -2,12 +2,16 @@
 # Release pipeline
 # Triggered by pushing a semver tag (vX.Y.Z or vX.Y.Z-rc1).
 #
-# Job graph (maximises parallelism):
+# Job graph:
+#   validate ─┬→ build-soteria ──────────┐
+#             ├→ build-console-plugin ───├→ helm ──┬→ github-release
+#             ├→ build-standalone-ui ────┤         │
+#             ├→ test → helmchart-test ──┘         │
+#             └──────────────────────→ docs ────────┘
 #
-#   validate ─┬→ build-image (3 images × 4 platforms = 12 parallel) ─→ manifest-create ─┐
-#             ├→ test ─→ helmchart-test ─────────────────────────────────────────────────├→ helm ──┬→ github-release
-#             │                                                                          └→ docs ──┘
-#             └──────────────────────────────────────────────────────────────────────────────────────┘
+# Each build job produces a multi-arch image (amd64, arm64, ppc64le) in a
+# single Buildx call. Docker layer caching via GHA backend keeps subsequent
+# runs fast.
 # ---------------------------------------------------------------------------
 name: release
 
@@ -25,7 +29,7 @@ permissions: {}
 env:
   REGISTRY: quay.io
   REGISTRY_ORG: raffaelespazzoli
-  BUILD_PLATFORMS: linux/amd64,linux/arm64,linux/ppc64le,linux/s390x
+  BUILD_PLATFORMS: linux/amd64,linux/arm64,linux/ppc64le
 
 jobs:
   # ── 1. Validate the semver tag ──────────────────────────────────────────
@@ -88,43 +92,15 @@ jobs:
           DOCKER_HOST: unix:///var/run/docker.sock
         run: make integration-scylladb
 
-  # ── 3. Build per-platform images (3 images × 4 platforms in parallel) ───
-  build-image:
-    name: "Build ${{ matrix.image.name }} (${{ matrix.platform }})"
+  # ── 3a. Build & push controller image (multi-arch) ─────────────────────
+  build-soteria:
+    name: Build soteria image
     needs: validate
     runs-on: ubuntu-latest
     permissions:
       contents: read
-    strategy:
-      fail-fast: false
-      matrix:
-        image:
-          - name: soteria
-            context: "."
-            file: Dockerfile
-          - name: soteria-console-plugin
-            context: console-plugin/
-            file: console-plugin/Dockerfile
-          - name: soteria-standalone-ui
-            context: "."
-            file: console-plugin/Dockerfile.standalone
-        platform:
-          - linux/amd64
-          - linux/arm64
-          - linux/ppc64le
-          - linux/s390x
-        exclude:
-          # node:22-slim has no s390x variant
-          - image: { name: soteria-console-plugin }
-            platform: linux/s390x
-          - image: { name: soteria-standalone-ui }
-            platform: linux/s390x
     steps:
       - uses: actions/checkout@v4
-
-      - name: Prepare platform pair
-        id: platform
-        run: echo "pair=$(echo '${{ matrix.platform }}' | tr '/' '-')" >> "$GITHUB_OUTPUT"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -142,23 +118,30 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: ${{ matrix.image.context }}
-          file: ${{ matrix.image.file }}
-          platforms: ${{ matrix.platform }}
+          context: .
+          file: Dockerfile
+          platforms: ${{ env.BUILD_PLATFORMS }}
           push: true
           provenance: false
-          tags: "${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/${{ matrix.image.name }}:${{ needs.validate.outputs.version }}-${{ steps.platform.outputs.pair }}"
-          cache-from: type=gha,scope=${{ matrix.image.name }}-${{ steps.platform.outputs.pair }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.image.name }}-${{ steps.platform.outputs.pair }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/soteria:${{ needs.validate.outputs.version }}
+            ${{ needs.validate.outputs.is_prerelease == 'false' && format('{0}/{1}/soteria:latest', env.REGISTRY, env.REGISTRY_ORG) || '' }}
+          cache-from: type=gha,scope=soteria
+          cache-to: type=gha,mode=max,scope=soteria
 
-  # ── 4. Create multi-arch manifests ──────────────────────────────────────
-  manifest-create:
-    name: Create multi-arch manifests
-    needs: [validate, build-image, test]
+  # ── 3b. Build & push console-plugin image (multi-arch) ─────────────────
+  build-console-plugin:
+    name: Build console-plugin image
+    needs: validate
     runs-on: ubuntu-latest
     permissions:
       contents: read
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -169,41 +152,58 @@ jobs:
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
-      - name: Create and push multi-arch manifests
-        env:
-          VERSION: ${{ needs.validate.outputs.version }}
-          IS_PRERELEASE: ${{ needs.validate.outputs.is_prerelease }}
-        run: |
-          ALL_PLATFORMS="linux-amd64 linux-arm64 linux-ppc64le linux-s390x"
-          # Node-based images have no s390x variant (node:22-slim is not published for s390x)
-          NODE_PLATFORMS="linux-amd64 linux-arm64 linux-ppc64le"
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: console-plugin/
+          file: console-plugin/Dockerfile
+          platforms: ${{ env.BUILD_PLATFORMS }}
+          push: true
+          provenance: false
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/soteria-console-plugin:${{ needs.validate.outputs.version }}
+            ${{ needs.validate.outputs.is_prerelease == 'false' && format('{0}/{1}/soteria-console-plugin:latest', env.REGISTRY, env.REGISTRY_ORG) || '' }}
+          cache-from: type=gha,scope=console-plugin
+          cache-to: type=gha,mode=max,scope=console-plugin
 
-          create_manifest() {
-            local IMAGE=$1; shift
-            local PLATFORMS="$@"
-            local FULL="${REGISTRY}/${REGISTRY_ORG}/${IMAGE}"
+  # ── 3c. Build & push standalone-ui image (multi-arch) ──────────────────
+  build-standalone-ui:
+    name: Build standalone-ui image
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
 
-            SOURCES=""
-            for PLAT in $PLATFORMS; do
-              SOURCES="${SOURCES} ${FULL}:${VERSION}-${PLAT}"
-            done
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
-            echo "::group::Creating manifest ${FULL}:${VERSION}"
-            docker buildx imagetools create -t "${FULL}:${VERSION}" $SOURCES
-            echo "::endgroup::"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-            if [ "$IS_PRERELEASE" = "false" ]; then
-              echo "::group::Creating manifest ${FULL}:latest"
-              docker buildx imagetools create -t "${FULL}:latest" $SOURCES
-              echo "::endgroup::"
-            fi
-          }
+      - name: Login to quay.io
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
 
-          create_manifest soteria              $ALL_PLATFORMS
-          create_manifest soteria-console-plugin $NODE_PLATFORMS
-          create_manifest soteria-standalone-ui  $NODE_PLATFORMS
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: console-plugin/Dockerfile.standalone
+          platforms: ${{ env.BUILD_PLATFORMS }}
+          push: true
+          provenance: false
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/soteria-standalone-ui:${{ needs.validate.outputs.version }}
+            ${{ needs.validate.outputs.is_prerelease == 'false' && format('{0}/{1}/soteria-standalone-ui:latest', env.REGISTRY, env.REGISTRY_ORG) || '' }}
+          cache-from: type=gha,scope=standalone-ui
+          cache-to: type=gha,mode=max,scope=standalone-ui
 
-  # ── 5. Smoke-test the Helm chart on Kind ──────────────────────────────
+  # ── 4. Smoke-test the Helm chart on Kind ──────────────────────────────
   helmchart-test:
     name: Helm chart smoke test
     needs: test
@@ -229,10 +229,10 @@ jobs:
           HELM_SMOKE_CLEANUP: "1"
         run: make helmchart-test
 
-  # ── 6. Publish the Helm chart ───────────────────────────────────────────
+  # ── 5. Publish the Helm chart ───────────────────────────────────────────
   helm:
     name: Publish Helm chart
-    needs: [validate, manifest-create, helmchart-test]
+    needs: [validate, build-soteria, build-console-plugin, build-standalone-ui, helmchart-test]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -297,10 +297,10 @@ jobs:
           name: helm-chart
           path: /tmp/chart-package/*.tgz
 
-  # ── 7. Publish documentation ────────────────────────────────────────────
+  # ── 6. Publish documentation ────────────────────────────────────────────
   docs:
     name: Publish docs
-    needs: [validate, manifest-create, helmchart-test]
+    needs: [validate, build-soteria, build-console-plugin, build-standalone-ui, helmchart-test]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -328,7 +328,7 @@ jobs:
           publish_dir: ./site
           keep_files: true
 
-  # ── 8. Create GitHub Release ────────────────────────────────────────────
+  # ── 7. Create GitHub Release ────────────────────────────────────────────
   github-release:
     name: GitHub Release
     needs: [validate, helm, docs]
