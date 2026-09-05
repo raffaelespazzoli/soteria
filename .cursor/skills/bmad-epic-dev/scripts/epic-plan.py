@@ -20,9 +20,25 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 from collections import defaultdict, deque
 from pathlib import Path
+
+
+_ACTION_MAP: dict[str, tuple[str, bool]] = {
+    "backlog": ("create-story", False),
+    "ready-for-dev": ("dev-story", False),
+    "in-progress": ("dev-story", False),
+    "review": ("code-review", False),
+    "merge-conflict": ("merge", False),
+    "done": ("skip", False),
+}
+
+
+def required_action_for(status: str) -> tuple[str, bool]:
+    """Return ``(action, warned)`` for a story status."""
+    return _ACTION_MAP.get(status, ("create-story", True))
 
 
 def find_sprint_status(impl_dir: Path) -> Path | None:
@@ -130,8 +146,12 @@ def parse_stories_table(path: Path, epic_num: str) -> list[dict]:
     return stories
 
 
-def build_dependency_layers(stories: list[dict]) -> list[list[str]]:
-    """Topological sort into dependency layers (Kahn's algorithm)."""
+def build_dependency_layers(stories: list[dict]) -> tuple[list[list[str]], list[str]]:
+    """Topological sort into dependency layers (Kahn's algorithm).
+
+    Returns ``(layers, circular)`` where *circular* contains any story
+    numbers that participate in a dependency cycle.
+    """
     story_nums = {s["story_num"] for s in stories}
     story_map = {s["story_num"]: s for s in stories}
 
@@ -159,11 +179,9 @@ def build_dependency_layers(stories: list[dict]) -> list[list[str]]:
         queue = next_queue
 
     placed = {s for layer in layers for s in layer}
-    orphans = sorted(story_nums - placed)
-    if orphans:
-        layers.append(orphans)
+    circular = sorted(story_nums - placed)
 
-    return layers
+    return layers, circular
 
 
 def story_key_from_num(epic_num: str, story_num: str, stories_status: dict[str, str]) -> str | None:
@@ -175,12 +193,65 @@ def story_key_from_num(epic_num: str, story_num: str, stories_status: dict[str, 
     return None
 
 
+def check_worktrees(epic_num: str) -> dict:
+    """Inspect git worktrees for branches matching ``epic-{N}/story-*``.
+
+    Returns ``{"orphaned": [...], "active": [...], "error": None}``
+    or an error payload when git is unavailable.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", "worktree", "list", "--porcelain"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except FileNotFoundError:
+        return {"orphaned": [], "active": [], "error": "git not found"}
+    except Exception as exc:
+        return {"orphaned": [], "active": [], "error": str(exc)}
+
+    if proc.returncode != 0:
+        return {"orphaned": [], "active": [], "error": f"git exited {proc.returncode}: {proc.stderr.strip()}"}
+
+    prefix = f"epic-{epic_num}/story-"
+    active: list[str] = []
+    orphaned: list[str] = []
+
+    current_wt: str | None = None
+    current_branch: str | None = None
+    is_bare = False
+
+    for line in proc.stdout.splitlines():
+        if line.startswith("worktree "):
+            if current_branch and current_branch.startswith(prefix):
+                (orphaned if is_bare else active).append(current_branch)
+            current_wt = line.split(" ", 1)[1]
+            current_branch = None
+            is_bare = False
+        elif line.startswith("branch "):
+            ref = line.split(" ", 1)[1]
+            current_branch = ref.split("/")[-1] if "/" in ref else ref
+            # Reconstruct full short branch: refs/heads/epic-N/story-X -> epic-N/story-X
+            parts = ref.replace("refs/heads/", "")
+            current_branch = parts
+        elif line.strip() == "bare":
+            is_bare = True
+
+    # flush last entry
+    if current_branch and current_branch.startswith(prefix):
+        (orphaned if is_bare else active).append(current_branch)
+
+    return {"orphaned": orphaned, "active": active, "error": None}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Epic execution plan generator")
     parser.add_argument("epic_num", help="Epic number (e.g., 13)")
     parser.add_argument("--impl-dir", default=None, help="Implementation artifacts directory")
     parser.add_argument("--plan-dir", default=None, help="Planning artifacts directory")
     parser.add_argument("-o", "--output", default=None, help="Output file (default: stdout)")
+    parser.add_argument("--check-worktrees", action="store_true", help="Inspect git worktrees for epic branches")
     args = parser.parse_args()
 
     epic_num = args.epic_num
@@ -232,11 +303,21 @@ def main() -> None:
         key = story_key_from_num(epic_num, s["story_num"], ss_data["stories"])
         s["sprint_key"] = key
         s["status"] = ss_data["stories"].get(key, "unknown") if key else "unknown"
+        action, warned = required_action_for(s["status"])
+        s["required_action"] = action
+        if warned:
+            s["required_action_warned"] = True
 
-    layers = build_dependency_layers(stories)
+    layers, circular = build_dependency_layers(stories)
 
     result["stories"] = stories
     result["dependency_layers"] = layers
+    if circular:
+        result["circular_dependencies"] = circular
+
+    if args.check_worktrees:
+        result["worktrees"] = check_worktrees(epic_num)
+
     result["summary"] = {
         "total_stories": len(stories),
         "layers": len(layers),

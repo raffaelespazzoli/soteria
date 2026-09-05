@@ -8,11 +8,13 @@
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 import textwrap
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -24,6 +26,7 @@ _spec = spec_from_file_location(
 )
 epic_plan = module_from_spec(_spec)
 _spec.loader.exec_module(epic_plan)
+sys.modules["epic_plan"] = epic_plan
 
 SAMPLE_SPRINT_STATUS = textwrap.dedent("""\
     generated: 2026-04-06
@@ -107,13 +110,14 @@ class TestBuildDependencyLayers(unittest.TestCase):
             {"story_num": "3.2", "dependencies": ["3.0"]},
             {"story_num": "3.3", "dependencies": ["3.1", "3.2"]},
         ]
-        layers = epic_plan.build_dependency_layers(stories)
+        layers, circular = epic_plan.build_dependency_layers(stories)
 
         self.assertEqual(len(layers), 3)
         self.assertEqual(layers[0], ["3.0"])
         self.assertIn("3.1", layers[1])
         self.assertIn("3.2", layers[1])
         self.assertEqual(layers[2], ["3.3"])
+        self.assertEqual(circular, [])
 
     def test_all_independent(self):
         stories = [
@@ -121,10 +125,11 @@ class TestBuildDependencyLayers(unittest.TestCase):
             {"story_num": "1.1", "dependencies": []},
             {"story_num": "1.2", "dependencies": []},
         ]
-        layers = epic_plan.build_dependency_layers(stories)
+        layers, circular = epic_plan.build_dependency_layers(stories)
 
         self.assertEqual(len(layers), 1)
         self.assertEqual(sorted(layers[0]), ["1.0", "1.1", "1.2"])
+        self.assertEqual(circular, [])
 
     def test_linear_chain(self):
         stories = [
@@ -132,12 +137,192 @@ class TestBuildDependencyLayers(unittest.TestCase):
             {"story_num": "2.1", "dependencies": ["2.0"]},
             {"story_num": "2.2", "dependencies": ["2.1"]},
         ]
-        layers = epic_plan.build_dependency_layers(stories)
+        layers, circular = epic_plan.build_dependency_layers(stories)
 
         self.assertEqual(len(layers), 3)
         self.assertEqual(layers[0], ["2.0"])
         self.assertEqual(layers[1], ["2.1"])
         self.assertEqual(layers[2], ["2.2"])
+        self.assertEqual(circular, [])
+
+
+class TestCircularDependencyDetection(unittest.TestCase):
+    def test_simple_cycle(self):
+        """A depends on B, B depends on A."""
+        stories = [
+            {"story_num": "1.0", "dependencies": ["1.1"]},
+            {"story_num": "1.1", "dependencies": ["1.0"]},
+        ]
+        layers, circular = epic_plan.build_dependency_layers(stories)
+
+        self.assertEqual(layers, [])
+        self.assertEqual(sorted(circular), ["1.0", "1.1"])
+
+    def test_three_node_cycle(self):
+        """A -> B -> C -> A."""
+        stories = [
+            {"story_num": "1.0", "dependencies": ["1.2"]},
+            {"story_num": "1.1", "dependencies": ["1.0"]},
+            {"story_num": "1.2", "dependencies": ["1.1"]},
+        ]
+        layers, circular = epic_plan.build_dependency_layers(stories)
+
+        self.assertEqual(layers, [])
+        self.assertEqual(sorted(circular), ["1.0", "1.1", "1.2"])
+
+    def test_mixed_cycle_and_valid(self):
+        """Some stories are valid, others form a cycle."""
+        stories = [
+            {"story_num": "1.0", "dependencies": []},
+            {"story_num": "1.1", "dependencies": ["1.0"]},
+            {"story_num": "2.0", "dependencies": ["2.1"]},
+            {"story_num": "2.1", "dependencies": ["2.0"]},
+        ]
+        layers, circular = epic_plan.build_dependency_layers(stories)
+
+        self.assertEqual(len(layers), 2)
+        self.assertEqual(layers[0], ["1.0"])
+        self.assertEqual(layers[1], ["1.1"])
+        self.assertEqual(sorted(circular), ["2.0", "2.1"])
+
+    def test_no_cycle(self):
+        """Normal DAG has empty circular list."""
+        stories = [
+            {"story_num": "1.0", "dependencies": []},
+            {"story_num": "1.1", "dependencies": ["1.0"]},
+        ]
+        layers, circular = epic_plan.build_dependency_layers(stories)
+
+        self.assertEqual(len(layers), 2)
+        self.assertEqual(circular, [])
+
+
+class TestRequiredActionFor(unittest.TestCase):
+    def test_backlog(self):
+        action, warned = epic_plan.required_action_for("backlog")
+        self.assertEqual(action, "create-story")
+        self.assertFalse(warned)
+
+    def test_ready_for_dev(self):
+        action, warned = epic_plan.required_action_for("ready-for-dev")
+        self.assertEqual(action, "dev-story")
+        self.assertFalse(warned)
+
+    def test_in_progress(self):
+        action, warned = epic_plan.required_action_for("in-progress")
+        self.assertEqual(action, "dev-story")
+        self.assertFalse(warned)
+
+    def test_review(self):
+        action, warned = epic_plan.required_action_for("review")
+        self.assertEqual(action, "code-review")
+        self.assertFalse(warned)
+
+    def test_merge_conflict(self):
+        action, warned = epic_plan.required_action_for("merge-conflict")
+        self.assertEqual(action, "merge")
+        self.assertFalse(warned)
+
+    def test_done(self):
+        action, warned = epic_plan.required_action_for("done")
+        self.assertEqual(action, "skip")
+        self.assertFalse(warned)
+
+    def test_unknown(self):
+        action, warned = epic_plan.required_action_for("unknown")
+        self.assertEqual(action, "create-story")
+        self.assertTrue(warned)
+
+    def test_arbitrary(self):
+        action, warned = epic_plan.required_action_for("something-unexpected")
+        self.assertEqual(action, "create-story")
+        self.assertTrue(warned)
+
+
+class TestCheckWorktrees(unittest.TestCase):
+    def _patch_subprocess_run(self, **kwargs):
+        """Return a context-manager that patches subprocess.run on the loaded module."""
+        return patch.object(epic_plan.subprocess, "run", **kwargs)
+
+    def test_parses_active_worktrees(self):
+        mock_result = MagicMock(
+            returncode=0,
+            stdout=textwrap.dedent("""\
+                worktree /home/user/project
+                branch refs/heads/main
+
+                worktree /home/user/wt1
+                branch refs/heads/epic-5/story-1
+
+                worktree /home/user/wt2
+                branch refs/heads/epic-5/story-2
+            """),
+            stderr="",
+        )
+        with self._patch_subprocess_run(return_value=mock_result):
+            result = epic_plan.check_worktrees("5")
+        self.assertIsNone(result["error"])
+        self.assertEqual(sorted(result["active"]), ["epic-5/story-1", "epic-5/story-2"])
+        self.assertEqual(result["orphaned"], [])
+
+    def test_bare_worktrees_are_orphaned(self):
+        mock_result = MagicMock(
+            returncode=0,
+            stdout=textwrap.dedent("""\
+                worktree /home/user/wt1
+                branch refs/heads/epic-5/story-1
+                bare
+
+                worktree /home/user/wt2
+                branch refs/heads/epic-5/story-2
+            """),
+            stderr="",
+        )
+        with self._patch_subprocess_run(return_value=mock_result):
+            result = epic_plan.check_worktrees("5")
+        self.assertIsNone(result["error"])
+        self.assertEqual(result["orphaned"], ["epic-5/story-1"])
+        self.assertEqual(result["active"], ["epic-5/story-2"])
+
+    def test_git_not_found(self):
+        with self._patch_subprocess_run(side_effect=FileNotFoundError):
+            result = epic_plan.check_worktrees("5")
+        self.assertEqual(result["error"], "git not found")
+        self.assertEqual(result["orphaned"], [])
+        self.assertEqual(result["active"], [])
+
+    def test_git_command_failure(self):
+        mock_result = MagicMock(
+            returncode=128,
+            stdout="",
+            stderr="fatal: not a git repository",
+        )
+        with self._patch_subprocess_run(return_value=mock_result):
+            result = epic_plan.check_worktrees("5")
+        self.assertIn("git exited 128", result["error"])
+        self.assertEqual(result["orphaned"], [])
+        self.assertEqual(result["active"], [])
+
+    def test_non_matching_branches_ignored(self):
+        mock_result = MagicMock(
+            returncode=0,
+            stdout=textwrap.dedent("""\
+                worktree /home/user/project
+                branch refs/heads/main
+
+                worktree /home/user/wt1
+                branch refs/heads/epic-99/story-1
+
+                worktree /home/user/wt2
+                branch refs/heads/feature/unrelated
+            """),
+            stderr="",
+        )
+        with self._patch_subprocess_run(return_value=mock_result):
+            result = epic_plan.check_worktrees("5")
+        self.assertIsNone(result["error"])
+        self.assertEqual(result["active"], [])
+        self.assertEqual(result["orphaned"], [])
 
 
 class TestEndToEnd(unittest.TestCase):
@@ -159,8 +344,9 @@ class TestEndToEnd(unittest.TestCase):
             stories = epic_plan.parse_stories_table(epic_file, "3")
             self.assertEqual(len(stories), 4)
 
-            layers = epic_plan.build_dependency_layers(stories)
+            layers, circular = epic_plan.build_dependency_layers(stories)
             self.assertEqual(len(layers), 3)
+            self.assertEqual(circular, [])
 
             backlog_count = sum(
                 1 for s in stories

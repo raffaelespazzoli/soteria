@@ -5,10 +5,16 @@ Communicate with the user in `{communication_language}`.
 **Contract anchor** (survives context compaction — re-read if uncertain):
 - You are an orchestrator, not an implementer — delegate all work to subagents
 - Every sub-skill (`bmad-create-story`, `bmad-dev-story`, `bmad-code-review`) runs in a **fresh subagent** with clean LLM context
+- **Dev and review are SEPARATE subagents** — NEVER combine them. The reviewer must have ZERO dev context.
+- **Code review uses a DIFFERENT model** (`{review_model}`) — NEVER the same model that wrote the code.
+- **All subagent prompts include the customization preamble** — load `{project-root}/_bmad/custom/<skill>.toml` before executing
 - Subagents run autonomously but you **relay "decision needed" questions** back to the user
 - On any failure: **halt** with what failed, which story, and instructions to re-invoke
 - `sprint-status.yaml` is the sole checkpoint — story statuses determine resume position
-- Respect `--commit-policy` and `--skip-confirmations` args from SKILL.md
+- `--commit-policy`: `auto` (commit at prescribed points), `ask` (prompt before each), `skip` (user handles commits)
+- `--skip-confirmations`: suppress soft-gate pauses between phases (does NOT override the mandatory Phase A review gate in interactive mode)
+- `--review-model`: override the auto-selected adversarial review model
+- `--headless`: full automation — auto-approve specs, fail-fast on decisions, auto-clean worktrees, JSON exit summary. Implies `--commit-policy=auto --skip-confirmations`
 
 ---
 
@@ -31,21 +37,34 @@ If an `epic-plan.py` script exists at `./scripts/epic-plan.py`, run it to extrac
    - Title
    - Dependency (e.g., `None`, `13.1`, or `13.1, 13.4` for multiple)
 
-5. Build a dependency graph (DAG) and compute a **topological sort**. Group stories into **dependency layers** — stories in the same layer have all dependencies satisfied by earlier layers.
+5. Build a dependency graph (DAG) and compute a **topological sort**. Group stories into **dependency layers** — stories in the same layer have all dependencies satisfied by earlier layers. If circular dependencies are detected (stories that can't be placed in any layer), **warn the user explicitly** — "Circular dependency detected: {story_list}. These stories cannot proceed until the cycle is resolved." Do not silently absorb them into an orphan layer.
 
 6. Cross-reference with `sprint-status.yaml` to determine current state of each story:
    - `backlog` → needs Phase A (create-story)
    - `ready-for-dev` → needs Phase B (dev-story + code-review)
    - `in-progress` or `review` → needs Phase B continuation
    - `done` → skip
+   - **Any other status (or missing from sprint-status):** Warn the user — "Story {key} has unexpected status '{status}'. Treating as backlog." Include in Phase A unless the user overrides.
 
-7. Present the execution plan to the user:
+7. **Resolve review model** for adversarial code review (Phase B.2):
+   - If `--review-model` arg was provided → use it
+   - Else if `{project-root}/_bmad/config.user.yaml` has `bmm.review_model` → use it
+   - Else → auto-select a model different from the current session's model. Available options (pick one that differs from the dev model; **maintain this list** when the platform's model roster changes):
+     - `cursor-grok-4.6-xhigh`
+     - `claude-4.6-opus-high-thinking`
+     - `gpt-5.4-medium`
+     - `composer-2.5`
+   - If no alternative is available → warn the user that same-model review reduces adversarial value, proceed with same model but enforce fresh context (separate subagent, no dev history)
+
+8. Present the execution plan to the user:
    - Epic name and story count
    - Dependency layers with parallelism opportunities (stories per layer)
    - Stories already completed (if resuming)
+   - Review model that will be used (and why)
    - Estimated phases remaining
 
-   Unless `--skip-confirmations`, ask: "Ready to proceed, or would you like to adjust anything?"
+   Unless `--skip-confirmations` or `--headless`, ask: "Ready to proceed, or would you like to adjust anything?"
+   In `--headless` mode: log the plan summary and proceed immediately.
 
 ---
 
@@ -61,16 +80,7 @@ For each dependency layer (in order):
 
 2. Launch subagents — one `bmad-create-story` per story. If multiple stories are ready, launch them in parallel:
 
-   **Subagent prompt template:**
-   ```
-   Run the bmad-create-story skill for story {epicNum}.{storyNum} in epic {epicNum}.
-   The story title is "{title}".
-   Process the story fully and autonomously — no user interaction needed.
-   If you encounter a blocking issue that requires a decision, describe the
-   decision needed clearly and halt.
-   When complete, report: story_key, output_file_path, status (success/failed/decision_needed),
-   and a one-line summary.
-   ```
+   **Subagent prompt:** Generate via `./scripts/render-prompt.py create-story --project-root={project-root} --epic-num={epicNum} --story-num={storyNum} --title="{title}"` and use the output as the subagent prompt.
 
 3. Wait for all subagents in the batch to complete.
    - If any reports `decision_needed`: relay the question to the user, get the answer, and resume that subagent.
@@ -84,17 +94,27 @@ For each dependency layer (in order):
 
 When all `backlog` stories have specs:
 
-7. **Review gate** (always, even with `--skip-confirmations`): List all created story spec files with paths and ask the user to review them before development begins. This is the last chance to adjust requirements, acceptance criteria, or scope before code is written.
+7. **Review gate:**
+
+   **Interactive mode** (always, even with `--skip-confirmations`): List all created story spec files with paths and ask the user to review them before development begins. This is the last chance to adjust requirements, acceptance criteria, or scope before code is written.
 
    ```
    Phase A complete — {count} story specs created:
    {list of story files with paths}
 
-   Please review the story specs. When satisfied, confirm to proceed.
+   Please review the story specs. Key things to verify:
+   - Acceptance criteria are testable and unambiguous
+   - Dependencies between stories are correct
+   - Scope boundaries (Anti-Patterns / DO NOT sections) are clear
+   - No missing stories or gaps in the epic's requirements
+
+   When satisfied, confirm to proceed.
    (You can edit any story file now — changes will be picked up by dev-story.)
    ```
 
    Wait for explicit user confirmation before continuing.
+
+   **Headless mode** (`--headless`): Log a warning — "⚠️ Headless: auto-approving {count} story specs (review gate bypassed). Specs: {list of paths}" — and proceed immediately. The specs are still written to disk for post-run review.
 
 8. **Commit** (respecting `--commit-policy`):
    ```
@@ -107,7 +127,17 @@ When all `backlog` stories have specs:
 
 ## Phase B: Implement, Review, and Commit Stories
 
-**Goal:** For each dependency layer, develop and review stories in parallel using **git worktrees**, then merge and commit.
+**Goal:** For each dependency layer, develop stories in parallel using **git worktrees**, then run **adversarial code review with a different LLM**, fix findings, and merge.
+
+### Critical Contract — Adversarial Review Isolation
+
+> **Dev and review MUST run in separate subagents.** The reviewer must have ZERO context
+> from the developer's session — no reasoning, no struggles, no intermediate states.
+> The reviewer receives ONLY the diff and story spec, making it truly blind and adversarial.
+>
+> **The review model MUST differ from the dev model.** This prevents self-review blind spots
+> where the same model approves patterns it would naturally generate. Use `{review_model}`
+> resolved in Step 0.
 
 ### Worktree-Based Parallel Execution
 
@@ -117,108 +147,137 @@ Stories within the same dependency layer are independent — their dependencies 
 
 For each dependency layer (in topological order):
 
-### B.1: Launch Parallel Development
+### B.1: Launch Parallel Development (Dev Only)
 
-1. Identify stories in this layer where status is `ready-for-dev` (or `in-progress`/`review` for resumption).
+1. Identify stories in this layer where status is `ready-for-dev` (or `in-progress` for resumption).
 
 2. For each story, launch a `best-of-n-runner` subagent. Each gets its own worktree branch (e.g., `epic-{N}/story-{N.M}`):
 
-   **Subagent prompt template (dev + review in one worktree):**
-   ```
-   You are developing and reviewing story {epicNum}.{storyNum} for epic {epicNum}.
-   The story file is at: {implementation_artifacts}/{story_key}.md
+   **Subagent prompt:** Generate via `./scripts/render-prompt.py dev-story --project-root={project-root} --epic-num={epicNum} --story-num={storyNum} --story-key={story_key} --title="{title}" --implementation-artifacts={implementation_artifacts}` and use the output as the subagent prompt.
 
-   Execute these steps in order:
+3. Launch all stories in the layer simultaneously. Monitor for completion. If a worktree subagent fails to start (branch already exists, locked `.git/worktrees`, disk space), report the failure and suggest: check for orphaned worktrees from a previous run, or use `git worktree prune` to clean stale entries.
 
-   STEP 1 — IMPLEMENT: Run the bmad-dev-story skill.
-   Process the story fully — implement all tasks, run all tests, mark complete.
-   If you encounter a blocking issue requiring a human decision, describe it
-   clearly and halt. Do NOT make assumptions on behalf of the user.
-
-   STEP 2 — CODE REVIEW: Run the bmad-code-review skill on your changes.
-   Run the review fully and autonomously — complete all layers, produce the
-   triage report.
-   If the review raises a design/requirements question (not a code fix),
-   describe it and halt.
-
-   STEP 3 — REVIEW FIXES: If code review requested changes, re-run dev-story
-   to address review findings (it supports review continuation mode), then
-   re-run code review. Repeat until approved or halted.
-
-   STEP 4 — COMMIT: When review approves, commit your changes:
-   git add -A && git commit -m "feat(epic-{N}): {story_key} — {title}"
-
-   When complete, report: story_key, status (success/failed/decision_needed),
-   review_patches_count, files_changed_count, commit_sha, and a one-line summary.
-   ```
-
-3. Launch all stories in the layer simultaneously. Monitor for completion.
-
-### B.2: Handle Subagent Results
-
-4. As each subagent completes:
-   - **Success:** Note the story's branch name and commit SHA.
-   - **Decision needed:** Relay the question to the user with full context. After getting the answer, resume that subagent.
+4. As each dev subagent completes:
+   - **Success:** Note the story's worktree branch name and commit SHA. **Do NOT merge yet** — review must pass first.
+   - **Decision needed:** In interactive mode, relay the question to the user with full context. After getting the answer, resume that subagent. In `--headless` mode, halt immediately — "Decision needed for story {key}: {description}. Cannot proceed in headless mode."
    - **Failed:** Halt the entire epic. Report which story failed, the error, and resume instructions. Other in-flight subagents for the same layer can continue to completion (fail-forward within a layer) but no new layers start.
 
-5. Wait for all subagents in the layer to finish (or halt).
+5. Wait for all dev subagents in the layer to finish (or halt).
 
-### B.3: Merge Branches
+6. Update `sprint-status.yaml`: mark each completed dev story as `review` (not `done` — review hasn't happened yet).
 
-6. After all stories in the layer succeed, merge each story branch back to the main branch **sequentially** (to maintain a clean linear history):
+### B.2: Adversarial Code Review (Different Model, Fresh Context)
 
-   For each completed story branch:
-   ```
-   git checkout main
-   git merge --no-ff epic-{N}/story-{N.M}
-   ```
+**Contract:** Reviews run in `generalPurpose` subagents with model `{review_model}`. The reviewer receives ONLY the diff and story spec — never the developer's reasoning or session history.
 
-   If merge conflicts occur: halt with details. The user resolves conflicts manually, then re-invokes to resume. The conflicting branch is preserved for inspection.
+7. For each successfully developed story in this layer:
 
-7. Clean up worktrees after successful merge:
-   ```
-   git worktree remove <worktree-path>
-   git branch -d epic-{N}/story-{N.M}
-   ```
+   a. Extract the diff from the worktree branch to a temp file:
+      ```
+      git diff main..epic-{N}/story-{N.M} -- . ':(exclude)_bmad-output' ':(exclude)*.md' > /tmp/epic-{N}-{story_key}.diff
+      ```
 
-8. Update `sprint-status.yaml`: mark each merged story as `done`.
+   b. Launch a `generalPurpose` subagent with model `{review_model}`:
 
-### B.4: Report Layer Progress
+      **Subagent prompt:** Generate via `./scripts/render-prompt.py code-review --project-root={project-root} --story-key={story_key} --spec-file={implementation_artifacts}/{story_key}.md --diff-file={diff_file}` and use the output as the subagent prompt. (The script reads spec and diff files directly, keeping them out of the orchestrator's context.)
 
-9. Report to the user:
-   ```
-   Layer {L} complete: {count} stories merged
-   {story_list with review patch counts and file counts}
-   Progress: {done}/{total} stories in epic {N}
-   ```
+8. Launch all reviews in the layer simultaneously (they're independent — each reviews a different story's diff).
 
-10. Continue to the next dependency layer.
+9. Collect results:
+   - **APPROVED:** Mark story as review-passed. Ready to merge in B.4.
+   - **CHANGES_REQUESTED:** Proceed to B.3 (fix pass) for this story.
+   - **Decision needed:** Relay to user with full context.
 
-### B.5: Sequential Fallback
+### B.3: Review Fix Pass (Only If Changes Requested)
 
-If `best-of-n-runner` subagents aren't available, process stories **sequentially on the main branch** within each layer:
+**Max cycles:** 2 review rounds per story. If still CHANGES_REQUESTED after 2 cycles, halt and escalate to user — this likely indicates a design disagreement that needs human judgment.
+
+10. For each story with CHANGES_REQUESTED:
+
+    a. Launch a `best-of-n-runner` subagent on the **same worktree branch** (or `generalPurpose` if worktrees unavailable):
+
+       **Subagent prompt:** Write the review findings to a temp file, then generate via `./scripts/render-prompt.py fix-pass --project-root={project-root} --epic-num={epicNum} --story-key={story_key} --review-findings="$(cat /tmp/epic-{N}-{story_key}-findings.txt)"` and use the output as the subagent prompt.
+
+    b. After fixes complete, re-run B.2 for this story only (extract updated diff, launch fresh review subagent with `{review_model}`).
+
+    c. If approved → proceed to B.4. If still CHANGES_REQUESTED after 2 total review cycles → halt and escalate.
+
+### B.4: Merge Approved Stories
+
+11. After all stories in the layer are review-approved, merge each story branch back to the main branch **sequentially** (to maintain a clean linear history):
+
+    For each approved story branch:
+    ```
+    git checkout main
+    git merge --no-ff epic-{N}/story-{N.M} --no-gpg-sign
+    ```
+
+    If merge conflicts occur:
+    - **Do NOT abort the merge.** Leave the conflict state intact for the user.
+    - Report clearly: which story branch conflicted, which files have conflicts, and how many stories in this layer were already merged successfully.
+    - Provide recovery instructions:
+      ```
+      Merge conflict in story {story_key}. To resolve:
+      1. Resolve conflicts in the listed files
+      2. git add <resolved-files> && git merge --continue --no-gpg-sign
+      3. Re-invoke bmad-epic-dev for epic {N} to resume
+         (sprint-status will show this story as 'review' — it will be merged on resume)
+      ```
+    - If this is story 2+ in the layer (partial merge), note which stories are already merged. Do NOT attempt to revert successful merges.
+    - Mark the conflicting story as `merge-conflict` in `sprint-status.yaml` and halt.
+
+12. Clean up worktrees after successful merge:
+    ```
+    git worktree remove <worktree-path>
+    git branch -d epic-{N}/story-{N.M}
+    ```
+
+13. Update `sprint-status.yaml`: mark each merged story as `done`.
+
+### B.5: Report Layer Progress
+
+14. Report to the user:
+    ```
+    Layer {L} complete: {count} stories merged
+    {story_list with review verdicts, patch counts, and file counts}
+    Review model used: {review_model}
+    Progress: {done}/{total} stories in epic {N}
+    ```
+
+15. Continue to the next dependency layer.
+
+### B.6: Sequential Fallback (Alternative to B.1–B.5)
+
+> **This section is an alternative execution mode**, not a step that runs after B.5.
+> Use B.6 ONLY when `best-of-n-runner` subagents aren't available. Otherwise, use B.1–B.5 above.
+
+If worktree subagents aren't available, process stories **sequentially on the main branch** within each layer. The dev/review separation is still mandatory:
 
 For each story:
-1. Spawn a `generalPurpose` subagent for `bmad-dev-story`
-2. On success, spawn a `generalPurpose` subagent for `bmad-code-review`
-3. If changes requested: re-run dev-story then code-review until approved
-4. Commit (respecting `--commit-policy`):
+1. Generate dev prompt via `./scripts/render-prompt.py dev-story ...` and spawn a `generalPurpose` subagent
+2. On success, extract the diff to a temp file (`git diff HEAD~1..HEAD -- . ':(exclude)_bmad-output' ':(exclude)*.md' > /tmp/epic-{N}-{story_key}.diff`)
+3. Generate review prompt via `./scripts/render-prompt.py code-review --spec-file=... --diff-file=...` and spawn a **separate** `generalPurpose` subagent with model `{review_model}` — the script reads files directly, keeping them out of the orchestrator's context
+4. If changes requested: generate fix-pass prompt via `./scripts/render-prompt.py fix-pass ...`, re-run, then re-review (max 2 cycles)
+5. Commit (respecting `--commit-policy`):
    ```
    feat(epic-{N}): {story_key} — {story title}
    ```
-5. Update sprint-status, report progress, continue to next story
+6. Update sprint-status, report progress, continue to next story
 
-### B.6: Check for New Stories
+### B.7: Check for New Stories
+
+**Max spawn iterations:** 2. If code review keeps spawning new stories beyond 2 cycles (Phase A → Phase B → B.7 → Phase A), halt and escalate — this likely indicates a systemic issue that needs human judgment, not more automated iterations.
 
 After all stories in the current set are done:
 
-11. Re-read `sprint-status.yaml`. Check if any **new** `backlog` stories appeared in this epic (code review can spawn stories).
+16. Re-read `sprint-status.yaml`. Check if any **new** `backlog` stories appeared in this epic (code review can spawn stories).
 
-12. If new stories exist:
-    - Report: "Code review spawned {count} new stories: {list}. Looping back to create specs."
+17. If new stories exist:
+    - If this is spawn iteration 3+: halt — "Review-spawned story loop exceeded max iterations (2). {count} new stories remain: {list}. Manual intervention needed."
+    - Otherwise: Report "Code review spawned {count} new stories: {list}. Looping back to create specs (iteration {n}/2)."
     - Return to **Phase A** for the new stories, then back to Phase B.
 
-13. If no new stories: proceed to completion.
+18. If no new stories: proceed to completion.
 
 ---
 
@@ -227,16 +286,47 @@ After all stories in the current set are done:
 Report the epic summary:
 - Total stories completed (including review-spawned)
 - Total review patches across all stories
+- Review model used (`{review_model}`) and review cycles per story
 - Total commits and merge operations
 - Dependency layers processed
 - Any notable findings from code reviews
 
 Update `sprint-status.yaml`: epic status → `done` (only if ALL stories are `done`).
 
+**Interactive mode:**
 ```
 Epic {N} complete: "{epic title}"
 {total} stories implemented, reviewed, and committed across {layers} dependency layers.
 ```
+
+**Headless mode (`--headless`)** — also write a structured JSON summary to `{implementation_artifacts}/epic-{N}-summary.json`:
+```json
+{
+  "epic": N,
+  "title": "{epic title}",
+  "status": "done|halted",
+  "halt_reason": null,
+  "stories": [
+    {
+      "key": "{story_key}",
+      "status": "done|halted|merge-conflict",
+      "review_verdict": "APPROVED|CHANGES_REQUESTED",
+      "review_model": "{review_model}",
+      "review_cycles": 1,
+      "commit_sha": "{sha}",
+      "files_changed": 0
+    }
+  ],
+  "summary": {
+    "total_stories": 0,
+    "completed": 0,
+    "review_patches": 0,
+    "dependency_layers": 0,
+    "spawn_iterations": 0
+  }
+}
+```
+This enables CI pipelines to parse results programmatically.
 
 ---
 
@@ -247,11 +337,14 @@ When invoked for an epic that's already `in-progress`, the workflow detects the 
 | Story State | Action |
 |---|---|
 | `backlog` | Include in Phase A |
-| `ready-for-dev` | Include in Phase B (dev + review) |
-| `in-progress` | Include in Phase B (dev-story resumes from last task) |
-| `review` | Include in Phase B (code-review, or dev-story if review follow-ups exist) |
+| `ready-for-dev` | Include in Phase B from B.1 (dev + review) |
+| `in-progress` | Include in Phase B from B.1 (dev-story resumes from last task) |
+| `review` | Include in Phase B from B.2 (dev complete — run adversarial review with `{review_model}`) |
+| `merge-conflict` | Include in Phase B from B.4 (user resolved conflict — attempt merge again) |
 | `done` | Skip |
 
 The dependency graph is re-parsed on resume. Stories whose dependencies aren't yet `done` are deferred until their dependencies complete — the topological sort handles this naturally.
 
-Check for orphaned worktree branches (e.g., `epic-{N}/story-*`) from a previous interrupted run. If found, report them and ask the user whether to resume from those branches or clean them up.
+Check for orphaned worktree branches (e.g., `epic-{N}/story-*`) from a previous interrupted run. If found:
+- **Interactive mode:** Report them and ask the user whether to resume from those branches or clean them up.
+- **Headless mode (`--headless`):** Auto-clean orphaned worktrees (remove worktree, delete branch) and log: "Headless: cleaned {count} orphaned worktrees: {list}."

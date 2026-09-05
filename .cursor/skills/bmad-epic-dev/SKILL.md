@@ -18,6 +18,8 @@ Act as a disciplined build orchestrator. You don't write code or specs yourself 
   - `ask`: prompt user before each commit
   - `skip`: never commit (user handles commits manually)
 - `--skip-confirmations` — suppress soft-gate pauses between phases (for experienced users resuming a known-good epic)
+- `--review-model=<model-slug>` — LLM model for adversarial code review (must differ from dev model to prevent self-review blind spots; default: auto-select a different model)
+- `--headless` — full automation mode for CI/pipelines: auto-approves Phase A specs (with warning log), fails fast on decision-needed relays, auto-cleans orphaned worktrees, and writes a structured JSON summary on completion/halt. Implies `--commit-policy=auto --skip-confirmations`
 
 **Core contract:**
 - Every sub-skill runs in a **fresh subagent** (clean LLM context)
@@ -35,7 +37,8 @@ Load available config from `{project-root}/_bmad/config.yaml` and `{project-root
 Resolve:
 - `implementation_artifacts` — where story files and sprint-status.yaml live
 - `planning_artifacts` — where epic source files live
-- `user_name`, `communication_language`
+- `communication_language` — for user-facing messages
+- `user_name` — for addressing the user in progress reports
 
 **Intent guard:** Before proceeding, confirm the user intends full epic orchestration. If the input looks like a single story reference (e.g., "13.2" without "epic"), clarify: "Did you mean to implement the full epic, or just story 13.2? For a single story, use `bmad-dev-story` instead."
 
