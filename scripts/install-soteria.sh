@@ -107,8 +107,8 @@ Examples:
     --chart oci://ghcr.io/soteria-project/charts/soteria \\
     --values-file my-values.yaml --networking cilium
 
-  # Uninstall
-  $(basename "$0") --east-context east --west-context west --chart ./charts/soteria --uninstall
+  # Uninstall (--chart not required)
+  $(basename "$0") --east-context east --west-context west --uninstall
 
   # Dry run (print commands only)
   $(basename "$0") --east-context east --west-context west --chart ./charts/soteria --dry-run
@@ -160,8 +160,18 @@ parse_flags() {
   if [[ -z "${WEST_CONTEXT}" ]]; then
     fatal "--west-context is required"
   fi
-  if [[ -z "${CHART}" ]]; then
-    fatal "--chart is required"
+  # --chart is required for install, but not for uninstall
+  if [[ "${UNINSTALL}" != "true" && -z "${CHART}" ]]; then
+    fatal "--chart is required (not needed with --uninstall)"
+  fi
+  # Contexts must differ to avoid installing seed and joining on the same cluster
+  if [[ "${EAST_CONTEXT}" == "${WEST_CONTEXT}" ]]; then
+    fatal "east and west contexts must differ"
+  fi
+
+  # Validate --values-file exists when provided
+  if [[ -n "${VALUES_FILE}" ]]; then
+    [[ -f "${VALUES_FILE}" ]] || fatal "--values-file not found: ${VALUES_FILE}"
   fi
 
   # Validate enum values
@@ -225,7 +235,7 @@ check_prerequisites() {
   local scylladb_mode="managed"
   if [[ -n "${VALUES_FILE}" && -f "${VALUES_FILE}" ]]; then
     local detected_mode
-    detected_mode=$(grep -E '^\s*mode:\s*' "${VALUES_FILE}" | head -1 | awk '{print $2}' | tr -d '"'"'" 2>/dev/null || echo "")
+    detected_mode=$(awk '/^scylladb:/{p=1} p && /^\s+mode:/{print $2; exit}' "${VALUES_FILE}" | tr -d '"'"'" 2>/dev/null || echo "")
     if [[ -n "${detected_mode}" ]]; then
       scylladb_mode="${detected_mode}"
     fi
@@ -238,6 +248,16 @@ check_prerequisites() {
       fi
     done
     info "  scylla-operator: CRDs present on both clusters"
+  fi
+
+  # Check console-plugin CRD when ui-mode=console-plugin (OpenShift only)
+  if [[ "${UI_MODE}" == "console-plugin" ]]; then
+    for ctx in "${EAST_CONTEXT}" "${WEST_CONTEXT}"; do
+      if ! kubectl --context="${ctx}" get crd consoleplugins.console.openshift.io &>/dev/null; then
+        fatal "OpenShift ConsolePlugin CRD 'consoleplugins.console.openshift.io' not found on context '${ctx}'. ui-mode=console-plugin requires OpenShift."
+      fi
+    done
+    info "  ConsolePlugin: CRD present on both clusters"
   fi
 
   # Check Submariner MCS CRDs when networking=submariner
@@ -268,11 +288,11 @@ build_helm_args() {
     --kube-context "${context}"
     --namespace "${NAMESPACE}"
     --create-namespace
-    --set "site.name=${site_name}"
-    --set "site.role=${site_role}"
-    --set "networking.mode=${NETWORKING}"
-    --set "ui.mode=${UI_MODE}"
-    --set "scylladb.localDC=${site_name}"
+    --set-string "site.name=${site_name}"
+    --set-string "site.role=${site_role}"
+    --set-string "networking.mode=${NETWORKING}"
+    --set-string "ui.mode=${UI_MODE}"
+    --set-string "scylladb.localDC=${site_name}"
     --wait
     --timeout 10m
   )
@@ -297,9 +317,9 @@ resolve_external_seeds() {
       echo "soteria-scylladb-client.${NAMESPACE}.svc.clusterset.local"
       ;;
     cilium)
-      # Cilium ClusterMesh uses direct PodIP routing — seed discovery via
-      # the headless client service in the remote cluster.
-      echo "soteria-scylladb-client.${NAMESPACE}.svc.clusterset.local"
+      # Cilium ClusterMesh exposes services via the standard cluster.local
+      # domain using global service annotations — not Submariner MCS DNS.
+      echo "soteria-scylladb-client.${NAMESPACE}.svc.cluster.local"
       ;;
   esac
 }
@@ -316,21 +336,40 @@ wait_for_ca() {
     return 0
   fi
 
+  # Phase 1: Wait for the Certificate to become Ready
   local elapsed=0
   local interval=5
-  while [[ ${elapsed} -lt ${CA_WAIT_TIMEOUT} ]]; do
+  while true; do
     local ready
     ready=$(kubectl --context="${ctx}" -n "${NAMESPACE}" \
       get certificate "${CA_CERT_NAME}" \
       -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || echo "")
     if [[ "${ready}" == "True" ]]; then
       info "  CA Certificate is Ready on ${ctx}"
-      return 0
+      break
+    fi
+    if [[ ${elapsed} -ge ${CA_WAIT_TIMEOUT} ]]; then
+      fatal "CA Certificate '${CA_CERT_NAME}' did not become Ready on ${ctx} within ${CA_WAIT_TIMEOUT}s"
     fi
     sleep "${interval}"
     elapsed=$((elapsed + interval))
   done
-  fatal "CA Certificate '${CA_CERT_NAME}' did not become Ready on ${ctx} within ${CA_WAIT_TIMEOUT}s"
+
+  # Phase 2: Wait for the backing Secret to actually exist
+  info "Waiting for CA Secret '${CA_SECRET_NAME}' to exist on ${ctx}..."
+  local secret_wait=60
+  elapsed=0
+  while true; do
+    if kubectl --context="${ctx}" -n "${NAMESPACE}" get secret "${CA_SECRET_NAME}" &>/dev/null; then
+      info "  CA Secret '${CA_SECRET_NAME}' exists on ${ctx}"
+      return 0
+    fi
+    if [[ ${elapsed} -ge ${secret_wait} ]]; then
+      fatal "CA Secret '${CA_SECRET_NAME}' did not appear on ${ctx} within ${secret_wait}s after Certificate became Ready"
+    fi
+    sleep "${interval}"
+    elapsed=$((elapsed + interval))
+  done
 }
 
 # ---------------------------------------------------------------------------
@@ -348,11 +387,12 @@ copy_ca_secret() {
 
   # Ensure target namespace exists
   kubectl --context "${dst_ctx}" create namespace "${NAMESPACE}" --dry-run=client -o yaml \
-    | kubectl --context "${dst_ctx}" apply --server-side -f -
+    | kubectl --context "${dst_ctx}" apply --server-side --force-conflicts -f -
 
   kubectl --context "${src_ctx}" -n "${NAMESPACE}" get secret "${CA_SECRET_NAME}" -o json \
     | jq 'del(.metadata.resourceVersion, .metadata.uid, .metadata.creationTimestamp,
-              .metadata.managedFields, .metadata.annotations["cert-manager.io/certificate-name"])' \
+              .metadata.managedFields, .metadata.ownerReferences,
+              .metadata.annotations["cert-manager.io/certificate-name"])' \
     | kubectl --context "${dst_ctx}" -n "${NAMESPACE}" apply --server-side --force-conflicts -f -
 
   info "  CA Secret copied to ${dst_ctx}"
@@ -366,18 +406,78 @@ wait_for_rollout() {
   info "Waiting for controller-manager rollout on ${ctx} (timeout ${ROLLOUT_TIMEOUT})..."
 
   if [[ "${DRY_RUN}" == "true" ]]; then
-    echo -e "${YELLOW}[DRY-RUN]${NC} kubectl --context ${ctx} -n ${NAMESPACE} rollout status deployment/soteria-controller-manager --timeout=${ROLLOUT_TIMEOUT}"
+    echo -e "${YELLOW}[DRY-RUN]${NC} kubectl --context ${ctx} -n ${NAMESPACE} rollout status deployment/${RELEASE_NAME}-controller-manager --timeout=${ROLLOUT_TIMEOUT}"
     return 0
   fi
 
   if ! kubectl --context="${ctx}" -n "${NAMESPACE}" \
-    rollout status deployment/soteria-controller-manager --timeout="${ROLLOUT_TIMEOUT}"; then
+    rollout status "deployment/${RELEASE_NAME}-controller-manager" --timeout="${ROLLOUT_TIMEOUT}"; then
     error "Controller-manager rollout failed on ${ctx}"
-    kubectl --context="${ctx}" -n "${NAMESPACE}" describe deployment/soteria-controller-manager || true
-    kubectl --context="${ctx}" -n "${NAMESPACE}" logs deployment/soteria-controller-manager -c manager --tail=30 2>/dev/null || true
+    kubectl --context="${ctx}" -n "${NAMESPACE}" describe "deployment/${RELEASE_NAME}-controller-manager" || true
+    kubectl --context="${ctx}" -n "${NAMESPACE}" logs "deployment/${RELEASE_NAME}-controller-manager" -c manager --tail=30 2>/dev/null || true
     fatal "Deployment rollout failed on ${ctx}"
   fi
   info "  Controller-manager is running on ${ctx}"
+}
+
+# ---------------------------------------------------------------------------
+# Wait for seed ScyllaDB Service to exist
+# ---------------------------------------------------------------------------
+wait_for_seed_scylladb() {
+  local ctx="$1"
+  local svc_name="soteria-scylladb-client"
+  local timeout=300
+  info "Waiting for seed ScyllaDB service '${svc_name}' on ${ctx} (timeout ${timeout}s)..."
+
+  if [[ "${DRY_RUN}" == "true" ]]; then
+    echo -e "${YELLOW}[DRY-RUN]${NC} Would wait for ScyllaDB service '${svc_name}' on ${ctx}"
+    return 0
+  fi
+
+  local elapsed=0
+  local interval=10
+  while true; do
+    if kubectl --context="${ctx}" -n "${NAMESPACE}" get service "${svc_name}" &>/dev/null; then
+      info "  ScyllaDB service '${svc_name}' exists on ${ctx}"
+      return 0
+    fi
+    if [[ ${elapsed} -ge ${timeout} ]]; then
+      fatal "ScyllaDB service '${svc_name}' did not appear on ${ctx} within ${timeout}s"
+    fi
+    sleep "${interval}"
+    elapsed=$((elapsed + interval))
+  done
+}
+
+# ---------------------------------------------------------------------------
+# Helm uninstall with proper error handling
+# ---------------------------------------------------------------------------
+helm_uninstall() {
+  local ctx="$1"
+
+  if [[ "${DRY_RUN}" == "true" ]]; then
+    echo -e "${YELLOW}[DRY-RUN]${NC} helm uninstall ${RELEASE_NAME} --kube-context ${ctx} --namespace ${NAMESPACE} --wait"
+    return 0
+  fi
+
+  local helm_stderr
+  helm_stderr=$(mktemp)
+  if helm uninstall "${RELEASE_NAME}" \
+       --kube-context "${ctx}" \
+       --namespace "${NAMESPACE}" \
+       --wait 2>"${helm_stderr}"; then
+    info "  Helm release '${RELEASE_NAME}' uninstalled from ${ctx}"
+  else
+    local err
+    err=$(cat "${helm_stderr}")
+    if echo "${err}" | grep -qiE 'not found|release: not found'; then
+      warn "Helm release '${RELEASE_NAME}' not found on ${ctx} (already removed?)"
+    else
+      rm -f "${helm_stderr}"
+      fatal "Helm uninstall failed on ${ctx}: ${err}"
+    fi
+  fi
+  rm -f "${helm_stderr}"
 }
 
 # ---------------------------------------------------------------------------
@@ -406,9 +506,10 @@ do_install() {
   # -----------------------------------------------------------------------
   # Step 2: Wait for CA Certificate and copy to joining cluster
   # -----------------------------------------------------------------------
-  info "--- Step 2: CA propagation ---"
+  info "--- Step 2: CA propagation and seed readiness ---"
   wait_for_ca "${EAST_CONTEXT}"
   copy_ca_secret "${EAST_CONTEXT}" "${WEST_CONTEXT}"
+  wait_for_seed_scylladb "${EAST_CONTEXT}"
   echo ""
 
   # -----------------------------------------------------------------------
@@ -418,6 +519,12 @@ do_install() {
   local external_seeds
   external_seeds="$(resolve_external_seeds)"
 
+  # NOTE: The joining cluster receives the CA Secret copied in Step 2.
+  # The chart does not currently have a tls.createCA toggle, so the Helm
+  # install will also create a CA Certificate on the joining cluster. This
+  # is harmless because the copied Secret already exists and cert-manager
+  # will not overwrite it, but a future chart enhancement should add
+  # --set tls.createCA=false to suppress the redundant Certificate resource.
   local -a join_args
   build_helm_args join_args "${WEST_CONTEXT}" "${WEST_CONTEXT}" "joining" \
     "scylladb.managed.externalSeeds[0]=${external_seeds}"
@@ -459,20 +566,14 @@ do_uninstall() {
   # Step 1: Uninstall from joining cluster
   # -----------------------------------------------------------------------
   info "--- Step 1: Uninstalling from joining cluster (${WEST_CONTEXT}) ---"
-  run helm uninstall "${RELEASE_NAME}" \
-    --kube-context "${WEST_CONTEXT}" \
-    --namespace "${NAMESPACE}" \
-    --wait 2>/dev/null || warn "Helm release '${RELEASE_NAME}' not found on ${WEST_CONTEXT} (already removed?)"
+  helm_uninstall "${WEST_CONTEXT}"
   echo ""
 
   # -----------------------------------------------------------------------
   # Step 2: Uninstall from seed cluster
   # -----------------------------------------------------------------------
   info "--- Step 2: Uninstalling from seed cluster (${EAST_CONTEXT}) ---"
-  run helm uninstall "${RELEASE_NAME}" \
-    --kube-context "${EAST_CONTEXT}" \
-    --namespace "${NAMESPACE}" \
-    --wait 2>/dev/null || warn "Helm release '${RELEASE_NAME}' not found on ${EAST_CONTEXT} (already removed?)"
+  helm_uninstall "${EAST_CONTEXT}"
   echo ""
 
   # -----------------------------------------------------------------------
