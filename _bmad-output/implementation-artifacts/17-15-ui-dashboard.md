@@ -1,6 +1,6 @@
 # Story 17.15: UI Guide: Dashboard
 
-Status: backlog
+Status: done
 
 ## Story
 
