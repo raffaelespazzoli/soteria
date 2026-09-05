@@ -1,6 +1,6 @@
 # Story 17.7: Helm Chart Installation Guide
 
-Status: backlog
+Status: done
 
 ## Story
 
@@ -42,15 +42,15 @@ Then its usage, flags, and behavior are documented
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Review Helm chart design (AC: 1, 2, 3, 4)
-  - [ ] 1.1: Read Epic 16 stories (16-1 through 16-6) for Helm chart design decisions
-  - [ ] 1.2: Walk the actual Helm chart (`charts/soteria/` or equivalent) to verify values and templates
-- [ ] Task 2: Write the installation guide (AC: 1, 2, 3, 4, 5, 6)
-  - [ ] 2.1: Write `docs/installation/helm.md` covering: Helm repo setup, managed ScyllaDB install (seed + joining), BYO ScyllaDB install, install script usage, key values walkthrough, upgrade procedures, uninstall procedures
-  - [ ] 2.2: Add example `helm install` commands for each deployment mode
-- [ ] Task 3: Verify documentation accuracy (AC: 4)
-  - [ ] 3.1: Verify all documented values exist in the actual `values.yaml`
-  - [ ] 3.2: Verify template behavior matches documented instructions
+- [x] Task 1: Review Helm chart design (AC: 1, 2, 3, 4)
+  - [x] 1.1: Read Epic 16 stories (16-1 through 16-6) for Helm chart design decisions
+  - [x] 1.2: Walk the actual Helm chart (`charts/soteria/` or equivalent) to verify values and templates
+- [x] Task 2: Write the installation guide (AC: 1, 2, 3, 4, 5, 6)
+  - [x] 2.1: Write `docs/installation/helm.md` covering: Helm repo setup, managed ScyllaDB install (seed + joining), BYO ScyllaDB install, install script usage, key values walkthrough, upgrade procedures, uninstall procedures
+  - [x] 2.2: Add example `helm install` commands for each deployment mode
+- [x] Task 3: Verify documentation accuracy (AC: 4)
+  - [x] 3.1: Verify all documented values exist in the actual `values.yaml`
+  - [x] 3.2: Verify template behavior matches documented instructions
 
 ## Dev Notes
 
@@ -100,9 +100,31 @@ Start from the PRD (`_bmad-output/planning-artifacts/prd.md`), architecture doc 
 ## Dev Agent Record
 
 ### Agent Model Used
+Claude Opus 4.6 (via Cursor)
 
 ### Debug Log References
+- Verified all documented values.yaml keys exist in actual chart at `charts/soteria/`
+- Verified _validation.tpl error messages match documented troubleshooting table
+- Verified install script flags match documentation (CA_SECRET_NAME=soteria-ca-key-pair, RELEASE_NAME=soteria)
+- All unit tests pass (cached, no regressions from docs-only changes)
 
 ### Completion Notes List
+- Created comprehensive Helm installation guide at `docs/installation/helm.md` (placeholder replaced)
+- Covers chart location (local clone and OCI registry), deployment concepts, two-cluster topology
+- Documents install script (`scripts/install-soteria.sh`) with full flag reference and usage examples
+- Manual installation guide: 6 steps covering seed install (managed + BYO), CA propagation, joining install, verification
+- Key values walkthrough: site, scylladb (managed/external), tls, controller, networking, ui — with context beyond flat reference
+- Upgrade procedures: script-based and manual, with --reuse-values and CRD update notes
+- Uninstall procedures: script-based and manual, including post-uninstall cleanup
+- Troubleshooting section covering common issues (controller pod, validation errors, APIService)
+- All documented values verified against actual `values.yaml` (30+ fields checked)
+- All template validation rules verified against `_validation.tpl` and `scyllacluster.yaml`
+- External seeds DNS documented per networking mode (Submariner: clusterset.local, Cilium: cluster.local)
 
 ### File List
+- `docs/installation/helm.md` — MODIFIED — Comprehensive Helm installation guide (was placeholder)
+- `_bmad-output/implementation-artifacts/17-7-helm-installation.md` — MODIFIED — Task checkboxes, status, dev record
+
+### Change Log
+- 2026-09-05: Implemented Story 17.7 — wrote comprehensive Helm installation guide covering all ACs
+- 2026-09-05: Code review — fixed Cilium annotation claim (was incorrectly attributed to install script; now describes operator-level annotation requirement)
