@@ -1,6 +1,6 @@
 # Story 17.19: API Reference: DRExecution
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -42,21 +42,21 @@ Then every field, type, and semantic is accurate
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Extract spec field definitions (AC: 1, 6)
-  - [ ] 1.1: Walk `pkg/apis/soteria.io/v1alpha1/types.go` for DRExecution, DRExecutionSpec — fields and kubebuilder markers
-  - [ ] 1.2: Walk `pkg/apis/soteria.io/v1alpha1/validation.go` for DRExecution validation rules
-- [ ] Task 2: Extract status field definitions (AC: 2, 3, 4, 5, 6)
-  - [ ] 2.1: Walk `pkg/apis/soteria.io/v1alpha1/types.go` for DRExecutionStatus, WaveStatus, DRGroupExecutionStatus, StepStatus, SiteCoordinationStatus
-  - [ ] 2.2: Walk `pkg/controller/drexecution/reconciler.go` for condition types set during reconciliation (Progressing, Step0Started, Step0Complete, Ready, ResyncPending, ReprotectPhase, RetryRejected)
-  - [ ] 2.3: Walk `pkg/controller/drexecution/reconciler.go` for phase transition logic and result computation
-- [ ] Task 3: Write the reference page (AC: 1, 2, 3, 4, 5)
-  - [ ] 3.1: Write `docs/reference/api/drexecution.md` with full field reference tables (spec + status)
-  - [ ] 3.2: Document all status conditions with lifecycle (when set, when cleared, meanings)
-  - [ ] 3.3: Document phase semantics and result computation (Succeeded, PartiallySucceeded, Failed)
-  - [ ] 3.4: Add DRExecution YAML examples for planned migration and disaster failover
-  - [ ] 3.5: Document status condition lifecycle and DRGroupResult state transitions
-- [ ] Task 4: Verify accuracy (AC: 6)
-  - [ ] 4.1: Cross-reference every documented field against the actual types.go and reconciler
+- [x] Task 1: Extract spec field definitions (AC: 1, 6)
+  - [x] 1.1: Walk `pkg/apis/soteria.io/v1alpha1/types.go` for DRExecution, DRExecutionSpec — fields and kubebuilder markers
+  - [x] 1.2: Walk `pkg/apis/soteria.io/v1alpha1/validation.go` for DRExecution validation rules
+- [x] Task 2: Extract status field definitions (AC: 2, 3, 4, 5, 6)
+  - [x] 2.1: Walk `pkg/apis/soteria.io/v1alpha1/types.go` for DRExecutionStatus, WaveStatus, DRGroupExecutionStatus, StepStatus, SiteCoordinationStatus
+  - [x] 2.2: Walk `pkg/controller/drexecution/reconciler.go` for condition types set during reconciliation (Progressing, Step0Started, Step0Complete, Ready, ResyncPending, ReprotectPhase, RetryRejected)
+  - [x] 2.3: Walk `pkg/controller/drexecution/reconciler.go` for phase transition logic and result computation
+- [x] Task 3: Write the reference page (AC: 1, 2, 3, 4, 5)
+  - [x] 3.1: Write `docs/reference/api/drexecution.md` with full field reference tables (spec + status)
+  - [x] 3.2: Document all status conditions with lifecycle (when set, when cleared, meanings)
+  - [x] 3.3: Document phase semantics and result computation (Succeeded, PartiallySucceeded, Failed)
+  - [x] 3.4: Add DRExecution YAML examples for planned migration and disaster failover
+  - [x] 3.5: Document status condition lifecycle and DRGroupResult state transitions
+- [x] Task 4: Verify accuracy (AC: 6)
+  - [x] 4.1: Cross-reference every documented field against the actual types.go and reconciler
 
 ## Dev Notes
 
@@ -121,9 +121,31 @@ Start from the PRD (`_bmad-output/planning-artifacts/prd.md`), architecture doc 
 ## Dev Agent Record
 
 ### Agent Model Used
+Claude Opus 4.6 (Cursor)
 
 ### Debug Log References
+N/A — documentation-only story, no debugging required.
 
 ### Completion Notes List
+- ✅ Extracted all DRExecutionSpec fields (planName, mode) with validation rules (immutability on update)
+- ✅ Extracted all DRExecutionStatus fields (phase, isActive, result, waves, startTime, completionTime, duration, conditions, siteStatuses)
+- ✅ Documented all 5 sub-resource types: WaveStatus, DRGroupExecutionStatus, StepStatus, SiteCoordinationStatus, and their nested fields
+- ✅ Documented all 7 condition types (Progressing, Step0Started, Step0Complete, Ready, ResyncPending, ReprotectPhase, RetryRejected) with reasons and lifecycle
+- ✅ Documented phase semantics (Pending → Executing → Succeeded/PartiallySucceeded/Failed) with Mermaid state diagram
+- ✅ Documented result computation logic for both wave-based and re-protect executions
+- ✅ Documented DRGroupResult state machine (Pending → InProgress → Completed/Failed, with WaitingForVMReady gate) with Mermaid diagram
+- ✅ Added 4 annotated YAML examples: planned migration in-progress, disaster partially succeeded, completed with retry history, re-protect
+- ✅ Documented retry mechanism with annotation syntax, preconditions, and flow
+- ✅ Documented events emitted by the controller (18 event types)
+- ✅ Documented multi-site Step 0 coordination flow with Mermaid sequence diagram
+- ✅ Cross-referenced every documented field against types.go (lines 451-580), validation.go (lines 158-198), reconciler.go (conditions), and executor.go (result computation)
+- ✅ All labels and annotations documented (soteria.io/plan-name, soteria.io/triggered-by, soteria.io/retry-groups)
+
+### Change Log
+- 2026-09-05: Story 17.19 implemented — full DRExecution API reference (Raffa)
 
 ### File List
+| File | Action |
+|------|--------|
+| docs/reference/api/drexecution.md | MODIFIED — replaced placeholder with exhaustive API reference |
+| _bmad-output/implementation-artifacts/17-19-api-reference-drexecution.md | MODIFIED — updated task checkboxes, status, dev agent record |
