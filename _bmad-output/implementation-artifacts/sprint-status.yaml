@@ -430,15 +430,15 @@ development_status:
   15-13-remove-demotion-health-gate-from-step0: done
 
   # Epic 16: Helm Chart & Release Pipeline
-  epic-16: in-progress
-  16-1-chart-skeleton-and-values: ready-for-dev
-  16-2-controller-templates: ready-for-dev
+  epic-16: done
+  16-1-chart-skeleton-and-values: done
+  16-2-controller-templates: done
   16-3-scylladb-managed-templates: done
-  16-4-scylladb-external-wiring: review
+  16-4-scylladb-external-wiring: done
   16-5-console-plugin-templates: done
-  16-6-standalone-ui-templates: ready-for-dev
+  16-6-standalone-ui-templates: done
   16-7-install-script: done
-  16-8-release-pipeline: review
+  16-8-release-pipeline: done
 
   # Epic 17: Documentation Site
   epic-17: in-progress
