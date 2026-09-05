@@ -30,7 +30,7 @@ This branch hosts the packaged Helm charts for the Soteria project.
 ## Usage
 
 ```bash
-helm repo add soteria https://soteria-project.github.io/soteria
+helm repo add soteria https://raffaelespazzoli.github.io/soteria
 helm repo update
 helm search repo soteria
 helm install soteria soteria/soteria --namespace soteria --create-namespace
@@ -38,7 +38,7 @@ helm install soteria soteria/soteria --namespace soteria --create-namespace
 
 ## Repository URL
 
-`https://soteria-project.github.io/soteria`
+`https://raffaelespazzoli.github.io/soteria`
 
 For documentation and source code visit the
 [main branch](https://github.com/soteria-project/soteria).
@@ -58,7 +58,7 @@ git push origin gh-pages
 4. Click **Save**.
 
 GitHub Pages will serve the Helm repository index at:
-`https://soteria-project.github.io/soteria`
+`https://raffaelespazzoli.github.io/soteria`
 
 ## 3. Configure Repository Secrets
 
@@ -106,12 +106,12 @@ This triggers both release workflows:
 
 1. Check **Actions** tab for workflow run status.
 2. Confirm images appear on quay.io:
-   - `quay.io/soteria-project/soteria:v0.1.0-rc1`
-   - `quay.io/soteria-project/soteria-console-plugin:0.1.0-rc1`
-   - `quay.io/soteria-project/soteria-standalone-ui:0.1.0-rc1`
+   - `quay.io/raffaelespazzoli/soteria:v0.1.0-rc1`
+   - `quay.io/raffaelespazzoli/soteria-console-plugin:0.1.0-rc1`
+   - `quay.io/raffaelespazzoli/soteria-standalone-ui:0.1.0-rc1`
 3. Confirm the Helm chart index is published:
    ```bash
-   helm repo add soteria https://soteria-project.github.io/soteria
+   helm repo add soteria https://raffaelespazzoli.github.io/soteria
    helm repo update
    helm search repo soteria --versions
    ```
@@ -122,8 +122,8 @@ The release pipeline publishes three container images:
 
 | Image                                                  | Dockerfile                         | Context          |
 |--------------------------------------------------------|------------------------------------|------------------|
-| `quay.io/soteria-project/soteria`                      | `Dockerfile`                       | repo root        |
-| `quay.io/soteria-project/soteria-console-plugin`       | `console-plugin/Dockerfile`        | `console-plugin/`|
-| `quay.io/soteria-project/soteria-standalone-ui`        | `console-plugin/Dockerfile.standalone` | repo root    |
+| `quay.io/raffaelespazzoli/soteria`                      | `Dockerfile`                       | repo root        |
+| `quay.io/raffaelespazzoli/soteria-console-plugin`       | `console-plugin/Dockerfile`        | `console-plugin/`|
+| `quay.io/raffaelespazzoli/soteria-standalone-ui`        | `console-plugin/Dockerfile.standalone` | repo root    |
 
 All images are built for `linux/amd64`, `linux/arm64`, and `linux/ppc64le`.

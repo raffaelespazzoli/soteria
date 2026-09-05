@@ -19,7 +19,7 @@ metadata:
       ]
     capabilities: "Basic Install"
     categories: "Integration & Delivery"
-    containerImage: quay.io/soteria-project/soteria:latest
+    containerImage: quay.io/raffaelespazzoli/soteria:latest
     repository: https://github.com/soteria-project/soteria
     support: Soteria Project
 spec:
@@ -124,7 +124,7 @@ spec:
                 terminationGracePeriodSeconds: 10
                 containers:
                   - name: manager
-                    image: quay.io/soteria-project/soteria:latest
+                    image: quay.io/raffaelespazzoli/soteria:latest
                     command:
                       - /manager
                     args:

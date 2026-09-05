@@ -93,7 +93,7 @@ operations. Run `make help` to see every target with a short description.
 |--------|-------------|-------------|
 | `make build` | Compile the manager binary to `bin/manager` | Local development |
 | `make run` | Run the controller from your host against the current kubeconfig | Local testing (requires `SITE_NAME` env var) |
-| `make docker-build` | Build the container image (`IMG` variable, default `quay.io/soteria-project/soteria:latest`) | Before deploying or pushing |
+| `make docker-build` | Build the container image (`IMG` variable, default `quay.io/raffaelespazzoli/soteria:latest`) | Before deploying or pushing |
 | `make docker-push` | Push the container image to the registry | After building, before remote deploy |
 | `make docker-buildx` | Multi-arch build and push (`linux/amd64,arm64,s390x,ppc64le`) | Release builds |
 | `make build-installer` | Generate `dist/install.yaml` from Kustomize manifests | Distribution as a single YAML |
@@ -375,7 +375,7 @@ make docker-build
 make docker-build CONTAINER_TOOL=docker
 
 # Load into Kind (no push needed)
-kind load docker-image quay.io/soteria-project/soteria:latest --name soteria-dev
+kind load docker-image quay.io/raffaelespazzoli/soteria:latest --name soteria-dev
 ```
 
 ---

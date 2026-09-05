@@ -453,7 +453,7 @@ is **required**.
 ```yaml
 controller:
   image:
-    repository: quay.io/soteria-project/soteria
+    repository: quay.io/raffaelespazzoli/soteria
     tag: ""               # Defaults to Chart.appVersion
     pullPolicy: IfNotPresent
   replicas: 1

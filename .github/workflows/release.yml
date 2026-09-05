@@ -22,7 +22,7 @@ permissions: {}
 
 env:
   REGISTRY: quay.io
-  REGISTRY_ORG: soteria-project
+  REGISTRY_ORG: raffaelespazzoli
   BUILD_PLATFORMS: linux/amd64,linux/arm64,linux/ppc64le
 
 jobs:
@@ -205,18 +205,18 @@ jobs:
         run: |
           mkdir -p /tmp/helm-repo
           cp /tmp/chart-package/*.tgz /tmp/helm-repo/
-          curl -sSfL "https://soteria-project.github.io/soteria/index.yaml" \
+          curl -sSfL "https://raffaelespazzoli.github.io/soteria/index.yaml" \
             -o /tmp/helm-repo/existing-index.yaml 2>/dev/null || true
 
       - name: Build repo index
         run: |
           if [ -f /tmp/helm-repo/existing-index.yaml ]; then
             helm repo index /tmp/helm-repo \
-              --url "https://soteria-project.github.io/soteria" \
+              --url "https://raffaelespazzoli.github.io/soteria" \
               --merge /tmp/helm-repo/existing-index.yaml
           else
             helm repo index /tmp/helm-repo \
-              --url "https://soteria-project.github.io/soteria"
+              --url "https://raffaelespazzoli.github.io/soteria"
           fi
           rm -f /tmp/helm-repo/existing-index.yaml
 

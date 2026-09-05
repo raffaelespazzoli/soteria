@@ -43,7 +43,7 @@ Governs the single-binary deployment that runs both the aggregated API server
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `controller.image.repository` | string | `"quay.io/soteria-project/soteria"` | Container image for the Soteria controller. |
+| `controller.image.repository` | string | `"quay.io/raffaelespazzoli/soteria"` | Container image for the Soteria controller. |
 | `controller.image.tag` | string | `""` | Image tag. When empty, defaults to the chart's `appVersion`. |
 | `controller.image.pullPolicy` | string | `"IfNotPresent"` | Kubernetes [image pull policy](https://kubernetes.io/docs/concepts/containers/images/#image-pull-policy). |
 
@@ -198,7 +198,7 @@ Rendered only when `ui.mode: console-plugin`.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `ui.consolePlugin.image.repository` | string | `"quay.io/soteria-project/soteria-console-plugin"` | Container image for the console plugin nginx proxy. |
+| `ui.consolePlugin.image.repository` | string | `"quay.io/raffaelespazzoli/soteria-console-plugin"` | Container image for the console plugin nginx proxy. |
 | `ui.consolePlugin.image.tag` | string | `""` | Image tag for the console plugin. When empty, defaults to the chart's `appVersion`. |
 
 ### Standalone UI
@@ -207,7 +207,7 @@ Rendered only when `ui.mode: standalone`.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `ui.standalone.image.repository` | string | `"quay.io/soteria-project/soteria-standalone-ui"` | Container image for the standalone UI. |
+| `ui.standalone.image.repository` | string | `"quay.io/raffaelespazzoli/soteria-standalone-ui"` | Container image for the standalone UI. |
 | `ui.standalone.image.tag` | string | `""` | Image tag for the standalone UI. When empty, defaults to the chart's `appVersion`. |
 | `ui.standalone.gateway.name` | string | `""` | Name of the Gateway resource to attach the `HTTPRoute` to. **When empty, no `HTTPRoute` is created.** |
 | `ui.standalone.gateway.namespace` | string | `""` | Namespace of the Gateway resource. Defaults to the release namespace when empty. Set explicitly for cross-namespace Gateway references. |

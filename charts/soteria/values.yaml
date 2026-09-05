@@ -28,7 +28,7 @@ site:
 controller:
   image:
     # repository: Container image for the Soteria controller.
-    repository: quay.io/soteria-project/soteria
+    repository: quay.io/raffaelespazzoli/soteria
     # tag: Image tag. Overrides appVersion from Chart.yaml when set.
     tag: ""
     # pullPolicy: Kubernetes image pull policy.
@@ -163,7 +163,7 @@ ui:
   consolePlugin:
     image:
       # repository: Container image for the console plugin nginx proxy.
-      repository: quay.io/soteria-project/soteria-console-plugin
+      repository: quay.io/raffaelespazzoli/soteria-console-plugin
       # tag: Image tag for the console plugin.
       tag: ""
 
@@ -171,7 +171,7 @@ ui:
   standalone:
     image:
       # repository: Container image for the standalone UI.
-      repository: quay.io/soteria-project/soteria-standalone-ui
+      repository: quay.io/raffaelespazzoli/soteria-standalone-ui
       # tag: Image tag for the standalone UI.
       tag: ""
     gateway:

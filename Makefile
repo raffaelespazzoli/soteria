@@ -1,5 +1,5 @@
 # Image URL to use all building/pushing image targets
-IMG ?= quay.io/soteria-project/soteria:latest
+IMG ?= quay.io/raffaelespazzoli/soteria:latest
 
 # Operator metadata
 VERSION ?= 0.0.1
@@ -8,7 +8,7 @@ OPERATOR_SDK_VERSION ?= v1.42.2
 HELM_RELEASE_VERSION ?= $(VERSION)
 
 # OLM Bundle
-BUNDLE_IMG ?= quay.io/soteria-project/soteria-bundle:v$(VERSION)
+BUNDLE_IMG ?= quay.io/raffaelespazzoli/soteria-bundle:v$(VERSION)
 DEFAULT_CHANNEL ?= alpha
 BUNDLE_CHANNELS ?= --channels=$(DEFAULT_CHANNEL)
 BUNDLE_DEFAULT_CHANNEL ?= --default-channel=$(DEFAULT_CHANNEL)
