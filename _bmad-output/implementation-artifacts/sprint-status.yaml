@@ -457,7 +457,7 @@ development_status:
   17-13-volume-grouping: done
   17-14-executing-failover: done
   17-15-ui-dashboard: backlog  # blocked: needs UI screenshots
-  17-16-ui-plan-detail: backlog  # blocked: needs UI screenshots
+  17-16-ui-plan-detail: done
   17-17-ui-execution-monitor: backlog  # blocked: needs UI screenshots
   17-18-api-reference-drplan: done
   17-19-api-reference-drexecution: done

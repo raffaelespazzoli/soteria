@@ -1,6 +1,6 @@
 # Story 17.16: UI Guide: Plan Detail
 
-Status: backlog
+Status: done
 
 ## Story
 
