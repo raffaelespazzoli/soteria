@@ -1,6 +1,6 @@
 # Story 17.11: Creating a DRPlan
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -37,17 +37,17 @@ Then every field, type, and constraint is accurate
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Extract DRPlan spec from code (AC: 3, 5)
-  - [ ] 1.1: Read PRD FR1-FR8 for the conceptual DRPlan design
-  - [ ] 1.2: Walk `pkg/apis/soteria.io/v1alpha1/types.go` for the actual DRPlan spec and status structs
-  - [ ] 1.3: Walk admission webhooks in `pkg/admission/` for validation rules
-- [ ] Task 2: Document VM discovery (AC: 2)
-  - [ ] 2.1: Document the 2 labels: `soteria.io/drplan` (plan membership) and `soteria.io/wave` (wave assignment)
-  - [ ] 2.2: Review sample CRs in `config/samples/` for example usage
-- [ ] Task 3: Write the usage guide (AC: 1, 2, 3, 4, 5)
-  - [ ] 3.1: Write `docs/usage/creating-a-drplan.md` covering: DRPlan CRD spec walkthrough (annotated YAML), label selector, wave label, maxConcurrentFailovers, volumeReplicationDriver, primarySite/secondarySite, VM assignment labels, field validation rules
-  - [ ] 3.2: Create annotated YAML example from actual sample CRs
-  - [ ] 3.3: Verify all fields and validation rules match the code
+- [x] Task 1: Extract DRPlan spec from code (AC: 3, 5)
+  - [x] 1.1: Read PRD FR1-FR8 for the conceptual DRPlan design
+  - [x] 1.2: Walk `pkg/apis/soteria.io/v1alpha1/types.go` for the actual DRPlan spec and status structs
+  - [x] 1.3: Walk admission webhooks in `pkg/admission/` for validation rules
+- [x] Task 2: Document VM discovery (AC: 2)
+  - [x] 2.1: Document the 2 labels: `soteria.io/drplan` (plan membership) and `soteria.io/wave` (wave assignment)
+  - [x] 2.2: Review sample CRs in `config/samples/` for example usage
+- [x] Task 3: Write the usage guide (AC: 1, 2, 3, 4, 5)
+  - [x] 3.1: Write `docs/usage/creating-a-drplan.md` covering: DRPlan CRD spec walkthrough (annotated YAML), label selector, wave label, maxConcurrentFailovers, volumeReplicationDriver, primarySite/secondarySite, VM assignment labels, field validation rules
+  - [x] 3.2: Create annotated YAML example from actual sample CRs
+  - [x] 3.3: Verify all fields and validation rules match the code
 
 ## Dev Notes
 
@@ -113,9 +113,28 @@ Start from the PRD (`_bmad-output/planning-artifacts/prd.md`), architecture doc 
 ## Dev Agent Record
 
 ### Agent Model Used
+Claude Opus 4.6
 
 ### Debug Log References
+None — documentation-only story, no debugging required.
 
 ### Completion Notes List
+- ✅ Created comprehensive DRPlan usage guide at `docs/usage/creating-a-drplan.md`
+- ✅ Annotated YAML example covers every DRPlanSpec field with inline explanations (AC1)
+- ✅ VM discovery via two labels (`soteria.io/drplan`, `soteria.io/wave`) documented with example VM YAML (AC2)
+- ✅ All spec fields documented with type, purpose, constraints, and defaults (AC3)
+- ✅ Three-layer validation model documented: kubebuilder markers, admission plugin, controller reconciliation (AC4)
+- ✅ Every field, type, enum, default, and immutability constraint verified against `pkg/apis/soteria.io/v1alpha1/types.go`, `validation.go`, and `pkg/admission/plugin.go` (AC5)
+- ✅ Consistency level annotation documented (`soteria.io/consistency-level`)
+- ✅ Complete end-to-end example with DRPlan + 2 VMs in separate waves
+- ✅ Updated mkdocs.yml nav to point to new file; old placeholder redirects to new page
+- ✅ mkdocs build --strict passes; all Go tests pass with no regressions
+
+### Change Log
+- 2026-09-05: Initial implementation — created DRPlan usage guide with annotated YAML, field reference, validation rules, VM discovery, and complete example
 
 ### File List
+- `docs/usage/creating-a-drplan.md` — NEW: Comprehensive DRPlan creation and configuration guide
+- `docs/usage/drplan.md` — MODIFIED: Updated from placeholder to redirect to new page
+- `mkdocs.yml` — MODIFIED: Updated nav entry from `usage/drplan.md` to `usage/creating-a-drplan.md`
+- `_bmad-output/implementation-artifacts/17-11-creating-a-drplan.md` — MODIFIED: Story status and task completion
