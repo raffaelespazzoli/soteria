@@ -37,7 +37,8 @@ func diskEnricherTestScheme() *runtime.Scheme {
 	return s
 }
 
-func strPtr(s string) *string { return &s }
+//go:fix inline
+func strPtr(s string) *string { return new(s) }
 
 func TestKubeVirtDiskEnricher_PVCBackedDisks(t *testing.T) {
 	vm := &kubevirtv1.VirtualMachine{
@@ -81,11 +82,11 @@ func TestKubeVirtDiskEnricher_PVCBackedDisks(t *testing.T) {
 	}
 	pvcRoot := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{Name: "pvc-root", Namespace: "ns1"},
-		Spec:       corev1.PersistentVolumeClaimSpec{StorageClassName: strPtr("ocs-storagecluster-ceph-rbd")},
+		Spec:       corev1.PersistentVolumeClaimSpec{StorageClassName: new("ocs-storagecluster-ceph-rbd")},
 	}
 	pvcData := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{Name: "pvc-data", Namespace: "ns1"},
-		Spec:       corev1.PersistentVolumeClaimSpec{StorageClassName: strPtr("ocs-storagecluster-ceph-rbd")},
+		Spec:       corev1.PersistentVolumeClaimSpec{StorageClassName: new("ocs-storagecluster-ceph-rbd")},
 	}
 
 	cl := fake.NewClientBuilder().WithScheme(diskEnricherTestScheme()).
@@ -132,7 +133,7 @@ func TestKubeVirtDiskEnricher_DataVolumeBackedDisk(t *testing.T) {
 	}
 	pvc := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{Name: "dv-data", Namespace: "ns1"},
-		Spec:       corev1.PersistentVolumeClaimSpec{StorageClassName: strPtr("dell-powerstore")},
+		Spec:       corev1.PersistentVolumeClaimSpec{StorageClassName: new("dell-powerstore")},
 	}
 
 	cl := fake.NewClientBuilder().WithScheme(diskEnricherTestScheme()).
@@ -207,11 +208,11 @@ func TestKubeVirtDiskEnricher_MixedVolumes(t *testing.T) {
 	}
 	pvc := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{Name: "pvc-root", Namespace: "ns1"},
-		Spec:       corev1.PersistentVolumeClaimSpec{StorageClassName: strPtr("sc-a")},
+		Spec:       corev1.PersistentVolumeClaimSpec{StorageClassName: new("sc-a")},
 	}
 	dvPVC := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{Name: "dv-data", Namespace: "ns1"},
-		Spec:       corev1.PersistentVolumeClaimSpec{StorageClassName: strPtr("sc-b")},
+		Spec:       corev1.PersistentVolumeClaimSpec{StorageClassName: new("sc-b")},
 	}
 
 	cl := fake.NewClientBuilder().WithScheme(diskEnricherTestScheme()).
@@ -333,7 +334,7 @@ func TestKubeVirtDiskEnricher_MissingPVC_SelfHealing(t *testing.T) {
 	// Phase 2: PVC appears (DataVolume finished provisioning) — next enrichment populates fields.
 	pvc := &corev1.PersistentVolumeClaim{
 		ObjectMeta: metav1.ObjectMeta{Name: "dv-provisioning", Namespace: "ns1"},
-		Spec:       corev1.PersistentVolumeClaimSpec{StorageClassName: strPtr("ocs-storagecluster-ceph-rbd")},
+		Spec:       corev1.PersistentVolumeClaimSpec{StorageClassName: new("ocs-storagecluster-ceph-rbd")},
 	}
 	if err := cl.Create(context.Background(), pvc); err != nil {
 		t.Fatalf("Failed to create PVC for phase 2: %v", err)

@@ -30,8 +30,9 @@ func keyFor(name, namespace string) types.NamespacedName {
 	return types.NamespacedName{Name: name, Namespace: namespace}
 }
 
+//go:fix inline
 func strategyPtr(s kubevirtv1.VirtualMachineRunStrategy) *kubevirtv1.VirtualMachineRunStrategy {
-	return &s
+	return new(s)
 }
 
 func newVM(name, namespace string, strategy *kubevirtv1.VirtualMachineRunStrategy) *kubevirtv1.VirtualMachine {

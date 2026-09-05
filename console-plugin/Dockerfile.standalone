@@ -6,7 +6,7 @@ COPY console-plugin/ /usr/src/app/console-plugin/
 WORKDIR /usr/src/app/console-plugin
 RUN yarn install --immutable && yarn console-standalone
 
-FROM golang:1.25 AS go-build
+FROM golang:1.26 AS go-build
 WORKDIR /usr/src/app
 COPY go.mod go.sum ./
 RUN go mod download

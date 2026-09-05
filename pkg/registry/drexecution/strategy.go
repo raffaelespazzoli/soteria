@@ -29,7 +29,6 @@ import (
 	"k8s.io/apiserver/pkg/registry/rest"
 	"k8s.io/apiserver/pkg/storage"
 	"k8s.io/apiserver/pkg/storage/names"
-	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	soteriainstall "github.com/soteria-project/soteria/pkg/apis/soteria.io/install"
@@ -111,8 +110,8 @@ func setOwnerReference(ctx context.Context, exec *soteriav1alpha1.DRExecution) {
 			Kind:               "DRPlan",
 			Name:               plan.Name,
 			UID:                plan.UID,
-			Controller:         ptr.To(true),
-			BlockOwnerDeletion: ptr.To(true),
+			Controller:         new(true),
+			BlockOwnerDeletion: new(true),
 		},
 	}
 }

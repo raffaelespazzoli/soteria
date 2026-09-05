@@ -66,7 +66,7 @@ func makeVR(
 			VolumeReplicationClass: class,
 			ReplicationState:       state,
 			DataSource: corev1.TypedLocalObjectReference{
-				APIGroup: ptrString("v1"),
+				APIGroup: new("v1"),
 				Kind:     "PersistentVolumeClaim",
 				Name:     "test-pvc",
 			},
@@ -97,7 +97,8 @@ func makeVGR(
 	}
 }
 
-func ptrString(s string) *string { return &s }
+//go:fix inline
+func ptrString(s string) *string { return new(s) }
 
 func findCondition(
 	conditions []metav1.Condition,

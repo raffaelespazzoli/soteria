@@ -28,7 +28,6 @@ import (
 	"sort"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/utils/ptr"
 
 	soteriav1alpha1 "github.com/soteria-project/soteria/pkg/apis/soteria.io/v1alpha1"
 	"github.com/soteria-project/soteria/pkg/engine"
@@ -56,7 +55,7 @@ type CompositionInput struct {
 // are collected as warnings rather than errors.
 func ComposeReport(input CompositionInput, now metav1.Time) *soteriav1alpha1.PreflightReport {
 	report := &soteriav1alpha1.PreflightReport{
-		GeneratedAt: ptr.To(now),
+		GeneratedAt: new(now),
 	}
 
 	if input.Plan != nil {

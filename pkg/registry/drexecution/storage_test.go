@@ -388,8 +388,8 @@ func collectStrings(v reflect.Value, out *[]string) {
 			*out = append(*out, s)
 		}
 	case reflect.Struct:
-		for i := 0; i < v.NumField(); i++ {
-			collectStrings(v.Field(i), out)
+		for _, field := range v.Fields() {
+			collectStrings(field, out)
 		}
 	case reflect.Slice:
 		for i := 0; i < v.Len(); i++ {
