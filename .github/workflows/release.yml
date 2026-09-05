@@ -200,6 +200,7 @@ jobs:
         run: |
           helm template soteria charts/soteria \
             --set site.name=validation \
+            --set scylladb.localDC=validation \
             --set controller.image.tag="${{ needs.validate.outputs.version }}" \
             > /dev/null
 

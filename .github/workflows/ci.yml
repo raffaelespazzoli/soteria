@@ -112,6 +112,16 @@ jobs:
           go-version-file: go.mod
       - uses: azure/setup-helm@v4
 
+      - name: Lint chart
+        run: helm lint charts/soteria
+
+      - name: Template chart (dry-run validation)
+        run: |
+          helm template soteria charts/soteria \
+            --set site.name=validation \
+            --set scylladb.localDC=validation \
+            > /dev/null
+
       - name: Install Kind
         run: |
           curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-$(go env GOARCH)

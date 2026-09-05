@@ -148,7 +148,7 @@ integration-scylladb: setup-envtest ## Run ScyllaDB integration tests (Docker/Po
 .PHONY: helm-lint
 helm-lint: ## Lint the Helm chart (quick, no cluster needed).
 	helm lint charts/$(OPERATOR_NAME)
-	helm template $(OPERATOR_NAME) charts/$(OPERATOR_NAME) --set site.name=lint > /dev/null
+	helm template $(OPERATOR_NAME) charts/$(OPERATOR_NAME) --set site.name=lint --set scylladb.localDC=lint > /dev/null
 
 HELM_SMOKE_CLUSTER ?= soteria-helm-test
 .PHONY: helmchart-test
