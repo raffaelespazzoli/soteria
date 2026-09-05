@@ -1,6 +1,6 @@
 # Story 16.7: Multi-Cluster Install Script
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -42,38 +42,38 @@ Then it has a shebang line, is executable, and contains usage documentation
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create script skeleton (AC: 1, 6)
-  - [ ] 1.1: Create `scripts/install-soteria.sh` with `#!/usr/bin/env bash`, `set -euo pipefail`
-  - [ ] 1.2: Implement `usage()` function displaying all flags and descriptions
-  - [ ] 1.3: Implement flag parsing for `--east-context`, `--west-context`, `--networking`, `--ui-mode`, `--values-file`, `--chart`, `--uninstall`, `--namespace`
-  - [ ] 1.4: Make script executable (`chmod +x`)
-- [ ] Task 2: Implement prerequisite validation (AC: 5)
-  - [ ] 2.1: Check for `helm` and `kubectl` commands
-  - [ ] 2.2: Verify cluster reachability via `kubectl cluster-info` for both contexts
-  - [ ] 2.3: Check `cert-manager.io` CRDs on both clusters (`certificates.cert-manager.io`)
-  - [ ] 2.4: Check `scylla-operator` CRDs when `scylladb.mode=managed` (`scyllaclusters.scylla.scylladb.com`)
-  - [ ] 2.5: Check Submariner MCS CRDs when `--networking=submariner` (`serviceexports.multicluster.x-k8s.io`)
-- [ ] Task 3: Implement seed cluster install (AC: 2, 4)
-  - [ ] 3.1: Run `helm upgrade --install` on east context (seed cluster) with values file
-  - [ ] 3.2: Set `--set site.name=<east-context>,site.role=seed`
-  - [ ] 3.3: Wait for controller Deployment rollout (`kubectl rollout status --timeout=300s`)
-- [ ] Task 4: Implement CA Secret copy (AC: 2)
-  - [ ] 4.1: Wait for CA cert Secret to be ready on seed cluster (poll `soteria-ca-secret` up to 5 minutes)
-  - [ ] 4.2: Export Secret JSON, strip metadata (resourceVersion, uid, creationTimestamp, managedFields)
-  - [ ] 4.3: Apply Secret to joining cluster namespace with `--server-side --force-conflicts`
-- [ ] Task 5: Implement joining cluster install (AC: 2, 4)
-  - [ ] 5.1: Run `helm upgrade --install` on west context (joining cluster)
-  - [ ] 5.2: Set `--set site.name=<west-context>,site.role=joining,scylladb.managed.externalSeeds[0]=<seed-scylladb-service-dns>`
-  - [ ] 5.3: Wait for controller Deployment rollout
-- [ ] Task 6: Implement uninstall (AC: 3)
-  - [ ] 6.1: Run `helm uninstall` on joining cluster first
-  - [ ] 6.2: Run `helm uninstall` on seed cluster second
-  - [ ] 6.3: Optionally clean up CA Secret and namespace
-- [ ] Task 7: Implement idempotency (AC: 4)
-  - [ ] 7.1: Use `helm upgrade --install` (not plain `helm install`) for all install commands
-  - [ ] 7.2: Use `kubectl apply --server-side --force-conflicts` for Secret copy
-- [ ] Task 8: Add integration/dry-run mode (AC: 4)
-  - [ ] 8.1: Add `--dry-run` flag that prints all helm/kubectl commands without executing
+- [x] Task 1: Create script skeleton (AC: 1, 6)
+  - [x] 1.1: Create `scripts/install-soteria.sh` with `#!/usr/bin/env bash`, `set -euo pipefail`
+  - [x] 1.2: Implement `usage()` function displaying all flags and descriptions
+  - [x] 1.3: Implement flag parsing for `--east-context`, `--west-context`, `--networking`, `--ui-mode`, `--values-file`, `--chart`, `--uninstall`, `--namespace`
+  - [x] 1.4: Make script executable (`chmod +x`)
+- [x] Task 2: Implement prerequisite validation (AC: 5)
+  - [x] 2.1: Check for `helm` and `kubectl` commands
+  - [x] 2.2: Verify cluster reachability via `kubectl cluster-info` for both contexts
+  - [x] 2.3: Check `cert-manager.io` CRDs on both clusters (`certificates.cert-manager.io`)
+  - [x] 2.4: Check `scylla-operator` CRDs when `scylladb.mode=managed` (`scyllaclusters.scylla.scylladb.com`)
+  - [x] 2.5: Check Submariner MCS CRDs when `--networking=submariner` (`serviceexports.multicluster.x-k8s.io`)
+- [x] Task 3: Implement seed cluster install (AC: 2, 4)
+  - [x] 3.1: Run `helm upgrade --install` on east context (seed cluster) with values file
+  - [x] 3.2: Set `--set site.name=<east-context>,site.role=seed`
+  - [x] 3.3: Wait for controller Deployment rollout (`kubectl rollout status --timeout=300s`)
+- [x] Task 4: Implement CA Secret copy (AC: 2)
+  - [x] 4.1: Wait for CA cert Secret to be ready on seed cluster (poll `soteria-ca-secret` up to 5 minutes)
+  - [x] 4.2: Export Secret JSON, strip metadata (resourceVersion, uid, creationTimestamp, managedFields)
+  - [x] 4.3: Apply Secret to joining cluster namespace with `--server-side --force-conflicts`
+- [x] Task 5: Implement joining cluster install (AC: 2, 4)
+  - [x] 5.1: Run `helm upgrade --install` on west context (joining cluster)
+  - [x] 5.2: Set `--set site.name=<west-context>,site.role=joining,scylladb.managed.externalSeeds[0]=<seed-scylladb-service-dns>`
+  - [x] 5.3: Wait for controller Deployment rollout
+- [x] Task 6: Implement uninstall (AC: 3)
+  - [x] 6.1: Run `helm uninstall` on joining cluster first
+  - [x] 6.2: Run `helm uninstall` on seed cluster second
+  - [x] 6.3: Optionally clean up CA Secret and namespace
+- [x] Task 7: Implement idempotency (AC: 4)
+  - [x] 7.1: Use `helm upgrade --install` (not plain `helm install`) for all install commands
+  - [x] 7.2: Use `kubectl apply --server-side --force-conflicts` for Secret copy
+- [x] Task 8: Add integration/dry-run mode (AC: 4)
+  - [x] 8.1: Add `--dry-run` flag that prints all helm/kubectl commands without executing
 
 ## Dev Notes
 
@@ -155,9 +155,24 @@ done
 ## Dev Agent Record
 
 ### Agent Model Used
+Claude Opus 4.6
 
 ### Debug Log References
 
 ### Completion Notes List
+- Created `scripts/install-soteria.sh` — 350+ line multi-cluster install/uninstall script
+- Implements full two-cluster Helm deployment: seed install → CA wait → CA copy → joining install
+- Follows patterns from `hack/stretched-local-test.sh` and `hack/multisite/setup-scylladb.sh`
+- Prerequisite checks: helm, kubectl, jq, cluster reachability, cert-manager CRDs, scylla-operator CRDs, Submariner MCS CRDs
+- Idempotent via `helm upgrade --install` and `kubectl apply --server-side --force-conflicts`
+- Uninstall in reverse order: joining cluster → seed cluster → CA cleanup
+- `--dry-run` flag prints all commands without executing
+- All acceptance criteria satisfied (AC1-AC6)
+- Validated: bash syntax check, --help output, --dry-run install/uninstall, missing flags error, invalid enum error
+- All existing Go tests pass (no regressions)
 
 ### File List
+| File | Action |
+|------|--------|
+| `scripts/install-soteria.sh` | NEW |
+| `_bmad-output/implementation-artifacts/16-7-install-script.md` | MODIFIED |
