@@ -1,0 +1,17 @@
+{{- if eq .Values.ui.mode "console-plugin" }}
+apiVersion: console.openshift.io/v1
+kind: ConsolePlugin
+metadata:
+  name: soteria-console-plugin
+  labels:
+    {{- include "soteria.labels" . | nindent 4 }}
+    app.kubernetes.io/component: console-plugin
+spec:
+  displayName: "Soteria DR Management"
+  backend:
+    type: Service
+    service:
+      name: {{ include "soteria.fullname" . }}-console-plugin
+      namespace: {{ .Release.Namespace }}
+      port: 9443
+{{- end }}

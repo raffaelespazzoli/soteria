@@ -1,0 +1,21 @@
+{{- if eq .Values.ui.mode "console-plugin" }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "soteria.fullname" . }}-console-plugin-nginx
+  labels:
+    {{- include "soteria.labels" . | nindent 4 }}
+    app.kubernetes.io/component: console-plugin
+data:
+  tls.conf: |
+    server {
+        listen 9443 ssl;
+        ssl_certificate /var/serving-cert/tls.crt;
+        ssl_certificate_key /var/serving-cert/tls.key;
+        root /opt/app-root/src;
+
+        location / {
+            try_files $uri $uri/ =404;
+        }
+    }
+{{- end }}

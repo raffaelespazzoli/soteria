@@ -1,6 +1,6 @@
 # Story 16.5: Console Plugin Templates
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -37,25 +37,25 @@ Then no console plugin Deployment, Service, ConsolePlugin CR, or Certificate is 
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create console plugin Deployment template (AC: 1, 5)
-  - [ ] 1.1: Create `templates/console-plugin/deployment.yaml` guarded by `{{- if eq .Values.ui.mode "console-plugin" }}`
-  - [ ] 1.2: Wire image from `ui.consolePlugin.image.repository` and `ui.consolePlugin.image.tag`
-  - [ ] 1.3: Set container port 9443 (HTTPS), mount serving cert volume and nginx TLS config volume
-  - [ ] 1.4: Add liveness/readiness probes against `/plugin-manifest.json` on HTTPS port 9443
-  - [ ] 1.5: Set resource limits (requests: cpu 10m, mem 50Mi; limits: mem 100Mi — matching existing manifest)
-- [ ] Task 2: Create nginx TLS ConfigMap template (AC: 1)
-  - [ ] 2.1: Create `templates/console-plugin/configmap-nginx.yaml` with nginx `tls.conf` listening on 9443 with cert paths (mirror `hack/overlays/base/console-plugin.yaml` ConfigMap)
-- [ ] Task 3: Create console plugin Service template (AC: 2, 5)
-  - [ ] 3.1: Create `templates/console-plugin/service.yaml` with HTTPS on port 9443, selector matching console plugin pods
-- [ ] Task 4: Create ConsolePlugin CR template (AC: 3, 5)
-  - [ ] 4.1: Create `templates/console-plugin/consoleplugin.yaml` with `console.openshift.io/v1` API, referencing the console plugin Service at port 9443
-  - [ ] 4.2: Set `displayName: "Soteria DR Management"` (matching `console-plugin/package.json` consolePlugin.displayName)
-- [ ] Task 5: Create console plugin Certificate template (AC: 4, 5)
-  - [ ] 5.1: Create `templates/console-plugin/certificate.yaml` referencing `tls.issuerRef`, with DNS names for the console plugin Service
-- [ ] Task 6: Verify rendering (AC: 1–5)
-  - [ ] 6.1: Run `helm template` with `ui.mode=console-plugin` — verify all 5 resources render
-  - [ ] 6.2: Run `helm template` with `ui.mode=standalone` — verify no console plugin resources
-  - [ ] 6.3: Run `helm template` with `ui.mode=none` — verify no console plugin resources
+- [x] Task 1: Create console plugin Deployment template (AC: 1, 5)
+  - [x] 1.1: Create `templates/console-plugin/deployment.yaml` guarded by `{{- if eq .Values.ui.mode "console-plugin" }}`
+  - [x] 1.2: Wire image from `ui.consolePlugin.image.repository` and `ui.consolePlugin.image.tag`
+  - [x] 1.3: Set container port 9443 (HTTPS), mount serving cert volume and nginx TLS config volume
+  - [x] 1.4: Add liveness/readiness probes against `/plugin-manifest.json` on HTTPS port 9443
+  - [x] 1.5: Set resource limits (requests: cpu 10m, mem 50Mi; limits: mem 100Mi — matching existing manifest)
+- [x] Task 2: Create nginx TLS ConfigMap template (AC: 1)
+  - [x] 2.1: Create `templates/console-plugin/configmap-nginx.yaml` with nginx `tls.conf` listening on 9443 with cert paths (mirror `hack/overlays/base/console-plugin.yaml` ConfigMap)
+- [x] Task 3: Create console plugin Service template (AC: 2, 5)
+  - [x] 3.1: Create `templates/console-plugin/service.yaml` with HTTPS on port 9443, selector matching console plugin pods
+- [x] Task 4: Create ConsolePlugin CR template (AC: 3, 5)
+  - [x] 4.1: Create `templates/console-plugin/consoleplugin.yaml` with `console.openshift.io/v1` API, referencing the console plugin Service at port 9443
+  - [x] 4.2: Set `displayName: "Soteria DR Management"` (matching `console-plugin/package.json` consolePlugin.displayName)
+- [x] Task 5: Create console plugin Certificate template (AC: 4, 5)
+  - [x] 5.1: Create `templates/console-plugin/certificate.yaml` referencing `tls.issuerRef`, with DNS names for the console plugin Service
+- [x] Task 6: Verify rendering (AC: 1–5)
+  - [x] 6.1: Run `helm template` with `ui.mode=console-plugin` — verify all 5 resources render
+  - [x] 6.2: Run `helm template` with `ui.mode=standalone` — verify no console plugin resources
+  - [x] 6.3: Run `helm template` with `ui.mode=none` — verify no console plugin resources
 
 ## Dev Notes
 
@@ -135,9 +135,25 @@ The `console-plugin/package.json` `consolePlugin` section defines the plugin met
 ## Dev Agent Record
 
 ### Agent Model Used
+Claude Opus 4.6
 
 ### Debug Log References
+- All helm template + helm lint tests passed for modes: console-plugin, standalone, none
 
 ### Completion Notes List
+- Created 5 console plugin templates under `charts/soteria/templates/console-plugin/`
+- All templates guarded by `{{- if eq .Values.ui.mode "console-plugin" }}`
+- Deployment: nginx image from values, port 9443, liveness/readiness probes, serving-cert + nginx-tls-conf volumes
+- ConfigMap: nginx TLS config mirrored from hack/overlays/base/console-plugin.yaml
+- Service: HTTPS port 9443 with component selector
+- ConsolePlugin CR: fixed name `soteria-console-plugin`, displayName from package.json
+- Certificate: cert-manager Certificate referencing tls.issuerRef with DNS SANs for the Service
+- Verified: all 5 resources render for console-plugin mode; zero resources for standalone/none modes
+- Helm lint passes in all modes
 
 ### File List
+- `charts/soteria/templates/console-plugin/deployment.yaml` (NEW)
+- `charts/soteria/templates/console-plugin/configmap-nginx.yaml` (NEW)
+- `charts/soteria/templates/console-plugin/service.yaml` (NEW)
+- `charts/soteria/templates/console-plugin/consoleplugin.yaml` (NEW)
+- `charts/soteria/templates/console-plugin/certificate.yaml` (NEW)
