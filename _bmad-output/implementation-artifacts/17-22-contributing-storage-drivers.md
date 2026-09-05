@@ -1,6 +1,6 @@
 # Story 17.22: Contributing: Writing a Storage Driver
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -42,24 +42,24 @@ Then they are directed to the fake driver, no-op driver, and CSI extension drive
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Research the StorageProvider interface (AC: 1)
-  - [ ] 1.1: Walk `pkg/drivers/interface.go` for the canonical 7-method interface definition and doc comments
-  - [ ] 1.2: Walk `pkg/drivers/errors.go` for typed error sentinels (ErrVolumeGroupNotFound, ErrInvalidTransition)
-  - [ ] 1.3: Walk `pkg/drivers/types.go` (or equivalent) for VolumeGroupSpec, VolumeGroupInfo, VolumeGroupID, ReplicationStatus, VolumeRole, ReplicationHealth
-- [ ] Task 2: Research the registration and driver framework (AC: 2, 3)
-  - [ ] 2.1: Walk `pkg/drivers/registry.go` (or equivalent) for RegisterDriver and GetDriver functions
-  - [ ] 2.2: Walk `pkg/drivers/noop/driver.go` for the init() registration pattern (registers ProvisionerName, PlanDriverName, and fallback)
-- [ ] Task 3: Research the conformance suite (AC: 4)
-  - [ ] 3.1: Walk `pkg/drivers/conformance/suite.go` for RunConformance — 4 test categories: Lifecycle, Idempotency, ContextCancellation, ErrorConditions
-  - [ ] 3.2: Document what each category validates and expected behavior
-- [ ] Task 4: Research reference implementations (AC: 6)
-  - [ ] 4.1: Walk `pkg/drivers/noop/driver.go` — minimal implementation: in-memory state, role transitions, fallback driver registration
-  - [ ] 4.2: Walk `pkg/drivers/fake/driver.go` — programmable test double: On*/Return fluent API, call recording, FIFO reaction matching
-  - [ ] 4.3: Walk `pkg/drivers/csiextension/` for CSI extension driver (production implementation pattern)
-- [ ] Task 5: Write the documentation page (AC: 1, 2, 3, 4, 5, 6)
-  - [ ] 5.1: Write `docs/contributing/storage-drivers.md` covering interface contract, step-by-step guide, registration, conformance suite, packaging, reference implementations
-  - [ ] 5.2: Add code snippets: interface implementation skeleton, init() registration, conformance suite invocation
-  - [ ] 5.3: Verify all code snippets compile against the actual interface
+- [x] Task 1: Research the StorageProvider interface (AC: 1)
+  - [x] 1.1: Walk `pkg/drivers/interface.go` for the canonical 7-method interface definition and doc comments
+  - [x] 1.2: Walk `pkg/drivers/errors.go` for typed error sentinels (ErrVolumeGroupNotFound, ErrInvalidTransition)
+  - [x] 1.3: Walk `pkg/drivers/types.go` (or equivalent) for VolumeGroupSpec, VolumeGroupInfo, VolumeGroupID, ReplicationStatus, VolumeRole, ReplicationHealth
+- [x] Task 2: Research the registration and driver framework (AC: 2, 3)
+  - [x] 2.1: Walk `pkg/drivers/registry.go` (or equivalent) for RegisterDriver and GetDriver functions
+  - [x] 2.2: Walk `pkg/drivers/noop/driver.go` for the init() registration pattern (registers ProvisionerName, PlanDriverName, and fallback)
+- [x] Task 3: Research the conformance suite (AC: 4)
+  - [x] 3.1: Walk `pkg/drivers/conformance/suite.go` for RunConformance — 4 test categories: Lifecycle, Idempotency, ContextCancellation, ErrorConditions
+  - [x] 3.2: Document what each category validates and expected behavior
+- [x] Task 4: Research reference implementations (AC: 6)
+  - [x] 4.1: Walk `pkg/drivers/noop/driver.go` — minimal implementation: in-memory state, role transitions, fallback driver registration
+  - [x] 4.2: Walk `pkg/drivers/fake/driver.go` — programmable test double: On*/Return fluent API, call recording, FIFO reaction matching
+  - [x] 4.3: Walk `pkg/drivers/csiextension/` for CSI extension driver (production implementation pattern)
+- [x] Task 5: Write the documentation page (AC: 1, 2, 3, 4, 5, 6)
+  - [x] 5.1: Write `docs/contributing/storage-drivers.md` covering interface contract, step-by-step guide, registration, conformance suite, packaging, reference implementations
+  - [x] 5.2: Add code snippets: interface implementation skeleton, init() registration, conformance suite invocation
+  - [x] 5.3: Verify all code snippets compile against the actual interface
 
 ## Dev Notes
 
@@ -157,8 +157,28 @@ Start from the PRD (`_bmad-output/planning-artifacts/prd.md`), architecture doc 
 
 ### Agent Model Used
 
+Claude Opus 4.6
+
 ### Debug Log References
+
+None — documentation-only story with no code changes.
 
 ### Completion Notes List
 
+- Researched all source files: interface.go, errors.go, types.go, registry.go, noop/driver.go, fake/driver.go, csiextension/ (driver.go, constants.go, status.go, helpers.go), conformance/suite.go
+- Wrote comprehensive 7-step guide covering: interface contract (all 7 methods with method-by-method contract), role model, key types, error handling, scaffolding, implementation skeleton, registration pattern, conformance suite walkthrough (all 4 categories), packaging as Go module, reference implementations (noop, fake, CSI extension)
+- All code snippets verified to compile against the actual interface via temporary build verification
+- All existing tests pass with no regressions
+- AC1 ✅: Complete StorageProvider interface contract with method-by-method explanation
+- AC2 ✅: Step-by-step implementation guide (Steps 1–7)
+- AC3 ✅: init() + RegisterDriver pattern with concrete code example
+- AC4 ✅: Conformance suite walkthrough with 4 test categories explained
+- AC5 ✅: Packaging guidance as separate Go module
+- AC6 ✅: Reference implementations (noop, fake, CSI extension) with explanation
+
 ### File List
+
+| File | Action |
+|------|--------|
+| docs/contributing/storage-drivers.md | MODIFIED | Replaced placeholder with comprehensive storage driver implementation guide |
+| _bmad-output/implementation-artifacts/17-22-contributing-storage-drivers.md | MODIFIED | Updated task checkboxes, status, dev agent record |
