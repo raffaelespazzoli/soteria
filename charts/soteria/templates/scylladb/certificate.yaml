@@ -1,0 +1,24 @@
+{{- if eq .Values.scylladb.mode "managed" }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: scylladb-serving
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "soteria.labels" . | nindent 4 }}
+spec:
+  secretName: scylladb-serving-tls
+  duration: 8760h  # 1 year
+  renewBefore: 720h  # 30 days
+  issuerRef:
+    name: {{ .Values.tls.issuerRef.name }}
+    kind: {{ .Values.tls.issuerRef.kind }}
+  commonName: {{ include "soteria.fullname" . }}-scylladb
+  dnsNames:
+    - "{{ include "soteria.fullname" . }}-scylladb-client.{{ .Release.Namespace }}.svc"
+    - "*.{{ include "soteria.fullname" . }}-scylladb.{{ .Release.Namespace }}.svc.cluster.local"
+    - "*.{{ include "soteria.fullname" . }}-scylladb-client.{{ .Release.Namespace }}.svc"
+  usages:
+    - server auth
+    - client auth
+{{- end }}

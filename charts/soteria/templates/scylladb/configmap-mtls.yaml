@@ -1,0 +1,23 @@
+{{- if eq .Values.scylladb.mode "managed" }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: scylla-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "soteria.labels" . | nindent 4 }}
+data:
+  scylla.yaml: |
+    server_encryption_options:
+      internode_encryption: all
+      certificate: /etc/scylla/certmanager-tls/tls.crt
+      keyfile: /etc/scylla/certmanager-tls/tls.key
+      truststore: /etc/scylla/certmanager-ca/ca-bundle.crt
+      require_client_auth: true
+    client_encryption_options:
+      enabled: true
+      certificate: /etc/scylla/certmanager-tls/tls.crt
+      keyfile: /etc/scylla/certmanager-tls/tls.key
+      truststore: /etc/scylla/combined-ca/ca-bundle.crt
+      require_client_auth: true
+{{- end }}
