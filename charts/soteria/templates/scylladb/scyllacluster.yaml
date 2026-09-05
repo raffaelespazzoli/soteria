@@ -15,6 +15,7 @@ metadata:
      The install script handles this post-install for Cilium networking mode. */}}
 spec:
   version: {{ .Values.scylladb.managed.version | quote }}
+  agentVersion: {{ .Values.scylladb.managed.agentVersion | quote }}
   developerMode: {{ .Values.scylladb.managed.developerMode }}
   exposeOptions:
     broadcastOptions:

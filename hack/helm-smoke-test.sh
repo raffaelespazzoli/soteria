@@ -51,6 +51,8 @@ TIMEOUT="${HELM_SMOKE_TIMEOUT:-15m}"
 CLEANUP="${HELM_SMOKE_CLEANUP:-1}"
 KIND="${KIND:-kind}"
 RELEASE_NAME="soteria"
+SCYLLADB_IMAGE="${SCYLLADB_IMAGE:-docker.io/scylladb/scylla:2026.1.3}"
+SCYLLADB_AGENT_IMAGE="${SCYLLADB_AGENT_IMAGE:-docker.io/scylladb/scylla-manager-agent:3.10.1}"
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -109,14 +111,25 @@ step "Building controller image (${CONTAINER_TOOL})"
 "${CONTAINER_TOOL}" build -t "${IMG}" -f "${ROOT_DIR}/Dockerfile" "${ROOT_DIR}"
 
 step "Loading image into Kind"
-if [[ "${CONTAINER_TOOL}" == "podman" ]]; then
-  _archive=$(mktemp --suffix=.tar)
-  "${CONTAINER_TOOL}" save -o "${_archive}" "${IMG}"
-  "${KIND}" load image-archive "${_archive}" --name "${CLUSTER_NAME}"
-  rm -f "${_archive}"
-else
-  "${KIND}" load docker-image "${IMG}" --name "${CLUSTER_NAME}"
-fi
+load_image() {
+  local image="$1"
+  if [[ "${CONTAINER_TOOL}" == "podman" ]]; then
+    local _archive
+    _archive=$(mktemp --suffix=.tar)
+    "${CONTAINER_TOOL}" save -o "${_archive}" "${image}"
+    "${KIND}" load image-archive "${_archive}" --name "${CLUSTER_NAME}"
+    rm -f "${_archive}"
+  else
+    "${KIND}" load docker-image "${image}" --name "${CLUSTER_NAME}"
+  fi
+}
+load_image "${IMG}"
+
+step "Pre-pulling ScyllaDB images"
+"${CONTAINER_TOOL}" pull "${SCYLLADB_IMAGE}"
+"${CONTAINER_TOOL}" pull "${SCYLLADB_AGENT_IMAGE}"
+load_image "${SCYLLADB_IMAGE}"
+load_image "${SCYLLADB_AGENT_IMAGE}"
 
 # ---------------------------------------------------------------------------
 # 3. Install cert-manager
@@ -261,6 +274,21 @@ for i in $(seq 1 180); do
     warn "ScyllaCluster status:"
     k -n "${NAMESPACE}" describe scyllaclusters.scylla.scylladb.com \
       "${RELEASE_NAME}-scylladb" 2>/dev/null || true
+    warn "Pod status:"
+    k -n "${NAMESPACE}" get pods -o wide 2>/dev/null || true
+    warn "ScyllaDB pod details:"
+    k -n "${NAMESPACE}" describe pods \
+      -l "scylla/cluster=${RELEASE_NAME}-scylladb" 2>/dev/null || true
+    warn "ScyllaDB pod logs (main):"
+    k -n "${NAMESPACE}" logs \
+      -l "scylla/cluster=${RELEASE_NAME}-scylladb" \
+      -c scylla --tail=50 2>/dev/null || true
+    warn "ScyllaDB pod logs (agent):"
+    k -n "${NAMESPACE}" logs \
+      -l "scylla/cluster=${RELEASE_NAME}-scylladb" \
+      -c scylla-manager-agent --tail=50 2>/dev/null || true
+    warn "Namespace events:"
+    k -n "${NAMESPACE}" get events --sort-by='.lastTimestamp' 2>/dev/null | tail -30 || true
     fatal "ScyllaCluster did not become ready within 15 minutes"
   fi
   if (( i % 30 == 0 )); then
