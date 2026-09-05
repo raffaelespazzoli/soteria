@@ -4,7 +4,7 @@
 
 Soteria is an open-source, Kubernetes-native DR orchestrator that unifies failover, failback, and reprotect workflows across heterogeneous storage backends — ODF, Dell, Pure Storage, NetApp — through a single, consistent workflow engine. Platform engineers define DR plans using standard Kubernetes labels and CRDs; the orchestrator handles volume promotion, VM startup sequencing, wave-based throttling, and a full audit trail.
 
-![Dashboard](docs/screenshots/dashboard.png)
+![DR Lifecycle](docs/screenshots/plan-detail.png)
 
 > **📖 Full documentation:** [soteria-project.github.io/soteria/docs](https://soteria-project.github.io/soteria/docs/)
 
