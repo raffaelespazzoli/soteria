@@ -15,6 +15,7 @@ site:
 
 scylladb:
   localDC: ci
+  dcReplication: "ci:1"
   managed:
     members: 1
     developerMode: true

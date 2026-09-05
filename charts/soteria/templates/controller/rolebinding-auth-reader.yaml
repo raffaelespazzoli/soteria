@@ -1,0 +1,19 @@
+{{- /*
+RoleBinding — grants the controller access to the extension-apiserver-authentication
+ConfigMap in kube-system. Required by all Kubernetes aggregated API servers.
+*/ -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ printf "%s-apiserver-auth-reader" (include "soteria.fullname" .) | trunc 63 | trimSuffix "-" }}
+  namespace: kube-system
+  labels:
+    {{- include "soteria.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "soteria.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}

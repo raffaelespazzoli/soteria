@@ -1,0 +1,19 @@
+{{- /*
+ClusterRoleBinding — allows the controller to delegate authentication and
+authorization decisions to the kube-apiserver. Required by all Kubernetes
+aggregated API servers.
+*/ -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ printf "%s-apiserver-auth-delegator" (include "soteria.fullname" .) | trunc 63 | trimSuffix "-" }}
+  labels:
+    {{- include "soteria.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "soteria.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
