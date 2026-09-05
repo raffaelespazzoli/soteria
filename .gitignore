@@ -43,6 +43,7 @@ graphify-out/
 
 # Build outputs
 console-plugin/dist-standalone/
+site/
 
 # AI agent skills and cursor artifacts
 .agents/
