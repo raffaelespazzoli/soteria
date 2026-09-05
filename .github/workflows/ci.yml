@@ -54,10 +54,13 @@ jobs:
       - name: Increase inotify limits
         run: sudo sysctl -w fs.inotify.max_user_instances=1024
 
-      - name: Run integration tests
+      - name: Run integration tests (envtest)
+        run: make integration-envtest
+
+      - name: Run integration tests (ScyllaDB)
         env:
           DOCKER_HOST: unix:///var/run/docker.sock
-        run: make integration
+        run: make integration-scylladb
 
   # ── Build all container images (no push) ────────────────────────────────
   build-images:

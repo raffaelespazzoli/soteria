@@ -88,6 +88,13 @@ command -v "${KIND}"  >/dev/null 2>&1 || fatal "kind not found — install from 
 command -v helm       >/dev/null 2>&1 || fatal "helm not found"
 command -v kubectl    >/dev/null 2>&1 || fatal "kubectl not found"
 command -v "${CONTAINER_TOOL}" >/dev/null 2>&1 || fatal "${CONTAINER_TOOL} not found"
+
+INOTIFY_MIN=1024
+current_inotify=$(cat /proc/sys/fs/inotify/max_user_instances 2>/dev/null || echo 0)
+if [[ "${current_inotify}" -lt "${INOTIFY_MIN}" ]]; then
+  fatal "fs.inotify.max_user_instances is ${current_inotify} (need >= ${INOTIFY_MIN}). Run: sudo sysctl -w fs.inotify.max_user_instances=${INOTIFY_MIN}"
+fi
+
 info "Using container tool: ${CONTAINER_TOOL}"
 info "Controller image:     ${IMG}"
 

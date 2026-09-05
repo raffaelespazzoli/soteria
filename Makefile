@@ -112,8 +112,28 @@ lint-config: golangci-lint ## Verify golangci-lint linter configuration
 	"$(GOLANGCI_LINT)" config verify
 
 INOTIFY_MIN := 1024
+
+# Packages that only need envtest (no Docker/Podman).
+INTEGRATION_ENVTEST_PKGS := ./test/integration/controller/... ./test/integration/rbac/... ./test/integration/admission/...
+# Packages that need a real ScyllaDB via testcontainers (Docker/Podman required).
+INTEGRATION_SCYLLADB_PKGS := ./test/integration/apiserver/... ./test/integration/storage/... ./test/integration/replication/...
+
 .PHONY: integration
-integration: setup-envtest ## Run integration tests (envtest for controller, ScyllaDB for API server).
+integration: integration-envtest integration-scylladb ## Run all integration tests.
+
+.PHONY: integration-envtest
+integration-envtest: setup-envtest ## Run envtest-based integration tests (no Docker required).
+	@current=$$(cat /proc/sys/fs/inotify/max_user_instances 2>/dev/null || echo 0); \
+	if [ "$$current" -lt "$(INOTIFY_MIN)" ]; then \
+		echo "ERROR: fs.inotify.max_user_instances is $$current (need >= $(INOTIFY_MIN))"; \
+		echo "Run: sudo sysctl -w fs.inotify.max_user_instances=$(INOTIFY_MIN)"; \
+		exit 1; \
+	fi
+	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
+	go test -tags=integration -p 1 $(INTEGRATION_ENVTEST_PKGS) -v -count=1 -timeout 10m
+
+.PHONY: integration-scylladb
+integration-scylladb: setup-envtest ## Run ScyllaDB integration tests (Docker/Podman required).
 	@current=$$(cat /proc/sys/fs/inotify/max_user_instances 2>/dev/null || echo 0); \
 	if [ "$$current" -lt "$(INOTIFY_MIN)" ]; then \
 		echo "ERROR: fs.inotify.max_user_instances is $$current (need >= $(INOTIFY_MIN))"; \
@@ -123,7 +143,7 @@ integration: setup-envtest ## Run integration tests (envtest for controller, Scy
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
 	DOCKER_HOST="$${DOCKER_HOST:-unix:///run/user/$$(id -u)/podman/podman.sock}" \
 	TESTCONTAINERS_RYUK_DISABLED=true \
-	go test -tags=integration -p 1 ./test/integration/... -v -count=1 -timeout 20m
+	go test -tags=integration -p 1 $(INTEGRATION_SCYLLADB_PKGS) -v -count=1 -timeout 20m
 
 .PHONY: helm-lint
 helm-lint: ## Lint the Helm chart (quick, no cluster needed).
