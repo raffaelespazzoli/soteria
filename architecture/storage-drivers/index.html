@@ -1,0 +1,2591 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Open-source, Kubernetes-native disaster recovery orchestrator for OpenShift Virtualization.">
+      
+      
+      
+        <link rel="canonical" href="https://raffaelespazzoli.github.io/soteria/architecture/storage-drivers/">
+      
+      
+        <link rel="prev" href="../dr-lifecycle/">
+      
+      
+        <link rel="next" href="../../usage/creating-a-drplan/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Storage Drivers - Soteria</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#storage-drivers" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Soteria" class="md-header__button md-logo" aria-label="Soteria" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Soteria
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Storage Drivers
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/raffaelespazzoli/soteria" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    raffaelespazzoli/soteria
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Soteria" class="md-nav__button md-logo" aria-label="Soteria" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Soteria
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/raffaelespazzoli/soteria" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    raffaelespazzoli/soteria
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Installation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/prerequisites/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prerequisites
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_2" id="__nav_2_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ScyllaDB & Network
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    ScyllaDB & Network
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/scylladb/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/scylladb/submariner/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Submariner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/scylladb/cilium/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cilium Cluster Mesh
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/helm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Helm Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dr-lifecycle/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DR Lifecycle
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage Drivers
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage Drivers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#storageprovider-interface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        StorageProvider Interface
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="StorageProvider Interface">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#method-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Method Reference
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#error-contracts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error Contracts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#supporting-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Supporting Types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#idempotency-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Idempotency Contract
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#replication-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Replication Model
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Replication Model">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#volume-roles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Volume Roles
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#transition-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Transition Rules
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#resyncvolume" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ResyncVolume
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#replication-health" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Replication Health
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#driver-lifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Driver Lifecycle
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Driver Lifecycle">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#registration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Registration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driver-selection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Driver Selection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fallback-driver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fallback Driver
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#registry-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Registry API
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reference-implementations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reference Implementations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Reference Implementations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#no-op-driver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No-Op Driver
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#csi-extension-driver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CSI Extension Driver
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#conformance-suite" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Conformance Suite
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Conformance Suite">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#test-groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test Groups
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#running-the-suite" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running the Suite
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#package-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Package Layout
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#architectural-boundaries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architectural Boundaries
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Usage
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/creating-a-drplan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Creating a DRPlan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/waves/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Waves & Throttling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/volumes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Volume Grouping
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/failover/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Executing Failover
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_5" id="__nav_4_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    UI Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    UI Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/ui-guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/ui-guide/plan-detail/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plan Detail
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/ui-guide/execution-monitor/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Execution Monitor
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_1" id="__nav_5_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/api/drplan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DRPlan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/api/drexecution/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DRExecution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/helm-values/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Helm Values
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contributing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/dev-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/storage-drivers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Writing Storage Drivers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#storageprovider-interface" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        StorageProvider Interface
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="StorageProvider Interface">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#method-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Method Reference
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#error-contracts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error Contracts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#supporting-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Supporting Types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#idempotency-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Idempotency Contract
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#replication-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Replication Model
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Replication Model">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#volume-roles" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Volume Roles
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#transition-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Transition Rules
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#resyncvolume" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ResyncVolume
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#replication-health" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Replication Health
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#driver-lifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Driver Lifecycle
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Driver Lifecycle">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#registration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Registration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driver-selection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Driver Selection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fallback-driver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fallback Driver
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#registry-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Registry API
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reference-implementations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reference Implementations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Reference Implementations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#no-op-driver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        No-Op Driver
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#csi-extension-driver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CSI Extension Driver
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#conformance-suite" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Conformance Suite
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Conformance Suite">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#test-groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Test Groups
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#running-the-suite" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Running the Suite
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#package-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Package Layout
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#architectural-boundaries" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architectural Boundaries
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="storage-drivers">Storage Drivers<a class="headerlink" href="#storage-drivers" title="Permanent link">&para;</a></h1>
+<p>Soteria abstracts storage-level replication behind the <strong>StorageProvider</strong> interface — a 7-method contract that every storage driver must implement. The orchestrator treats storage as a pluggable backend: the workflow engine calls interface methods without knowing whether the underlying storage is Dell PowerStore, Red Hat ODF, or a no-op stub for CI pipelines.</p>
+<p>This page covers the interface contract, the replication model, driver lifecycle, the two built-in implementations, and the conformance test suite that all drivers must pass.</p>
+<div class="admonition info">
+<p class="admonition-title">Implementation Guide</p>
+<p>This page is the <strong>architecture overview</strong>. For a step-by-step guide to writing a new driver, see <a href="../../contributing/storage-drivers/">Writing Storage Drivers</a>.</p>
+</div>
+<hr />
+<h2 id="storageprovider-interface">StorageProvider Interface<a class="headerlink" href="#storageprovider-interface" title="Permanent link">&para;</a></h2>
+<p>The <code>StorageProvider</code> interface is defined in <a href="https://github.com/soteria-project/soteria/blob/main/pkg/drivers/interface.go"><code>pkg/drivers/interface.go</code></a>. It consists of exactly <strong>7 methods</strong> that map to the volume group lifecycle and replication role transitions.</p>
+<div class="language-go highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kd">type</span><span class="w"> </span><span class="nx">StorageProvider</span><span class="w"> </span><span class="kd">interface</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">    </span><span class="nx">CreateVolumeGroup</span><span class="p">(</span><span class="nx">ctx</span><span class="w"> </span><span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span><span class="w"> </span><span class="nx">spec</span><span class="w"> </span><span class="nx">VolumeGroupSpec</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nx">VolumeGroupInfo</span><span class="p">,</span><span class="w"> </span><span class="kt">error</span><span class="p">)</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nx">DeleteVolumeGroup</span><span class="p">(</span><span class="nx">ctx</span><span class="w"> </span><span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span><span class="w"> </span><span class="nx">id</span><span class="w"> </span><span class="nx">VolumeGroupID</span><span class="p">)</span><span class="w"> </span><span class="kt">error</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nx">GetVolumeGroup</span><span class="p">(</span><span class="nx">ctx</span><span class="w"> </span><span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span><span class="w"> </span><span class="nx">id</span><span class="w"> </span><span class="nx">VolumeGroupID</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nx">VolumeGroupInfo</span><span class="p">,</span><span class="w"> </span><span class="kt">error</span><span class="p">)</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="nx">SetSource</span><span class="p">(</span><span class="nx">ctx</span><span class="w"> </span><span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span><span class="w"> </span><span class="nx">id</span><span class="w"> </span><span class="nx">VolumeGroupID</span><span class="p">)</span><span class="w"> </span><span class="kt">error</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="nx">StopReplication</span><span class="p">(</span><span class="nx">ctx</span><span class="w"> </span><span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span><span class="w"> </span><span class="nx">id</span><span class="w"> </span><span class="nx">VolumeGroupID</span><span class="p">)</span><span class="w"> </span><span class="kt">error</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span><span class="nx">ResyncVolume</span><span class="p">(</span><span class="nx">ctx</span><span class="w"> </span><span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span><span class="w"> </span><span class="nx">id</span><span class="w"> </span><span class="nx">VolumeGroupID</span><span class="p">)</span><span class="w"> </span><span class="kt">error</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="nx">GetReplicationStatus</span><span class="p">(</span><span class="nx">ctx</span><span class="w"> </span><span class="nx">context</span><span class="p">.</span><span class="nx">Context</span><span class="p">,</span><span class="w"> </span><span class="nx">id</span><span class="w"> </span><span class="nx">VolumeGroupID</span><span class="p">)</span><span class="w"> </span><span class="p">(</span><span class="nx">ReplicationStatus</span><span class="p">,</span><span class="w"> </span><span class="kt">error</span><span class="p">)</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="p">}</span>
+</span></code></pre></div>
+<h3 id="method-reference">Method Reference<a class="headerlink" href="#method-reference" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Parameters</th>
+<th>Returns</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CreateVolumeGroup</code></td>
+<td><code>ctx context.Context</code>, <code>spec VolumeGroupSpec</code></td>
+<td><code>VolumeGroupInfo, error</code></td>
+<td>Creates a volume group containing the specified PVCs. Idempotent: returns existing group info if a group with the same name and namespace already exists.</td>
+</tr>
+<tr>
+<td><code>DeleteVolumeGroup</code></td>
+<td><code>ctx context.Context</code>, <code>id VolumeGroupID</code></td>
+<td><code>error</code></td>
+<td>Removes a volume group and releases its resources. The underlying PVCs are not deleted — only the grouping is removed. Idempotent: returns <code>nil</code> if the group does not exist.</td>
+</tr>
+<tr>
+<td><code>GetVolumeGroup</code></td>
+<td><code>ctx context.Context</code>, <code>id VolumeGroupID</code></td>
+<td><code>VolumeGroupInfo, error</code></td>
+<td>Retrieves metadata for an existing volume group. Returns <code>ErrVolumeGroupNotFound</code> if not found.</td>
+</tr>
+<tr>
+<td><code>SetSource</code></td>
+<td><code>ctx context.Context</code>, <code>id VolumeGroupID</code></td>
+<td><code>error</code></td>
+<td>Transitions a volume group to the <strong>Source</strong> role (replication origin, read-write). Valid from <code>NonReplicated</code>; returns <code>ErrInvalidTransition</code> from <code>Target</code>. Idempotent: returns <code>nil</code> if already <code>Source</code>.</td>
+</tr>
+<tr>
+<td><code>StopReplication</code></td>
+<td><code>ctx context.Context</code>, <code>id VolumeGroupID</code></td>
+<td><code>error</code></td>
+<td>Transitions a volume group from <code>Source</code> or <code>Target</code> back to <code>NonReplicated</code>. Idempotent: returns <code>nil</code> if already <code>NonReplicated</code>.</td>
+</tr>
+<tr>
+<td><code>ResyncVolume</code></td>
+<td><code>ctx context.Context</code>, <code>id VolumeGroupID</code></td>
+<td><code>error</code></td>
+<td>Requests storage-layer data synchronization on the secondary site before a planned failover promotion. Does not change the engine's role model. Idempotent: returns <code>nil</code> if already in resync state.</td>
+</tr>
+<tr>
+<td><code>GetReplicationStatus</code></td>
+<td><code>ctx context.Context</code>, <code>id VolumeGroupID</code></td>
+<td><code>ReplicationStatus, error</code></td>
+<td>Returns the current replication role and health for a volume group. The engine polls this method to assess readiness before failover.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="error-contracts">Error Contracts<a class="headerlink" href="#error-contracts" title="Permanent link">&para;</a></h3>
+<p>Drivers must return typed sentinel errors defined in <a href="https://github.com/soteria-project/soteria/blob/main/pkg/drivers/errors.go"><code>pkg/drivers/errors.go</code></a> so the workflow engine can branch on error type via <code>errors.Is</code> without coupling to driver internals:</p>
+<table>
+<thead>
+<tr>
+<th>Error</th>
+<th>When Returned</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ErrVolumeNotFound</code></td>
+<td>Operation on a volume that does not exist</td>
+</tr>
+<tr>
+<td><code>ErrVolumeGroupNotFound</code></td>
+<td>Any operation on a volume group ID that does not exist</td>
+</tr>
+<tr>
+<td><code>ErrReplicationNotReady</code></td>
+<td>Replication link not established or not healthy</td>
+</tr>
+<tr>
+<td><code>ErrInvalidTransition</code></td>
+<td><code>SetSource</code> called when current role is <code>Target</code></td>
+</tr>
+<tr>
+<td><code>ErrDriverNotFound</code></td>
+<td>Registry cannot find a driver for a provisioner name</td>
+</tr>
+</tbody>
+</table>
+<p>Drivers must never return raw error strings — always wrap with <code>fmt.Errorf("...: %w", sentinelErr)</code> or return the sentinel directly.</p>
+<h3 id="supporting-types">Supporting Types<a class="headerlink" href="#supporting-types" title="Permanent link">&para;</a></h3>
+<p>The interface uses several supporting types, all defined in <a href="https://github.com/soteria-project/soteria/blob/main/pkg/drivers/types.go"><code>pkg/drivers/types.go</code></a>:</p>
+<div class="language-go highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1">// Opaque identifier assigned by the driver (e.g., CSI volume group handle)</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="kd">type</span><span class="w"> </span><span class="nx">VolumeGroupID</span><span class="w"> </span><span class="kt">string</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="c1">// Describes the desired volume group to create</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="kd">type</span><span class="w"> </span><span class="nx">VolumeGroupSpec</span><span class="w"> </span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">    </span><span class="nx">Name</span><span class="w">      </span><span class="kt">string</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">    </span><span class="nx">Namespace</span><span class="w"> </span><span class="kt">string</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">    </span><span class="nx">PVCNames</span><span class="w">  </span><span class="p">[]</span><span class="kt">string</span>
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">    </span><span class="nx">Labels</span><span class="w">    </span><span class="kt">map</span><span class="p">[</span><span class="kt">string</span><span class="p">]</span><span class="kt">string</span>
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="p">}</span>
+</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>
+</span><span id="__span-1-12"><a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="c1">// Describes an existing volume group as returned by the driver</span>
+</span><span id="__span-1-13"><a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="kd">type</span><span class="w"> </span><span class="nx">VolumeGroupInfo</span><span class="w"> </span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-1-14"><a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="w">    </span><span class="nx">ID</span><span class="w">       </span><span class="nx">VolumeGroupID</span>
+</span><span id="__span-1-15"><a id="__codelineno-1-15" name="__codelineno-1-15" href="#__codelineno-1-15"></a><span class="w">    </span><span class="nx">Name</span><span class="w">     </span><span class="kt">string</span>
+</span><span id="__span-1-16"><a id="__codelineno-1-16" name="__codelineno-1-16" href="#__codelineno-1-16"></a><span class="w">    </span><span class="nx">PVCNames</span><span class="w"> </span><span class="p">[]</span><span class="kt">string</span>
+</span><span id="__span-1-17"><a id="__codelineno-1-17" name="__codelineno-1-17" href="#__codelineno-1-17"></a><span class="p">}</span>
+</span><span id="__span-1-18"><a id="__codelineno-1-18" name="__codelineno-1-18" href="#__codelineno-1-18"></a>
+</span><span id="__span-1-19"><a id="__codelineno-1-19" name="__codelineno-1-19" href="#__codelineno-1-19"></a><span class="c1">// Reports current replication role and health</span>
+</span><span id="__span-1-20"><a id="__codelineno-1-20" name="__codelineno-1-20" href="#__codelineno-1-20"></a><span class="kd">type</span><span class="w"> </span><span class="nx">ReplicationStatus</span><span class="w"> </span><span class="kd">struct</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-1-21"><a id="__codelineno-1-21" name="__codelineno-1-21" href="#__codelineno-1-21"></a><span class="w">    </span><span class="nx">Role</span><span class="w">         </span><span class="nx">VolumeRole</span>
+</span><span id="__span-1-22"><a id="__codelineno-1-22" name="__codelineno-1-22" href="#__codelineno-1-22"></a><span class="w">    </span><span class="nx">Health</span><span class="w">       </span><span class="nx">ReplicationHealth</span>
+</span><span id="__span-1-23"><a id="__codelineno-1-23" name="__codelineno-1-23" href="#__codelineno-1-23"></a><span class="w">    </span><span class="nx">LastSyncTime</span><span class="w"> </span><span class="o">*</span><span class="nx">time</span><span class="p">.</span><span class="nx">Time</span>
+</span><span id="__span-1-24"><a id="__codelineno-1-24" name="__codelineno-1-24" href="#__codelineno-1-24"></a><span class="p">}</span>
+</span></code></pre></div>
+<h3 id="idempotency-contract">Idempotency Contract<a class="headerlink" href="#idempotency-contract" title="Permanent link">&para;</a></h3>
+<p>All 7 methods must be <strong>idempotent</strong> — safe to retry after a crash or restart without side effects. Drivers act as reconcilers: they check the actual storage state before applying changes and return success if the desired state is already achieved.</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Idempotency Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>CreateVolumeGroup</code></td>
+<td>Returns existing group info if name+namespace match</td>
+</tr>
+<tr>
+<td><code>DeleteVolumeGroup</code></td>
+<td>Returns <code>nil</code> if group does not exist</td>
+</tr>
+<tr>
+<td><code>GetVolumeGroup</code></td>
+<td>Pure read — inherently idempotent</td>
+</tr>
+<tr>
+<td><code>SetSource</code></td>
+<td>Returns <code>nil</code> if already <code>Source</code></td>
+</tr>
+<tr>
+<td><code>StopReplication</code></td>
+<td>Returns <code>nil</code> if already <code>NonReplicated</code></td>
+</tr>
+<tr>
+<td><code>ResyncVolume</code></td>
+<td>Returns <code>nil</code> if already in resync state</td>
+</tr>
+<tr>
+<td><code>GetReplicationStatus</code></td>
+<td>Pure read — inherently idempotent</td>
+</tr>
+</tbody>
+</table>
+<p>All methods accept <code>context.Context</code> for cancellation and timeout propagation from the workflow engine. Drivers must respect context cancellation and return immediately when the context is done.</p>
+<hr />
+<h2 id="replication-model">Replication Model<a class="headerlink" href="#replication-model" title="Permanent link">&para;</a></h2>
+<p>The StorageProvider interface uses a <strong>role-based replication model</strong> with three volume roles and two engine-driven transitions.</p>
+<h3 id="volume-roles">Volume Roles<a class="headerlink" href="#volume-roles" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Role</th>
+<th>Constant</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>NonReplicated</strong></td>
+<td><code>RoleNonReplicated</code></td>
+<td>No active replication. Initial state after creation and intermediate state during role changes.</td>
+</tr>
+<tr>
+<td><strong>Source</strong></td>
+<td><code>RoleSource</code></td>
+<td>Replication origin (primary). Volumes are read-write and data is replicated to the paired target.</td>
+</tr>
+<tr>
+<td><strong>Target</strong></td>
+<td><code>RoleTarget</code></td>
+<td>Replication destination (secondary). Volumes are read-only and receive replicated data from the paired source.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="transition-rules">Transition Rules<a class="headerlink" href="#transition-rules" title="Permanent link">&para;</a></h3>
+<p>All role transitions pass through <code>NonReplicated</code> — there is no direct Source-to-Target or Target-to-Source path:</p>
+<pre class="mermaid"><code>stateDiagram-v2
+    [*] --&gt; NonReplicated: CreateVolumeGroup
+    NonReplicated --&gt; Source: SetSource
+    Source --&gt; NonReplicated: StopReplication
+    Target --&gt; NonReplicated: StopReplication
+    NonReplicated --&gt; [*]: DeleteVolumeGroup</code></pre>
+<p>The engine drives exactly <strong>two transitions</strong>:</p>
+<ol>
+<li><strong>NonReplicated → Source</strong> via <code>SetSource</code> — promotes a volume group to replication origin</li>
+<li><strong>Source → NonReplicated</strong> (or <strong>Target → NonReplicated</strong>) via <code>StopReplication</code> — stops active replication</li>
+</ol>
+<div class="admonition warning">
+<p class="admonition-title">Target Role Is Never Set by the Engine</p>
+<p>The <code>Target</code> role exists in <code>ReplicationStatus</code> — the paired site's driver may report its volumes as <code>Target</code> via <code>GetReplicationStatus</code>. However, the engine <strong>never explicitly sets</strong> a volume group to <code>Target</code>. When one site calls <code>SetSource</code>, the paired site implicitly becomes the target as an <strong>admin precondition</strong> — the driver assumes paired volumes are correctly configured on both storage instances before any replication method is called.</p>
+</div>
+<h3 id="resyncvolume">ResyncVolume<a class="headerlink" href="#resyncvolume" title="Permanent link">&para;</a></h3>
+<p><code>ResyncVolume</code> requests storage-layer data synchronization on the secondary site before a planned failover promotion. This is a <strong>CSI-level concept</strong> that does not change the engine's role model:</p>
+<ul>
+<li>The secondary's VR/VGR CRs transition through <code>Secondary → Resync → Secondary(Completed)</code> at the storage layer</li>
+<li>The engine waits for resync completion before proceeding with the promotion step (StopReplication → SetSource)</li>
+<li>This ensures zero data loss during planned migrations</li>
+</ul>
+<h3 id="replication-health">Replication Health<a class="headerlink" href="#replication-health" title="Permanent link">&para;</a></h3>
+<p>The <code>ReplicationHealth</code> type qualifies the health of an active replication link. Health is orthogonal to <code>VolumeRole</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Health</th>
+<th>Constant</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Healthy</strong></td>
+<td><code>HealthHealthy</code></td>
+<td>Replication is running and in sync</td>
+</tr>
+<tr>
+<td><strong>Degraded</strong></td>
+<td><code>HealthDegraded</code></td>
+<td>Replication is running but falling behind</td>
+</tr>
+<tr>
+<td><strong>Syncing</strong></td>
+<td><code>HealthSyncing</code></td>
+<td>Sync operation in progress (initial sync or catch-up)</td>
+</tr>
+<tr>
+<td><strong>NotReplicating</strong></td>
+<td><code>HealthNotReplicating</code></td>
+<td>No active replication link (when role is <code>NonReplicated</code>)</td>
+</tr>
+<tr>
+<td><strong>Unknown</strong></td>
+<td><code>HealthUnknown</code></td>
+<td>Driver cannot determine health (e.g., storage backend unreachable)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="driver-lifecycle">Driver Lifecycle<a class="headerlink" href="#driver-lifecycle" title="Permanent link">&para;</a></h2>
+<h3 id="registration">Registration<a class="headerlink" href="#registration" title="Permanent link">&para;</a></h3>
+<p>Drivers register with the central registry using the <code>init()</code> + <code>RegisterDriver</code> pattern, following the same convention as <code>http.DefaultServeMux</code> and <code>prometheus.DefaultRegisterer</code>.</p>
+<p>The registration flow:</p>
+<ol>
+<li>Each driver package defines an <code>init()</code> function that calls <code>drivers.RegisterDriver(provisionerName, factory)</code></li>
+<li>The <code>pkg/drivers/all/</code> package provides a blank import aggregator that triggers all built-in driver registrations</li>
+<li>The main binary imports <code>_ "github.com/soteria-project/soteria/pkg/drivers/all"</code> to activate all drivers at startup</li>
+</ol>
+<div class="language-go highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1">// pkg/drivers/noop/driver.go</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="kd">func</span><span class="w"> </span><span class="nx">init</span><span class="p">()</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="nx">shared</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">New</span><span class="p">()</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">    </span><span class="nx">drivers</span><span class="p">.</span><span class="nx">RegisterDriver</span><span class="p">(</span><span class="nx">ProvisionerName</span><span class="p">,</span><span class="w"> </span><span class="kd">func</span><span class="p">()</span><span class="w"> </span><span class="nx">drivers</span><span class="p">.</span><span class="nx">StorageProvider</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nx">shared</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">    </span><span class="p">})</span>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">    </span><span class="nx">drivers</span><span class="p">.</span><span class="nx">SetFallbackDriver</span><span class="p">(</span><span class="kd">func</span><span class="p">()</span><span class="w"> </span><span class="nx">drivers</span><span class="p">.</span><span class="nx">StorageProvider</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">        </span><span class="k">return</span><span class="w"> </span><span class="nx">shared</span>
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="w">    </span><span class="p">})</span>
+</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="p">}</span>
+</span></code></pre></div>
+<p>The registry uses a <strong>factory pattern</strong> — <code>DriverFactory func() StorageProvider</code> — to defer resource allocation until a driver is actually needed. Registration panics on duplicate provisioner names (fail-fast at startup).</p>
+<h3 id="driver-selection">Driver Selection<a class="headerlink" href="#driver-selection" title="Permanent link">&para;</a></h3>
+<p>The workflow engine resolves the <code>StorageProvider</code> at execution time using the <strong>plan-level declared driver name</strong>, not runtime PVC inspection:</p>
+<div class="language-go highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nx">driver</span><span class="p">,</span><span class="w"> </span><span class="nx">err</span><span class="w"> </span><span class="o">:=</span><span class="w"> </span><span class="nx">registry</span><span class="p">.</span><span class="nx">GetDriver</span><span class="p">(</span><span class="nx">plan</span><span class="p">.</span><span class="nx">Spec</span><span class="p">.</span><span class="nx">VolumeReplicationDriver</span><span class="p">.</span><span class="nx">Type</span><span class="p">)</span>
+</span></code></pre></div>
+<p>This design eliminates the <code>StorageClassLister</code> dependency and all runtime Kubernetes API calls for driver resolution during execution. The registry also supports PVC-based resolution via <code>GetDriverForPVC</code> for use cases that need to resolve PVC → StorageClass → provisioner → driver.</p>
+<h3 id="fallback-driver">Fallback Driver<a class="headerlink" href="#fallback-driver" title="Permanent link">&para;</a></h3>
+<p>The registry supports a <strong>fallback driver</strong> via <code>SetFallbackDriver</code>. When <code>GetDriver</code> cannot find an explicitly registered driver for a provisioner name, it returns the fallback instead of <code>ErrDriverNotFound</code>. The no-op driver registers itself as the fallback, enabling full dev/CI workflows without storage infrastructure.</p>
+<h3 id="registry-api">Registry API<a class="headerlink" href="#registry-api" title="Permanent link">&para;</a></h3>
+<p>The <code>Registry</code> type in <a href="https://github.com/soteria-project/soteria/blob/main/pkg/drivers/registry.go"><code>pkg/drivers/registry.go</code></a> is safe for concurrent use via <code>sync.RWMutex</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Method</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>RegisterDriver(provisionerName, factory)</code></td>
+<td>Associate a provisioner name with a driver factory</td>
+</tr>
+<tr>
+<td><code>SetFallbackDriver(factory)</code></td>
+<td>Set the fallback factory for unregistered provisioners</td>
+</tr>
+<tr>
+<td><code>GetDriver(provisionerName)</code></td>
+<td>Return a <code>StorageProvider</code> for the given provisioner</td>
+</tr>
+<tr>
+<td><code>GetDriverForPVC(ctx, storageClassName, scLister)</code></td>
+<td>Resolve PVC → StorageClass → provisioner → driver</td>
+</tr>
+<tr>
+<td><code>ListRegistered()</code></td>
+<td>Return sorted list of registered provisioner names</td>
+</tr>
+</tbody>
+</table>
+<p>A process-wide <code>DefaultRegistry</code> instance provides package-level convenience functions (<code>drivers.RegisterDriver</code>, <code>drivers.GetDriver</code>, etc.).</p>
+<hr />
+<h2 id="reference-implementations">Reference Implementations<a class="headerlink" href="#reference-implementations" title="Permanent link">&para;</a></h2>
+<h3 id="no-op-driver">No-Op Driver<a class="headerlink" href="#no-op-driver" title="Permanent link">&para;</a></h3>
+<p>The <strong>no-op driver</strong> (<a href="https://github.com/soteria-project/soteria/tree/main/pkg/drivers/noop"><code>pkg/drivers/noop/</code></a>) is the reference implementation that fulfils the full 7-method interface without performing actual storage operations. It tracks volume groups and replication roles <strong>in memory</strong> using a <code>sync.RWMutex</code>-protected map.</p>
+<p><strong>Package structure:</strong></p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>driver.go</code></td>
+<td><code>StorageProvider</code> implementation + <code>init()</code> registration</td>
+</tr>
+<tr>
+<td><code>driver_test.go</code></td>
+<td>Unit tests for all 7 methods</td>
+</tr>
+<tr>
+<td><code>registration_test.go</code></td>
+<td>Verifies init() registration in <code>DefaultRegistry</code></td>
+</tr>
+<tr>
+<td><code>doc.go</code></td>
+<td>Package documentation</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Key characteristics:</strong></p>
+<ul>
+<li><strong>Provisioner name:</strong> <code>noop.soteria.io</code> (also registered as <code>noop</code> for plan-level use)</li>
+<li><strong>Fallback driver:</strong> Registered via <code>SetFallbackDriver</code> — any unrecognized provisioner falls through to noop</li>
+<li><strong>Shared instance:</strong> The registry reuses a single in-memory driver instance so volume groups created on one lookup are visible to later read-only lookups in the same process</li>
+<li><strong>State is ephemeral:</strong> All state is lost on process restart (by design — no persistent backend)</li>
+<li><strong>Thread-safe:</strong> All methods use <code>sync.RWMutex</code> for concurrent access</li>
+</ul>
+<p><strong>Primary uses:</strong></p>
+<ul>
+<li>Local development without storage infrastructure (<code>make dev-cluster</code>)</li>
+<li>CI pipeline testing of workflow engine logic in isolation</li>
+<li>Reference implementation for external driver authors</li>
+</ul>
+<h3 id="csi-extension-driver">CSI Extension Driver<a class="headerlink" href="#csi-extension-driver" title="Permanent link">&para;</a></h3>
+<p>The <strong>CSI extension driver</strong> (<a href="https://github.com/soteria-project/soteria/tree/main/pkg/drivers/csiextension"><code>pkg/drivers/csiextension/</code></a>) is the production implementation that manages volume replication through <strong>CSI Addons</strong> VolumeReplication (VR) and VolumeGroupReplication (VGR) Kubernetes CRDs. A csi-addons sidecar container reconciles these CRDs into actual storage-level replication operations.</p>
+<p><strong>Package structure:</strong></p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>driver.go</code></td>
+<td><code>StorageProvider</code> implementation (CreateVolumeGroup, DeleteVolumeGroup, GetVolumeGroup, SetSource, StopReplication, ResyncVolume, GetReplicationStatus)</td>
+</tr>
+<tr>
+<td><code>status.go</code></td>
+<td>VR/VGR status → <code>ReplicationStatus</code> mapping (role, health, sync time)</td>
+</tr>
+<tr>
+<td><code>helpers.go</code></td>
+<td>CR lookup, replication state updates with retry-on-conflict</td>
+</tr>
+<tr>
+<td><code>volumehandle.go</code></td>
+<td>Volume handle parsing utilities</td>
+</tr>
+<tr>
+<td><code>constants.go</code></td>
+<td>Label keys, finalizer names, replication state constants</td>
+</tr>
+<tr>
+<td><code>doc.go</code></td>
+<td>Package documentation</td>
+</tr>
+<tr>
+<td><code>driver_test.go</code></td>
+<td>Unit tests for driver methods</td>
+</tr>
+<tr>
+<td><code>conformance_test.go</code></td>
+<td>Conformance suite runner</td>
+</tr>
+<tr>
+<td><code>integration_test.go</code></td>
+<td>Integration tests with envtest</td>
+</tr>
+<tr>
+<td><code>registration_test.go</code></td>
+<td>Registration verification</td>
+</tr>
+<tr>
+<td><code>volumehandle_test.go</code></td>
+<td>Volume handle parsing tests</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Key characteristics:</strong></p>
+<ul>
+<li><strong>Driver name:</strong> <code>csi-extension</code> (plan-level)</li>
+<li><strong>Requires Kubernetes client:</strong> Unlike the noop driver, the CSI extension driver requires a <code>client.Client</code> at construction time and cannot use <code>init()</code> for self-registration</li>
+<li>
+<p><strong>Registration in main.go:</strong> Registered after the controller-runtime manager is created:</p>
+<div class="language-go highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nx">drivers</span><span class="p">.</span><span class="nx">RegisterDriver</span><span class="p">(</span><span class="nx">csiextension</span><span class="p">.</span><span class="nx">DriverName</span><span class="p">,</span><span class="w"> </span><span class="kd">func</span><span class="p">()</span><span class="w"> </span><span class="nx">drivers</span><span class="p">.</span><span class="nx">StorageProvider</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">csiextension</span><span class="p">.</span><span class="nx">New</span><span class="p">(</span><span class="nx">mgr</span><span class="p">.</span><span class="nx">GetClient</span><span class="p">())</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="p">})</span>
+</span></code></pre></div>
+</li>
+<li>
+<p><strong>Rendering rule:</strong> Volume groups are rendered as either individual VR CRs (single-VM, <code>vm-*</code> prefix) or a single VGR CR (multi-VM, <code>ns-*</code> prefix)</p>
+</li>
+<li><strong>Dual-site finalizers:</strong> Each site adds its own finalizer (<code>soteria.io/site-primary</code> or <code>soteria.io/site-secondary</code>) to VR/VGR CRs so deletion requires both sites to clean up independently</li>
+<li><strong>Status aggregation:</strong> For multi-VR volume groups, health uses worst-wins, role comes from the first CR, and <code>LastSyncTime</code> is the oldest across all PVCs</li>
+</ul>
+<hr />
+<h2 id="conformance-suite">Conformance Suite<a class="headerlink" href="#conformance-suite" title="Permanent link">&para;</a></h2>
+<p>The <strong>conformance test suite</strong> (<a href="https://github.com/soteria-project/soteria/blob/main/pkg/drivers/conformance/suite.go"><code>pkg/drivers/conformance/suite.go</code></a>) validates that any <code>StorageProvider</code> implementation correctly implements the full DR lifecycle contract. All driver implementations — both built-in and external — must pass this suite.</p>
+<h3 id="test-groups">Test Groups<a class="headerlink" href="#test-groups" title="Permanent link">&para;</a></h3>
+<p>The suite runs four test groups:</p>
+<table>
+<thead>
+<tr>
+<th>Group</th>
+<th>What It Validates</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Lifecycle</strong></td>
+<td>Complete DR lifecycle sequence: <code>CreateVolumeGroup</code> → <code>SetSource</code> → <code>ResyncVolume</code> → <code>GetReplicationStatus(Source)</code> → <code>StopReplication</code> → <code>GetReplicationStatus(NonReplicated)</code> → <code>DeleteVolumeGroup</code> → <code>GetVolumeGroup(deleted)</code></td>
+</tr>
+<tr>
+<td><strong>Idempotency</strong></td>
+<td>Every method called twice in succession with identical arguments — the second call must succeed without error</td>
+</tr>
+<tr>
+<td><strong>ContextCancellation</strong></td>
+<td>Every method called with a pre-cancelled <code>context.Context</code> — must return an error immediately, never block or succeed</td>
+</tr>
+<tr>
+<td><strong>ErrorConditions</strong></td>
+<td>Operations on a nonexistent <code>VolumeGroupID</code> — must return <code>ErrVolumeGroupNotFound</code> (verified via <code>errors.Is</code>)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="running-the-suite">Running the Suite<a class="headerlink" href="#running-the-suite" title="Permanent link">&para;</a></h3>
+<p>Wire the conformance suite in a <code>_test.go</code> file:</p>
+<div class="language-go highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">package</span><span class="w"> </span><span class="nx">mydriver_test</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="kn">import</span><span class="w"> </span><span class="p">(</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span><span class="s">"testing"</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">    </span><span class="s">"github.com/soteria-project/soteria/pkg/drivers/conformance"</span>
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">    </span><span class="s">"example.com/mydriver"</span>
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="p">)</span>
+</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>
+</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="kd">func</span><span class="w"> </span><span class="nx">TestConformance</span><span class="p">(</span><span class="nx">t</span><span class="w"> </span><span class="o">*</span><span class="nx">testing</span><span class="p">.</span><span class="nx">T</span><span class="p">)</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="w">    </span><span class="nx">conformance</span><span class="p">.</span><span class="nx">RunConformance</span><span class="p">(</span><span class="nx">t</span><span class="p">,</span><span class="w"> </span><span class="nx">mydriver</span><span class="p">.</span><span class="nx">New</span><span class="p">())</span>
+</span><span id="__span-5-12"><a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a><span class="p">}</span>
+</span></code></pre></div>
+<p>Run it with:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>go<span class="w"> </span><span class="nb">test</span><span class="w"> </span>./pkg/drivers/conformance/...
+</span></code></pre></div>
+<p>The suite uses only the standard <code>testing</code> package — no Ginkgo, Gomega, or other test framework dependencies. It works with any Go test runner, CI system, or IDE.</p>
+<hr />
+<h2 id="package-layout">Package Layout<a class="headerlink" href="#package-layout" title="Permanent link">&para;</a></h2>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>pkg/drivers/
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>├── interface.go          # StorageProvider interface (7 methods)
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>├── types.go              # VolumeGroupID, VolumeGroupSpec, VolumeGroupInfo,
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>│                         # VolumeRole, ReplicationStatus, ReplicationHealth
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>├── errors.go             # Typed sentinel errors
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>├── registry.go           # Driver registry (provisioner → factory mapping)
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>├── id.go                 # Deterministic VolumeGroupID computation
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>├── credentials.go        # CredentialSource, CredentialResolver interface
+</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>├── credentials_secret.go # Kubernetes Secret credential resolver
+</span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>├── doc.go                # Package documentation
+</span><span id="__span-7-11"><a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>├── all/
+</span><span id="__span-7-12"><a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>│   └── all.go            # Blank import aggregator for built-in drivers
+</span><span id="__span-7-13"><a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a>├── noop/
+</span><span id="__span-7-14"><a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a>│   ├── driver.go         # No-op reference implementation
+</span><span id="__span-7-15"><a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a>│   ├── doc.go            # Package documentation
+</span><span id="__span-7-16"><a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a>│   └── *_test.go         # Tests
+</span><span id="__span-7-17"><a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a>├── csiextension/
+</span><span id="__span-7-18"><a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a>│   ├── driver.go         # CSI extension production implementation
+</span><span id="__span-7-19"><a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a>│   ├── status.go         # VR/VGR status mapping
+</span><span id="__span-7-20"><a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a>│   ├── helpers.go        # CR lookup and state updates
+</span><span id="__span-7-21"><a id="__codelineno-7-21" name="__codelineno-7-21" href="#__codelineno-7-21"></a>│   ├── volumehandle.go   # Volume handle parsing
+</span><span id="__span-7-22"><a id="__codelineno-7-22" name="__codelineno-7-22" href="#__codelineno-7-22"></a>│   ├── constants.go      # Labels, finalizers, replication states
+</span><span id="__span-7-23"><a id="__codelineno-7-23" name="__codelineno-7-23" href="#__codelineno-7-23"></a>│   ├── doc.go            # Package documentation
+</span><span id="__span-7-24"><a id="__codelineno-7-24" name="__codelineno-7-24" href="#__codelineno-7-24"></a>│   └── *_test.go         # Tests (unit, conformance, integration)
+</span><span id="__span-7-25"><a id="__codelineno-7-25" name="__codelineno-7-25" href="#__codelineno-7-25"></a>├── conformance/
+</span><span id="__span-7-26"><a id="__codelineno-7-26" name="__codelineno-7-26" href="#__codelineno-7-26"></a>│   ├── suite.go          # Conformance test suite (RunConformance)
+</span><span id="__span-7-27"><a id="__codelineno-7-27" name="__codelineno-7-27" href="#__codelineno-7-27"></a>│   ├── doc.go            # Package documentation
+</span><span id="__span-7-28"><a id="__codelineno-7-28" name="__codelineno-7-28" href="#__codelineno-7-28"></a>│   └── noop_test.go      # Conformance run against noop driver
+</span><span id="__span-7-29"><a id="__codelineno-7-29" name="__codelineno-7-29" href="#__codelineno-7-29"></a>└── fake/
+</span><span id="__span-7-30"><a id="__codelineno-7-30" name="__codelineno-7-30" href="#__codelineno-7-30"></a>    ├── driver.go         # Configurable fake for test injection
+</span><span id="__span-7-31"><a id="__codelineno-7-31" name="__codelineno-7-31" href="#__codelineno-7-31"></a>    ├── doc.go            # Package documentation
+</span><span id="__span-7-32"><a id="__codelineno-7-32" name="__codelineno-7-32" href="#__codelineno-7-32"></a>    └── driver_test.go    # Fake driver tests
+</span></code></pre></div>
+<hr />
+<h2 id="architectural-boundaries">Architectural Boundaries<a class="headerlink" href="#architectural-boundaries" title="Permanent link">&para;</a></h2>
+<p>The driver interface defines a clear boundary in the system:</p>
+<ul>
+<li><strong>Above the interface</strong> (engine, controllers): driver-agnostic workflow logic that calls <code>StorageProvider</code> methods</li>
+<li><strong>Below the interface</strong> (driver packages): vendor-specific storage operations</li>
+<li><strong>External drivers</strong> import <code>pkg/drivers/</code> (the public API) — never <code>internal/</code></li>
+</ul>
+<p>The engine resolves drivers via the plan-level <code>VolumeReplicationDriver.Type</code> field, keeping driver selection declarative and deterministic. Volume pairing, StorageClass configuration, and VolumeReplicationClass setup are <strong>admin preconditions</strong> — the orchestrator assumes they are correctly configured before any replication method is called.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["content.code.copy", "content.code.annotate", "navigation.instant", "navigation.tracking", "navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "search.suggest", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

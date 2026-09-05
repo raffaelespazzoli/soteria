@@ -1,0 +1,2401 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Open-source, Kubernetes-native disaster recovery orchestrator for OpenShift Virtualization.">
+      
+      
+      
+        <link rel="canonical" href="https://raffaelespazzoli.github.io/soteria/usage/ui-guide/execution-monitor/">
+      
+      
+        <link rel="prev" href="../plan-detail/">
+      
+      
+        <link rel="next" href="../../../reference/api/drplan/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Execution Monitor - Soteria</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#execution-monitor" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Soteria" class="md-header__button md-logo" aria-label="Soteria" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Soteria
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Execution Monitor
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/raffaelespazzoli/soteria" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    raffaelespazzoli/soteria
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Soteria" class="md-nav__button md-logo" aria-label="Soteria" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Soteria
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/raffaelespazzoli/soteria" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    raffaelespazzoli/soteria
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Installation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../installation/prerequisites/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prerequisites
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_2" id="__nav_2_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ScyllaDB & Network
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    ScyllaDB & Network
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../installation/scylladb/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../installation/scylladb/submariner/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Submariner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../installation/scylladb/cilium/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cilium Cluster Mesh
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../installation/helm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Helm Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/dr-lifecycle/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DR Lifecycle
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/storage-drivers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage Drivers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Usage
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../creating-a-drplan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Creating a DRPlan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../waves/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Waves & Throttling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../volumes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Volume Grouping
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../failover/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Executing Failover
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4_5" id="__nav_4_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    UI Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    UI Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../plan-detail/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plan Detail
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Execution Monitor
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Execution Monitor
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#page-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Page Layout
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#execution-header" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Execution Header
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Execution Header">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#while-running" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        While Running
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#after-completion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        After Completion
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#site-coordination-panel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Site Coordination Panel
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#wave-progress-stepper" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wave Progress Stepper
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Wave Progress Stepper">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#wave-states" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wave States
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#drgroup-detail-expandable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DRGroup Detail (Expandable)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DRGroup Detail (Expandable)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#drgroup-status-icons" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DRGroup Status Icons
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inline-errors-and-retry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inline Errors and Retry
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Inline Errors and Retry">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#error-detail-contents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error Detail Contents
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#retry-actions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Retry Actions
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#execution-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Execution Summary
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Execution Summary">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#summary-text-by-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Summary Text by Mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#partial-success-visualisation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Partial Success Visualisation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#execution-history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Execution History
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#accessibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Accessibility
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tips-for-bridge-calls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tips for Bridge Calls
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_1" id="__nav_5_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/api/drplan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DRPlan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/api/drexecution/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DRExecution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/helm-values/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Helm Values
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contributing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../contributing/dev-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../contributing/storage-drivers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Writing Storage Drivers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#page-layout" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Page Layout
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#execution-header" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Execution Header
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Execution Header">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#while-running" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        While Running
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#after-completion" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        After Completion
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#site-coordination-panel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Site Coordination Panel
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#wave-progress-stepper" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wave Progress Stepper
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Wave Progress Stepper">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#wave-states" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wave States
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#drgroup-detail-expandable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DRGroup Detail (Expandable)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DRGroup Detail (Expandable)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#drgroup-status-icons" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DRGroup Status Icons
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inline-errors-and-retry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inline Errors and Retry
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Inline Errors and Retry">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#error-detail-contents" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Error Detail Contents
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#retry-actions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Retry Actions
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#execution-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Execution Summary
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Execution Summary">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#summary-text-by-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Summary Text by Mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#partial-success-visualisation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Partial Success Visualisation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#execution-history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Execution History
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#accessibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Accessibility
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tips-for-bridge-calls" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tips for Bridge Calls
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="execution-monitor">Execution Monitor<a class="headerlink" href="#execution-monitor" title="Permanent link">&para;</a></h1>
+<p>The Execution Monitor is the real-time detail view for a running or completed
+<code>DRExecution</code>. It is designed to be readable on a bridge-call screen share —
+every metric updates within five seconds of a state change (NFR-7) so the
+on-call team always sees current progress.</p>
+<p>You reach the Execution Monitor by clicking any row in the
+<a href="#execution-history">Execution History table</a> on the Plan Detail page, or by
+following the <strong>View execution details</strong> link in the transition progress
+banner that appears while an execution is active.</p>
+<p><img alt="Execution detail — completed Reprotect operation showing duration, result badge, and summary card" src="../../../screenshots/execution-detail-reprotect.png" /></p>
+<hr />
+<h2 id="page-layout">Page Layout<a class="headerlink" href="#page-layout" title="Permanent link">&para;</a></h2>
+<p>The Execution Monitor is arranged top-to-bottom in four sections:</p>
+<table>
+<thead>
+<tr>
+<th>Section</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Execution Header</strong></td>
+<td>Name, mode badge, timing, result badge, and retry controls</td>
+</tr>
+<tr>
+<td><strong>Site Coordination Panel</strong></td>
+<td>Source / target site step progress (planned migrations only)</td>
+</tr>
+<tr>
+<td><strong>Wave Progress Stepper</strong></td>
+<td>Vertical stepper with one step per wave; expandable DRGroup detail</td>
+</tr>
+<tr>
+<td><strong>Execution Summary</strong></td>
+<td>Completion card with bridge-call-ready one-liner and final result</td>
+</tr>
+</tbody>
+</table>
+<p>Each section is described in detail below.</p>
+<hr />
+<h2 id="execution-header">Execution Header<a class="headerlink" href="#execution-header" title="Permanent link">&para;</a></h2>
+<p>The header is the first thing visible when the page loads. Its content adapts
+to whether the execution is still running or has completed.</p>
+<h3 id="while-running">While Running<a class="headerlink" href="#while-running" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Element</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Execution name</strong></td>
+<td>The <code>DRExecution</code> resource name (e.g. <code>ps-app-reprotect-1788531863116</code>)</td>
+</tr>
+<tr>
+<td><strong>Mode badge</strong></td>
+<td>Colour-coded label — <img alt="🔴" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/svg/1f534.svg" title=":red_circle:" /> <strong>Disaster Failover</strong>, <img alt="🔵" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/svg/1f535.svg" title=":blue_circle:" /> <strong>Planned Migration</strong>, or <strong>Reprotect</strong></td>
+</tr>
+<tr>
+<td><strong>Phase</strong></td>
+<td>Current execution phase (<code>Pending</code>, <code>Executing</code>, etc.)</td>
+</tr>
+<tr>
+<td><strong>Started</strong></td>
+<td>Wall-clock start time (local timezone, <code>HH:MM</code> format)</td>
+</tr>
+<tr>
+<td><strong>Elapsed</strong></td>
+<td>Live counter ticking every second</td>
+</tr>
+<tr>
+<td><strong>Est. remaining</strong></td>
+<td>Calculated from <code>elapsed ÷ completed_waves × remaining_waves</code>; shows <em>calculating…</em> until the first wave finishes</td>
+</tr>
+</tbody>
+</table>
+<h3 id="after-completion">After Completion<a class="headerlink" href="#after-completion" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Element</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Execution name</strong></td>
+<td>Same as above</td>
+</tr>
+<tr>
+<td><strong>Mode badge</strong></td>
+<td>Same colour-coded label</td>
+</tr>
+<tr>
+<td><strong>Duration</strong></td>
+<td>Total wall-clock time from start to completion</td>
+</tr>
+<tr>
+<td><strong>Result badge</strong></td>
+<td><img alt="🟢" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/svg/1f7e2.svg" title=":green_circle:" /> <strong>Succeeded</strong>, <img alt="🟡" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/svg/1f7e1.svg" title=":yellow_circle:" /> <strong>Partial</strong>, or <img alt="🔴" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/svg/1f534.svg" title=":red_circle:" /> <strong>Failed</strong></td>
+</tr>
+<tr>
+<td><strong>Phase</strong></td>
+<td>Final phase label</td>
+</tr>
+<tr>
+<td><strong>Retry All Failed</strong></td>
+<td>Appears only when the result is <strong>Partially Succeeded</strong> and more than one DRGroup failed. Applies the <code>soteria.io/retry-groups</code> annotation to re-execute every failed group. The button is disabled while a retry is already in progress.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="site-coordination-panel">Site Coordination Panel<a class="headerlink" href="#site-coordination-panel" title="Permanent link">&para;</a></h2>
+<p>For <strong>Planned Migration</strong> executions, a <em>Site Coordination</em> card appears
+between the header and the wave stepper. It visualises the Step 0 handshake
+that must complete before wave processing begins.</p>
+<p>The panel contains two lanes displayed side by side:</p>
+<table>
+<thead>
+<tr>
+<th>Lane</th>
+<th>Steps shown</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Source</strong> <em>(active site)</em></td>
+<td>Demoting Volumes → Demotion Synced</td>
+</tr>
+<tr>
+<td><strong>Target</strong> <em>(standby site)</em></td>
+<td>Promoting Volumes</td>
+</tr>
+</tbody>
+</table>
+<p>Each step shows one of three states:</p>
+<ul>
+<li><img alt="✅" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/svg/2705.svg" title=":white_check_mark:" /> <strong>Complete</strong> — green check icon</li>
+<li>:spinner: <strong>In progress</strong> — spinning indicator with a <em>"Updated Xs ago"</em> timestamp</li>
+<li><img alt="❔" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/svg/2754.svg" title=":grey_question:" /> <strong>Pending</strong> — grey clock icon</li>
+</ul>
+<p>The panel auto-hides once all coordination steps are complete and wave
+processing has started, so it does not consume screen space during the
+main phase of the execution.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>The Site Coordination Panel does <strong>not</strong> appear for Disaster Failover
+executions because disaster mode skips the graceful demotion handshake.</p>
+</div>
+<hr />
+<h2 id="wave-progress-stepper">Wave Progress Stepper<a class="headerlink" href="#wave-progress-stepper" title="Permanent link">&para;</a></h2>
+<p>The central section of the Execution Monitor is a <strong>vertical progress
+stepper</strong> (PatternFly <code>ProgressStepper</code>). Each step represents one wave from
+the DRPlan and shows real-time progress as DRGroups within that wave are
+processed.</p>
+<h3 id="wave-states">Wave States<a class="headerlink" href="#wave-states" title="Permanent link">&para;</a></h3>
+<p>Each wave step displays a colour and icon based on its current state:</p>
+<table>
+<thead>
+<tr>
+<th>State</th>
+<th>Icon / Colour</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Pending</strong></td>
+<td>Grey clock</td>
+<td>Wave has not started yet</td>
+</tr>
+<tr>
+<td><strong>In Progress</strong></td>
+<td>Blue info</td>
+<td>Wave is actively processing DRGroups</td>
+</tr>
+<tr>
+<td><strong>Completed</strong></td>
+<td>Green check</td>
+<td>All DRGroups in the wave succeeded</td>
+</tr>
+<tr>
+<td><strong>Partially Failed</strong></td>
+<td>Yellow warning</td>
+<td>Wave finished but one or more DRGroups failed</td>
+</tr>
+</tbody>
+</table>
+<p>The step description line shows the VM count and, once the wave has started,
+the elapsed time (e.g. <em>"4 VMs — 1m 23s"</em>).</p>
+<h3 id="drgroup-detail-expandable">DRGroup Detail (Expandable)<a class="headerlink" href="#drgroup-detail-expandable" title="Permanent link">&para;</a></h3>
+<p>Each wave step contains a collapsible <strong>group list</strong> that auto-expands for
+waves that are <em>In Progress</em> or <em>Partially Failed</em>. You can manually
+toggle any wave with the <strong>Show groups / Hide groups</strong> control.</p>
+<p>Inside the expanded section every DRGroup is displayed as a row with:</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Content</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Group name</strong></td>
+<td>Bold label (e.g. <code>web-tier</code>)</td>
+</tr>
+<tr>
+<td><strong>VMs</strong></td>
+<td>Comma-separated VM names in subdued text</td>
+</tr>
+<tr>
+<td><strong>Status icon</strong></td>
+<td>Spinner (in progress), green check (completed), red exclamation (failed), or grey clock (pending)</td>
+</tr>
+<tr>
+<td><strong>Elapsed</strong></td>
+<td>Monospace timer showing how long the group has been processing</td>
+</tr>
+</tbody>
+</table>
+<h4 id="drgroup-status-icons">DRGroup Status Icons<a class="headerlink" href="#drgroup-status-icons" title="Permanent link">&para;</a></h4>
+<table>
+<thead>
+<tr>
+<th>Status</th>
+<th>Icon</th>
+<th>Colour</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>In Progress / Waiting for VM Ready</td>
+<td>Spinner</td>
+<td>Blue</td>
+</tr>
+<tr>
+<td>Completed</td>
+<td>Check circle</td>
+<td>Green</td>
+</tr>
+<tr>
+<td>Failed</td>
+<td>Exclamation circle</td>
+<td>Red</td>
+</tr>
+<tr>
+<td>Pending</td>
+<td>Clock</td>
+<td>Grey</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="inline-errors-and-retry">Inline Errors and Retry<a class="headerlink" href="#inline-errors-and-retry" title="Permanent link">&para;</a></h2>
+<p>When a DRGroup fails, an <strong>Error details</strong> expandable section appears
+directly below the group row. It is expanded by default so operators
+notice failures immediately.</p>
+<h3 id="error-detail-contents">Error Detail Contents<a class="headerlink" href="#error-detail-contents" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Error</strong></td>
+<td>The error message from the controller (e.g. <em>"timed out waiting for volume promotion"</em>)</td>
+</tr>
+<tr>
+<td><strong>Failed step</strong></td>
+<td>The specific reconciliation step that failed (e.g. <code>PromoteVolumes</code>, <code>WaitForVMReady</code>)</td>
+</tr>
+<tr>
+<td><strong>Affected VMs</strong></td>
+<td>List of VMs in the failed group</td>
+</tr>
+<tr>
+<td><strong>Retry count</strong></td>
+<td>How many times the group has already been retried (e.g. <em>"Previously retried 2 times"</em>)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="retry-actions">Retry Actions<a class="headerlink" href="#retry-actions" title="Permanent link">&para;</a></h3>
+<p>Retry buttons appear only when the overall execution result is
+<strong>Partially Succeeded</strong> — meaning at least one group succeeded and the
+execution is no longer active.</p>
+<table>
+<thead>
+<tr>
+<th>Action</th>
+<th>Scope</th>
+<th>Where</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Retry</strong> (per-group)</td>
+<td>Re-executes a single failed DRGroup</td>
+<td>Inside the error detail section for that group</td>
+</tr>
+<tr>
+<td><strong>Retry All Failed</strong></td>
+<td>Re-executes every failed DRGroup across all waves</td>
+<td>In the execution header (visible when &gt;1 group failed)</td>
+</tr>
+</tbody>
+</table>
+<p>Both actions work by patching the <code>soteria.io/retry-groups</code> annotation on
+the <code>DRExecution</code> resource. While a retry is in progress, all retry buttons
+are disabled and display a tooltip: <em>"Retry in progress — wait for current
+retry to complete"</em>.</p>
+<p>If the controller rejects a retry (e.g. because the execution is still
+active), a red <strong>Retry rejected</strong> inline alert appears beneath the button.</p>
+<hr />
+<h2 id="execution-summary">Execution Summary<a class="headerlink" href="#execution-summary" title="Permanent link">&para;</a></h2>
+<p>Once the execution completes, a <strong>summary card</strong> appears below the wave
+stepper. This card is designed to be the single most useful artefact for a
+bridge call — it provides a one-line summary and the final result badge.</p>
+<h3 id="summary-text-by-mode">Summary Text by Mode<a class="headerlink" href="#summary-text-by-mode" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Succeeded</th>
+<th>Partially Succeeded / Failed</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Planned Migration / Disaster</strong></td>
+<td><em>"N VMs recovered in Xm Ys"</em></td>
+<td><em>"M of N VMs recovered — K DRGroup failed"</em></td>
+</tr>
+<tr>
+<td><strong>Reprotect</strong></td>
+<td><em>"Replication re-protected in Xs (Role setup: N/N, healthy: N/N)"</em></td>
+<td><em>"Re-protect failed — \&lt;detail&gt;"</em></td>
+</tr>
+</tbody>
+</table>
+<p>The <strong>Result</strong> line shows the same colour-coded badge used throughout the UI:</p>
+<table>
+<thead>
+<tr>
+<th>Result</th>
+<th>Badge colour</th>
+<th>Icon</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Succeeded</td>
+<td>Green</td>
+<td><img alt="✅" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/svg/2705.svg" title=":white_check_mark:" /> Check circle</td>
+</tr>
+<tr>
+<td>Partial</td>
+<td>Yellow</td>
+<td><img alt="⚠" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/svg/26a0.svg" title=":warning:" /> Warning triangle</td>
+</tr>
+<tr>
+<td>Failed</td>
+<td>Red</td>
+<td><img alt="❌" class="twemoji" src="https://cdn.jsdelivr.net/gh/jdecked/twemoji@16.0.1/assets/svg/274c.svg" title=":x:" /> Exclamation circle</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="partial-success-visualisation">Partial Success Visualisation<a class="headerlink" href="#partial-success-visualisation" title="Permanent link">&para;</a></h2>
+<p>When an execution finishes with a <strong>Partially Succeeded</strong> result, multiple
+visual cues help the operator understand what happened:</p>
+<ol>
+<li><strong>Header</strong> — the result badge shows a yellow <strong>Partial</strong> label and the
+   <em>Retry All Failed</em> button appears.</li>
+<li><strong>Wave stepper</strong> — any wave that contains failed groups shows a
+   <strong>yellow warning</strong> step icon instead of a green check. The wave
+   auto-expands to reveal which groups failed.</li>
+<li><strong>DRGroup rows</strong> — failed groups display a red exclamation icon and
+   their error detail section is expanded by default.</li>
+<li><strong>Summary card</strong> — the one-liner reports how many VMs were recovered
+   versus the total, along with the count of failed DRGroups.</li>
+</ol>
+<p>This layered approach ensures that partial failures are impossible to miss
+at any zoom level — from a quick glance at the header badge down to the
+specific failed step and error message.</p>
+<hr />
+<h2 id="execution-history">Execution History<a class="headerlink" href="#execution-history" title="Permanent link">&para;</a></h2>
+<p>The Execution History table lives on the <strong>History</strong> tab of the Plan Detail
+page. It provides a chronological record of every execution for a given
+DRPlan.</p>
+<p><img alt="Execution history table showing four executions — Planned Migration and Re-protect operations" src="../../../screenshots/plan-history.png" /></p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Date</strong></td>
+<td>Start timestamp in local format (e.g. <em>Sep 4, 2026, 01:00 PM</em>)</td>
+</tr>
+<tr>
+<td><strong>Mode</strong></td>
+<td>Human-readable mode: <em>Planned Migration</em>, <em>Disaster</em>, or <em>Re-protect</em></td>
+</tr>
+<tr>
+<td><strong>Phase</strong></td>
+<td>Final phase (e.g. <em>Succeeded</em>)</td>
+</tr>
+<tr>
+<td><strong>Result</strong></td>
+<td>Colour-coded badge — Succeeded (green), Partial (yellow), Failed (red)</td>
+</tr>
+<tr>
+<td><strong>Duration</strong></td>
+<td>Wall-clock elapsed time (e.g. <em>1m 50s</em>, <em>39m 53s</em>)</td>
+</tr>
+<tr>
+<td><strong>Triggered By</strong></td>
+<td>The user or service account that created the execution (from the <code>soteria.io/triggered-by</code> annotation)</td>
+</tr>
+</tbody>
+</table>
+<p>Rows are sorted newest-first. Clicking any row navigates to the full
+Execution Monitor for that execution.</p>
+<hr />
+<h2 id="accessibility">Accessibility<a class="headerlink" href="#accessibility" title="Permanent link">&para;</a></h2>
+<p>The Execution Monitor includes several accessibility features:</p>
+<ul>
+<li><strong>Live region announcements</strong> — a hidden <code>aria-live="polite"</code> region
+  announces wave completions (e.g. <em>"Wave 2 completed. Wave 3 starting."</em>)
+  and the final result (<em>"Execution completed. Result: Succeeded."</em>).</li>
+<li><strong>Labelled steps</strong> — every wave step and DRGroup carries an <code>aria-label</code>
+  describing its current state.</li>
+<li><strong>Keyboard navigation</strong> — all expandable sections and buttons are
+  reachable via keyboard tab order.</li>
+<li><strong>Skeleton loading</strong> — while data is being fetched, skeleton placeholders
+  with <code>screenreaderText</code> keep screen readers informed.</li>
+</ul>
+<hr />
+<h2 id="tips-for-bridge-calls">Tips for Bridge Calls<a class="headerlink" href="#tips-for-bridge-calls" title="Permanent link">&para;</a></h2>
+<p>When sharing the Execution Monitor during an incident call:</p>
+<ol>
+<li><strong>Start with the header</strong> — it answers <em>"what are we doing?"</em> (mode),
+   <em>"how long has it been running?"</em> (elapsed), and <em>"when will it finish?"</em>
+   (estimated remaining).</li>
+<li><strong>Watch the wave stepper</strong> — waves process top-to-bottom. The currently
+   active wave is highlighted with a blue info icon.</li>
+<li><strong>Expand failed groups immediately</strong> — the error detail section tells you
+   the failed step and error message without leaving the page.</li>
+<li><strong>Use the summary card</strong> — once the execution finishes, read the one-line
+   summary aloud. It is designed for exactly this purpose.</li>
+<li><strong>Retry from the UI</strong> — if a group failed due to a transient issue, use
+   the inline <strong>Retry</strong> button rather than creating a new execution.</li>
+</ol>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["content.code.copy", "content.code.annotate", "navigation.instant", "navigation.tracking", "navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "search.suggest", "toc.follow"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

@@ -1,0 +1,2573 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Open-source, Kubernetes-native disaster recovery orchestrator for OpenShift Virtualization.">
+      
+      
+      
+        <link rel="canonical" href="https://raffaelespazzoli.github.io/soteria/architecture/dr-lifecycle/">
+      
+      
+        <link rel="prev" href="../overview/">
+      
+      
+        <link rel="next" href="../storage-drivers/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>DR Lifecycle - Soteria</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#dr-lifecycle-state-machine" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Soteria" class="md-header__button md-logo" aria-label="Soteria" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Soteria
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              DR Lifecycle
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/raffaelespazzoli/soteria" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    raffaelespazzoli/soteria
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Soteria" class="md-nav__button md-logo" aria-label="Soteria" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Soteria
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/raffaelespazzoli/soteria" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    raffaelespazzoli/soteria
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Installation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/prerequisites/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prerequisites
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_2" id="__nav_2_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ScyllaDB & Network
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    ScyllaDB & Network
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/scylladb/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/scylladb/submariner/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Submariner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/scylladb/cilium/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cilium Cluster Mesh
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/helm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Helm Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DR Lifecycle
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DR Lifecycle
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#state-machine-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        State Machine Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-four-rest-states" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Four Rest States
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-four-transitions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Four Transitions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The Four Transitions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-full-cycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Full Cycle
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#execution-modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Execution Modes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#planned-migration-vs-disaster-failover" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Planned Migration vs. Disaster Failover
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Planned Migration vs. Disaster Failover">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#planned-migration-gracefulshutdowntrue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Planned Migration (GracefulShutdown=true)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Planned Migration (GracefulShutdown=true)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#step-0-global-pre-execution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 0 — Global Pre-Execution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#per-group-execution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-Group Execution
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#disaster-failover-gracefulshutdownfalse" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Disaster Failover (GracefulShutdown=false)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Disaster Failover (GracefulShutdown=false)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#step-0-no-op" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 0 — No-Op
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#per-group-execution_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-Group Execution
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#side-by-side-comparison" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Side-by-Side Comparison
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#re-protect-and-restore" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Re-Protect and Restore
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Re-Protect and Restore">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#active-site-owner" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Active Site (Owner)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#passive-site" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Passive Site
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fail-forward-error-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fail-Forward Error Model
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Fail-Forward Error Model">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#phase-advancement-on-failure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase Advancement on Failure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#retrying-failed-groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Retrying Failed Groups
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#checkpointing-and-resume" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Checkpointing and Resume
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Checkpointing and Resume">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#per-drgroup-checkpointing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-DRGroup Checkpointing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#execution-resume-on-restart" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Execution Resume on Restart
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#leader-election" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Leader Election
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#site-aware-reconciliation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Site-Aware Reconciliation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#code-references" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Code References
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../storage-drivers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage Drivers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Usage
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/creating-a-drplan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Creating a DRPlan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/waves/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Waves & Throttling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/volumes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Volume Grouping
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/failover/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Executing Failover
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_5" id="__nav_4_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    UI Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    UI Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/ui-guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/ui-guide/plan-detail/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plan Detail
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/ui-guide/execution-monitor/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Execution Monitor
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_1" id="__nav_5_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/api/drplan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DRPlan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/api/drexecution/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DRExecution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/helm-values/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Helm Values
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contributing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/dev-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/storage-drivers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Writing Storage Drivers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#state-machine-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        State Machine Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-four-rest-states" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Four Rest States
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-four-transitions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Four Transitions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The Four Transitions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-full-cycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Full Cycle
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#execution-modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Execution Modes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#planned-migration-vs-disaster-failover" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Planned Migration vs. Disaster Failover
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Planned Migration vs. Disaster Failover">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#planned-migration-gracefulshutdowntrue" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Planned Migration (GracefulShutdown=true)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Planned Migration (GracefulShutdown=true)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#step-0-global-pre-execution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 0 — Global Pre-Execution
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#per-group-execution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-Group Execution
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#disaster-failover-gracefulshutdownfalse" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Disaster Failover (GracefulShutdown=false)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Disaster Failover (GracefulShutdown=false)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#step-0-no-op" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 0 — No-Op
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#per-group-execution_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-Group Execution
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#side-by-side-comparison" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Side-by-Side Comparison
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#re-protect-and-restore" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Re-Protect and Restore
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Re-Protect and Restore">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#active-site-owner" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Active Site (Owner)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#passive-site" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Passive Site
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fail-forward-error-model" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fail-Forward Error Model
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Fail-Forward Error Model">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#phase-advancement-on-failure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase Advancement on Failure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#retrying-failed-groups" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Retrying Failed Groups
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#checkpointing-and-resume" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Checkpointing and Resume
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Checkpointing and Resume">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#per-drgroup-checkpointing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-DRGroup Checkpointing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#execution-resume-on-restart" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Execution Resume on Restart
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#leader-election" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Leader Election
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#site-aware-reconciliation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Site-Aware Reconciliation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#code-references" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Code References
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="dr-lifecycle-state-machine">DR Lifecycle &amp; State Machine<a class="headerlink" href="#dr-lifecycle-state-machine" title="Permanent link">&para;</a></h1>
+<p>Soteria manages the full disaster recovery lifecycle through an <strong>8-phase
+symmetric state machine</strong> — four rest states where the system is idle, and four
+transition states where an operation is in progress. This page documents every
+state, every transition, the difference between planned migration and disaster
+failover, and how partial failures are handled.</p>
+<h2 id="state-machine-overview">State Machine Overview<a class="headerlink" href="#state-machine-overview" title="Permanent link">&para;</a></h2>
+<pre class="mermaid"><code>stateDiagram-v2
+    direction LR
+
+    SteadyState --&gt; FailingOver : planned_migration\nor disaster
+    FailingOver --&gt; FailedOver : complete
+
+    FailedOver --&gt; Reprotecting : reprotect
+    Reprotecting --&gt; DRedSteadyState : complete
+
+    DRedSteadyState --&gt; FailingBack : planned_migration\nor disaster
+    FailingBack --&gt; FailedBack : complete
+
+    FailedBack --&gt; ReprotectingBack : reprotect
+    ReprotectingBack --&gt; SteadyState : complete</code></pre>
+<p>The state machine is <strong>symmetric</strong>: failover and failback use the same
+<code>FailoverHandler</code>, reprotect and restore use the same <code>ReprotectHandler</code>.
+Direction is encoded in the phase names, not in handler logic.</p>
+<h2 id="the-four-rest-states">The Four Rest States<a class="headerlink" href="#the-four-rest-states" title="Permanent link">&para;</a></h2>
+<p>Rest states represent stable system positions where no DR operation is running.
+Only rest states are persisted in <code>DRPlan.Status.Phase</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Rest State</th>
+<th>Workloads Run On</th>
+<th>Replication Direction</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>SteadyState</strong></td>
+<td>Primary site</td>
+<td>Primary → Secondary</td>
+<td>Normal operations. VMs run on the primary site with replication protecting data to the secondary.</td>
+</tr>
+<tr>
+<td><strong>FailedOver</strong></td>
+<td>Secondary site</td>
+<td>None (unprotected)</td>
+<td>After failover completes. VMs are running on the secondary site but replication has not been re-established.</td>
+</tr>
+<tr>
+<td><strong>DRedSteadyState</strong></td>
+<td>Secondary site</td>
+<td>Secondary → Primary</td>
+<td>After re-protect completes. VMs run on the secondary site with reverse replication protecting data back to the primary.</td>
+</tr>
+<tr>
+<td><strong>FailedBack</strong></td>
+<td>Primary site</td>
+<td>None (unprotected)</td>
+<td>After failback completes. VMs are running on the primary site again but replication has not been re-established.</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition warning">
+<p class="admonition-title">Unprotected States</p>
+<p><strong>FailedOver</strong> and <strong>FailedBack</strong> are unprotected — no replication is active.
+Always run re-protect (or restore) promptly after failover (or failback) to
+re-establish replication.</p>
+</div>
+<h2 id="the-four-transitions">The Four Transitions<a class="headerlink" href="#the-four-transitions" title="Permanent link">&para;</a></h2>
+<p>Transition states are <strong>never persisted</strong> in <code>DRPlan.Status.Phase</code>. They are
+derived at runtime by <code>EffectivePhase(restPhase, activeExecMode)</code> from the
+combination of the current rest phase and the active <code>DRExecution</code>'s mode.</p>
+<table>
+<thead>
+<tr>
+<th>Transition</th>
+<th>From → To</th>
+<th>Execution Mode</th>
+<th>Handler</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>FailingOver</strong></td>
+<td>SteadyState → FailedOver</td>
+<td><code>planned_migration</code> or <code>disaster</code></td>
+<td><code>FailoverHandler</code></td>
+</tr>
+<tr>
+<td><strong>Reprotecting</strong></td>
+<td>FailedOver → DRedSteadyState</td>
+<td><code>reprotect</code></td>
+<td><code>ReprotectHandler</code></td>
+</tr>
+<tr>
+<td><strong>FailingBack</strong></td>
+<td>DRedSteadyState → FailedBack</td>
+<td><code>planned_migration</code> or <code>disaster</code></td>
+<td><code>FailoverHandler</code></td>
+</tr>
+<tr>
+<td><strong>ReprotectingBack</strong></td>
+<td>FailedBack → SteadyState</td>
+<td><code>reprotect</code></td>
+<td><code>ReprotectHandler</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="the-full-cycle">The Full Cycle<a class="headerlink" href="#the-full-cycle" title="Permanent link">&para;</a></h3>
+<p>A complete DR round-trip traverses all eight phases:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>SteadyState → FailingOver → FailedOver → Reprotecting
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>→ DRedSteadyState → FailingBack → FailedBack → ReprotectingBack
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>→ SteadyState
+</span></code></pre></div>
+<p>After completing the full cycle, the system returns to its original state with
+workloads on the primary site and replication flowing primary → secondary.</p>
+<h2 id="execution-modes">Execution Modes<a class="headerlink" href="#execution-modes" title="Permanent link">&para;</a></h2>
+<p>Soteria supports three execution modes, specified at runtime on the
+<code>DRExecution</code> resource (not on the <code>DRPlan</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>When to Use</th>
+<th>Step 0</th>
+<th>Per-Group Path</th>
+<th>RPO</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>planned_migration</code></td>
+<td>Both sites available, zero data loss required</td>
+<td>Stop VMs + demote source</td>
+<td>SetSource → StartVM</td>
+<td>Zero (graceful)</td>
+</tr>
+<tr>
+<td><code>disaster</code></td>
+<td>Primary site unavailable</td>
+<td>No-op (site unreachable)</td>
+<td>SetSource → StartVM</td>
+<td>Last sync point</td>
+</tr>
+<tr>
+<td><code>reprotect</code></td>
+<td>After failover/failback, re-establish replication</td>
+<td>N/A</td>
+<td>State verification → health monitoring</td>
+<td>N/A</td>
+</tr>
+</tbody>
+</table>
+<h2 id="planned-migration-vs-disaster-failover">Planned Migration vs. Disaster Failover<a class="headerlink" href="#planned-migration-vs-disaster-failover" title="Permanent link">&para;</a></h2>
+<p>Both planned migration and disaster failover use the <strong>same <code>FailoverHandler</code></strong>,
+parameterized by <code>FailoverConfig{GracefulShutdown}</code>. The controller maps the
+execution mode to the config:</p>
+<ul>
+<li><code>planned_migration</code> → <code>FailoverConfig{GracefulShutdown: true}</code></li>
+<li><code>disaster</code> → <code>FailoverConfig{GracefulShutdown: false}</code></li>
+</ul>
+<h3 id="planned-migration-gracefulshutdowntrue">Planned Migration (GracefulShutdown=true)<a class="headerlink" href="#planned-migration-gracefulshutdowntrue" title="Permanent link">&para;</a></h3>
+<p>Planned migration ensures <strong>zero data loss</strong> by gracefully shutting down
+workloads on the source site before promoting volumes on the target.</p>
+<h4 id="step-0-global-pre-execution">Step 0 — Global Pre-Execution<a class="headerlink" href="#step-0-global-pre-execution" title="Permanent link">&para;</a></h4>
+<p>Step 0 runs once, before any wave begins. It affects all VMs in the plan:</p>
+<ol>
+<li>
+<p><strong>Stop all origin VMs in reverse wave order.</strong> Dependants stop before
+   dependencies (e.g., webservers stop first, database stops last). This
+   ensures higher-tier services can drain before losing the backing data
+   store.</p>
+</li>
+<li>
+<p><strong>Call <code>StopReplication</code> on each source volume group</strong> to demote the
+   primary to secondary (read-only). The storage backend's replication daemon
+   (e.g., rbd-mirror) automatically syncs the demotion snapshot to the
+   target site.</p>
+</li>
+<li>
+<p><strong>Wait for VR/VGR confirmation.</strong> The reconciler waits for
+   <code>VolumeReplication</code> resources to confirm <code>role=Target</code> (state=Secondary)
+   on the target site before signalling <code>DemotionComplete</code> and allowing
+   promotion. This wait is event-driven (via VR watch), not polling, with a
+   configurable timeout (<code>DRPlanSpec.ResyncTimeout</code>, default 10 minutes).</p>
+</li>
+</ol>
+<h4 id="per-group-execution">Per-Group Execution<a class="headerlink" href="#per-group-execution" title="Permanent link">&para;</a></h4>
+<p>After Step 0 completes globally, the target site processes each wave
+sequentially:</p>
+<ol>
+<li><strong><code>SetSource</code></strong> — Promote the target volume group to primary (writable).</li>
+<li><strong><code>StartVM</code></strong> — Start the VM on the target site.</li>
+</ol>
+<p>Wave N+1 begins only after all VMs in wave N reach the Running state
+(configurable timeout via <code>DRPlanSpec.VMReadyTimeout</code>, default 5 minutes).</p>
+<h3 id="disaster-failover-gracefulshutdownfalse">Disaster Failover (GracefulShutdown=false)<a class="headerlink" href="#disaster-failover-gracefulshutdownfalse" title="Permanent link">&para;</a></h3>
+<p>Disaster failover assumes the <strong>primary site is unreachable</strong>. There is no
+Step 0 — the origin VMs cannot be stopped and source volumes cannot be
+gracefully demoted.</p>
+<h4 id="step-0-no-op">Step 0 — No-Op<a class="headerlink" href="#step-0-no-op" title="Permanent link">&para;</a></h4>
+<p><code>PreExecute</code> returns immediately. No VM stops, no <code>StopReplication</code> calls.</p>
+<h4 id="per-group-execution_1">Per-Group Execution<a class="headerlink" href="#per-group-execution_1" title="Permanent link">&para;</a></h4>
+<p>The target site runs the same per-group path as planned migration:</p>
+<ol>
+<li><strong><code>SetSource</code></strong> — Force-promote the target volume group to primary. The
+   storage driver handles the unreachable peer internally (e.g., force
+   promotion in rbd-mirror).</li>
+<li><strong><code>StartVM</code></strong> — Start the VM on the target site.</li>
+</ol>
+<div class="admonition info">
+<p class="admonition-title">RPO Impact</p>
+<p>Disaster failover recovers to the <strong>last successful replication sync
+point</strong>. Any writes on the primary site after the last sync are lost.
+The orchestrator does not track or enforce RPO targets — RPO is
+determined by the storage replication configuration.</p>
+</div>
+<h3 id="side-by-side-comparison">Side-by-Side Comparison<a class="headerlink" href="#side-by-side-comparison" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Aspect</th>
+<th>Planned Migration</th>
+<th>Disaster Failover</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Step 0</td>
+<td>Stop VMs (reverse wave order) + <code>StopReplication</code></td>
+<td>No-op</td>
+</tr>
+<tr>
+<td>Data loss</td>
+<td>Zero (graceful demotion + sync)</td>
+<td>Up to last sync point</td>
+</tr>
+<tr>
+<td>Source site</td>
+<td>Must be available</td>
+<td>Assumed unreachable</td>
+</tr>
+<tr>
+<td>Per-group path</td>
+<td><code>SetSource</code> → <code>StartVM</code></td>
+<td><code>SetSource</code> → <code>StartVM</code></td>
+</tr>
+<tr>
+<td>Handler</td>
+<td><code>FailoverHandler{GracefulShutdown: true}</code></td>
+<td><code>FailoverHandler{GracefulShutdown: false}</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="re-protect-and-restore">Re-Protect and Restore<a class="headerlink" href="#re-protect-and-restore" title="Permanent link">&para;</a></h2>
+<p>Re-protect and restore are <strong>storage-only</strong> operations — they change volume
+replication roles without moving workloads. No VM stop or start occurs.</p>
+<table>
+<thead>
+<tr>
+<th>Operation</th>
+<th>Transition</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Re-protect</strong></td>
+<td>FailedOver → Reprotecting → DRedSteadyState</td>
+<td>Establish reverse replication (secondary → primary)</td>
+</tr>
+<tr>
+<td><strong>Restore</strong></td>
+<td>FailedBack → ReprotectingBack → SteadyState</td>
+<td>Restore original replication (primary → secondary)</td>
+</tr>
+</tbody>
+</table>
+<p>Both use the same <code>ReprotectHandler</code> with a <strong>two-sided design</strong>:</p>
+<h3 id="active-site-owner">Active Site (Owner)<a class="headerlink" href="#active-site-owner" title="Permanent link">&para;</a></h3>
+<p>The site where workloads are currently running executes the <code>ReprotectHandler</code>:</p>
+<ol>
+<li>
+<p><strong>Phase 1 — State Verification:</strong> For each volume group, read the current
+   replication role via <code>GetReplicationStatus</code>. Both <code>RoleSource</code> (primary,
+   legitimate on the active site) and <code>RoleTarget</code> (secondary) pass
+   verification. The Owner site does <strong>not</strong> demote or resync its own volumes.</p>
+</li>
+<li>
+<p><strong>Phase 2 — Health Monitoring:</strong> Poll <code>GetReplicationStatus</code> at
+   configurable intervals until all volume groups report <code>HealthHealthy</code> or
+   the timeout expires (default 24 hours). Timeout results in
+   <code>PartiallySucceeded</code> — replication is active but not yet fully synced.</p>
+</li>
+</ol>
+<h3 id="passive-site">Passive Site<a class="headerlink" href="#passive-site" title="Permanent link">&para;</a></h3>
+<p>The site where workloads are <strong>not</strong> running handles cleanup via
+<code>reconcileReprotectPassive</code> in the DRExecution reconciler:</p>
+<ul>
+<li><strong>Demotes stale primaries</strong> by calling <code>StopReplication</code> (transitions volume
+  from primary to secondary).</li>
+<li><strong>Verifies</strong> volumes reach secondary state with healthy replication.</li>
+</ul>
+<p>This two-sided design is necessary because after a disaster failover, the
+surviving site's volumes may still believe they are primary. The passive site
+corrects this.</p>
+<h2 id="fail-forward-error-model">Fail-Forward Error Model<a class="headerlink" href="#fail-forward-error-model" title="Permanent link">&para;</a></h2>
+<p>Soteria uses a <strong>fail-forward</strong> strategy — rollback is impossible when the
+active datacenter may be down. When a DRGroup fails during execution, the
+engine does <strong>not</strong> halt. Instead:</p>
+<ol>
+<li>The failed group is marked <code>Failed</code> in the DRExecution status with
+   structured error details (<code>GroupError</code> — step name + affected resource).</li>
+<li>Execution continues with remaining groups in the current wave and
+   subsequent waves.</li>
+<li>The overall execution result is computed from individual group outcomes:</li>
+</ol>
+<table>
+<thead>
+<tr>
+<th>Outcome</th>
+<th>Condition</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Succeeded</strong></td>
+<td>All DRGroups completed successfully</td>
+</tr>
+<tr>
+<td><strong>PartiallySucceeded</strong></td>
+<td>Some groups completed, some failed</td>
+</tr>
+<tr>
+<td><strong>Failed</strong></td>
+<td>No groups completed successfully</td>
+</tr>
+</tbody>
+</table>
+<h3 id="phase-advancement-on-failure">Phase Advancement on Failure<a class="headerlink" href="#phase-advancement-on-failure" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>Succeeded</strong> or <strong>PartiallySucceeded</strong>: <code>CompleteTransition</code> advances the
+  DRPlan to the next rest state. Even partial success advances the lifecycle
+  because some workloads are now running on the target site.</li>
+<li><strong>Failed</strong>: The DRPlan stays in its transition phase (e.g., <code>FailingOver</code>).
+  Manual intervention is required.</li>
+</ul>
+<h3 id="retrying-failed-groups">Retrying Failed Groups<a class="headerlink" href="#retrying-failed-groups" title="Permanent link">&para;</a></h3>
+<p>After a <code>PartiallySucceeded</code> execution, operators can retry failed DRGroups by
+annotating the DRExecution:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">annotations</span><span class="p">:</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="nt">soteria.io/retry-groups</span><span class="p">:</span><span class="w"> </span><span class="s">"group-name-1,group-name-2"</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="c1"># or: soteria.io/retry-groups: "all-failed"</span>
+</span></code></pre></div>
+<p>Retry preconditions:</p>
+<ul>
+<li>Execution result must be <code>PartiallySucceeded</code></li>
+<li>No retry already in progress (no <code>InProgress</code> groups)</li>
+<li>All VMs in retry groups must pass health validation (VM exists, not
+  migrating, not paused)</li>
+</ul>
+<p>Retry uses the same handler and driver as the original execution.
+<code>CompleteTransition</code> is <strong>not</strong> called during retry — the plan phase was
+already advanced during the initial execution.</p>
+<h2 id="checkpointing-and-resume">Checkpointing and Resume<a class="headerlink" href="#checkpointing-and-resume" title="Permanent link">&para;</a></h2>
+<h3 id="per-drgroup-checkpointing">Per-DRGroup Checkpointing<a class="headerlink" href="#per-drgroup-checkpointing" title="Permanent link">&para;</a></h3>
+<p>After each DRGroup completes (success or failure), the executor writes the
+group status and checkpoint as a single atomic status update. This ensures:</p>
+<ul>
+<li><strong>At most one in-flight DRGroup can be lost on crash.</strong> The last group whose
+  merged status+checkpoint write completed is the recovery point.</li>
+<li><strong>Sequential chunk execution</strong> guarantees only one chunk writes to the
+  DRExecution at any time.</li>
+</ul>
+<h3 id="execution-resume-on-restart">Execution Resume on Restart<a class="headerlink" href="#execution-resume-on-restart" title="Permanent link">&para;</a></h3>
+<p>When the controller restarts, it detects in-progress executions and uses
+<code>ResumeAnalyzer</code> to determine the resume point:</p>
+<ol>
+<li>Walk <code>Status.Waves[]</code> to find the first wave with non-terminal groups.</li>
+<li>Groups with <code>Result == InProgress</code> (crashed mid-execution) are reset to
+   <code>Pending</code> and retried — all driver operations are idempotent.</li>
+<li>Completed and Failed groups are skipped.</li>
+<li>Execution continues from the resume wave.</li>
+</ol>
+<h3 id="leader-election">Leader Election<a class="headerlink" href="#leader-election" title="Permanent link">&para;</a></h3>
+<p>Leader election gates only the workflow engine reconciliation. All replicas
+continue serving API requests. On leader failure, the standby acquires the
+lease and picks up in-progress executions via checkpoint resume.</p>
+<h2 id="site-aware-reconciliation">Site-Aware Reconciliation<a class="headerlink" href="#site-aware-reconciliation" title="Permanent link">&para;</a></h2>
+<p>In a multi-site deployment, each Soteria instance is configured with
+<code>--site-name</code>. The reconcile role is determined by
+<code>ReconcileRole(phase, mode, localSite, primary, secondary)</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Role</th>
+<th>Responsibilities</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Owner</strong></td>
+<td>Runs the full execution workflow (Step 0 and/or per-group waves)</td>
+</tr>
+<tr>
+<td><strong>Step0Only</strong></td>
+<td>Runs only Step 0 (source site in planned migration)</td>
+</tr>
+<tr>
+<td><strong>None</strong></td>
+<td>Skips reconciliation (not this site's responsibility)</td>
+</tr>
+</tbody>
+</table>
+<p>In planned migration, the source site runs Step 0 (stop VMs, demote
+volumes), and the target site runs the per-group waves (promote, start VMs).
+In disaster mode, the source site exits immediately (it may be unreachable);
+the target site runs everything.</p>
+<h2 id="code-references">Code References<a class="headerlink" href="#code-references" title="Permanent link">&para;</a></h2>
+<p>The state machine and execution engine are implemented in the following
+packages:</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>pkg/engine/statemachine.go</code></td>
+<td><code>Transition()</code>, <code>CompleteTransition()</code>, <code>EffectivePhase()</code> — pure state machine functions</td>
+</tr>
+<tr>
+<td><code>pkg/engine/failover.go</code></td>
+<td><code>FailoverHandler</code> — unified handler for failover and failback</td>
+</tr>
+<tr>
+<td><code>pkg/engine/reprotect.go</code></td>
+<td><code>ReprotectHandler</code> — storage-only re-protect and restore</td>
+</tr>
+<tr>
+<td><code>pkg/engine/executor.go</code></td>
+<td>Wave executor, fail-forward logic, checkpointing</td>
+</tr>
+<tr>
+<td><code>pkg/engine/resume.go</code></td>
+<td>Execution state reconstruction on restart</td>
+</tr>
+<tr>
+<td><code>pkg/apis/soteria.io/v1alpha1/types.go</code></td>
+<td>Phase constants, <code>ExecutionMode</code>, <code>ExecutionResult</code></td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["content.code.copy", "content.code.annotate", "navigation.instant", "navigation.tracking", "navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "search.suggest", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
