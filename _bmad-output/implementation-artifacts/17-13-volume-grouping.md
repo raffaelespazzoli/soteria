@@ -1,6 +1,6 @@
 # Story 17.13: Volume Grouping
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -42,19 +42,19 @@ Then all described behavior matches the actual code
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Research volume grouping implementation (AC: 1, 2, 5, 6)
-  - [ ] 1.1: Read PRD FR2–FR4, FR6–FR7 for the conceptual volume grouping design
-  - [ ] 1.2: Walk `pkg/engine/consistency.go` for namespace annotation reading and VolumeGroup formation
-  - [ ] 1.3: Walk `pkg/engine/discovery.go` for label-to-wave mapping and VM discovery
-  - [ ] 1.4: Walk `pkg/engine/chunker.go` for how VolumeGroups map into DRGroup chunks
-- [ ] Task 2: Research validation and constraints (AC: 4, 6)
-  - [ ] 2.1: Walk `pkg/admission/drplan_validator.go` for field-level validation
-  - [ ] 2.2: Walk `pkg/controller/drplan/reconciler.go` for runtime enforcement (WaveConflict, NamespaceGroupExceedsThrottle conditions)
-- [ ] Task 3: Write the documentation page (AC: 1, 2, 3, 4, 5)
-  - [ ] 3.1: Write `docs/usage/volume-grouping.md` covering namespace-level vs VM-level grouping, annotation usage, label-to-DRGroup mapping, wave constraint, trade-offs
-  - [ ] 3.2: Add annotated YAML examples showing both grouping strategies
-- [ ] Task 4: Verify accuracy (AC: 6)
-  - [ ] 4.1: Verify all grouping rules match the actual code
+- [x] Task 1: Research volume grouping implementation (AC: 1, 2, 5, 6)
+  - [x] 1.1: Read PRD FR2–FR4, FR6–FR7 for the conceptual volume grouping design
+  - [x] 1.2: Walk `pkg/engine/consistency.go` for namespace annotation reading and VolumeGroup formation
+  - [x] 1.3: Walk `pkg/engine/discovery.go` for label-to-wave mapping and VM discovery
+  - [x] 1.4: Walk `pkg/engine/chunker.go` for how VolumeGroups map into DRGroup chunks
+- [x] Task 2: Research validation and constraints (AC: 4, 6)
+  - [x] 2.1: Walk `pkg/admission/drplan_validator.go` for field-level validation
+  - [x] 2.2: Walk `pkg/controller/drplan/reconciler.go` for runtime enforcement (WaveConflict, NamespaceGroupExceedsThrottle conditions)
+- [x] Task 3: Write the documentation page (AC: 1, 2, 3, 4, 5)
+  - [x] 3.1: Write `docs/usage/volumes.md` covering namespace-level vs VM-level grouping, annotation usage, label-to-DRGroup mapping, wave constraint, trade-offs
+  - [x] 3.2: Add annotated YAML examples showing both grouping strategies
+- [x] Task 4: Verify accuracy (AC: 6)
+  - [x] 4.1: Verify all grouping rules match the actual code
 
 ## Dev Notes
 
@@ -88,7 +88,7 @@ Start from the PRD (`_bmad-output/planning-artifacts/prd.md`), architecture doc 
 
 | File | Action | Description |
 |------|--------|-------------|
-| docs/usage/volume-grouping.md | NEW | Namespace-level vs VM-level grouping strategies, annotations, constraints, trade-offs |
+| docs/usage/volumes.md | MODIFIED | Namespace-level vs VM-level grouping strategies, annotations, constraints, trade-offs (replaced placeholder) |
 
 ### Key Constraints
 
@@ -114,8 +114,38 @@ Start from the PRD (`_bmad-output/planning-artifacts/prd.md`), architecture doc 
 
 ### Agent Model Used
 
+Claude Opus 4.6
+
 ### Debug Log References
+
+None — documentation-only story, no code changes.
 
 ### Completion Notes List
 
+- ✅ Researched all source files: consistency.go, discovery.go, chunker.go, drplan_validator.go, reconciler.go, types.go
+- ✅ Read PRD FR2–FR4, FR6–FR7 for conceptual design context
+- ✅ Wrote comprehensive docs/usage/volumes.md replacing the placeholder
+- ✅ Documented VM-level grouping (default) with naming convention `vm-<namespace>-<vmname>`
+- ✅ Documented namespace-level grouping with annotation `soteria.io/consistency-level: namespace` and naming convention `ns-<namespace>`
+- ✅ Added annotated YAML examples for both strategies with mkdocs code annotations
+- ✅ Documented label-to-DRGroup formation pipeline with Mermaid flowchart (discovery → wave grouping → consistency resolution → chunking)
+- ✅ Documented WaveConflict constraint with admonition and example error output
+- ✅ Documented NamespaceGroupExceedsThrottle constraint with admonition and example error output
+- ✅ Added comparison table for choosing between strategies
+- ✅ Documented VM exclusivity via `soteria.io/drplan` label key (structural enforcement)
+- ✅ Added recommended patterns: independent web servers, database cluster, mixed application
+- ✅ Documented pre-flight verification with kubectl command
+- ✅ Verified all 12 key facts against source code — all match
+- ✅ Note: story file inventory said `docs/usage/volume-grouping.md` (NEW) but mkdocs.yml already had `usage/volumes.md` mapped to "Volume Grouping"; wrote to existing file to maintain nav consistency
+
+### Change Log
+
+- 2026-09-05: Initial implementation — replaced placeholder in docs/usage/volumes.md with comprehensive volume grouping documentation
+
 ### File List
+
+| File | Action |
+|------|--------|
+| docs/usage/volumes.md | MODIFIED |
+| _bmad-output/implementation-artifacts/17-13-volume-grouping.md | MODIFIED |
+| _bmad-output/implementation-artifacts/sprint-status.yaml | MODIFIED |
