@@ -3,10 +3,11 @@ Controller Deployment — single-binary aggregated API server + reconciler.
 Mirrors config/manager/manager.yaml with conditional ScyllaDB wiring
 based on scylladb.mode (managed | external).
 */ -}}
+{{- include "soteria.validate" . }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "soteria.fullname" . }}-controller-manager
+  name: {{ printf "%s-controller-manager" (include "soteria.fullname" .) | trunc 63 | trimSuffix "-" }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "soteria.labels" . | nindent 4 }}
@@ -36,15 +37,18 @@ spec:
           args:
             - --leader-elect={{ .Values.controller.leaderElection.enabled }}
             - --health-probe-bind-address=:8081
+            - --metrics-bind-address=:8443
             - --site-name={{ .Values.site.name }}
             - --secure-port={{ .Values.controller.apiserver.port }}
             - --tls-cert-file=/etc/soteria/apiserver-tls/tls.crt
             - --tls-private-key-file=/etc/soteria/apiserver-tls/tls.key
             - --disable-admission-plugins=ValidatingAdmissionPolicy,ValidatingAdmissionWebhook,MutatingAdmissionWebhook
             {{- if eq .Values.scylladb.mode "managed" }}
-            - --scylladb-contact-points={{ include "soteria.fullname" . }}-scylladb-client.{{ .Release.Namespace }}.svc:9142
+            - --scylladb-contact-points={{ printf "%s-scylladb-client.%s.svc:9142" (include "soteria.fullname" .) .Release.Namespace }}
             {{- else if eq .Values.scylladb.mode "external" }}
             - --scylladb-contact-points={{ .Values.scylladb.external.contactPoints }}
+            {{- else }}
+            {{- fail "scylladb.mode must be 'managed' or 'external'" }}
             {{- end }}
             - --scylladb-keyspace={{ .Values.scylladb.keyspace }}
             {{- with .Values.scylladb.localDC }}
@@ -57,7 +61,7 @@ spec:
             - --scylladb-tls-cert=/etc/soteria/scylladb-client-tls/tls.crt
             - --scylladb-tls-key=/etc/soteria/scylladb-client-tls/tls.key
             - --scylladb-tls-ca=/etc/soteria/scylladb-client-tls/ca.crt
-            - --scylladb-tls-server-name={{ include "soteria.fullname" . }}-scylladb-client.{{ .Release.Namespace }}.svc
+            - --scylladb-tls-server-name={{ printf "%s-scylladb-client.%s.svc" (include "soteria.fullname" .) .Release.Namespace }}
             {{- end }}
             {{- if and (eq .Values.scylladb.mode "external") .Values.scylladb.external.tls.enabled }}
             - --scylladb-tls-cert=/etc/soteria/scylladb-tls/tls.crt
@@ -67,11 +71,17 @@ spec:
             - --scylladb-tls-server-name={{ . }}
             {{- end }}
             {{- end }}
-          image: "{{ .Values.controller.image.repository }}:{{ .Values.controller.image.tag | default .Chart.AppVersion }}"
+          image: "{{ .Values.controller.image.repository }}:{{ include "soteria.imageTag" (dict "tag" .Values.controller.image.tag "ctx" .) }}"
           imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
           ports:
             - containerPort: {{ .Values.controller.apiserver.port }}
               name: apiserver
+              protocol: TCP
+            - containerPort: 9443
+              name: webhook
+              protocol: TCP
+            - containerPort: 8443
+              name: metrics
               protocol: TCP
           securityContext:
             readOnlyRootFilesystem: true
@@ -104,6 +114,12 @@ spec:
             - name: apiserver-tls
               mountPath: /etc/soteria/apiserver-tls
               readOnly: true
+            - name: webhook-server-cert
+              mountPath: /tmp/k8s-webhook-server/serving-certs
+              readOnly: true
+            - name: metrics-server-cert
+              mountPath: /etc/soteria/metrics-tls
+              readOnly: true
             {{- if eq .Values.scylladb.mode "managed" }}
             - name: scylladb-client-tls
               mountPath: /etc/soteria/scylladb-client-tls
@@ -117,11 +133,17 @@ spec:
       volumes:
         - name: apiserver-tls
           secret:
-            secretName: {{ include "soteria.fullname" . }}-apiserver-tls
+            secretName: {{ printf "%s-apiserver-tls" (include "soteria.fullname" .) | trunc 63 | trimSuffix "-" }}
+        - name: webhook-server-cert
+          secret:
+            secretName: {{ printf "%s-webhook-server-cert" (include "soteria.fullname" .) | trunc 63 | trimSuffix "-" }}
+        - name: metrics-server-cert
+          secret:
+            secretName: {{ printf "%s-metrics-server-cert" (include "soteria.fullname" .) | trunc 63 | trimSuffix "-" }}
         {{- if eq .Values.scylladb.mode "managed" }}
         - name: scylladb-client-tls
           secret:
-            secretName: {{ include "soteria.fullname" . }}-scylladb-client-tls
+            secretName: {{ printf "%s-scylladb-client-tls" (include "soteria.fullname" .) | trunc 63 | trimSuffix "-" }}
         {{- end }}
         {{- if and (eq .Values.scylladb.mode "external") .Values.scylladb.external.tls.enabled }}
         - name: scylladb-tls

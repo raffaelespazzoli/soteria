@@ -5,7 +5,7 @@ Keep rules in sync with the kustomize-generated RBAC manifests.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ include "soteria.fullname" . }}-manager-role
+  name: {{ printf "%s-manager-role" (include "soteria.fullname" .) | trunc 63 | trimSuffix "-" }}
   labels:
     {{- include "soteria.labels" . | nindent 4 }}
 rules:

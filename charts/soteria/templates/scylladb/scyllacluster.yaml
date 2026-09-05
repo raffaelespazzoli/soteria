@@ -1,15 +1,18 @@
 {{- if eq .Values.scylladb.mode "managed" }}
+{{- /* Fail when joining a cluster without external seeds configured */ -}}
+{{- if and (eq .Values.site.role "joining") (empty .Values.scylladb.managed.externalSeeds) }}
+{{- fail "scylladb.managed.externalSeeds must not be empty when site.role=joining" }}
+{{- end }}
 apiVersion: scylla.scylladb.com/v1
 kind: ScyllaCluster
 metadata:
-  name: {{ include "soteria.fullname" . }}-scylladb
+  name: {{ printf "%s-scylladb" (include "soteria.fullname" .) | trunc 63 | trimSuffix "-" }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "soteria.labels" . | nindent 4 }}
-  {{- if eq .Values.networking.mode "cilium" }}
-  annotations:
-    service.cilium.io/global: "true"
-  {{- end }}
+{{/* NOTE: Cilium's service.cilium.io/global annotation must be applied to the
+     headless Service created by the scylla-operator, not to the ScyllaCluster CR.
+     The install script handles this post-install for Cilium networking mode. */}}
 spec:
   version: {{ .Values.scylladb.managed.version | quote }}
   developerMode: {{ .Values.scylladb.managed.developerMode }}
@@ -18,17 +21,21 @@ spec:
       nodes:
         {{- if eq .Values.networking.mode "submariner" }}
         type: ServiceClusterIP
-        {{- else }}
+        {{- else if eq .Values.networking.mode "cilium" }}
         type: PodIP
         {{- end }}
       clients:
         {{- if eq .Values.networking.mode "submariner" }}
         type: ServiceClusterIP
-        {{- else }}
+        {{- else if eq .Values.networking.mode "cilium" }}
         type: PodIP
         {{- end }}
     nodeService:
+      {{- if eq .Values.networking.mode "submariner" }}
+      type: ClusterIP
+      {{- else if eq .Values.networking.mode "cilium" }}
       type: Headless
+      {{- end }}
   {{- with .Values.scylladb.managed.externalSeeds }}
   externalSeeds:
     {{- toYaml . | nindent 4 }}

@@ -143,15 +143,10 @@ networking:
   # "cilium" uses Cilium ClusterMesh for direct pod-to-pod connectivity.
   mode: submariner  # submariner | cilium
 
-  # -- Submariner-specific settings --
-  submariner: {}
-
-  # -- Cilium-specific settings --
-  cilium: {}
-
-  # TODO: cUDN (Cluster User-Defined Network) networking mode — future work.
-  # Will provide OVN-based cross-cluster connectivity as an alternative to
-  # Submariner and Cilium.
+  # NOTE: "mode" is currently the only networking setting. Submariner and Cilium
+  # require their own operator installs but no chart-level parameters today.
+  # Placeholder: cUDN (Cluster User-Defined Network) mode — future work for
+  # OVN-based cross-cluster connectivity.
 
 # -----------------------------------------------------------------------------
 # UI configuration
@@ -182,5 +177,9 @@ ui:
     gateway:
       # name: Name of the Gateway resource to attach HTTPRoute to.
       name: ""
-      # className: GatewayClass for the standalone UI gateway.
-      className: ""
+      # namespace: Namespace of the Gateway resource. Defaults to .Release.Namespace
+      # when empty. Set explicitly for cross-namespace Gateway references.
+      namespace: ""
+      # hostname: Optional hostname for the HTTPRoute. When set, adds a hostnames
+      # filter to prevent catch-all routing on shared Gateways.
+      hostname: ""

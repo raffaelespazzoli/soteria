@@ -2,16 +2,16 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: {{ include "soteria.fullname" . }}-console-reader
+  name: {{ printf "%s-%s-console-reader" (include "soteria.fullname" .) .Release.Namespace | trunc 63 | trimSuffix "-" }}
   labels:
     {{- include "soteria.labels" . | nindent 4 }}
     app.kubernetes.io/component: console-standalone
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: {{ include "soteria.fullname" . }}-console-reader
+  name: {{ printf "%s-%s-console-reader" (include "soteria.fullname" .) .Release.Namespace | trunc 63 | trimSuffix "-" }}
 subjects:
   - kind: ServiceAccount
-    name: {{ include "soteria.fullname" . }}-standalone
+    name: {{ printf "%s-standalone" (include "soteria.fullname" .) | trunc 63 | trimSuffix "-" }}
     namespace: {{ .Release.Namespace }}
 {{- end }}

@@ -7,17 +7,19 @@ Based on config/certmanager/webhook-serving-cert.yaml.
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: {{ include "soteria.fullname" . }}-webhook-serving
+  name: {{ printf "%s-webhook-serving" (include "soteria.fullname" .) | trunc 63 | trimSuffix "-" }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "soteria.labels" . | nindent 4 }}
 spec:
-  secretName: {{ include "soteria.fullname" . }}-webhook-server-cert
+  secretName: {{ printf "%s-webhook-server-cert" (include "soteria.fullname" .) | trunc 63 | trimSuffix "-" }}
   duration: 8760h
   renewBefore: 720h
+  usages:
+    - server auth
   issuerRef:
     name: {{ .Values.tls.issuerRef.name }}
     kind: {{ .Values.tls.issuerRef.kind }}
   dnsNames:
-    - {{ include "soteria.fullname" . }}-webhook.{{ .Release.Namespace }}.svc
-    - {{ include "soteria.fullname" . }}-webhook.{{ .Release.Namespace }}.svc.cluster.local
+    - {{ printf "%s-webhook.%s.svc" (include "soteria.fullname" .) .Release.Namespace }}
+    - {{ printf "%s-webhook.%s.svc.cluster.local" (include "soteria.fullname" .) .Release.Namespace }}

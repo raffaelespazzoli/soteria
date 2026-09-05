@@ -10,12 +10,12 @@ metadata:
   labels:
     {{- include "soteria.labels" . | nindent 4 }}
   annotations:
-    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ include "soteria.fullname" . }}-apiserver-serving
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ printf "%s-apiserver-serving" (include "soteria.fullname" .) | trunc 63 | trimSuffix "-" }}
 spec:
   group: soteria.io
   version: v1alpha1
   service:
     namespace: {{ .Release.Namespace }}
-    name: {{ include "soteria.fullname" . }}-apiserver
+    name: {{ printf "%s-apiserver" (include "soteria.fullname" .) | trunc 63 | trimSuffix "-" }}
   groupPriorityMinimum: 1000
   versionPriority: 100

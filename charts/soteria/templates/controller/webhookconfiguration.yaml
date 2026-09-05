@@ -6,17 +6,17 @@ cert-manager injects the CA bundle from the webhook serving Certificate.
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
-  name: {{ include "soteria.fullname" . }}-validating-webhook
+  name: {{ printf "%s-validating-webhook" (include "soteria.fullname" .) | trunc 63 | trimSuffix "-" }}
   labels:
     {{- include "soteria.labels" . | nindent 4 }}
   annotations:
-    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ include "soteria.fullname" . }}-webhook-serving
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ printf "%s-webhook-serving" (include "soteria.fullname" .) | trunc 63 | trimSuffix "-" }}
 webhooks:
   - admissionReviewVersions:
       - v1
     clientConfig:
       service:
-        name: {{ include "soteria.fullname" . }}-webhook
+        name: {{ printf "%s-webhook" (include "soteria.fullname" .) | trunc 63 | trimSuffix "-" }}
         namespace: {{ .Release.Namespace }}
         path: /validate-kubevirt-io-v1-virtualmachine
     failurePolicy: Fail
