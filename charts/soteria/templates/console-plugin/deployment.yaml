@@ -2,7 +2,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "soteria.fullname" . }}-console-plugin
+  name: {{ printf "%s-console-plugin" (include "soteria.fullname" .) | trunc 63 | trimSuffix "-" }}
   labels:
     {{- include "soteria.labels" . | nindent 4 }}
     app.kubernetes.io/component: console-plugin
@@ -18,14 +18,24 @@ spec:
         {{- include "soteria.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: console-plugin
     spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: console-plugin
-          image: "{{ .Values.ui.consolePlugin.image.repository }}:{{ .Values.ui.consolePlugin.image.tag | default .Chart.AppVersion }}"
+          image: "{{ .Values.ui.consolePlugin.image.repository }}:{{ include "soteria.imageTag" (dict "tag" .Values.ui.consolePlugin.image.tag "ctx" .) }}"
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 9443
               name: https
               protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - "ALL"
           resources:
             requests:
               cpu: 10m
@@ -56,8 +66,8 @@ spec:
       volumes:
         - name: serving-cert
           secret:
-            secretName: {{ include "soteria.fullname" . }}-console-plugin-serving-cert
+            secretName: {{ printf "%s-console-plugin-serving-cert" (include "soteria.fullname" .) | trunc 63 | trimSuffix "-" }}
         - name: nginx-tls-conf
           configMap:
-            name: {{ include "soteria.fullname" . }}-console-plugin-nginx
+            name: {{ printf "%s-console-plugin-nginx" (include "soteria.fullname" .) | trunc 63 | trimSuffix "-" }}
 {{- end }}

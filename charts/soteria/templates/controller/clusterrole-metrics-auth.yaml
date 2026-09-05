@@ -1,0 +1,24 @@
+{{- /*
+Metrics Auth ClusterRole — allows the controller to create TokenReviews and
+SubjectAccessReviews for metrics endpoint authentication.
+Mirrors config/rbac/metrics_auth_role.yaml.
+*/ -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ printf "%s-metrics-auth" (include "soteria.fullname" .) | trunc 63 | trimSuffix "-" }}
+  labels:
+    {{- include "soteria.labels" . | nindent 4 }}
+rules:
+  - apiGroups:
+      - authentication.k8s.io
+    resources:
+      - tokenreviews
+    verbs:
+      - create
+  - apiGroups:
+      - authorization.k8s.io
+    resources:
+      - subjectaccessreviews
+    verbs:
+      - create

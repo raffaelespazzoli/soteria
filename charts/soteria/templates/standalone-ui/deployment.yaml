@@ -2,7 +2,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "soteria.fullname" . }}-standalone
+  name: {{ printf "%s-standalone" (include "soteria.fullname" .) | trunc 63 | trimSuffix "-" }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "soteria.labels" . | nindent 4 }}
@@ -19,14 +19,14 @@ spec:
         {{- include "soteria.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: console-standalone
     spec:
-      serviceAccountName: {{ include "soteria.fullname" . }}-standalone
+      serviceAccountName: {{ printf "%s-standalone" (include "soteria.fullname" .) | trunc 63 | trimSuffix "-" }}
       securityContext:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
       containers:
         - name: console-proxy
-          image: "{{ .Values.ui.standalone.image.repository }}:{{ .Values.ui.standalone.image.tag | default .Chart.AppVersion }}"
+          image: "{{ .Values.ui.standalone.image.repository }}:{{ include "soteria.imageTag" (dict "tag" .Values.ui.standalone.image.tag "ctx" .) }}"
           args:
             - "--addr=:8080"
             - "--static-dir=/opt/app-root/src"

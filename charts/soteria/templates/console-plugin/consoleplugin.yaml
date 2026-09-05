@@ -11,7 +11,7 @@ spec:
   backend:
     type: Service
     service:
-      name: {{ include "soteria.fullname" . }}-console-plugin
+      name: {{ printf "%s-console-plugin" (include "soteria.fullname" .) | trunc 63 | trimSuffix "-" }}
       namespace: {{ .Release.Namespace }}
       port: 9443
 {{- end }}

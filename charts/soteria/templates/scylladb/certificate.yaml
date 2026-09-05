@@ -13,11 +13,16 @@ spec:
   issuerRef:
     name: {{ .Values.tls.issuerRef.name }}
     kind: {{ .Values.tls.issuerRef.kind }}
-  commonName: {{ include "soteria.fullname" . }}-scylladb
+  commonName: {{ printf "%s-scylladb" (include "soteria.fullname" .) }}
   dnsNames:
-    - "{{ include "soteria.fullname" . }}-scylladb-client.{{ .Release.Namespace }}.svc"
-    - "*.{{ include "soteria.fullname" . }}-scylladb.{{ .Release.Namespace }}.svc.cluster.local"
-    - "*.{{ include "soteria.fullname" . }}-scylladb-client.{{ .Release.Namespace }}.svc"
+    - "{{ printf "%s-scylladb-client.%s.svc" (include "soteria.fullname" .) .Release.Namespace }}"
+    - "*.{{ printf "%s-scylladb.%s.svc.cluster.local" (include "soteria.fullname" .) .Release.Namespace }}"
+    - "*.{{ printf "%s-scylladb-client.%s.svc" (include "soteria.fullname" .) .Release.Namespace }}"
+    {{- if eq .Values.networking.mode "submariner" }}
+    - "{{ printf "%s-scylladb-client.%s.svc.clusterset.local" (include "soteria.fullname" .) .Release.Namespace }}"
+    - "*.{{ printf "%s-scylladb.%s.svc.clusterset.local" (include "soteria.fullname" .) .Release.Namespace }}"
+    - "*.{{ printf "%s-scylladb-client.%s.svc.clusterset.local" (include "soteria.fullname" .) .Release.Namespace }}"
+    {{- end }}
   usages:
     - server auth
     - client auth

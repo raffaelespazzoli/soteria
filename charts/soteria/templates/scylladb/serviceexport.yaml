@@ -2,7 +2,7 @@
 apiVersion: multicluster.x-k8s.io/v1alpha1
 kind: ServiceExport
 metadata:
-  name: {{ include "soteria.fullname" . }}-scylladb-client
+  name: {{ printf "%s-scylladb-client" (include "soteria.fullname" .) | trunc 63 | trimSuffix "-" }}
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "soteria.labels" . | nindent 4 }}

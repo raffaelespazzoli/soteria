@@ -62,3 +62,11 @@ Uses controller.serviceAccount.name if set, otherwise the fullname.
 {{- include "soteria.fullname" . }}
 {{- end }}
 {{- end }}
+
+{{/*
+Resolve image tag: use the provided tag or fall back to .Chart.AppVersion.
+Usage: {{ include "soteria.imageTag" (dict "tag" .Values.controller.image.tag "ctx" .) }}
+*/}}
+{{- define "soteria.imageTag" -}}
+{{- .tag | default .ctx.Chart.AppVersion }}
+{{- end }}
