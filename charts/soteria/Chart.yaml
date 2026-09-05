@@ -1,0 +1,7 @@
+apiVersion: v2
+name: soteria
+description: Storage-agnostic disaster recovery orchestrator for OpenShift Virtualization
+type: application
+version: 0.1.0
+appVersion: 0.1.0
+kubeVersion: ">=1.28.0"
