@@ -1,6 +1,6 @@
 # Story 17.2: Landing Page & Index
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -37,15 +37,15 @@ Then only features that are actually implemented and functional are listed as ca
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Research actual implemented features (AC: 2, 5)
-  - [ ] 1.1: Read PRD executive summary for conceptual framing
-  - [ ] 1.2: Walk the actual codebase to identify which features are fully implemented
-- [ ] Task 2: Write landing page content (AC: 1, 2, 3, 5)
-  - [ ] 2.1: Write `docs/index.md` with: project tagline, what is Soteria, why it exists, key capabilities (verified against code)
-  - [ ] 2.2: Add architecture summary diagram or description (cross-cluster topology, major components)
-- [ ] Task 3: Add navigation aids (AC: 4)
-  - [ ] 3.1: Add link map section pointing to all major doc sections
-  - [ ] 3.2: Verify all internal doc links resolve correctly
+- [x] Task 1: Research actual implemented features (AC: 2, 5)
+  - [x] 1.1: Read PRD executive summary for conceptual framing
+  - [x] 1.2: Walk the actual codebase to identify which features are fully implemented
+- [x] Task 2: Write landing page content (AC: 1, 2, 3, 5)
+  - [x] 2.1: Write `docs/index.md` with: project tagline, what is Soteria, why it exists, key capabilities (verified against code)
+  - [x] 2.2: Add architecture summary diagram or description (cross-cluster topology, major components)
+- [x] Task 3: Add navigation aids (AC: 4)
+  - [x] 3.1: Add link map section pointing to all major doc sections
+  - [x] 3.2: Verify all internal doc links resolve correctly
 
 ## Dev Notes
 
@@ -102,8 +102,31 @@ Start from the PRD (`_bmad-output/planning-artifacts/prd.md`), architecture doc 
 
 ### Agent Model Used
 
+Claude Opus 4.6
+
 ### Debug Log References
+
+N/A — documentation-only story, no runtime debugging required.
 
 ### Completion Notes List
 
+- ✅ Researched actual codebase: verified controllers (drplan, drexecution, shadowpv, volumereplication), engine subsystems (state machine, wave executor, failover/reprotect handlers, chunker, discovery, resume analyzer, checkpointer), storage drivers (noop, csi-extension, fake + conformance suite), aggregated API server with ScyllaDB, admission webhooks, console plugin, and Prometheus metrics
+- ✅ Wrote comprehensive landing page with: project tagline, "What is Soteria" intro, "Why Soteria" admonition, 6-card feature grid (all verified against code), Mermaid topology diagram, execution flow walkthrough, 10-row architecture component table, design principles, documentation guide with verified links, and quick links
+- ✅ All features listed are verified against actual code — no PRD aspirations included
+- ✅ Architecture summary matches `cmd/soteria/main.go` component wiring exactly
+- ✅ All internal doc links verified to resolve correctly (installation/prerequisites, architecture/overview, usage/drplan, reference/api/drplan, contributing/dev-setup)
+- ✅ `mkdocs build --strict` passes with no errors
+- ✅ Used mkdocs-material features: admonitions, grid cards, Mermaid diagrams, Material icons
+
+### Change Log
+
+- 2026-09-05: Implemented landing page — replaced placeholder with full content (all tasks complete)
+
 ### File List
+
+| File | Action |
+|------|--------|
+| `docs/index.md` | MODIFIED |
+| `mkdocs.yml` | MODIFIED — added `pymdownx.emoji` extension for Material icon rendering |
+| `_bmad-output/implementation-artifacts/17-2-landing-page.md` | MODIFIED |
+| `_bmad-output/implementation-artifacts/sprint-status.yaml` | MODIFIED |
