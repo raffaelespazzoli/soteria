@@ -1,0 +1,129 @@
+{{- /*
+Controller Deployment — single-binary aggregated API server + reconciler.
+Mirrors config/manager/manager.yaml with conditional ScyllaDB wiring
+based on scylladb.mode (managed | external).
+*/ -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "soteria.fullname" . }}-controller-manager
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "soteria.labels" . | nindent 4 }}
+    control-plane: controller-manager
+spec:
+  replicas: {{ .Values.controller.replicas }}
+  selector:
+    matchLabels:
+      {{- include "soteria.selectorLabels" . | nindent 6 }}
+      control-plane: controller-manager
+  template:
+    metadata:
+      annotations:
+        kubectl.kubernetes.io/default-container: manager
+      labels:
+        {{- include "soteria.selectorLabels" . | nindent 8 }}
+        control-plane: controller-manager
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: manager
+          command:
+            - /manager
+          args:
+            - --leader-elect={{ .Values.controller.leaderElection.enabled }}
+            - --health-probe-bind-address=:8081
+            - --site-name={{ .Values.site.name }}
+            - --secure-port={{ .Values.controller.apiserver.port }}
+            - --tls-cert-file=/etc/soteria/apiserver-tls/tls.crt
+            - --tls-private-key-file=/etc/soteria/apiserver-tls/tls.key
+            - --disable-admission-plugins=ValidatingAdmissionPolicy,ValidatingAdmissionWebhook,MutatingAdmissionWebhook
+            {{- if eq .Values.scylladb.mode "managed" }}
+            - --scylladb-contact-points={{ include "soteria.fullname" . }}-scylladb-client.{{ .Release.Namespace }}.svc:9142
+            {{- else }}
+            - --scylladb-contact-points={{ .Values.scylladb.external.contactPoints }}
+            {{- end }}
+            - --scylladb-keyspace={{ .Values.scylladb.keyspace }}
+            {{- with .Values.scylladb.localDC }}
+            - --scylladb-local-dc={{ . }}
+            {{- end }}
+            {{- with .Values.scylladb.dcReplication }}
+            - --scylladb-dc-replication={{ . }}
+            {{- end }}
+            {{- if eq .Values.scylladb.mode "managed" }}
+            - --scylladb-tls-cert=/etc/soteria/scylladb-client-tls/tls.crt
+            - --scylladb-tls-key=/etc/soteria/scylladb-client-tls/tls.key
+            - --scylladb-tls-ca=/etc/soteria/scylladb-client-tls/ca.crt
+            - --scylladb-tls-server-name={{ include "soteria.fullname" . }}-scylladb-client.{{ .Release.Namespace }}.svc
+            {{- end }}
+            {{- if and (eq .Values.scylladb.mode "external") .Values.scylladb.external.tls.enabled }}
+            - --scylladb-tls-cert=/etc/soteria/scylladb-tls/tls.crt
+            - --scylladb-tls-key=/etc/soteria/scylladb-tls/tls.key
+            - --scylladb-tls-ca=/etc/soteria/scylladb-tls/ca.crt
+            {{- end }}
+          image: "{{ .Values.controller.image.repository }}:{{ .Values.controller.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.controller.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.controller.apiserver.port }}
+              name: apiserver
+              protocol: TCP
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - "ALL"
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 120
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.controller.resources | nindent 12 }}
+          volumeMounts:
+            - name: apiserver-tls
+              mountPath: /etc/soteria/apiserver-tls
+              readOnly: true
+            {{- if eq .Values.scylladb.mode "managed" }}
+            - name: scylladb-client-tls
+              mountPath: /etc/soteria/scylladb-client-tls
+              readOnly: true
+            {{- end }}
+            {{- if and (eq .Values.scylladb.mode "external") .Values.scylladb.external.tls.enabled }}
+            - name: scylladb-tls
+              mountPath: /etc/soteria/scylladb-tls
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: apiserver-tls
+          secret:
+            secretName: {{ include "soteria.fullname" . }}-apiserver-tls
+        {{- if eq .Values.scylladb.mode "managed" }}
+        - name: scylladb-client-tls
+          secret:
+            secretName: {{ include "soteria.fullname" . }}-scylladb-client-tls
+        {{- end }}
+        {{- if and (eq .Values.scylladb.mode "external") .Values.scylladb.external.tls.enabled }}
+        - name: scylladb-tls
+          secret:
+            secretName: {{ .Values.scylladb.external.tls.secretName }}
+        {{- end }}
+      serviceAccountName: {{ include "soteria.serviceAccountName" . }}
+      terminationGracePeriodSeconds: 10

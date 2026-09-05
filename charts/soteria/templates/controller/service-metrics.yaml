@@ -1,0 +1,17 @@
+{{- /* Metrics Service — port 8443 for Prometheus scraping */ -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "soteria.fullname" . }}-metrics
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "soteria.labels" . | nindent 4 }}
+spec:
+  ports:
+    - port: 8443
+      targetPort: 8443
+      protocol: TCP
+      name: https
+  selector:
+    {{- include "soteria.selectorLabels" . | nindent 4 }}
+    control-plane: controller-manager

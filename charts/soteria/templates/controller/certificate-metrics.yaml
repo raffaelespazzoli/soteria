@@ -1,0 +1,22 @@
+{{- /*
+Metrics serving Certificate — cert-manager issues a TLS cert for the
+controller-manager metrics endpoint (port 8443).
+Based on config/certmanager/metrics-serving-cert.yaml.
+*/ -}}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "soteria.fullname" . }}-metrics-serving
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "soteria.labels" . | nindent 4 }}
+spec:
+  secretName: {{ include "soteria.fullname" . }}-metrics-server-cert
+  duration: 8760h
+  renewBefore: 720h
+  issuerRef:
+    name: {{ .Values.tls.issuerRef.name }}
+    kind: {{ .Values.tls.issuerRef.kind }}
+  dnsNames:
+    - {{ include "soteria.fullname" . }}-metrics.{{ .Release.Namespace }}.svc
+    - {{ include "soteria.fullname" . }}-metrics.{{ .Release.Namespace }}.svc.cluster.local

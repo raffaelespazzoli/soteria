@@ -1,0 +1,21 @@
+{{- /*
+APIService — registers v1alpha1.soteria.io with the kube-apiserver.
+Name must be exactly "v1alpha1.soteria.io" (not release-prefixed).
+cert-manager injects the CA bundle from the apiserver serving Certificate.
+*/ -}}
+apiVersion: apiregistration.k8s.io/v1
+kind: APIService
+metadata:
+  name: v1alpha1.soteria.io
+  labels:
+    {{- include "soteria.labels" . | nindent 4 }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ include "soteria.fullname" . }}-apiserver-serving
+spec:
+  group: soteria.io
+  version: v1alpha1
+  service:
+    namespace: {{ .Release.Namespace }}
+    name: {{ include "soteria.fullname" . }}-apiserver
+  groupPriorityMinimum: 1000
+  versionPriority: 100
