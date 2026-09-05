@@ -1,0 +1,60 @@
+{{- if eq .Values.ui.mode "standalone" }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "soteria.fullname" . }}-standalone
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "soteria.labels" . | nindent 4 }}
+    app.kubernetes.io/component: console-standalone
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "soteria.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: console-standalone
+  template:
+    metadata:
+      labels:
+        {{- include "soteria.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: console-standalone
+    spec:
+      serviceAccountName: {{ include "soteria.fullname" . }}-standalone
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: console-proxy
+          image: "{{ .Values.ui.standalone.image.repository }}:{{ .Values.ui.standalone.image.tag | default .Chart.AppVersion }}"
+          args:
+            - "--addr=:8080"
+            - "--static-dir=/opt/app-root/src"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              memory: 64Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 2
+            periodSeconds: 5
+{{- end }}

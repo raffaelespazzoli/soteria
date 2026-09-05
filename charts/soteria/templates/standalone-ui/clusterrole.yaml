@@ -1,0 +1,19 @@
+{{- if eq .Values.ui.mode "standalone" }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "soteria.fullname" . }}-console-reader
+  labels:
+    {{- include "soteria.labels" . | nindent 4 }}
+    app.kubernetes.io/component: console-standalone
+rules:
+  - apiGroups: ["soteria.io"]
+    resources: ["drplans", "drexecutions"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["soteria.io"]
+    resources: ["drexecutions"]
+    verbs: ["create", "patch"]
+  - apiGroups: ["kubevirt.io"]
+    resources: ["virtualmachines"]
+    verbs: ["get", "list", "watch"]
+{{- end }}
