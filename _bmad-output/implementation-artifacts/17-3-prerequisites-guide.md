@@ -1,6 +1,6 @@
 # Story 17.3: Prerequisites Guide
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -37,18 +37,18 @@ Then the required external resources match what the test infrastructure provisio
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Identify CRD and API dependencies (AC: 4)
-  - [ ] 1.1: Walk RBAC markers in `pkg/controller/` to identify all external CRD dependencies
-  - [ ] 1.2: Review `config/rbac/role.yaml` for complete list of API groups and resources accessed
-  - [ ] 1.3: Check scheme registrations in `cmd/soteria/main.go` for external type dependencies
-- [ ] Task 2: Identify infrastructure prerequisites (AC: 1, 2, 3)
-  - [ ] 2.1: Read PRD storage constraints and architecture doc dependencies section
-  - [ ] 2.2: Read `pkg/apiserver/options.go` for ScyllaDB connection flags and TLS requirements
-  - [ ] 2.3: Read setup scripts (`hack/multisite/setup-scylladb.sh`, `hack/stretched-local-test.sh`) for prerequisite lists
-- [ ] Task 3: Write prerequisites page (AC: 1, 2, 3, 4, 5)
-  - [ ] 3.1: Write `docs/installation/prerequisites.md` covering: storage, cert-manager, scylla-operator, KubeVirt
-  - [ ] 3.2: Add version compatibility matrix if determinable from code
-  - [ ] 3.3: Verify all mentioned CRDs and tools are actually used in the codebase
+- [x] Task 1: Identify CRD and API dependencies (AC: 4)
+  - [x] 1.1: Walk RBAC markers in `pkg/controller/` to identify all external CRD dependencies
+  - [x] 1.2: Review `config/rbac/role.yaml` for complete list of API groups and resources accessed
+  - [x] 1.3: Check scheme registrations in `cmd/soteria/main.go` for external type dependencies
+- [x] Task 2: Identify infrastructure prerequisites (AC: 1, 2, 3)
+  - [x] 2.1: Read PRD storage constraints and architecture doc dependencies section
+  - [x] 2.2: Read `pkg/apiserver/options.go` for ScyllaDB connection flags and TLS requirements
+  - [x] 2.3: Read setup scripts (`hack/multisite/setup-scylladb.sh`, `hack/stretched-local-test.sh`) for prerequisite lists
+- [x] Task 3: Write prerequisites page (AC: 1, 2, 3, 4, 5)
+  - [x] 3.1: Write `docs/installation/prerequisites.md` covering: storage, cert-manager, scylla-operator, KubeVirt
+  - [x] 3.2: Add version compatibility matrix if determinable from code
+  - [x] 3.3: Verify all mentioned CRDs and tools are actually used in the codebase
 
 ## Dev Notes
 
@@ -104,9 +104,21 @@ Start from the PRD (`_bmad-output/planning-artifacts/prd.md`), architecture doc 
 ## Dev Agent Record
 
 ### Agent Model Used
+Claude Opus 4.6 (Cursor)
 
 ### Debug Log References
+- Unit tests passed (all packages green)
+- Integration tests skipped (inotify limit < 1024 — infrastructure constraint, not code issue)
+- mkdocs build --strict passed successfully
 
 ### Completion Notes List
+- ✅ Task 1: Walked all RBAC markers in pkg/controller/{drplan,drexecution,shadowpv,volumereplication} plus config/rbac/role.yaml. Identified 5 external API groups: kubevirt.io, replication.storage.openshift.io, ceph.rook.io, storage.k8s.io, plus core (PVCs, PVs, namespaces, secrets, events). Confirmed scheme registrations in cmd/soteria/main.go: kubevirtv1.AddToScheme, replicationv1alpha1.AddToScheme.
+- ✅ Task 2: Cross-referenced PRD (NFR12-15 TLS/security), architecture doc (dependencies table, tech stack), pkg/apiserver/options.go (8 ScyllaDB flags), hack/multisite/setup-scylladb.sh (cert-manager v1.20.3, scylla-operator v1.21.0, helm/jq/kubectl), hack/stretched-local-test.sh (Submariner MCS, Issuer soteria-internal, kustomize). Extracted go.mod versions: kubevirt.io/api v1.8.1, csi-addons v0.14.0, gocql v1.7.0, scylla-cdc-go v1.2.0.
+- ✅ Task 3: Wrote comprehensive docs/installation/prerequisites.md with 8 major sections (Kubernetes Cluster, Storage, KubeVirt, cert-manager, ScyllaDB with managed/BYO tabs, Cross-Site Networking with Submariner/Cilium tabs, Version Compatibility Matrix, External API Dependencies Summary). Each prerequisite includes: name, minimum version, purpose, verification commands. Uses mkdocs-material admonitions (tip, warning, info, note) and tabbed content.
 
 ### File List
+| File | Action | Description |
+|------|--------|-------------|
+| `docs/installation/prerequisites.md` | MODIFIED | Complete prerequisites guide (replaced placeholder) |
+| `_bmad-output/implementation-artifacts/17-3-prerequisites-guide.md` | MODIFIED | Story status and task checkboxes updated |
+| `_bmad-output/implementation-artifacts/sprint-status.yaml` | MODIFIED | Story status: ready-for-dev → in-progress |
