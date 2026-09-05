@@ -99,17 +99,19 @@ type pvResolver func(context.Context) ([]soteriav1alpha1.ShadowPVEntry, error)
 func (r *ShadowPVPublisherReconciler) reconcileVR(
 	ctx context.Context, vr *replicationv1alpha1.VolumeReplication,
 ) (ctrl.Result, error) {
-	return r.reconcileReplicationObject(ctx, vr, false, func(ctx context.Context) ([]soteriav1alpha1.ShadowPVEntry, error) {
+	resolver := func(ctx context.Context) ([]soteriav1alpha1.ShadowPVEntry, error) {
 		return r.resolvePVsForVR(ctx, vr)
-	})
+	}
+	return r.reconcileReplicationObject(ctx, vr, false, resolver)
 }
 
 func (r *ShadowPVPublisherReconciler) reconcileVGR(
 	ctx context.Context, vgr *replicationv1alpha1.VolumeGroupReplication,
 ) (ctrl.Result, error) {
-	return r.reconcileReplicationObject(ctx, vgr, true, func(ctx context.Context) ([]soteriav1alpha1.ShadowPVEntry, error) {
+	resolver := func(ctx context.Context) ([]soteriav1alpha1.ShadowPVEntry, error) {
 		return r.resolvePVsForVGR(ctx, vgr)
-	})
+	}
+	return r.reconcileReplicationObject(ctx, vgr, true, resolver)
 }
 
 func (r *ShadowPVPublisherReconciler) reconcileReplicationObject(

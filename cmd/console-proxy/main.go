@@ -208,7 +208,7 @@ func spaHandler(staticDir string) http.Handler {
 			fileServer.ServeHTTP(w, r)
 			return
 		}
-		f.Close()
+		_ = f.Close()
 		fileServer.ServeHTTP(w, r)
 	})
 }

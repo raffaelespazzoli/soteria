@@ -378,7 +378,7 @@ func main() {
 		Scheme:        mgr.GetScheme(),
 		LocalSite:     siteName,
 		APIReader:     mgr.GetAPIReader(),
-		EventRecorder: mgr.GetEventRecorderFor("shadowpv-consumer"),
+		EventRecorder: mgr.GetEventRecorderFor("shadowpv-consumer"), //nolint:staticcheck // TODO: migrate to mgr.GetEventRecorder() (events.k8s.io/v1 API)
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "Failed to create controller", "controller", "ShadowPVConsumer")
 		os.Exit(1)

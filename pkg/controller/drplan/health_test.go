@@ -781,7 +781,7 @@ func TestReconcileVolumeReplication_PrimarySite_CallsCreateVolumeGroupWithPrimar
 		LocalSite:       testPrimarySite,
 	}
 
-	r.reconcileVolumeReplication(context.Background(), plan, waves)
+	_ = r.reconcileVolumeReplication(context.Background(), plan, waves)
 
 	calls := fakeDriver.CallsTo("CreateVolumeGroup")
 	if len(calls) != 1 {
@@ -845,7 +845,7 @@ func TestReconcileVolumeReplication_SecondarySite_CallsCreateVolumeGroupWithSeco
 		LocalSite:       testSecondarySite,
 	}
 
-	r.reconcileVolumeReplication(context.Background(), plan, waves)
+	_ = r.reconcileVolumeReplication(context.Background(), plan, waves)
 
 	calls := fakeDriver.CallsTo("CreateVolumeGroup")
 	if len(calls) != 1 {
@@ -915,7 +915,7 @@ func TestReconcileVolumeReplication_SkippedDuringActiveExecution(t *testing.T) {
 		LocalSite:       testPrimarySite,
 	}
 
-	r.reconcileVolumeReplication(context.Background(), plan, waves)
+	_ = r.reconcileVolumeReplication(context.Background(), plan, waves)
 
 	calls := fakeDriver.CallsTo("CreateVolumeGroup")
 	if len(calls) != 0 {
@@ -968,7 +968,7 @@ func TestReconcileVolumeReplication_FallbackToPrimarySiteWhenActiveSiteEmpty(t *
 		LocalSite:       testPrimarySite,
 	}
 
-	r.reconcileVolumeReplication(context.Background(), plan, waves)
+	_ = r.reconcileVolumeReplication(context.Background(), plan, waves)
 
 	calls := fakeDriver.CallsTo("CreateVolumeGroup")
 	if len(calls) != 1 {
