@@ -4,8 +4,11 @@
 # Job graph:
 #   • test                    – lint, codegen check, unit tests, integration tests
 #   • build-image-quick (PR)  – 3 parallel single-arch builds (fast feedback)
-#   • build-image-full (main) – 3 images × 4 platforms = 12 parallel multi-arch
+#   • build-image-full (main) – 3 images × 4 platforms in parallel (multi-arch)
 #   • helmchart-test          – lint, template, deploy chart on Kind
+#
+# Caching: Docker layer caching via GHA backend (cache-from/to: type=gha)
+# caches Go modules, Node packages, and compiled layers across runs.
 # ---------------------------------------------------------------------------
 name: ci
 
@@ -100,7 +103,7 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.image.name }}-linux-amd64
           cache-to: type=gha,mode=max,scope=${{ matrix.image.name }}-linux-amd64
 
-  # ── Main only: 3 images × 4 platforms = 12 parallel multi-arch builds ───
+  # ── Main only: 3 images × 4 platforms in parallel (multi-arch) ──────────
   build-image-full:
     if: github.event_name == 'push'
     name: "Build ${{ matrix.image.name }} (${{ matrix.platform }})"
@@ -123,6 +126,12 @@ jobs:
           - linux/arm64
           - linux/ppc64le
           - linux/s390x
+        exclude:
+          # node:22-slim has no s390x variant
+          - image: { name: soteria-console-plugin }
+            platform: linux/s390x
+          - image: { name: soteria-standalone-ui }
+            platform: linux/s390x
     steps:
       - uses: actions/checkout@v4
 
