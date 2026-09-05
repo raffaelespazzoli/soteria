@@ -1,6 +1,6 @@
 # Story 17.17: UI Guide: Execution Monitor
 
-Status: backlog
+Status: done
 
 ## Story
 
