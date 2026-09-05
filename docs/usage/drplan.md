@@ -1,4 +1,3 @@
 # DRPlan Authoring
 
-!!! note "Under Construction"
-    This page will cover how to create and configure DRPlan resources.
+This page has moved to [Creating a DRPlan](creating-a-drplan.md).

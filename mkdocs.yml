@@ -82,7 +82,7 @@ nav:
       - DR Lifecycle: architecture/dr-lifecycle.md
       - Storage Drivers: architecture/storage-drivers.md
   - Usage:
-      - DRPlan Authoring: usage/drplan.md
+      - Creating a DRPlan: usage/creating-a-drplan.md
       - Waves & Throttling: usage/waves.md
       - Volume Grouping: usage/volumes.md
       - Executing Failover: usage/failover.md
