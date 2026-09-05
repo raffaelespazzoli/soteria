@@ -1,6 +1,6 @@
 # Story 17.10: Storage Drivers Architecture
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -42,18 +42,18 @@ Then method signatures, types, and error contracts match exactly
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Extract interface and driver patterns from code (AC: 1, 2, 3, 6)
-  - [ ] 1.1: Read architecture doc driver patterns section
-  - [ ] 1.2: Walk `pkg/drivers/interface.go` for the actual StorageProvider interface (7 methods)
-  - [ ] 1.3: Examine driver registration pattern (`init()` + `RegisterDriver`)
-- [ ] Task 2: Document reference implementations (AC: 4, 5)
-  - [ ] 2.1: Walk `pkg/drivers/noop/driver.go` for the no-op reference implementation
-  - [ ] 2.2: Walk `pkg/drivers/csiextension/driver.go` for the CSI extension driver
-  - [ ] 2.3: Walk `pkg/drivers/conformance/suite.go` for the conformance suite
-- [ ] Task 3: Write the documentation (AC: 1, 2, 3, 4, 5, 6)
-  - [ ] 3.1: Write `docs/architecture/storage-drivers.md` covering: StorageProvider 7-method interface, replication model, driver lifecycle, driver selection, no-op driver, CSI extension driver, conformance suite
-  - [ ] 3.2: Add interface method table with signatures, return types, and error conditions
-  - [ ] 3.3: Verify all method signatures match the actual code
+- [x] Task 1: Extract interface and driver patterns from code (AC: 1, 2, 3, 6)
+  - [x] 1.1: Read architecture doc driver patterns section
+  - [x] 1.2: Walk `pkg/drivers/interface.go` for the actual StorageProvider interface (7 methods)
+  - [x] 1.3: Examine driver registration pattern (`init()` + `RegisterDriver`)
+- [x] Task 2: Document reference implementations (AC: 4, 5)
+  - [x] 2.1: Walk `pkg/drivers/noop/driver.go` for the no-op reference implementation
+  - [x] 2.2: Walk `pkg/drivers/csiextension/driver.go` for the CSI extension driver
+  - [x] 2.3: Walk `pkg/drivers/conformance/suite.go` for the conformance suite
+- [x] Task 3: Write the documentation (AC: 1, 2, 3, 4, 5, 6)
+  - [x] 3.1: Write `docs/architecture/storage-drivers.md` covering: StorageProvider 7-method interface, replication model, driver lifecycle, driver selection, no-op driver, CSI extension driver, conformance suite
+  - [x] 3.2: Add interface method table with signatures, return types, and error conditions
+  - [x] 3.3: Verify all method signatures match the actual code
 
 ## Dev Notes
 
@@ -120,9 +120,27 @@ Start from the PRD (`_bmad-output/planning-artifacts/prd.md`), architecture doc 
 ## Dev Agent Record
 
 ### Agent Model Used
+Claude Opus 4.6 (Cursor)
 
 ### Debug Log References
+N/A — documentation-only story, no debugging required.
 
 ### Completion Notes List
+- ✅ Read all source files: `pkg/drivers/interface.go`, `types.go`, `errors.go`, `registry.go`, `id.go`, `credentials.go`, `doc.go`
+- ✅ Read no-op driver: `pkg/drivers/noop/driver.go`, `doc.go` (4-file package)
+- ✅ Read CSI extension driver: `pkg/drivers/csiextension/driver.go`, `status.go`, `helpers.go`, `constants.go`, `doc.go` (11-file package)
+- ✅ Read conformance suite: `pkg/drivers/conformance/suite.go`, `doc.go` (4 test groups: Lifecycle, Idempotency, ContextCancellation, ErrorConditions)
+- ✅ Read driver registration flow: `pkg/drivers/all/all.go`, `cmd/soteria/main.go` (blank import + explicit csi-extension registration)
+- ✅ Read engine driver resolution: `pkg/engine/doc.go` (plan-level `VolumeReplicationDriver.Type`, not PVC-level)
+- ✅ Verified all 7 method signatures in documentation match `pkg/drivers/interface.go` exactly
+- ✅ Wrote comprehensive `docs/architecture/storage-drivers.md` covering all 6 ACs
+- ✅ All existing tests pass (no regressions — docs-only change)
+
+### Change Log
+- 2026-09-05: Story 17.10 implementation — wrote comprehensive storage drivers architecture documentation
 
 ### File List
+| File | Action | Description |
+|------|--------|-------------|
+| `docs/architecture/storage-drivers.md` | MODIFIED | Replaced placeholder with comprehensive storage driver architecture documentation |
+| `_bmad-output/implementation-artifacts/17-10-storage-drivers.md` | MODIFIED | Updated task checkboxes, status, dev agent record |

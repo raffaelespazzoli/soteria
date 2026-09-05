@@ -451,7 +451,7 @@ development_status:
   17-7-helm-installation: backlog  # blocked: needs Epic 16 chart
   17-8-architecture-overview: ready-for-dev
   17-9-dr-lifecycle: ready-for-dev
-  17-10-storage-drivers: ready-for-dev
+  17-10-storage-drivers: review
   17-11-creating-a-drplan: ready-for-dev
   17-12-waves-and-throttling: ready-for-dev
   17-13-volume-grouping: ready-for-dev
