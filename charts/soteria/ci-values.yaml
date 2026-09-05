@@ -1,0 +1,42 @@
+# ci-values.yaml — overrides for Helm chart smoke tests on Kind.
+#
+# Usage (local):
+#   make helmchart-test
+#
+# Usage (manual):
+#   helm upgrade --install soteria charts/soteria \
+#     -n soteria --create-namespace \
+#     -f charts/soteria/ci-values.yaml \
+#     --set controller.image.tag=<tag>
+
+site:
+  name: ci-smoke
+  role: seed
+
+scylladb:
+  localDC: ci
+  managed:
+    members: 1
+    developerMode: true
+    storage:
+      capacity: 1Gi
+
+# Disable console-plugin (needs OpenShift ConsolePlugin CRD).
+ui:
+  mode: none
+
+# Use cilium broadcast mode (avoids Submariner MCS CRDs on vanilla Kind).
+networking:
+  mode: cilium
+
+controller:
+  image:
+    pullPolicy: Never
+  replicas: 1
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi

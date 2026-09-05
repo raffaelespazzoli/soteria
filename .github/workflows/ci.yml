@@ -1,0 +1,120 @@
+# ---------------------------------------------------------------------------
+# CI pipeline — runs on every merge to main and on PRs targeting main.
+#
+# Three independent jobs run in parallel:
+#   • test           – lint, codegen check, unit tests, integration tests
+#   • build-images   – build all container images (no push)
+#   • helmchart-test – deploy chart on Kind and verify pods come up
+# ---------------------------------------------------------------------------
+name: ci
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "mkdocs.yml"
+      - "requirements-docs.txt"
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - "mkdocs.yml"
+      - "requirements-docs.txt"
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Lint + unit + integration tests ─────────────────────────────────────
+  test:
+    name: Lint & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run linter
+        run: make lint
+
+      - name: Verify codegen
+        run: hack/verify-codegen.sh
+
+      - name: Run unit tests
+        run: make test
+
+      - name: Increase inotify limits
+        run: sudo sysctl -w fs.inotify.max_user_instances=1024
+
+      - name: Run integration tests
+        env:
+          DOCKER_HOST: unix:///var/run/docker.sock
+        run: make integration
+
+  # ── Build all container images (no push) ────────────────────────────────
+  build-images:
+    name: Build images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build controller image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          push: false
+          load: true
+          tags: soteria:ci
+
+      - name: Build console-plugin image
+        uses: docker/build-push-action@v6
+        with:
+          context: console-plugin/
+          file: console-plugin/Dockerfile
+          push: false
+          load: true
+          tags: soteria-console-plugin:ci
+
+      - name: Build standalone-ui image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: console-plugin/Dockerfile.standalone
+          push: false
+          load: true
+          tags: soteria-standalone-ui:ci
+
+  # ── Build, deploy & smoke-test the Helm chart on Kind ─────────────────
+  helmchart-test:
+    name: Helm chart smoke test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: azure/setup-helm@v4
+
+      - name: Install Kind
+        run: |
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-$(go env GOARCH)
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+
+      - name: Run Helm chart smoke test
+        env:
+          CONTAINER_TOOL: docker
+          HELM_SMOKE_CLEANUP: "1"
+        run: make helmchart-test

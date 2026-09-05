@@ -121,21 +121,23 @@ integration: setup-envtest ## Run integration tests (envtest for controller, Scy
 		exit 1; \
 	fi
 	KUBEBUILDER_ASSETS="$(shell "$(ENVTEST)" use $(ENVTEST_K8S_VERSION) --bin-dir "$(LOCALBIN)" -p path)" \
-	DOCKER_HOST=unix:///run/user/$$(id -u)/podman/podman.sock \
+	DOCKER_HOST="$${DOCKER_HOST:-unix:///run/user/$$(id -u)/podman/podman.sock}" \
 	TESTCONTAINERS_RYUK_DISABLED=true \
 	go test -tags=integration -p 1 ./test/integration/... -v -count=1 -timeout 20m
 
-.PHONY: helmchart
-helmchart: manifests kustomize ## Render Helm chart from kustomize manifests
-	mkdir -p charts/$(OPERATOR_NAME)/templates
-	cd config/manager && "$(KUSTOMIZE)" edit set image controller=$(IMG)
-	"$(KUSTOMIZE)" build config/default > charts/$(OPERATOR_NAME)/templates/manifests.yaml
-	cp config/helmchart/Chart.yaml.tpl charts/$(OPERATOR_NAME)/Chart.yaml
-	sed -i 's/REPLACE_VERSION/$(HELM_RELEASE_VERSION)/g' charts/$(OPERATOR_NAME)/Chart.yaml
-
-.PHONY: helmchart-test
-helmchart-test: helmchart ## Lint and test Helm charts
+.PHONY: helm-lint
+helm-lint: ## Lint the Helm chart (quick, no cluster needed).
 	helm lint charts/$(OPERATOR_NAME)
+	helm template $(OPERATOR_NAME) charts/$(OPERATOR_NAME) --set site.name=lint > /dev/null
+
+HELM_SMOKE_CLUSTER ?= soteria-helm-test
+.PHONY: helmchart-test
+helmchart-test: ## Deploy and smoke-test the Helm chart on a Kind cluster.
+	IMG=$(IMG) \
+	CONTAINER_TOOL=$(CONTAINER_TOOL) \
+	HELM_SMOKE_CLUSTER=$(HELM_SMOKE_CLUSTER) \
+	KIND=$(KIND) \
+	hack/helm-smoke-test.sh
 
 .PHONY: dev-cluster
 dev-cluster: ## Provision a local Kind cluster for development.

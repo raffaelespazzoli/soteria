@@ -1,0 +1,21 @@
+{{- if eq .Values.scylladb.mode "managed" }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ printf "%s-scylladb-client" (include "soteria.fullname" .) | trunc 63 | trimSuffix "-" }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "soteria.labels" . | nindent 4 }}
+spec:
+  secretName: {{ printf "%s-scylladb-client-tls" (include "soteria.fullname" .) | trunc 63 | trimSuffix "-" }}
+  duration: 8760h  # 1 year
+  renewBefore: 720h  # 30 days
+  issuerRef:
+    name: {{ .Values.tls.issuerRef.name }}
+    kind: {{ .Values.tls.issuerRef.kind }}
+  commonName: {{ printf "%s-controller" (include "soteria.fullname" .) }}
+  dnsNames:
+    - "{{ printf "%s-controller-manager.%s.svc" (include "soteria.fullname" .) .Release.Namespace }}"
+  usages:
+    - client auth
+{{- end }}

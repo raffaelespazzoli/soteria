@@ -1,16 +1,23 @@
-# Release workflow: builds/pushes console-plugin & standalone-ui images, publishes Helm chart.
-# The controller image is already handled by release-operator.yml via the reusable workflow.
+# ---------------------------------------------------------------------------
+# Release pipeline
+# Triggered by pushing a semver tag (vX.Y.Z or vX.Y.Z-rc1).
+#
+# Job graph:
+#   validate ─→ test ─┬→ build-images ───────────┬→ helm ─→ github-release
+#                      ├→ helmchart-test (Kind) ──┘              ↑
+#                      └→ docs ──────────────────────────────────┘
+# ---------------------------------------------------------------------------
 name: release
+
 on:
   push:
     tags:
-      - "v*"
+      - "v[0-9]+.[0-9]+.[0-9]+*"
 
 concurrency:
   group: release-${{ github.ref_name }}
   cancel-in-progress: false
 
-# Permissions scoped per-job below; workflow-level default is restrictive.
 permissions: {}
 
 env:
@@ -19,23 +26,22 @@ env:
   BUILD_PLATFORMS: linux/amd64,linux/arm64,linux/ppc64le
 
 jobs:
-  # ------------------------------------------------------------------
-  # Job 1: Build and push console-plugin & standalone-ui container images
-  # ------------------------------------------------------------------
-  build-images:
+  # ── 1. Validate the semver tag ──────────────────────────────────────────
+  validate:
+    name: Validate tag
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      version: ${{ steps.v.outputs.VERSION }}
+      is_prerelease: ${{ steps.v.outputs.IS_PRERELEASE }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
       - name: Derive version from tag
-        id: version
+        id: v
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          if [[ -z "$VERSION" ]] || ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
-            echo "::error::Invalid version: $VERSION (tag must be v<semver>)"
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            echo "::error::Tag must be v<semver> (got ${GITHUB_REF_NAME})"
             exit 1
           fi
           echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
@@ -45,7 +51,47 @@ jobs:
             echo "IS_PRERELEASE=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Set up QEMU for multi-arch builds
+  # ── 2. Lint + unit + integration tests ──────────────────────────────────
+  test:
+    name: Lint & test
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run linter
+        run: make lint
+
+      - name: Verify codegen
+        run: hack/verify-codegen.sh
+
+      - name: Run unit tests
+        run: make test
+
+      - name: Increase inotify limits
+        run: sudo sysctl -w fs.inotify.max_user_instances=1024
+
+      - name: Run integration tests
+        env:
+          DOCKER_HOST: unix:///var/run/docker.sock
+        run: make integration
+
+  # ── 3. Build & push all container images ────────────────────────────────
+  build-images:
+    name: Build & push images
+    needs: [validate, test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
@@ -58,7 +104,18 @@ jobs:
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
-      # Console plugin image (console-plugin/Dockerfile, context: console-plugin/)
+      - name: Build and push controller image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile
+          platforms: ${{ env.BUILD_PLATFORMS }}
+          push: true
+          provenance: false
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/soteria:${{ needs.validate.outputs.version }}
+            ${{ needs.validate.outputs.is_prerelease == 'false' && format('{0}/{1}/soteria:latest', env.REGISTRY, env.REGISTRY_ORG) || '' }}
+
       - name: Build and push console-plugin image
         uses: docker/build-push-action@v6
         with:
@@ -68,10 +125,9 @@ jobs:
           push: true
           provenance: false
           tags: |
-            ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/soteria-console-plugin:${{ steps.version.outputs.VERSION }}
-            ${{ steps.version.outputs.IS_PRERELEASE == 'false' && format('{0}/{1}/soteria-console-plugin:latest', env.REGISTRY, env.REGISTRY_ORG) || '' }}
+            ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/soteria-console-plugin:${{ needs.validate.outputs.version }}
+            ${{ needs.validate.outputs.is_prerelease == 'false' && format('{0}/{1}/soteria-console-plugin:latest', env.REGISTRY, env.REGISTRY_ORG) || '' }}
 
-      # Standalone UI image (console-plugin/Dockerfile.standalone, context: repo root)
       - name: Build and push standalone-ui image
         uses: docker/build-push-action@v6
         with:
@@ -81,56 +137,155 @@ jobs:
           push: true
           provenance: false
           tags: |
-            ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/soteria-standalone-ui:${{ steps.version.outputs.VERSION }}
-            ${{ steps.version.outputs.IS_PRERELEASE == 'false' && format('{0}/{1}/soteria-standalone-ui:latest', env.REGISTRY, env.REGISTRY_ORG) || '' }}
+            ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/soteria-standalone-ui:${{ needs.validate.outputs.version }}
+            ${{ needs.validate.outputs.is_prerelease == 'false' && format('{0}/{1}/soteria-standalone-ui:latest', env.REGISTRY, env.REGISTRY_ORG) || '' }}
 
-  # ------------------------------------------------------------------
-  # Job 2: Package and publish the Helm chart to GitHub Pages
-  # NOTE: This is the canonical Helm chart publisher. If the reusable
-  # workflow in release-operator.yml also publishes a Helm chart to
-  # gh-pages, that job must be disabled to avoid race conditions.
-  # ------------------------------------------------------------------
-  publish-chart:
+  # ── 4. Smoke-test the Helm chart on Kind ──────────────────────────────
+  helmchart-test:
+    name: Helm chart smoke test
+    needs: test
     runs-on: ubuntu-latest
-    needs: build-images
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: azure/setup-helm@v4
+
+      - name: Install Kind
+        run: |
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-$(go env GOARCH)
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+
+      - name: Run Helm chart smoke test
+        env:
+          CONTAINER_TOOL: docker
+          HELM_SMOKE_CLEANUP: "1"
+        run: make helmchart-test
+
+  # ── 5. Publish the Helm chart ───────────────────────────────────────────
+  helm:
+    name: Publish Helm chart
+    needs: [validate, helmchart-test, build-images]
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     concurrency:
       group: gh-pages
       cancel-in-progress: false
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
 
-      - name: Derive version from tag
-        id: version
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
-
-      - name: Update Chart.yaml version and appVersion
+      - name: Stamp chart version
         run: |
-          VERSION="${{ steps.version.outputs.VERSION }}"
+          VERSION="${{ needs.validate.outputs.version }}"
           sed -i "s/^version:.*/version: ${VERSION}/" charts/soteria/Chart.yaml
-          sed -i "s/^appVersion:.*/appVersion: \"${GITHUB_REF_NAME}\"/" charts/soteria/Chart.yaml
-          grep -q "^version: ${VERSION}$" charts/soteria/Chart.yaml || { echo "::error::Chart.yaml version update failed"; exit 1; }
-          grep -q "^appVersion: \"${GITHUB_REF_NAME}\"$" charts/soteria/Chart.yaml || { echo "::error::Chart.yaml appVersion update failed"; exit 1; }
-          echo "Updated Chart.yaml:"
+          sed -i "s/^appVersion:.*/appVersion: \"${{ github.ref_name }}\"/" charts/soteria/Chart.yaml
+          echo "--- charts/soteria/Chart.yaml ---"
           cat charts/soteria/Chart.yaml
 
-      - name: Configure Git
+      - name: Lint chart
+        run: helm lint charts/soteria
+
+      - name: Template chart (dry-run validation)
         run: |
-          git config user.name "$GITHUB_ACTOR"
-          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+          helm template soteria charts/soteria \
+            --set site.name=validation \
+            --set controller.image.tag="${{ needs.validate.outputs.version }}" \
+            > /dev/null
 
-      - name: Install Helm
-        uses: azure/setup-helm@v4
+      - name: Package chart
+        run: helm package charts/soteria --destination /tmp/chart-package
 
-      - name: Run chart-releaser
-        uses: helm/chart-releaser-action@v1
+      - name: Prepare Helm repo directory
+        run: |
+          mkdir -p /tmp/helm-repo
+          cp /tmp/chart-package/*.tgz /tmp/helm-repo/
+          curl -sSfL "https://soteria-project.github.io/soteria/index.yaml" \
+            -o /tmp/helm-repo/existing-index.yaml 2>/dev/null || true
+
+      - name: Build repo index
+        run: |
+          if [ -f /tmp/helm-repo/existing-index.yaml ]; then
+            helm repo index /tmp/helm-repo \
+              --url "https://soteria-project.github.io/soteria" \
+              --merge /tmp/helm-repo/existing-index.yaml
+          else
+            helm repo index /tmp/helm-repo \
+              --url "https://soteria-project.github.io/soteria"
+          fi
+          rm -f /tmp/helm-repo/existing-index.yaml
+
+      - name: Publish chart to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          charts_dir: charts
-          skip_existing: true
-          mark_as_latest: ${{ !contains(github.ref_name, '-') }}
-        env:
-          CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: /tmp/helm-repo
+          keep_files: true
+
+      - name: Upload chart package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: helm-chart
+          path: /tmp/chart-package/*.tgz
+
+  # ── 6. Publish documentation ────────────────────────────────────────────
+  docs:
+    name: Publish docs
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: gh-pages
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-docs.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-docs.txt
+
+      - name: Build docs
+        run: mkdocs build --strict
+
+      - name: Deploy docs to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+          keep_files: true
+          destination_dir: docs
+
+  # ── 7. Create GitHub Release ────────────────────────────────────────────
+  github-release:
+    name: GitHub Release
+    needs: [validate, helm, docs]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download chart package
+        uses: actions/download-artifact@v4
+        with:
+          name: helm-chart
+          path: /tmp/chart-package
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          prerelease: ${{ needs.validate.outputs.is_prerelease == 'true' }}
+          files: /tmp/chart-package/*.tgz
