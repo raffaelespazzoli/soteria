@@ -447,7 +447,7 @@ development_status:
   17-3-prerequisites-guide: ready-for-dev
   17-4-scylladb-overview: ready-for-dev
   17-5-scylladb-submariner: ready-for-dev
-  17-6-scylladb-cilium: ready-for-dev
+  17-6-scylladb-cilium: done
   17-7-helm-installation: backlog  # blocked: needs Epic 16 chart
   17-8-architecture-overview: ready-for-dev
   17-9-dr-lifecycle: ready-for-dev

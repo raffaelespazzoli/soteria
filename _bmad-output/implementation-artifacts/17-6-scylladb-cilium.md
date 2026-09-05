@@ -1,6 +1,6 @@
 # Story 17.6: ScyllaDB with Cilium Cluster Mesh
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -42,17 +42,17 @@ Then there are verification steps to confirm ScyllaDB nodes have discovered each
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Extract deployment procedure from scripts (AC: 1, 4)
-  - [ ] 1.1: Read `hack/multisite/setup-scylladb.sh` and `hack/multisite/README.md` for the actual deployment procedure
-  - [ ] 1.2: Examine overlays in `hack/multisite/overlays/` for Cilium-specific configuration
-- [ ] Task 2: Document networking and TLS (AC: 2, 3, 5)
-  - [ ] 2.1: Walk the Cilium Cluster Mesh setup, global service annotations, and pod-to-pod routing
-  - [ ] 2.2: Walk the cert-manager, shared CA, and mTLS setup used in the multisite scripts
-  - [ ] 2.3: Document cross-DC seed discovery via Cilium global services (externalSeeds DNS)
-- [ ] Task 3: Write the deployment guide (AC: 1, 2, 3, 4, 5, 6)
-  - [ ] 3.1: Write `docs/installation/scylladb/cilium.md` covering: Cilium install, Cluster Mesh setup, cert-manager, shared CA, scylla-operator, ScyllaCluster with global service annotation, mTLS, seed discovery, convergence verification
-  - [ ] 3.2: Add verification commands (cilium clustermesh status, nodetool status, CQL connectivity checks)
-  - [ ] 3.3: Verify global service annotations match what the actual overlays specify
+- [x] Task 1: Extract deployment procedure from scripts (AC: 1, 4)
+  - [x] 1.1: Read `hack/multisite/setup-scylladb.sh` and `hack/multisite/README.md` for the actual deployment procedure
+  - [x] 1.2: Examine overlays in `hack/multisite/overlays/` for Cilium-specific configuration
+- [x] Task 2: Document networking and TLS (AC: 2, 3, 5)
+  - [x] 2.1: Walk the Cilium Cluster Mesh setup, global service annotations, and pod-to-pod routing
+  - [x] 2.2: Walk the cert-manager, shared CA, and mTLS setup used in the multisite scripts
+  - [x] 2.3: Document cross-DC seed discovery via Cilium global services (externalSeeds DNS)
+- [x] Task 3: Write the deployment guide (AC: 1, 2, 3, 4, 5, 6)
+  - [x] 3.1: Write `docs/installation/scylladb/cilium.md` covering: Cilium install, Cluster Mesh setup, cert-manager, shared CA, scylla-operator, ScyllaCluster with global service annotation, mTLS, seed discovery, convergence verification
+  - [x] 3.2: Add verification commands (cilium clustermesh status, nodetool status, CQL connectivity checks)
+  - [x] 3.3: Verify global service annotations match what the actual overlays specify
 
 ## Dev Notes
 
@@ -121,9 +121,31 @@ Start from the PRD (`_bmad-output/planning-artifacts/prd.md`), architecture doc 
 ## Dev Agent Record
 
 ### Agent Model Used
+Claude Opus 4.6 (Cursor)
 
 ### Debug Log References
+- All unit tests passed before implementation (make test — 0 failures)
+- Integration tests blocked by system inotify limit (fs.inotify.max_user_instances=128, needs 1024) — not a code issue
 
 ### Completion Notes List
+- ✅ Read all source files: setup-scylladb.sh, README.md, all overlay files (base/, east/, west/)
+- ✅ Documented the full deployment sequence matching setup-scylladb.sh: XFS StorageClass → cert-manager → shared CA → TLS certs → scylla-operator → ScyllaCluster (east seed, then west joining) → STS TLS patching → symmetric seed → convergence verification
+- ✅ Documented Cilium networking: PodIP broadcast, MCS API ServiceExport (not annotation-based), clusterset.local DNS for cross-DC seed discovery
+- ✅ Documented mTLS: cert-manager shared CA pattern, TLS ConfigMap, STS volume patching workaround for scylla-operator v1.21
+- ✅ Verified global service annotations: overlays use ServiceExport MCS API resources (not service.cilium.io/global annotation) — guide accurately reflects actual implementation
+- ✅ Verified externalSeeds DNS matches overlays: west→east uses soteria-scylladb-east-rack1-0.soteria.svc.clusterset.local, symmetric patch uses soteria-scylladb-west-rack1-0.soteria.svc.clusterset.local
+- ✅ Verification commands: cilium clustermesh status, nodetool status (UN check), CQL cross-DC replication test with NetworkTopologyStrategy keyspace
+- ✅ Troubleshooting section covers: seed discovery, TLS handshake errors, PodIP vs ServiceClusterIP, STS patch reversion, XFS/xfsprogs, OOM, CQL timeouts
+- ✅ Environment variables table matches setup-scylladb.sh defaults
+- ✅ Mermaid deployment flow diagram for visual overview
+- ✅ cert-manager version: v1.20.3 (from script, authoritative over README's v1.20.2)
+
+### Change Log
+- 2026-09-05: Story 17.6 implemented — wrote comprehensive Cilium Cluster Mesh guide for ScyllaDB cross-DC deployment
 
 ### File List
+| File | Action | Description |
+|------|--------|-------------|
+| `docs/installation/scylladb/cilium.md` | MODIFIED | Replaced placeholder with full step-by-step deployment guide |
+| `_bmad-output/implementation-artifacts/17-6-scylladb-cilium.md` | MODIFIED | Updated task checkboxes, Dev Agent Record, status |
+| `_bmad-output/implementation-artifacts/sprint-status.yaml` | MODIFIED | Updated 17-6-scylladb-cilium status to review |
