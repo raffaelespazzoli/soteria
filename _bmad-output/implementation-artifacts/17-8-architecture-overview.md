@@ -1,6 +1,6 @@
 # Story 17.8: Architecture Overview
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -37,16 +37,16 @@ Then the depicted components correspond to actual packages and directories
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Map codebase to architectural components (AC: 2, 5)
-  - [ ] 1.1: Read architecture doc sections 1-4 for the conceptual architecture
-  - [ ] 1.2: Walk `cmd/soteria/main.go` to identify actual component startup and wiring
-  - [ ] 1.3: Map the current project structure (`pkg/`, `cmd/`) to components
-- [ ] Task 2: Write architecture overview (AC: 1, 3, 4)
-  - [ ] 2.1: Write `docs/architecture/overview.md` covering: two-cluster topology, component diagram, component responsibilities, data flow
-  - [ ] 2.2: Create Mermaid diagrams for: topology (two-cluster view), component diagram, data flow
-- [ ] Task 3: Verify accuracy (AC: 2, 5)
-  - [ ] 3.1: Verify every component in diagrams exists in the codebase
-  - [ ] 3.2: Verify connections between components match actual code paths
+- [x] Task 1: Map codebase to architectural components (AC: 2, 5)
+  - [x] 1.1: Read architecture doc sections 1-4 for the conceptual architecture
+  - [x] 1.2: Walk `cmd/soteria/main.go` to identify actual component startup and wiring
+  - [x] 1.3: Map the current project structure (`pkg/`, `cmd/`) to components
+- [x] Task 2: Write architecture overview (AC: 1, 3, 4)
+  - [x] 2.1: Write `docs/architecture/overview.md` covering: two-cluster topology, component diagram, component responsibilities, data flow
+  - [x] 2.2: Create Mermaid diagrams for: topology (two-cluster view), component diagram, data flow
+- [x] Task 3: Verify accuracy (AC: 2, 5)
+  - [x] 3.1: Verify every component in diagrams exists in the codebase
+  - [x] 3.2: Verify connections between components match actual code paths
 
 ## Dev Notes
 
@@ -116,9 +116,20 @@ Start from the PRD (`_bmad-output/planning-artifacts/prd.md`), architecture doc 
 ## Dev Agent Record
 
 ### Agent Model Used
+Claude Opus 4.6
 
 ### Debug Log References
 
 ### Completion Notes List
+- ✅ Task 1: Mapped all codebase components by reading architecture doc (sections 1–4), walking `cmd/soteria/main.go` imports and wiring, and listing all `pkg/` and `cmd/` directories
+- ✅ Task 2: Wrote comprehensive `docs/architecture/overview.md` with 4 Mermaid diagrams (two-cluster topology, component diagram, DRPlan creation sequence, failover execution sequence) plus console data path, component responsibility tables, project structure mapping, and cross-cluster state coordination section
+- ✅ Task 3: Verified all 22 packages referenced in diagrams exist in the codebase; confirmed StorageProvider has 7 methods as documented; confirmed 14 ScyllaDB storage files and 10 admission files; mkdocs build passes with `--strict`
+
+### Change Log
+- 2026-09-05: Created `docs/architecture/overview.md` with full architecture overview
 
 ### File List
+| File | Action | Description |
+|------|--------|-------------|
+| `docs/architecture/overview.md` | MODIFIED | Replaced stub with comprehensive architecture overview containing topology, component, data flow diagrams and descriptions |
+| `_bmad-output/implementation-artifacts/17-8-architecture-overview.md` | MODIFIED | Updated task checkboxes, status, dev agent record |
