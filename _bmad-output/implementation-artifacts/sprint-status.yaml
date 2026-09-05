@@ -459,7 +459,7 @@ development_status:
   17-15-ui-dashboard: backlog  # blocked: needs UI screenshots
   17-16-ui-plan-detail: backlog  # blocked: needs UI screenshots
   17-17-ui-execution-monitor: backlog  # blocked: needs UI screenshots
-  17-18-api-reference-drplan: ready-for-dev
+  17-18-api-reference-drplan: done
   17-19-api-reference-drexecution: ready-for-dev
   17-20-helm-values-reference: backlog  # blocked: needs Epic 16 chart
   17-21-contributing-dev-setup: ready-for-dev
