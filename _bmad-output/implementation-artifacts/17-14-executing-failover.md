@@ -1,6 +1,6 @@
 # Story 17.14: Executing Failover
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -42,24 +42,24 @@ Then each documented step matches the actual execution sequence
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Research failover execution flow (AC: 1, 2, 6)
-  - [ ] 1.1: Read PRD FR9–FR12, FR18–FR19 for conceptual failover design
-  - [ ] 1.2: Walk `pkg/engine/failover.go` for FailoverHandler — PreExecute (Step 0) and ExecuteGroup path
-  - [ ] 1.3: Walk `pkg/controller/drexecution/reconciler.go` for reconcileSetup, reconcileWaveExecution, reconcileResyncGate
-  - [ ] 1.4: Walk `pkg/engine/executor.go` for wave-by-wave execution dispatch
-- [ ] Task 2: Research status and monitoring (AC: 3, 4)
-  - [ ] 2.1: Walk `pkg/apis/soteria.io/v1alpha1/types.go` for DRExecution status types (phases, conditions, DRGroupExecutionStatus)
-  - [ ] 2.2: Walk `pkg/controller/drexecution/reconciler.go` for event emission (FailoverStarted, GroupFailed, ExecutionCompleted, etc.)
-  - [ ] 2.3: Identify kubectl commands for monitoring (`kubectl get drexecutions`, events, conditions)
-- [ ] Task 3: Research retry mechanism (AC: 5)
-  - [ ] 3.1: Walk `pkg/engine/executor.go` for ExecuteRetry and retry annotation handling (`soteria.io/retry-groups`)
-  - [ ] 3.2: Walk `pkg/controller/drexecution/reconciler.go` reconcileRetry for VM health validation preconditions
-- [ ] Task 4: Write the documentation page (AC: 1, 2, 3, 4, 5)
-  - [ ] 4.1: Write `docs/usage/executing-failover.md` covering planned migration trigger, disaster failover trigger, monitoring, partial success, retry
-  - [ ] 4.2: Add annotated DRExecution YAML examples for planned and disaster modes
-  - [ ] 4.3: Add kubectl commands for monitoring status and events
-- [ ] Task 5: Verify accuracy (AC: 6)
-  - [ ] 5.1: Verify documented execution steps match actual code flow
+- [x] Task 1: Research failover execution flow (AC: 1, 2, 6)
+  - [x] 1.1: Read PRD FR9–FR12, FR18–FR19 for conceptual failover design
+  - [x] 1.2: Walk `pkg/engine/failover.go` for FailoverHandler — PreExecute (Step 0) and ExecuteGroup path
+  - [x] 1.3: Walk `pkg/controller/drexecution/reconciler.go` for reconcileSetup, reconcileWaveExecution, reconcileResyncGate
+  - [x] 1.4: Walk `pkg/engine/executor.go` for wave-by-wave execution dispatch
+- [x] Task 2: Research status and monitoring (AC: 3, 4)
+  - [x] 2.1: Walk `pkg/apis/soteria.io/v1alpha1/types.go` for DRExecution status types (phases, conditions, DRGroupExecutionStatus)
+  - [x] 2.2: Walk `pkg/controller/drexecution/reconciler.go` for event emission (FailoverStarted, GroupFailed, ExecutionCompleted, etc.)
+  - [x] 2.3: Identify kubectl commands for monitoring (`kubectl get drexecutions`, events, conditions)
+- [x] Task 3: Research retry mechanism (AC: 5)
+  - [x] 3.1: Walk `pkg/engine/executor.go` for ExecuteRetry and retry annotation handling (`soteria.io/retry-groups`)
+  - [x] 3.2: Walk `pkg/controller/drexecution/reconciler.go` reconcileRetry for VM health validation preconditions
+- [x] Task 4: Write the documentation page (AC: 1, 2, 3, 4, 5)
+  - [x] 4.1: Write `docs/usage/failover.md` covering planned migration trigger, disaster failover trigger, monitoring, partial success, retry
+  - [x] 4.2: Add annotated DRExecution YAML examples for planned and disaster modes
+  - [x] 4.3: Add kubectl commands for monitoring status and events
+- [x] Task 5: Verify accuracy (AC: 6)
+  - [x] 5.1: Verify documented execution steps match actual code flow
 
 ## Dev Notes
 
@@ -103,7 +103,7 @@ Start from the PRD (`_bmad-output/planning-artifacts/prd.md`), architecture doc 
 
 | File | Action | Description |
 |------|--------|-------------|
-| docs/usage/executing-failover.md | NEW | Step-by-step failover trigger, monitoring, partial success, retry guide |
+| docs/usage/failover.md | MODIFIED | Step-by-step failover trigger, monitoring, partial success, retry guide (replaced placeholder) |
 
 ### Key Constraints
 
@@ -133,8 +133,19 @@ Start from the PRD (`_bmad-output/planning-artifacts/prd.md`), architecture doc 
 
 ### Agent Model Used
 
+Claude Opus 4.6
+
 ### Debug Log References
 
 ### Completion Notes List
 
+- ✅ Tasks 1–3 (Research): Walked all source files: `pkg/engine/failover.go`, `pkg/engine/executor.go`, `pkg/engine/doc.go`, `pkg/engine/statemachine.go`, `pkg/controller/drexecution/reconciler.go`, `pkg/apis/soteria.io/v1alpha1/types.go`. Extracted execution flow, status types, event reasons, retry mechanics.
+- ✅ Task 4 (Write docs): Wrote comprehensive `docs/usage/failover.md` replacing placeholder. Covers: prerequisites, execution modes table, planned migration trigger (with YAML + kubectl), disaster failover trigger (with YAML + kubectl), execution lifecycle (Setup → Step 0 → Resync Gate → Wave Execution → VM Readiness → Result), monitoring (status fields table, conditions table, events table, kubectl commands), result computation, partial success semantics, retry mechanism (preconditions, all-failed, specific groups, rejection reasons), Mermaid lifecycle diagram, crash recovery, multi-site coordination.
+- ✅ Task 5 (Verify accuracy): Cross-referenced every documented claim against source code — FailoverConfig mapping (GracefulShutdown true/false), default timeouts (VMReady 5m, Step0 10m), safety requeue (10s), fail-fast vs fail-forward, state machine transitions, event reasons, retry annotation handling, result computation logic. All accurate.
+- ℹ️ File path deviation: Story specified `docs/usage/executing-failover.md` but `docs/usage/failover.md` already existed as a placeholder and was linked in `mkdocs.yml` nav. Wrote to the existing file to avoid nav breakage.
+- ℹ️ Integration tests: Skipped due to host `inotify.max_user_instances` limit (128 < 1024). Unit tests (`make test`) all pass. No Go code changes in this story — documentation only.
+
 ### File List
+
+- docs/usage/failover.md (MODIFIED — replaced placeholder with comprehensive guide)
+- _bmad-output/implementation-artifacts/17-14-executing-failover.md (MODIFIED — task checkboxes, status, dev record)
