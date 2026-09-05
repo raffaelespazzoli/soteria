@@ -1,10 +1,11 @@
 # ---------------------------------------------------------------------------
 # CI pipeline — runs on every merge to main and on PRs targeting main.
 #
-# Three independent jobs run in parallel:
-#   • test           – lint, codegen check, unit tests, integration tests
-#   • build-images   – build all container images (no push)
-#   • helmchart-test – deploy chart on Kind and verify pods come up
+# Job graph:
+#   • test                    – lint, codegen check, unit tests, integration tests
+#   • build-image-quick (PR)  – 3 parallel single-arch builds (fast feedback)
+#   • build-image-full (main) – 3 images × 4 platforms = 12 parallel multi-arch
+#   • helmchart-test          – lint, template, deploy chart on Kind
 # ---------------------------------------------------------------------------
 name: ci
 
@@ -64,48 +65,88 @@ jobs:
           DOCKER_HOST: unix:///var/run/docker.sock
         run: make integration-scylladb
 
-  # ── Build all container images (no push) ────────────────────────────────
-  build-images:
-    name: Build images
+  # ── PR only: 3 parallel single-arch builds (fast feedback) ──────────────
+  build-image-quick:
+    if: github.event_name == 'pull_request'
+    name: "Build ${{ matrix.image.name }} (amd64)"
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - name: soteria
+            context: "."
+            file: Dockerfile
+          - name: soteria-console-plugin
+            context: console-plugin/
+            file: console-plugin/Dockerfile
+          - name: soteria-standalone-ui
+            context: "."
+            file: console-plugin/Dockerfile.standalone
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build controller image
+      - name: Build image
         uses: docker/build-push-action@v6
         with:
-          context: .
-          file: Dockerfile
+          context: ${{ matrix.image.context }}
+          file: ${{ matrix.image.file }}
+          platforms: linux/amd64
           push: false
-          load: true
-          tags: soteria:ci
-          cache-from: type=gha,scope=soteria-ci
-          cache-to: type=gha,mode=max,scope=soteria-ci
+          tags: "${{ matrix.image.name }}:ci"
+          cache-from: type=gha,scope=${{ matrix.image.name }}-linux-amd64
+          cache-to: type=gha,mode=max,scope=${{ matrix.image.name }}-linux-amd64
 
-      - name: Build console-plugin image
-        uses: docker/build-push-action@v6
-        with:
-          context: console-plugin/
-          file: console-plugin/Dockerfile
-          push: false
-          load: true
-          tags: soteria-console-plugin:ci
-          cache-from: type=gha,scope=console-plugin-ci
-          cache-to: type=gha,mode=max,scope=console-plugin-ci
+  # ── Main only: 3 images × 4 platforms = 12 parallel multi-arch builds ───
+  build-image-full:
+    if: github.event_name == 'push'
+    name: "Build ${{ matrix.image.name }} (${{ matrix.platform }})"
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - name: soteria
+            context: "."
+            file: Dockerfile
+          - name: soteria-console-plugin
+            context: console-plugin/
+            file: console-plugin/Dockerfile
+          - name: soteria-standalone-ui
+            context: "."
+            file: console-plugin/Dockerfile.standalone
+        platform:
+          - linux/amd64
+          - linux/arm64
+          - linux/ppc64le
+          - linux/s390x
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Build standalone-ui image
+      - name: Prepare platform pair
+        id: platform
+        run: echo "pair=$(echo '${{ matrix.platform }}' | tr '/' '-')" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        if: matrix.platform != 'linux/amd64'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image
         uses: docker/build-push-action@v6
         with:
-          context: .
-          file: console-plugin/Dockerfile.standalone
+          context: ${{ matrix.image.context }}
+          file: ${{ matrix.image.file }}
+          platforms: ${{ matrix.platform }}
           push: false
-          load: true
-          tags: soteria-standalone-ui:ci
-          cache-from: type=gha,scope=standalone-ui-ci
-          cache-to: type=gha,mode=max,scope=standalone-ui-ci
+          tags: "${{ matrix.image.name }}:ci-${{ steps.platform.outputs.pair }}"
+          cache-from: type=gha,scope=${{ matrix.image.name }}-${{ steps.platform.outputs.pair }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image.name }}-${{ steps.platform.outputs.pair }}
 
   # ── Build, deploy & smoke-test the Helm chart on Kind ─────────────────
   helmchart-test:
