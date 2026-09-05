@@ -97,9 +97,6 @@ func makeVGR(
 	}
 }
 
-//go:fix inline
-func ptrString(s string) *string { return new(s) }
-
 func findCondition(
 	conditions []metav1.Condition,
 	condType string,

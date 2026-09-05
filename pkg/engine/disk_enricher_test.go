@@ -37,9 +37,6 @@ func diskEnricherTestScheme() *runtime.Scheme {
 	return s
 }
 
-//go:fix inline
-func strPtr(s string) *string { return new(s) }
-
 func TestKubeVirtDiskEnricher_PVCBackedDisks(t *testing.T) {
 	vm := &kubevirtv1.VirtualMachine{
 		ObjectMeta: metav1.ObjectMeta{Name: "vm-db01", Namespace: "ns1"},
