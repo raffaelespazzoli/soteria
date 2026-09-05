@@ -1,6 +1,6 @@
 # Story 17.1: Documentation Site Setup
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -37,18 +37,18 @@ Then a local development server starts and renders the documentation correctly
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create mkdocs configuration (AC: 1, 2)
-  - [ ] 1.1: Create `mkdocs.yml` with material theme config (palette with dark/light toggle, search plugin, code highlighting with `pymdownx` extensions, admonitions, tabs, Mermaid diagrams)
-  - [ ] 1.2: Add docs dependency manifest (`requirements-docs.txt` or `pyproject.toml` section) for mkdocs-material, pymdownx extras, mkdocs-mermaid2-plugin
-- [ ] Task 2: Create docs directory structure (AC: 3)
-  - [ ] 2.1: Create `docs/` directory with `index.md` placeholder
-  - [ ] 2.2: Create placeholder subdirectories: `installation/scylladb/`, `architecture/`, `usage/ui-guide/`, `reference/api/`, `contributing/`
-  - [ ] 2.3: Define the full `nav` structure in `mkdocs.yml` covering all 21 remaining stories
-- [ ] Task 3: Create CI/CD workflow (AC: 4)
-  - [ ] 3.1: Create `.github/workflows/docs.yml` — trigger on push to main, install mkdocs-material, build, deploy to GitHub Pages
-- [ ] Task 4: Verify local and CI build (AC: 1, 5)
-  - [ ] 4.1: Verify `mkdocs build` completes successfully
-  - [ ] 4.2: Verify `mkdocs serve` renders the site locally
+- [x] Task 1: Create mkdocs configuration (AC: 1, 2)
+  - [x] 1.1: Create `mkdocs.yml` with material theme config (palette with dark/light toggle, search plugin, code highlighting with `pymdownx` extensions, admonitions, tabs, Mermaid diagrams)
+  - [x] 1.2: Add docs dependency manifest (`requirements-docs.txt` or `pyproject.toml` section) for mkdocs-material, pymdownx extras, mkdocs-mermaid2-plugin
+- [x] Task 2: Create docs directory structure (AC: 3)
+  - [x] 2.1: Create `docs/` directory with `index.md` placeholder
+  - [x] 2.2: Create placeholder subdirectories: `installation/scylladb/`, `architecture/`, `usage/ui-guide/`, `reference/api/`, `contributing/`
+  - [x] 2.3: Define the full `nav` structure in `mkdocs.yml` covering all 21 remaining stories
+- [x] Task 3: Create CI/CD workflow (AC: 4)
+  - [x] 3.1: Create `.github/workflows/docs.yml` — trigger on push to main, install mkdocs-material, build, deploy to GitHub Pages
+- [x] Task 4: Verify local and CI build (AC: 1, 5)
+  - [x] 4.1: Verify `mkdocs build` completes successfully
+  - [x] 4.2: Verify `mkdocs serve` renders the site locally
 
 ## Dev Notes
 
@@ -110,8 +110,55 @@ Start from the PRD (`_bmad-output/planning-artifacts/prd.md`), architecture doc 
 
 ### Agent Model Used
 
+Claude Opus 4.6
+
 ### Debug Log References
+
+- Integration tests could not run (fs.inotify.max_user_instances limit) — environment constraint, not code issue; irrelevant to docs-only story
+- mkdocs-mermaid2-plugin not needed: Mermaid support is provided natively by pymdownx.superfences custom fences in mkdocs-material ≥9.x
 
 ### Completion Notes List
 
+- Created mkdocs-material site with dark/light palette toggle, search, code highlighting (pymdownx.highlight, pymdownx.superfences, pymdownx.inlinehilite), admonitions, tabs, Mermaid diagram support via pymdownx.superfences custom fences
+- Created requirements-docs.txt with pinned version ranges (mkdocs>=1.6,<2, mkdocs-material>=9.6,<10, pymdown-extensions>=10.14,<11)
+- Created full docs/ directory structure with 18 placeholder pages covering all nav sections
+- Nav structure covers: Home, Installation (prerequisites, ScyllaDB/Submariner/Cilium, Helm), Architecture (overview, DR lifecycle, storage drivers), Usage (DRPlan, waves, volumes, failover, UI guides), Reference (API DRPlan/DRExecution, Helm values), Contributing (dev setup, storage drivers)
+- Created .github/workflows/docs.yml with build-on-PR validation and deploy-on-push-to-main using peaceiris/actions-gh-pages@v4 with keep_files:true and destination_dir:docs to coexist with Helm chart hosting on gh-pages
+- mkdocs build --strict passes with zero errors
+- mkdocs serve starts successfully on localhost
+
+### Change Log
+
+- 2026-09-05: Story 17.1 implementation complete — docs site skeleton with mkdocs-material, full nav structure, CI/CD workflow
+
 ### File List
+
+| File | Action |
+|------|--------|
+| `mkdocs.yml` | NEW |
+| `requirements-docs.txt` | NEW |
+| `.github/workflows/docs.yml` | NEW |
+| `docs/index.md` | NEW |
+| `docs/installation/prerequisites.md` | NEW |
+| `docs/installation/helm.md` | NEW |
+| `docs/installation/scylladb/overview.md` | NEW |
+| `docs/installation/scylladb/submariner.md` | NEW |
+| `docs/installation/scylladb/cilium.md` | NEW |
+| `docs/architecture/overview.md` | NEW |
+| `docs/architecture/dr-lifecycle.md` | NEW |
+| `docs/architecture/storage-drivers.md` | NEW |
+| `docs/usage/drplan.md` | NEW |
+| `docs/usage/waves.md` | NEW |
+| `docs/usage/volumes.md` | NEW |
+| `docs/usage/failover.md` | NEW |
+| `docs/usage/ui-guide/dashboard.md` | NEW |
+| `docs/usage/ui-guide/plan-detail.md` | NEW |
+| `docs/usage/ui-guide/execution-monitor.md` | NEW |
+| `docs/reference/api/drplan.md` | NEW |
+| `docs/reference/api/drexecution.md` | NEW |
+| `docs/reference/helm-values.md` | NEW |
+| `docs/contributing/dev-setup.md` | NEW |
+| `docs/contributing/storage-drivers.md` | NEW |
+| `.gitignore` | MODIFIED |
+| `_bmad-output/implementation-artifacts/17-1-docs-site-setup.md` | MODIFIED |
+| `_bmad-output/implementation-artifacts/sprint-status.yaml` | MODIFIED |

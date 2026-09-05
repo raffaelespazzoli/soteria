@@ -1,0 +1,97 @@
+site_name: Soteria
+site_description: >-
+  Open-source, Kubernetes-native disaster recovery orchestrator
+  for OpenShift Virtualization.
+site_url: https://soteria-project.github.io/soteria/docs/
+repo_url: https://github.com/soteria-project/soteria
+repo_name: soteria-project/soteria
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - content.code.copy
+    - content.code.annotate
+    - navigation.instant
+    - navigation.tracking
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.highlight
+    - search.suggest
+    - toc.follow
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - toc:
+      permalink: true
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+nav:
+  - Home: index.md
+  - Installation:
+      - Prerequisites: installation/prerequisites.md
+      - ScyllaDB & Network:
+          - Overview: installation/scylladb/overview.md
+          - Submariner: installation/scylladb/submariner.md
+          - Cilium Cluster Mesh: installation/scylladb/cilium.md
+      - Helm Installation: installation/helm.md
+  - Architecture:
+      - Overview: architecture/overview.md
+      - DR Lifecycle: architecture/dr-lifecycle.md
+      - Storage Drivers: architecture/storage-drivers.md
+  - Usage:
+      - DRPlan Authoring: usage/drplan.md
+      - Waves & Throttling: usage/waves.md
+      - Volume Grouping: usage/volumes.md
+      - Executing Failover: usage/failover.md
+      - UI Guides:
+          - Dashboard: usage/ui-guide/dashboard.md
+          - Plan Detail: usage/ui-guide/plan-detail.md
+          - Execution Monitor: usage/ui-guide/execution-monitor.md
+  - Reference:
+      - API Reference:
+          - DRPlan: reference/api/drplan.md
+          - DRExecution: reference/api/drexecution.md
+      - Helm Values: reference/helm-values.md
+  - Contributing:
+      - Developer Setup: contributing/dev-setup.md
+      - Writing Storage Drivers: contributing/storage-drivers.md
