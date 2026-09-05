@@ -1,0 +1,2434 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Open-source, Kubernetes-native disaster recovery orchestrator for OpenShift Virtualization.">
+      
+      
+      
+        <link rel="canonical" href="https://raffaelespazzoli.github.io/soteria/docs/installation/prerequisites/">
+      
+      
+        <link rel="prev" href="../..">
+      
+      
+        <link rel="next" href="../scylladb/overview/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Prerequisites - Soteria</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#prerequisites" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Soteria" class="md-header__button md-logo" aria-label="Soteria" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Soteria
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Prerequisites
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/soteria-project/soteria" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    soteria-project/soteria
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Soteria" class="md-nav__button md-logo" aria-label="Soteria" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Soteria
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/soteria-project/soteria" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    soteria-project/soteria
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Installation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prerequisites
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prerequisites
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#kubernetes-cluster" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kubernetes Cluster
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#storage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Storage
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Storage">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#required-crds" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Required CRDs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pre-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pre-Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#storageclass" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        StorageClass
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#kubevirt-openshift-virtualization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        KubeVirt (OpenShift Virtualization)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="KubeVirt (OpenShift Virtualization)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#required-crds_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Required CRDs
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cert-manager" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        cert-manager
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="cert-manager">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pre-configuration_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pre-Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#scylladb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ScyllaDB
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ScyllaDB">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#scylladb-connection-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ScyllaDB Connection Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scylladb-tls-required-for-production" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ScyllaDB TLS (Required for Production)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cross-site-networking" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cross-Site Networking
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#version-compatibility-matrix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Version Compatibility Matrix
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#external-api-dependencies-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        External API Dependencies Summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cli-tools-for-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI Tools (for Setup)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Checklist
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_2" id="__nav_2_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ScyllaDB & Network
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    ScyllaDB & Network
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../scylladb/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../scylladb/submariner/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Submariner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../scylladb/cilium/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cilium Cluster Mesh
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../helm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Helm Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/dr-lifecycle/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DR Lifecycle
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/storage-drivers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage Drivers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Usage
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/creating-a-drplan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Creating a DRPlan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/waves/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Waves & Throttling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/volumes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Volume Grouping
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/failover/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Executing Failover
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_5" id="__nav_4_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    UI Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    UI Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/ui-guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/ui-guide/plan-detail/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plan Detail
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/ui-guide/execution-monitor/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Execution Monitor
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_1" id="__nav_5_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/api/drplan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DRPlan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/api/drexecution/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DRExecution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/helm-values/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Helm Values
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contributing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/dev-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/storage-drivers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Writing Storage Drivers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#kubernetes-cluster" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Kubernetes Cluster
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#storage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Storage
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Storage">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#required-crds" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Required CRDs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#pre-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pre-Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#storageclass" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        StorageClass
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#kubevirt-openshift-virtualization" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        KubeVirt (OpenShift Virtualization)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="KubeVirt (OpenShift Virtualization)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#required-crds_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Required CRDs
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cert-manager" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        cert-manager
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="cert-manager">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#pre-configuration_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Pre-Configuration
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#scylladb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ScyllaDB
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="ScyllaDB">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#scylladb-connection-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ScyllaDB Connection Parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scylladb-tls-required-for-production" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ScyllaDB TLS (Required for Production)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cross-site-networking" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cross-Site Networking
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#version-compatibility-matrix" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Version Compatibility Matrix
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#external-api-dependencies-summary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        External API Dependencies Summary
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cli-tools-for-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI Tools (for Setup)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Checklist
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="prerequisites">Prerequisites<a class="headerlink" href="#prerequisites" title="Permanent link">&para;</a></h1>
+<p>Before installing Soteria, verify that your environment meets the following
+requirements. Soteria orchestrates disaster recovery for OpenShift
+Virtualization workloads across two Kubernetes clusters, so both the
+<strong>primary</strong> and <strong>secondary</strong> clusters must satisfy every prerequisite listed
+below.</p>
+<h2 id="kubernetes-cluster">Kubernetes Cluster<a class="headerlink" href="#kubernetes-cluster" title="Permanent link">&para;</a></h2>
+<p>Soteria requires <strong>two</strong> Kubernetes clusters connected by a cross-site network
+fabric. Each cluster must run:</p>
+<table>
+<thead>
+<tr>
+<th>Requirement</th>
+<th>Minimum Version</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>OpenShift Container Platform</td>
+<td>4.x</td>
+<td>Required for OLM lifecycle management and Console plugin integration</td>
+</tr>
+<tr>
+<td>Kubernetes API server</td>
+<td>1.27+</td>
+<td>Aggregated API server support is required</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition tip">
+<p class="admonition-title">Verification</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># Check Kubernetes version on each cluster</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>kubectl<span class="w"> </span>version
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="c1"># Confirm the cluster supports aggregated API services</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>kubectl<span class="w"> </span>api-resources<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>apiregistration
+</span></code></pre></div>
+</div>
+<h2 id="storage">Storage<a class="headerlink" href="#storage" title="Permanent link">&para;</a></h2>
+<p>Soteria manages volume replication through the
+<a href="https://github.com/csi-addons/kubernetes-csi-addons">CSI-Addons</a>
+<code>VolumeReplication</code> and <code>VolumeGroupReplication</code> APIs. Your storage subsystem
+must provide a CSI driver that implements these CRDs.</p>
+<h3 id="required-crds">Required CRDs<a class="headerlink" href="#required-crds" title="Permanent link">&para;</a></h3>
+<p>The following CRDs must be installed on <strong>both</strong> clusters:</p>
+<table>
+<thead>
+<tr>
+<th>CRD</th>
+<th>API Group</th>
+<th>Provided By</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>VolumeReplication</code></td>
+<td><code>replication.storage.openshift.io</code></td>
+<td>CSI-Addons operator or storage vendor CSI driver</td>
+</tr>
+<tr>
+<td><code>VolumeGroupReplication</code></td>
+<td><code>replication.storage.openshift.io</code></td>
+<td>CSI-Addons operator or storage vendor CSI driver</td>
+</tr>
+<tr>
+<td><code>VolumeReplicationClass</code></td>
+<td><code>replication.storage.openshift.io</code></td>
+<td>CSI-Addons operator or storage vendor CSI driver</td>
+</tr>
+<tr>
+<td><code>VolumeGroupReplicationClass</code></td>
+<td><code>replication.storage.openshift.io</code></td>
+<td>CSI-Addons operator or storage vendor CSI driver</td>
+</tr>
+</tbody>
+</table>
+<h3 id="pre-configuration">Pre-Configuration<a class="headerlink" href="#pre-configuration" title="Permanent link">&para;</a></h3>
+<p>Before installing Soteria you must:</p>
+<ol>
+<li><strong>Create <code>VolumeReplicationClass</code></strong> resources matching your storage backend
+   (e.g., ODF/Ceph RBD, Dell PowerStore).</li>
+<li><strong>Create <code>VolumeGroupReplicationClass</code></strong> resources for volume group
+   operations.</li>
+<li><strong>Verify that replication is active</strong> between the primary and secondary
+   clusters at the storage layer.</li>
+</ol>
+<div class="admonition warning">
+<p class="admonition-title">Homogeneous Storage Only</p>
+<p>Soteria requires the same storage vendor on both clusters. Cross-vendor
+replication (e.g., Dell-to-ODF) is <strong>not</strong> supported. Supported
+configurations include ODF-to-ODF, Dell-to-Dell, and similar
+same-vendor pairings.</p>
+</div>
+<div class="admonition tip">
+<p class="admonition-title">Verification</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># Confirm VolumeReplication CRDs are installed</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>kubectl<span class="w"> </span>get<span class="w"> </span>crd<span class="w"> </span>volumereplications.replication.storage.openshift.io
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>kubectl<span class="w"> </span>get<span class="w"> </span>crd<span class="w"> </span>volumegroupreplications.replication.storage.openshift.io
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>kubectl<span class="w"> </span>get<span class="w"> </span>crd<span class="w"> </span>volumereplicationclasses.replication.storage.openshift.io
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>kubectl<span class="w"> </span>get<span class="w"> </span>crd<span class="w"> </span>volumegroupreplicationclasses.replication.storage.openshift.io
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="c1"># List configured replication classes</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>kubectl<span class="w"> </span>get<span class="w"> </span>volumereplicationclass
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>kubectl<span class="w"> </span>get<span class="w"> </span>volumegroupreplicationclass
+</span></code></pre></div>
+</div>
+<h3 id="storageclass">StorageClass<a class="headerlink" href="#storageclass" title="Permanent link">&para;</a></h3>
+<p>A <code>StorageClass</code> backed by a CSI driver with replication support must be
+available. Soteria determines the storage driver automatically from the
+PVC's <code>StorageClass</code> — no additional driver-selection configuration is
+required.</p>
+<div class="admonition tip">
+<p class="admonition-title">Verification</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>storageclass
+</span></code></pre></div>
+</div>
+<h2 id="kubevirt-openshift-virtualization">KubeVirt (OpenShift Virtualization)<a class="headerlink" href="#kubevirt-openshift-virtualization" title="Permanent link">&para;</a></h2>
+<p>Soteria orchestrates disaster recovery for virtual machines managed by
+<a href="https://kubevirt.io/">KubeVirt</a>. KubeVirt must be installed and operational
+on <strong>both</strong> clusters.</p>
+<table>
+<thead>
+<tr>
+<th>Requirement</th>
+<th>Minimum Version</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>KubeVirt</td>
+<td>1.8+</td>
+<td>Provides the <code>VirtualMachine</code> CRD (<code>kubevirt.io/v1</code>)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="required-crds_1">Required CRDs<a class="headerlink" href="#required-crds_1" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>CRD</th>
+<th>API Group</th>
+<th>Provided By</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>VirtualMachine</code></td>
+<td><code>kubevirt.io</code></td>
+<td>KubeVirt / OpenShift Virtualization operator</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition info">
+<p class="admonition-title">VM Pre-existence</p>
+<p>Soteria does <strong>not</strong> create VMs or manage PVC bindings. Virtual machines
+must already exist on both clusters with their PVC attachments configured.
+Soteria transitions volumes to the <code>Source</code> role and starts VMs during
+failover — it does not provision infrastructure.</p>
+</div>
+<div class="admonition tip">
+<p class="admonition-title">Verification</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="c1"># Confirm KubeVirt is installed</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>kubectl<span class="w"> </span>get<span class="w"> </span>crd<span class="w"> </span>virtualmachines.kubevirt.io
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="c1"># Check that VMs are present</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>kubectl<span class="w"> </span>get<span class="w"> </span>vm<span class="w"> </span>-A
+</span></code></pre></div>
+</div>
+<h2 id="cert-manager">cert-manager<a class="headerlink" href="#cert-manager" title="Permanent link">&para;</a></h2>
+<p><a href="https://cert-manager.io/">cert-manager</a> provides TLS certificate lifecycle
+management. Soteria requires it for:</p>
+<ul>
+<li><strong>ScyllaDB mTLS</strong> — mutual TLS authentication between the Soteria API
+  server and the ScyllaDB cluster</li>
+<li><strong>Aggregated API server serving certificate</strong> — TLS for the Soteria
+  extension API endpoint</li>
+<li><strong>Webhook certificates</strong> — TLS for the admission webhook server</li>
+</ul>
+<table>
+<thead>
+<tr>
+<th>Requirement</th>
+<th>Minimum Version</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>cert-manager</td>
+<td>1.20+</td>
+<td>Tested with v1.20.3</td>
+</tr>
+</tbody>
+</table>
+<h3 id="pre-configuration_1">Pre-Configuration<a class="headerlink" href="#pre-configuration_1" title="Permanent link">&para;</a></h3>
+<p>After installing cert-manager, create an <code>Issuer</code> or <code>ClusterIssuer</code> that
+Soteria will reference for certificate generation:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">cert-manager.io/v1</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Issuer</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">soteria-internal</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">soteria</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="nt">spec</span><span class="p">:</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">  </span><span class="nt">selfSigned</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{}</span>
+</span></code></pre></div>
+<div class="admonition warning">
+<p class="admonition-title">Production Issuers</p>
+<p>The self-signed example above is suitable for development. For production,
+use a CA-backed <code>Issuer</code> or <code>ClusterIssuer</code> with your organization's PKI.
+Both clusters should trust the same root CA if ScyllaDB spans sites.</p>
+</div>
+<div class="admonition tip">
+<p class="admonition-title">Verification</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="c1"># Confirm cert-manager is running</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>kubectl<span class="w"> </span>get<span class="w"> </span>pods<span class="w"> </span>-n<span class="w"> </span>cert-manager
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="c1"># Check that CRDs are installed</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>kubectl<span class="w"> </span>get<span class="w"> </span>crd<span class="w"> </span>certificates.cert-manager.io
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>kubectl<span class="w"> </span>get<span class="w"> </span>crd<span class="w"> </span>issuers.cert-manager.io
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="c1"># Verify your Issuer is ready</span>
+</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>kubectl<span class="w"> </span>get<span class="w"> </span>issuer<span class="w"> </span>-n<span class="w"> </span>soteria
+</span></code></pre></div>
+</div>
+<h2 id="scylladb">ScyllaDB<a class="headerlink" href="#scylladb" title="Permanent link">&para;</a></h2>
+<p>Soteria uses <a href="https://www.scylladb.com/">ScyllaDB</a> as the cross-site shared
+state store backing the aggregated API server. You have two options:</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">Managed (scylla-operator)</label><label for="__tabbed_1_2">Bring Your Own (BYO)</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<p>Install the <strong>scylla-operator</strong> to manage ScyllaDB clusters declaratively.</p>
+<table>
+<thead>
+<tr>
+<th>Requirement</th>
+<th>Minimum Version</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>scylla-operator</td>
+<td>1.21+</td>
+<td>Tested with v1.21.0; available via OperatorHub</td>
+</tr>
+</tbody>
+</table>
+<p>The scylla-operator manages the ScyllaDB lifecycle including deployment,
+scaling, and upgrades. Soteria can auto-create the keyspace when
+<code>--scylladb-dc-replication</code> is set.</p>
+<p><strong>Verification:</strong></p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># Confirm scylla-operator is running</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>kubectl<span class="w"> </span>get<span class="w"> </span>pods<span class="w"> </span>-n<span class="w"> </span>scylla-operator
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="c1"># Check that ScyllaCluster CRD is available</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>kubectl<span class="w"> </span>get<span class="w"> </span>crd<span class="w"> </span>scyllaclusters.scylla.scylladb.com
+</span></code></pre></div>
+</div>
+<div class="tabbed-block">
+<p>Operate your own ScyllaDB cluster and provide Soteria with connection
+details. The keyspace must already exist before Soteria starts.</p>
+<p><strong>Requirements:</strong></p>
+<ul>
+<li>ScyllaDB cluster accessible from both Kubernetes clusters</li>
+<li><code>NetworkTopologyStrategy</code> with replication factor ≥ 2 per datacenter</li>
+<li>The keyspace must already exist (Soteria creates the required tables
+  automatically on startup)</li>
+</ul>
+</div>
+</div>
+</div>
+<h3 id="scylladb-connection-parameters">ScyllaDB Connection Parameters<a class="headerlink" href="#scylladb-connection-parameters" title="Permanent link">&para;</a></h3>
+<p>Soteria connects to ScyllaDB via the following flags on the <code>soteria</code>
+binary:</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--scylladb-contact-points</code></td>
+<td><code>localhost:9042</code></td>
+<td>Comma-separated ScyllaDB contact points</td>
+</tr>
+<tr>
+<td><code>--scylladb-keyspace</code></td>
+<td><code>soteria</code></td>
+<td>Keyspace name</td>
+</tr>
+<tr>
+<td><code>--scylladb-local-dc</code></td>
+<td><em>(empty)</em></td>
+<td>Local datacenter name for DC-aware routing (e.g., <code>dc1</code>)</td>
+</tr>
+<tr>
+<td><code>--scylladb-dc-replication</code></td>
+<td><em>(empty)</em></td>
+<td>Auto-create keyspace with <code>NetworkTopologyStrategy</code>. Comma-separated <code>dc:rf</code> pairs (e.g., <code>dc1:2,dc2:2</code>). When empty, the keyspace must already exist</td>
+</tr>
+</tbody>
+</table>
+<h3 id="scylladb-tls-required-for-production">ScyllaDB TLS (Required for Production)<a class="headerlink" href="#scylladb-tls-required-for-production" title="Permanent link">&para;</a></h3>
+<p>All Soteria-to-ScyllaDB communication must be encrypted via mTLS. The
+following flags configure TLS:</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--scylladb-tls-cert</code></td>
+<td>Path to the TLS client certificate</td>
+</tr>
+<tr>
+<td><code>--scylladb-tls-key</code></td>
+<td>Path to the TLS client key</td>
+</tr>
+<tr>
+<td><code>--scylladb-tls-ca</code></td>
+<td>Path to the TLS CA certificate</td>
+</tr>
+<tr>
+<td><code>--scylladb-tls-server-name</code></td>
+<td>TLS server name for certificate verification (overrides hostname from contact points)</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition warning">
+<p class="admonition-title">TLS is Mandatory</p>
+<p>In production deployments, all four TLS flags must be provided. ScyllaDB
+connections switch to TLS port <code>9142</code> when TLS is configured. Certificates
+should be managed by cert-manager with a shared CA across both
+datacenters.</p>
+</div>
+<h2 id="cross-site-networking">Cross-Site Networking<a class="headerlink" href="#cross-site-networking" title="Permanent link">&para;</a></h2>
+<p>The two Kubernetes clusters must be connected by a network fabric that allows:</p>
+<ul>
+<li><strong>Pod-to-pod communication</strong> across clusters (for ScyllaDB gossip and data
+  replication)</li>
+<li><strong>Service discovery</strong> across clusters (for ScyllaDB seed node resolution)</li>
+</ul>
+<p>Soteria supports two networking options:</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="2:2"><input checked="checked" id="__tabbed_2_1" name="__tabbed_2" type="radio" /><input id="__tabbed_2_2" name="__tabbed_2" type="radio" /><div class="tabbed-labels"><label for="__tabbed_2_1">Submariner</label><label for="__tabbed_2_2">Cilium Cluster Mesh</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<p><a href="https://submariner.io/">Submariner</a> provides cross-cluster connectivity
+with the Multicluster Services (MCS) API.</p>
+<p><strong>Requirements:</strong></p>
+<ul>
+<li>Submariner installed and connected between both clusters</li>
+<li>MCS API active (<code>ServiceExport</code> / <code>ServiceImport</code> CRDs available)</li>
+<li>The Soteria namespace <code>ServiceExport</code> configured for ScyllaDB service
+  discovery</li>
+</ul>
+<p><strong>Verification:</strong></p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># Check Submariner status</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>kubectl<span class="w"> </span>get<span class="w"> </span>pods<span class="w"> </span>-n<span class="w"> </span>submariner-operator
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="c1"># Verify MCS API is available</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>kubectl<span class="w"> </span>get<span class="w"> </span>crd<span class="w"> </span>serviceexports.multicluster.x-k8s.io
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>kubectl<span class="w"> </span>get<span class="w"> </span>crd<span class="w"> </span>serviceimports.multicluster.x-k8s.io
+</span></code></pre></div>
+</div>
+<div class="tabbed-block">
+<p><a href="https://docs.cilium.io/en/stable/network/clustermesh/">Cilium Cluster Mesh</a>
+provides cross-cluster networking with global service annotations.</p>
+<p><strong>Requirements:</strong></p>
+<ul>
+<li>Cilium installed as the CNI on both clusters</li>
+<li>Cluster Mesh enabled and connected between both clusters</li>
+<li>ScyllaDB services annotated with <code>service.cilium.io/global: "true"</code> for
+  cross-DC pod routing</li>
+</ul>
+<p><strong>Verification:</strong></p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># Check Cilium Cluster Mesh status</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>cilium<span class="w"> </span>clustermesh<span class="w"> </span>status
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="c1"># Verify connectivity</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>cilium<span class="w"> </span>connectivity<span class="w"> </span><span class="nb">test</span>
+</span></code></pre></div>
+</div>
+</div>
+</div>
+<h2 id="version-compatibility-matrix">Version Compatibility Matrix<a class="headerlink" href="#version-compatibility-matrix" title="Permanent link">&para;</a></h2>
+<p>The following versions have been validated together in the Soteria test
+infrastructure:</p>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Tested Version</th>
+<th>go.mod Dependency</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>KubeVirt API</td>
+<td>v1.8.1</td>
+<td><code>kubevirt.io/api v1.8.1</code></td>
+</tr>
+<tr>
+<td>CSI-Addons</td>
+<td>v0.14.0</td>
+<td><code>github.com/csi-addons/kubernetes-csi-addons v0.14.0</code></td>
+</tr>
+<tr>
+<td>cert-manager</td>
+<td>v1.20.3</td>
+<td>— (cluster prerequisite)</td>
+</tr>
+<tr>
+<td>scylla-operator</td>
+<td>v1.21.0</td>
+<td>— (cluster prerequisite)</td>
+</tr>
+<tr>
+<td>ScyllaDB Go driver</td>
+<td>v1.7.0</td>
+<td><code>github.com/gocql/gocql v1.7.0</code></td>
+</tr>
+<tr>
+<td>ScyllaDB CDC library</td>
+<td>v1.2.0</td>
+<td><code>github.com/scylladb/scylla-cdc-go v1.2.0</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="external-api-dependencies-summary">External API Dependencies Summary<a class="headerlink" href="#external-api-dependencies-summary" title="Permanent link">&para;</a></h2>
+<p>The table below lists every external API group that the Soteria controller
+requires RBAC access to, derived from the controller RBAC markers and the
+generated <code>ClusterRole</code>:</p>
+<table>
+<thead>
+<tr>
+<th>API Group</th>
+<th>Resources</th>
+<th>Used By</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>kubevirt.io</code></td>
+<td><code>virtualmachines</code></td>
+<td>DRPlan controller (VM discovery), DRExecution controller (VM lifecycle)</td>
+</tr>
+<tr>
+<td><code>replication.storage.openshift.io</code></td>
+<td><code>volumereplications</code>, <code>volumegroupreplications</code></td>
+<td>DRPlan controller (replication management), DRExecution controller (status monitoring), ShadowPV publisher, VolumeReplication controller</td>
+</tr>
+<tr>
+<td><code>ceph.rook.io</code></td>
+<td><code>cephblockpools</code></td>
+<td>ShadowPV consumer controller (pool discovery for PV creation)</td>
+</tr>
+<tr>
+<td><code>storage.k8s.io</code></td>
+<td><code>storageclasses</code></td>
+<td>DRExecution controller (driver selection)</td>
+</tr>
+<tr>
+<td><code>soteria.io</code></td>
+<td><code>drplans</code>, <code>drexecutions</code>, <code>shadowpvs</code></td>
+<td>Soteria's own CRDs (installed automatically)</td>
+</tr>
+<tr>
+<td><em>(core)</em></td>
+<td><code>persistentvolumeclaims</code>, <code>persistentvolumes</code>, <code>namespaces</code>, <code>secrets</code>, <code>events</code></td>
+<td>Various controllers (volume tracking, namespace lookup, event recording)</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">Rook-Ceph Dependency</p>
+<p>The <code>ceph.rook.io/cephblockpools</code> dependency is used by the ShadowPV
+controller for cross-site PV publishing. If you are not using Rook-Ceph
+storage, this CRD may not be present — the ShadowPV feature requires it
+only for Ceph-backed deployments.</p>
+</div>
+<h2 id="cli-tools-for-setup">CLI Tools (for Setup)<a class="headerlink" href="#cli-tools-for-setup" title="Permanent link">&para;</a></h2>
+<p>The following tools are needed during initial deployment and cluster
+configuration. They are not required at runtime.</p>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>kubectl</code></td>
+<td>Kubernetes cluster management</td>
+</tr>
+<tr>
+<td><code>helm</code></td>
+<td>Installing cert-manager, scylla-operator, and Soteria</td>
+</tr>
+<tr>
+<td><code>kustomize</code></td>
+<td>Applying Soteria overlays (alternative to Helm)</td>
+</tr>
+<tr>
+<td><code>jq</code></td>
+<td>Used by setup scripts for JSON processing</td>
+</tr>
+</tbody>
+</table>
+<h2 id="checklist">Checklist<a class="headerlink" href="#checklist" title="Permanent link">&para;</a></h2>
+<p>Use this checklist to confirm your environment is ready:</p>
+<ul class="task-list">
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Two Kubernetes/OpenShift clusters running and accessible</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Cross-site networking operational (Submariner or Cilium Cluster Mesh)</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> CSI-Addons <code>VolumeReplication</code> and <code>VolumeGroupReplication</code> CRDs installed</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>VolumeReplicationClass</code> and <code>VolumeGroupReplicationClass</code> resources created</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> Storage replication active between clusters</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> KubeVirt / OpenShift Virtualization installed and VMs present on both clusters</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> cert-manager installed with an <code>Issuer</code> or <code>ClusterIssuer</code> configured</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> ScyllaDB available (via scylla-operator or BYO) with mTLS configured</li>
+<li class="task-list-item"><label class="task-list-control"><input type="checkbox" disabled/><span class="task-list-indicator"></span></label> <code>helm</code> and <code>kubectl</code> available on your workstation</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["content.code.copy", "content.code.annotate", "navigation.instant", "navigation.tracking", "navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "search.suggest", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

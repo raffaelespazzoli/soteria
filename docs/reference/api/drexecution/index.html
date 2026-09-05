@@ -1,0 +1,3431 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Open-source, Kubernetes-native disaster recovery orchestrator for OpenShift Virtualization.">
+      
+      
+      
+        <link rel="canonical" href="https://raffaelespazzoli.github.io/soteria/docs/reference/api/drexecution/">
+      
+      
+        <link rel="prev" href="../drplan/">
+      
+      
+        <link rel="next" href="../../helm-values/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>DRExecution - Soteria</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#drexecution-api-reference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Soteria" class="md-header__button md-logo" aria-label="Soteria" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Soteria
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              DRExecution
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/soteria-project/soteria" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    soteria-project/soteria
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Soteria" class="md-nav__button md-logo" aria-label="Soteria" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Soteria
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/soteria-project/soteria" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    soteria-project/soteria
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Installation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../installation/prerequisites/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prerequisites
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_2" id="__nav_2_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ScyllaDB & Network
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    ScyllaDB & Network
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../installation/scylladb/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../installation/scylladb/submariner/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Submariner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../installation/scylladb/cilium/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cilium Cluster Mesh
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../installation/helm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Helm Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/dr-lifecycle/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DR Lifecycle
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/storage-drivers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage Drivers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Usage
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/creating-a-drplan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Creating a DRPlan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/waves/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Waves & Throttling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/volumes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Volume Grouping
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/failover/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Executing Failover
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_5" id="__nav_4_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    UI Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    UI Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/ui-guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/ui-guide/plan-detail/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plan Detail
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/ui-guide/execution-monitor/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Execution Monitor
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_1" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5_1" id="__nav_5_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_1_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../drplan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DRPlan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DRExecution
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DRExecution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#resource-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resource Structure
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#drexecutionspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DRExecutionSpec
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DRExecutionSpec">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#execution-modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Execution Modes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#labels-and-annotations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Labels and Annotations
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#drexecutionstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DRExecutionStatus
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DRExecutionStatus">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#isterminal-method" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        IsTerminal Method
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-semantics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase Semantics
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phase Semantics">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#phase-transitions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase Transitions
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#result-computation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Result Computation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#status-conditions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status Conditions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Status Conditions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#condition-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Condition Types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#condition-lifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Condition Lifecycle
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#wavestatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WaveStatus
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#drgroupexecutionstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DRGroupExecutionStatus
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DRGroupExecutionStatus">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#drgroupresult-state-machine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DRGroupResult State Machine
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stepstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        StepStatus
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="StepStatus">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#step-names" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step Names
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sitecoordinationstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SiteCoordinationStatus
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SiteCoordinationStatus">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#multi-site-step-0-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multi-Site Step 0 Flow
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Events
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#retry-mechanism" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Retry Mechanism
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Retry Mechanism">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#annotation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Annotation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#preconditions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Preconditions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#retry-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Retry Flow
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Examples">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#planned-migration-in-progress" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Planned Migration (In Progress)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#disaster-failover-partially-succeeded" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Disaster Failover (Partially Succeeded)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#completed-execution-with-retry-history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Completed Execution with Retry History
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#re-protect-execution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Re-protect Execution
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#key-constraints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key Constraints
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related-resources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related Resources
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../helm-values/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Helm Values
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contributing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../contributing/dev-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../contributing/storage-drivers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Writing Storage Drivers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#resource-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resource Structure
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#drexecutionspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DRExecutionSpec
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DRExecutionSpec">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#execution-modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Execution Modes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#labels-and-annotations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Labels and Annotations
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#drexecutionstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DRExecutionStatus
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DRExecutionStatus">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#isterminal-method" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        IsTerminal Method
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-semantics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase Semantics
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Phase Semantics">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#phase-transitions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase Transitions
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#result-computation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Result Computation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#status-conditions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status Conditions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Status Conditions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#condition-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Condition Types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#condition-lifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Condition Lifecycle
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#wavestatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WaveStatus
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#drgroupexecutionstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DRGroupExecutionStatus
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DRGroupExecutionStatus">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#drgroupresult-state-machine" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DRGroupResult State Machine
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#stepstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        StepStatus
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="StepStatus">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#step-names" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step Names
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sitecoordinationstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SiteCoordinationStatus
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SiteCoordinationStatus">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#multi-site-step-0-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multi-Site Step 0 Flow
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#events" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Events
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#retry-mechanism" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Retry Mechanism
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Retry Mechanism">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#annotation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Annotation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#preconditions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Preconditions
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#retry-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Retry Flow
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Examples">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#planned-migration-in-progress" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Planned Migration (In Progress)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#disaster-failover-partially-succeeded" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Disaster Failover (Partially Succeeded)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#completed-execution-with-retry-history" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Completed Execution with Retry History
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#re-protect-execution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Re-protect Execution
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#key-constraints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Key Constraints
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#related-resources" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Related Resources
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="drexecution-api-reference">DRExecution API Reference<a class="headerlink" href="#drexecution-api-reference" title="Permanent link">&para;</a></h1>
+<p>The <code>DRExecution</code> resource records an immutable execution of a DRPlan. Each
+DRExecution triggers a failover, failback, or re-protect operation and tracks
+progress through waves of DRGroups down to individual storage and VM steps.</p>
+<p><strong>API group:</strong> <code>soteria.io/v1alpha1</code>
+<strong>Resource:</strong> <code>drexecutions</code>
+<strong>Scope:</strong> Namespaced</p>
+<hr />
+<h2 id="resource-structure">Resource Structure<a class="headerlink" href="#resource-structure" title="Permanent link">&para;</a></h2>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">soteria.io/v1alpha1</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">DRExecution</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">erp-failover-20260901</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">labels</span><span class="p">:</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="nt">soteria.io/plan-name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">erp-full-stack</span><span class="w">   </span><span class="c1"># Set server-side; enables plan-scoped queries</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="nt">annotations</span><span class="p">:</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="nt">soteria.io/triggered-by</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">admin@example.com</span><span class="w">   </span><span class="c1"># Set server-side in PrepareForCreate</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="nt">spec</span><span class="p">:</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">  </span><span class="nt">planName</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">erp-full-stack</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">  </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">planned_migration</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="nt">status</span><span class="p">:</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">  </span><span class="nt">phase</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Executing</span>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">  </span><span class="nt">isActive</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">  </span><span class="c1"># ... status fields populated by the controller</span>
+</span></code></pre></div>
+<hr />
+<h2 id="drexecutionspec">DRExecutionSpec<a class="headerlink" href="#drexecutionspec" title="Permanent link">&para;</a></h2>
+<p>The spec is <strong>immutable after creation</strong> — both <code>planName</code> and <code>mode</code> are
+rejected by validation if changed on update.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Required</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>planName</code></td>
+<td><code>string</code></td>
+<td><strong>Yes</strong></td>
+<td>Name of the DRPlan to execute. Must reference an existing DRPlan in the same namespace. A <code>soteria.io/plan-name</code> label is stamped server-side for efficient list queries.</td>
+</tr>
+<tr>
+<td><code>mode</code></td>
+<td><code>string</code></td>
+<td><strong>Yes</strong></td>
+<td>Execution type chosen at runtime. One of: <code>planned_migration</code>, <code>disaster</code>, <code>reprotect</code>.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="execution-modes">Execution Modes<a class="headerlink" href="#execution-modes" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Description</th>
+<th>Step 0</th>
+<th>Graceful Shutdown</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>planned_migration</code></td>
+<td>Orderly migration with data sync. Stops VMs on the source site, waits for final replication sync, then promotes the target site.</td>
+<td><strong>Yes</strong> — StopVM → StopReplication → wait for VR demotion → SetSource (promote)</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><code>disaster</code></td>
+<td>Emergency failover when the source site is unavailable. Promotes the target site immediately without waiting for sync.</td>
+<td><strong>No</strong></td>
+<td>No</td>
+</tr>
+<tr>
+<td><code>reprotect</code></td>
+<td>Restores replication in the reverse direction after failover/failback. Not wave-based — operates directly on volume groups.</td>
+<td><strong>No</strong></td>
+<td>N/A</td>
+</tr>
+</tbody>
+</table>
+<h3 id="labels-and-annotations">Labels and Annotations<a class="headerlink" href="#labels-and-annotations" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Set By</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>soteria.io/plan-name</code></td>
+<td>Server (PrepareForCreate)</td>
+<td>Enables efficient <code>LIST</code> queries filtered by plan. Used by the admission concurrency gate and reconciler exclusivity checks.</td>
+</tr>
+<tr>
+<td><code>soteria.io/triggered-by</code></td>
+<td>Server (PrepareForCreate)</td>
+<td>Records the authenticated user who created the execution. Captures every creation path (console, <code>kubectl</code>, automation).</td>
+</tr>
+<tr>
+<td><code>soteria.io/retry-groups</code></td>
+<td>User (annotation patch)</td>
+<td>Triggers retry of failed DRGroups. Values: <code>all-failed</code> or comma-separated group names (e.g., <code>wave-1-group-0,wave-2-group-1</code>). Removed automatically after processing.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="drexecutionstatus">DRExecutionStatus<a class="headerlink" href="#drexecutionstatus" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>phase</code></td>
+<td><code>string</code></td>
+<td>Lifecycle phase. One of: <code>Pending</code>, <code>Executing</code>, <code>Succeeded</code>, <code>PartiallySucceeded</code>, <code>Failed</code>. See <a href="#phase-semantics">Phase Semantics</a>.</td>
+</tr>
+<tr>
+<td><code>isActive</code></td>
+<td><code>bool</code></td>
+<td><code>true</code> while the execution is in-flight (<code>Pending</code> or <code>Executing</code>). Set to <code>false</code> when a terminal <code>result</code> is written.</td>
+</tr>
+<tr>
+<td><code>result</code></td>
+<td><code>string</code></td>
+<td>Overall outcome. One of: <code>Succeeded</code>, <code>PartiallySucceeded</code>, <code>Failed</code>. Empty while in-flight. See <a href="#result-computation">Result Computation</a>.</td>
+</tr>
+<tr>
+<td><code>waves</code></td>
+<td><a href="#wavestatus"><code>[]WaveStatus</code></a></td>
+<td>Per-wave execution status. Populated during initialization from VM discovery and chunking.</td>
+</tr>
+<tr>
+<td><code>startTime</code></td>
+<td><code>metav1.Time</code></td>
+<td>When execution began (set during setup phase).</td>
+</tr>
+<tr>
+<td><code>completionTime</code></td>
+<td><code>metav1.Time</code></td>
+<td>When execution finished (set when a terminal result is written).</td>
+</tr>
+<tr>
+<td><code>duration</code></td>
+<td><code>string</code></td>
+<td>Human-readable execution duration (e.g., <code>3m45s</code>). Computed as <code>completionTime - startTime</code>, truncated to seconds. Persisted for availability via both the aggregated API server and <code>kubectl</code> output.</td>
+</tr>
+<tr>
+<td><code>conditions</code></td>
+<td><a href="#status-conditions"><code>[]metav1.Condition</code></a></td>
+<td>Standard Kubernetes conditions representing the latest observations. See <a href="#status-conditions">Status Conditions</a>.</td>
+</tr>
+<tr>
+<td><code>siteStatuses</code></td>
+<td><a href="#sitecoordinationstatus"><code>map[string]SiteCoordinationStatus</code></a></td>
+<td>Per-site coordination signals, keyed by site name (e.g., <code>"east"</code>, <code>"west"</code>). Each controller writes <strong>only</strong> to its own site entry, eliminating ScyllaDB LWW conflicts from concurrent cross-site patches.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="isterminal-method">IsTerminal Method<a class="headerlink" href="#isterminal-method" title="Permanent link">&para;</a></h3>
+<div class="language-go highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kd">func</span><span class="w"> </span><span class="p">(</span><span class="nx">s</span><span class="w"> </span><span class="nx">DRExecutionStatus</span><span class="p">)</span><span class="w"> </span><span class="nx">IsTerminal</span><span class="p">()</span><span class="w"> </span><span class="kt">bool</span><span class="w"> </span><span class="p">{</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">    </span><span class="k">return</span><span class="w"> </span><span class="nx">s</span><span class="p">.</span><span class="nx">Result</span><span class="w"> </span><span class="o">!=</span><span class="w"> </span><span class="s">""</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="p">}</span>
+</span></code></pre></div>
+<p>An execution is considered terminal when <code>Result</code> is non-empty. Any of <code>Succeeded</code>,
+<code>PartiallySucceeded</code>, or <code>Failed</code> signals the execution has completed. However:</p>
+<ul>
+<li><strong><code>Succeeded</code></strong> and <strong><code>Failed</code></strong> are fully closed — no further action is possible.</li>
+<li><strong><code>PartiallySucceeded</code></strong> is re-openable via the <code>soteria.io/retry-groups</code> annotation.</li>
+</ul>
+<hr />
+<h2 id="phase-semantics">Phase Semantics<a class="headerlink" href="#phase-semantics" title="Permanent link">&para;</a></h2>
+<p>The <code>phase</code> field tracks the high-level lifecycle of a DRExecution.</p>
+<table>
+<thead>
+<tr>
+<th>Phase</th>
+<th>Meaning</th>
+<th>IsActive</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Pending</code></td>
+<td>Execution created but not yet started. The reconciler has not yet performed setup (validation, plan transition, wave initialization).</td>
+<td><code>true</code></td>
+<td><code>""</code> (empty)</td>
+</tr>
+<tr>
+<td><code>Executing</code></td>
+<td>Active execution in progress. Waves are being processed, Step 0 may be running, or VMs are being started.</td>
+<td><code>true</code></td>
+<td><code>""</code> (empty)</td>
+</tr>
+<tr>
+<td><code>Succeeded</code></td>
+<td>All DRGroups across all waves completed successfully.</td>
+<td><code>false</code></td>
+<td><code>Succeeded</code></td>
+</tr>
+<tr>
+<td><code>PartiallySucceeded</code></td>
+<td>At least one DRGroup completed, but one or more failed. Retryable via annotation.</td>
+<td><code>false</code></td>
+<td><code>PartiallySucceeded</code></td>
+</tr>
+<tr>
+<td><code>Failed</code></td>
+<td>No DRGroup completed successfully, or a fatal error occurred before wave execution.</td>
+<td><code>false</code></td>
+<td><code>Failed</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="phase-transitions">Phase Transitions<a class="headerlink" href="#phase-transitions" title="Permanent link">&para;</a></h3>
+<pre class="mermaid"><code>stateDiagram-v2
+    [*] --&gt; Pending: DRExecution created
+    Pending --&gt; Executing: Setup completes (startTime set)
+    Pending --&gt; Failed: Validation fails
+    Executing --&gt; Succeeded: All groups Completed
+    Executing --&gt; PartiallySucceeded: Mixed Completed + Failed
+    Executing --&gt; Failed: No groups Completed
+    PartiallySucceeded --&gt; Succeeded: Retry succeeds (all groups now Completed)
+    PartiallySucceeded --&gt; PartiallySucceeded: Retry partially succeeds
+    PartiallySucceeded --&gt; Failed: Retry fails (no groups Completed)</code></pre>
+<div class="admonition info">
+<p class="admonition-title">Phase is derived from Result</p>
+<p>Terminal phases are set via <code>ResultToPhase(result)</code>. The <code>Pending → Executing</code>
+transition happens when the reconciler sets <code>startTime</code> and advances the phase
+directly. During retry, the Phase transitions directly from <code>PartiallySucceeded</code>
+to the new result phase — it does not pass through <code>Executing</code> again.</p>
+</div>
+<hr />
+<h2 id="result-computation">Result Computation<a class="headerlink" href="#result-computation" title="Permanent link">&para;</a></h2>
+<p>The overall execution result is computed by scanning all DRGroup results across
+all waves:</p>
+<table>
+<thead>
+<tr>
+<th>Scenario</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>No groups exist (empty waves)</td>
+<td><code>Succeeded</code></td>
+</tr>
+<tr>
+<td>All groups <code>Completed</code></td>
+<td><code>Succeeded</code></td>
+</tr>
+<tr>
+<td>No groups <code>Completed</code> (all <code>Failed</code>, <code>Pending</code>, or <code>InProgress</code>)</td>
+<td><code>Failed</code></td>
+</tr>
+<tr>
+<td>At least one <code>Completed</code> + any <code>Failed</code> or incomplete</td>
+<td><code>PartiallySucceeded</code></td>
+</tr>
+</tbody>
+</table>
+<p>For <strong>re-protect</strong> executions, the result is computed differently:</p>
+<table>
+<thead>
+<tr>
+<th>Scenario</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>No volume groups</td>
+<td><code>Succeeded</code></td>
+</tr>
+<tr>
+<td>All VGs setup succeeded, no timeout</td>
+<td><code>Succeeded</code></td>
+</tr>
+<tr>
+<td>No VGs setup succeeded</td>
+<td><code>Failed</code></td>
+</tr>
+<tr>
+<td>Some VGs failed or health monitoring timed out</td>
+<td><code>PartiallySucceeded</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="status-conditions">Status Conditions<a class="headerlink" href="#status-conditions" title="Permanent link">&para;</a></h2>
+<p>DRExecution uses standard <code>metav1.Condition</code> entries to represent observable
+state transitions. All conditions include <code>observedGeneration</code> for consistency.</p>
+<h3 id="condition-types">Condition Types<a class="headerlink" href="#condition-types" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Type</th>
+<th>Status</th>
+<th>Reason</th>
+<th>When Set</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Progressing</code></td>
+<td><code>True</code></td>
+<td><code>ExecutionStarted</code></td>
+<td>Setup phase completes</td>
+<td>Execution is actively running. Set when <code>startTime</code> is written.</td>
+</tr>
+<tr>
+<td><code>Progressing</code></td>
+<td><code>False</code></td>
+<td><code>ExecutionSucceeded</code></td>
+<td>Execution completes (success)</td>
+<td>All waves completed successfully.</td>
+</tr>
+<tr>
+<td><code>Progressing</code></td>
+<td><code>False</code></td>
+<td><code>ExecutionPartiallySucceeded</code></td>
+<td>Execution completes (partial)</td>
+<td>At least one group failed.</td>
+</tr>
+<tr>
+<td><code>Progressing</code></td>
+<td><code>False</code></td>
+<td><code>ExecutionFailed</code></td>
+<td>Execution completes (failure)</td>
+<td>All groups failed or a fatal error occurred.</td>
+</tr>
+<tr>
+<td><code>Step0Started</code></td>
+<td><code>True</code></td>
+<td><code>PreExecuteCompleted</code></td>
+<td>After PreExecute returns</td>
+<td>Planned migration Step 0 pre-execution (StopVM + StopReplication) completed. Anchors the demotion timeout baseline so VM shutdown time does not consume the timeout budget.</td>
+</tr>
+<tr>
+<td><code>Step0Complete</code></td>
+<td><code>True</code></td>
+<td><code>DemotionAndPromotionCompleted</code></td>
+<td>After VRs demoted + promoted</td>
+<td>Source VRs confirmed in Secondary state and target VRs promoted to primary. Step 0 is fully done; wave execution can proceed.</td>
+</tr>
+<tr>
+<td><code>Ready</code></td>
+<td><code>True</code></td>
+<td><code>ExecutionSucceeded</code></td>
+<td>Terminal success</td>
+<td>Execution finished successfully (failover/failback).</td>
+</tr>
+<tr>
+<td><code>Ready</code></td>
+<td><code>True</code></td>
+<td><code>ReprotectSucceeded</code></td>
+<td>Terminal success (re-protect)</td>
+<td>Re-protect completed successfully.</td>
+</tr>
+<tr>
+<td><code>Ready</code></td>
+<td><code>True</code></td>
+<td><code>ReprotectPartiallySucceeded</code></td>
+<td>Terminal partial (re-protect)</td>
+<td>Re-protect partially succeeded — some VGs had failures.</td>
+</tr>
+<tr>
+<td><code>Ready</code></td>
+<td><code>False</code></td>
+<td><code>ExecutionFailed</code></td>
+<td>Terminal failure</td>
+<td>Execution failed.</td>
+</tr>
+<tr>
+<td><code>Ready</code></td>
+<td><code>False</code></td>
+<td><code>ReprotectFailed</code></td>
+<td>Terminal failure (re-protect)</td>
+<td>Re-protect failed — no VGs succeeded.</td>
+</tr>
+<tr>
+<td><code>Ready</code></td>
+<td><code>False</code></td>
+<td><code>DemotionTimeout</code></td>
+<td>Step 0 timeout</td>
+<td>VRs did not reach Secondary state within <code>resyncTimeout</code>.</td>
+</tr>
+<tr>
+<td><code>Ready</code></td>
+<td><code>False</code></td>
+<td><code>Step0Timeout</code></td>
+<td>Step 0 timeout (multi-site)</td>
+<td>Step 0 timed out waiting for the other site.</td>
+</tr>
+<tr>
+<td><code>Ready</code></td>
+<td><code>False</code></td>
+<td><code>PreExecutionFailed</code></td>
+<td>Step 0 handler error</td>
+<td>PreExecute (StopVM + StopReplication) returned an error.</td>
+</tr>
+<tr>
+<td><code>ResyncPending</code></td>
+<td><code>True</code></td>
+<td>—</td>
+<td>Legacy single-site path</td>
+<td>Compatibility condition for executions upgraded mid-Step 0 from the legacy resync protocol. Routes into the health-wait gate.</td>
+</tr>
+<tr>
+<td><code>ReprotectPhase</code></td>
+<td><code>True</code></td>
+<td><code>Complete</code></td>
+<td>Re-protect finishes</td>
+<td>Records re-protect role setup and health monitoring outcome. Message includes counts (e.g., "Role setup: 3/3, healthy: 3/3").</td>
+</tr>
+<tr>
+<td><code>RetryRejected</code></td>
+<td><code>True</code></td>
+<td><code>RetryRejected</code></td>
+<td>Retry precondition fails</td>
+<td>A retry was rejected. Reasons include: execution already <code>Succeeded</code>/<code>Failed</code>, group resolution failed, VM health validation failed, or handler resolution failed. The <code>message</code> field contains details.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="condition-lifecycle">Condition Lifecycle<a class="headerlink" href="#condition-lifecycle" title="Permanent link">&para;</a></h3>
+<pre class="mermaid"><code>sequenceDiagram
+    participant User
+    participant Reconciler
+    participant Status
+
+    User-&gt;&gt;Reconciler: Create DRExecution
+    Reconciler-&gt;&gt;Status: Progressing=True (ExecutionStarted)
+
+    Note over Reconciler: planned_migration only
+    Reconciler-&gt;&gt;Status: Step0Started=True (PreExecuteCompleted)
+    Reconciler-&gt;&gt;Status: Step0Complete=True (DemotionAndPromotionCompleted)
+
+    Note over Reconciler: Wave execution runs
+    Reconciler-&gt;&gt;Status: Ready=True/False (result-dependent)
+    Reconciler-&gt;&gt;Status: Progressing=False (result-dependent)</code></pre>
+<hr />
+<h2 id="wavestatus">WaveStatus<a class="headerlink" href="#wavestatus" title="Permanent link">&para;</a></h2>
+<p>Each wave contains a set of DRGroups processed concurrently (bounded by
+<code>maxConcurrentFailovers</code>). Waves execute sequentially — wave N+1 starts only
+after all wave N groups are complete and their VMs reach Running state.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>waveIndex</code></td>
+<td><code>int</code></td>
+<td>Zero-based wave ordinal.</td>
+</tr>
+<tr>
+<td><code>groups</code></td>
+<td><a href="#drgroupexecutionstatus"><code>[]DRGroupExecutionStatus</code></a></td>
+<td>Per-DRGroup status within this wave.</td>
+</tr>
+<tr>
+<td><code>startTime</code></td>
+<td><code>metav1.Time</code></td>
+<td>When this wave began processing.</td>
+</tr>
+<tr>
+<td><code>completionTime</code></td>
+<td><code>metav1.Time</code></td>
+<td>When this wave finished (all groups terminal).</td>
+</tr>
+<tr>
+<td><code>vmReadyStartTime</code></td>
+<td><code>metav1.Time</code></td>
+<td>When the wave entered the <code>WaitingForVMReady</code> state (all handler operations complete, waiting for VMs to reach Running). Used as the base for <code>vmReadyTimeout</code> calculation.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="drgroupexecutionstatus">DRGroupExecutionStatus<a class="headerlink" href="#drgroupexecutionstatus" title="Permanent link">&para;</a></h2>
+<p>Each DRGroup represents a chunk of VMs within a wave, processed as a unit.
+The group goes through storage operations (SetSource) and VM operations (StartVM)
+for each member VM.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td><code>string</code></td>
+<td>DRGroup identifier within the wave (e.g., <code>wave-1-group-0</code>).</td>
+</tr>
+<tr>
+<td><code>result</code></td>
+<td><code>string</code></td>
+<td>Outcome of this DRGroup. One of: <code>Pending</code>, <code>InProgress</code>, <code>Completed</code>, <code>Failed</code>, <code>WaitingForVMReady</code>. See <a href="#drgroupresult-state-machine">DRGroupResult State Machine</a>.</td>
+</tr>
+<tr>
+<td><code>vmNames</code></td>
+<td><code>[]string</code></td>
+<td>VMs belonging to this DRGroup.</td>
+</tr>
+<tr>
+<td><code>error</code></td>
+<td><code>string</code></td>
+<td>Error details if the group failed. Includes the step name, target resource, and error message.</td>
+</tr>
+<tr>
+<td><code>steps</code></td>
+<td><a href="#stepstatus"><code>[]StepStatus</code></a></td>
+<td>Per-step execution details within this DRGroup.</td>
+</tr>
+<tr>
+<td><code>retryCount</code></td>
+<td><code>int</code></td>
+<td>Number of times this group has been retried. Incremented on each retry attempt for audit trail purposes.</td>
+</tr>
+<tr>
+<td><code>startTime</code></td>
+<td><code>metav1.Time</code></td>
+<td>When this group began processing.</td>
+</tr>
+<tr>
+<td><code>completionTime</code></td>
+<td><code>metav1.Time</code></td>
+<td>When this group finished.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="drgroupresult-state-machine">DRGroupResult State Machine<a class="headerlink" href="#drgroupresult-state-machine" title="Permanent link">&para;</a></h3>
+<pre class="mermaid"><code>stateDiagram-v2
+    [*] --&gt; Pending: Wave initialized
+    Pending --&gt; InProgress: Group execution starts
+    InProgress --&gt; Completed: All steps succeed
+    InProgress --&gt; Failed: Any step fails
+    Completed --&gt; WaitingForVMReady: VM readiness gate (automatic)
+    WaitingForVMReady --&gt; Completed: All VMs reach Running
+    WaitingForVMReady --&gt; Failed: VMReadyTimeout expires
+
+    note right of Pending: Reset to Pending on\ncrash recovery if InProgress
+    note right of Failed: Retryable via\nsoteria.io/retry-groups</code></pre>
+<p><strong>State descriptions:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Result</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Pending</code></td>
+<td>Group has not started execution yet. Also the reset state when an <code>InProgress</code> group is detected after a pod restart (crash recovery).</td>
+</tr>
+<tr>
+<td><code>InProgress</code></td>
+<td>Group is actively executing handler steps (SetSource, StartVM).</td>
+</tr>
+<tr>
+<td><code>Completed</code></td>
+<td>All handler steps succeeded. If VM readiness gating is active, the group transitions through <code>WaitingForVMReady</code> first.</td>
+</tr>
+<tr>
+<td><code>Failed</code></td>
+<td>A handler step failed or the VM readiness timeout expired. The <code>error</code> field contains details. Retryable via annotation on <code>PartiallySucceeded</code> executions.</td>
+</tr>
+<tr>
+<td><code>WaitingForVMReady</code></td>
+<td>Handler operations completed; waiting for VMs to reach Running state. Entered automatically when all groups in a wave complete. Times out per <code>vmReadyTimeout</code> on the DRPlan.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="stepstatus">StepStatus<a class="headerlink" href="#stepstatus" title="Permanent link">&para;</a></h2>
+<p>Individual step execution records within a DRGroup. Steps are recorded by the
+failover handler as each operation completes.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td><code>string</code></td>
+<td>Step identifier. See <a href="#step-names">Step Names</a>.</td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td><code>string</code></td>
+<td>Step outcome: <code>Succeeded</code>, <code>Failed</code>, or handler-specific values.</td>
+</tr>
+<tr>
+<td><code>message</code></td>
+<td><code>string</code></td>
+<td>Human-readable detail (e.g., <code>"Set source for volume group ns-erp-db"</code>, <code>"Failed to start VM web01: connection refused"</code>).</td>
+</tr>
+<tr>
+<td><code>timestamp</code></td>
+<td><code>metav1.Time</code></td>
+<td>When this step completed.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="step-names">Step Names<a class="headerlink" href="#step-names" title="Permanent link">&para;</a></h3>
+<p><strong>Failover / Failback steps</strong> (per DRGroup, recorded by <code>FailoverHandler</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Step Name</th>
+<th>Operation</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SetSource</code></td>
+<td>Volume promotion</td>
+<td>Promotes a volume group to primary/writable via the storage driver. One step per volume group in the DRGroup.</td>
+</tr>
+<tr>
+<td><code>StartVM</code></td>
+<td>VM startup</td>
+<td>Starts a virtual machine on the target cluster. One step per VM in the DRGroup.</td>
+</tr>
+<tr>
+<td><code>WaitVMReady</code></td>
+<td>VM readiness</td>
+<td>Recorded when the VM readiness timeout expires (failure case only).</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Re-protect steps</strong> (per volume group, recorded by <code>ReprotectHandler</code>):</p>
+<table>
+<thead>
+<tr>
+<th>Step Name</th>
+<th>Operation</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>StateVerification</code></td>
+<td>Role verification</td>
+<td>Verifies volume group replication state matches the expected configuration.</td>
+</tr>
+<tr>
+<td><code>HealthMonitoring</code></td>
+<td>Health check</td>
+<td>Monitors replication health after role setup. May time out with a warning.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="sitecoordinationstatus">SiteCoordinationStatus<a class="headerlink" href="#sitecoordinationstatus" title="Permanent link">&para;</a></h2>
+<p>In multi-site deployments, each Soteria controller instance writes exclusively
+to its own entry in the <code>siteStatuses</code> map. This write-isolation pattern
+eliminates ScyllaDB last-writer-wins conflicts from concurrent cross-site
+status patches.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>demotionComplete</code></td>
+<td><code>bool</code></td>
+<td>Set by the <strong>source site</strong> (Step 0) after all local primary VRs have been demoted to Secondary <strong>and</strong> the demotion snapshot has been confirmed synced. Signals the target site to promote its VRs to primary.</td>
+</tr>
+<tr>
+<td><code>step0Complete</code></td>
+<td><code>bool</code></td>
+<td>Set by the <strong>target site</strong> after promoting its VRs to primary. Signals the source site that Step 0 is done and waves can proceed.</td>
+</tr>
+<tr>
+<td><code>lastUpdated</code></td>
+<td><code>metav1.Time</code></td>
+<td>When this site last wrote to its coordination status. Used for timeout calculations.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="multi-site-step-0-flow">Multi-Site Step 0 Flow<a class="headerlink" href="#multi-site-step-0-flow" title="Permanent link">&para;</a></h3>
+<pre class="mermaid"><code>sequenceDiagram
+    participant Source as Source Site
+    participant ScyllaDB as ScyllaDB (shared state)
+    participant Target as Target Site
+
+    Source-&gt;&gt;Source: PreExecute (StopVM + StopReplication)
+    Source-&gt;&gt;Source: Wait for VRs → role=Target (Secondary)
+    Source-&gt;&gt;ScyllaDB: Set demotionComplete=true
+    Target-&gt;&gt;ScyllaDB: Read demotionComplete=true
+    Target-&gt;&gt;Target: Promote VRs (SetSource)
+    Target-&gt;&gt;ScyllaDB: Set step0Complete=true
+    Source-&gt;&gt;ScyllaDB: Read step0Complete=true
+    Source-&gt;&gt;Source: Proceed to wave execution</code></pre>
+<hr />
+<h2 id="events">Events<a class="headerlink" href="#events" title="Permanent link">&para;</a></h2>
+<p>The DRExecution controller emits Kubernetes events to provide an audit trail
+of execution progress.</p>
+<table>
+<thead>
+<tr>
+<th>Reason</th>
+<th>Type</th>
+<th>Action</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>FailoverStarted</code> / <code>ReprotectingStarted</code> / <code>FailingBackStarted</code></td>
+<td>Normal</td>
+<td>(phase-specific)</td>
+<td>Execution started for a plan.</td>
+</tr>
+<tr>
+<td><code>Step0Failed</code></td>
+<td>Warning</td>
+<td>PlannedMigration</td>
+<td>Step 0 pre-execution (StopVM + StopReplication) failed.</td>
+</tr>
+<tr>
+<td><code>Step0Completed</code></td>
+<td>Normal</td>
+<td>PlannedMigration</td>
+<td>Step 0 completed (source demotion + target promotion).</td>
+</tr>
+<tr>
+<td><code>DemotionComplete</code></td>
+<td>Normal</td>
+<td>PlannedMigration</td>
+<td>Source site demotion completed.</td>
+</tr>
+<tr>
+<td><code>DemotionTimeout</code></td>
+<td>Warning</td>
+<td>PlannedMigration</td>
+<td>VRs did not reach Secondary state within <code>resyncTimeout</code>.</td>
+</tr>
+<tr>
+<td><code>Step0Timeout</code></td>
+<td>Warning</td>
+<td>PlannedMigration</td>
+<td>Step 0 timed out waiting for the other site.</td>
+</tr>
+<tr>
+<td><code>ExecutionCompleted</code></td>
+<td>Normal</td>
+<td>WaveExecution</td>
+<td>Execution completed (emitted on both DRExecution and DRPlan).</td>
+</tr>
+<tr>
+<td><code>ExecutionResumed</code></td>
+<td>Normal</td>
+<td>Checkpoint</td>
+<td>Execution resumed after pod restart.</td>
+</tr>
+<tr>
+<td><code>ReprotectStarted</code></td>
+<td>Normal</td>
+<td>Dispatch</td>
+<td>Re-protect execution started.</td>
+</tr>
+<tr>
+<td><code>ReprotectRoleSetupComplete</code></td>
+<td>Normal</td>
+<td>RoleSetup</td>
+<td>Re-protect role setup finished.</td>
+</tr>
+<tr>
+<td><code>ReprotectHealthy</code></td>
+<td>Normal</td>
+<td>HealthMonitoring</td>
+<td>All volume groups report healthy replication.</td>
+</tr>
+<tr>
+<td><code>ReprotectTimeout</code></td>
+<td>Warning</td>
+<td>HealthMonitoring</td>
+<td>Re-protect health monitoring timed out.</td>
+</tr>
+<tr>
+<td><code>ReprotectResumed</code></td>
+<td>Normal</td>
+<td>Checkpoint</td>
+<td>Re-protect execution resumed after restart.</td>
+</tr>
+<tr>
+<td><code>RetryStarted</code></td>
+<td>Normal</td>
+<td>RetryAction</td>
+<td>Retry started for specified groups.</td>
+</tr>
+<tr>
+<td><code>RetryRejected</code></td>
+<td>Warning</td>
+<td>RetryAction</td>
+<td>Retry rejected (precondition not met).</td>
+</tr>
+<tr>
+<td><code>RetryCompleted</code></td>
+<td>Normal</td>
+<td>RetryAction</td>
+<td>Retry completed.</td>
+</tr>
+<tr>
+<td><code>GroupRetrySucceeded</code></td>
+<td>Normal</td>
+<td>RetryAction</td>
+<td>A specific DRGroup retry succeeded.</td>
+</tr>
+<tr>
+<td><code>GroupRetryFailed</code></td>
+<td>Warning</td>
+<td>RetryAction</td>
+<td>A specific DRGroup retry failed.</td>
+</tr>
+<tr>
+<td><code>NoVolumeGroups</code></td>
+<td>Warning</td>
+<td>Dispatch</td>
+<td>No volume groups found for re-protect.</td>
+</tr>
+<tr>
+<td><code>SiteConfigMissing</code></td>
+<td>Warning</td>
+<td>Validation</td>
+<td><code>--site-name</code> not configured for a multi-site plan.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="retry-mechanism">Retry Mechanism<a class="headerlink" href="#retry-mechanism" title="Permanent link">&para;</a></h2>
+<p>Failed DRGroups can be retried on <code>PartiallySucceeded</code> executions by annotating
+the DRExecution resource.</p>
+<h3 id="annotation">Annotation<a class="headerlink" href="#annotation" title="Permanent link">&para;</a></h3>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">annotations</span><span class="p">:</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="nt">soteria.io/retry-groups</span><span class="p">:</span><span class="w"> </span><span class="s">"all-failed"</span><span class="w">          </span><span class="c1"># Retry all failed groups</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">    </span><span class="c1"># OR</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">    </span><span class="nt">soteria.io/retry-groups</span><span class="p">:</span><span class="w"> </span><span class="s">"wave-1-group-0,wave-2-group-1"</span><span class="w">  </span><span class="c1"># Retry specific groups</span>
+</span></code></pre></div>
+<h3 id="preconditions">Preconditions<a class="headerlink" href="#preconditions" title="Permanent link">&para;</a></h3>
+<p>A retry is rejected (with a <code>RetryRejected</code> condition and warning event) if:</p>
+<ol>
+<li>The execution result is <code>Succeeded</code> or <code>Failed</code> (only <code>PartiallySucceeded</code> is retryable).</li>
+<li>A retry is already in progress (any group has <code>InProgress</code> result).</li>
+<li>The specified group names do not match any failed groups.</li>
+<li>Any VM in the retry groups fails health validation (VMs in non-standard state are rejected to prevent failover from unpredictable starting points).</li>
+<li>Handler resolution fails for the retry operation.</li>
+</ol>
+<h3 id="retry-flow">Retry Flow<a class="headerlink" href="#retry-flow" title="Permanent link">&para;</a></h3>
+<ol>
+<li>User patches the <code>soteria.io/retry-groups</code> annotation.</li>
+<li>Controller validates preconditions.</li>
+<li>Failed groups are reset to <code>Pending</code>, <code>retryCount</code> is incremented.</li>
+<li>Groups are re-executed through the normal handler path.</li>
+<li>The annotation is removed after processing.</li>
+<li>The overall result is recomputed.</li>
+</ol>
+<hr />
+<h2 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">&para;</a></h2>
+<h3 id="planned-migration-in-progress">Planned Migration (In Progress)<a class="headerlink" href="#planned-migration-in-progress" title="Permanent link">&para;</a></h3>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">soteria.io/v1alpha1</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">DRExecution</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">erp-migration-20260901</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">soteria-system</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">  </span><span class="nt">labels</span><span class="p">:</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">    </span><span class="nt">soteria.io/plan-name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">erp-full-stack</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">  </span><span class="nt">annotations</span><span class="p">:</span>
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="w">    </span><span class="nt">soteria.io/triggered-by</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">platform-admin@example.com</span>
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="nt">spec</span><span class="p">:</span>
+</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="w">  </span><span class="nt">planName</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">erp-full-stack</span>
+</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="w">  </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">planned_migration</span>
+</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a><span class="nt">status</span><span class="p">:</span>
+</span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a><span class="w">  </span><span class="nt">phase</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Executing</span>
+</span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a><span class="w">  </span><span class="nt">isActive</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-3-16"><a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a><span class="w">  </span><span class="nt">startTime</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T14:00:00Z"</span>
+</span><span id="__span-3-17"><a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a><span class="w">  </span><span class="nt">conditions</span><span class="p">:</span>
+</span><span id="__span-3-18"><a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Progressing</span>
+</span><span id="__span-3-19"><a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a><span class="w">      </span><span class="nt">status</span><span class="p">:</span><span class="w"> </span><span class="s">"True"</span>
+</span><span id="__span-3-20"><a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a><span class="w">      </span><span class="nt">reason</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ExecutionStarted</span>
+</span><span id="__span-3-21"><a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a><span class="w">      </span><span class="nt">message</span><span class="p">:</span><span class="w"> </span><span class="s">"Execution</span><span class="nv"> </span><span class="s">started</span><span class="nv"> </span><span class="s">for</span><span class="nv"> </span><span class="s">plan</span><span class="nv"> </span><span class="s">erp-full-stack</span><span class="nv"> </span><span class="s">in</span><span class="nv"> </span><span class="s">planned_migration</span><span class="nv"> </span><span class="s">mode"</span>
+</span><span id="__span-3-22"><a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a><span class="w">      </span><span class="nt">lastTransitionTime</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T14:00:00Z"</span>
+</span><span id="__span-3-23"><a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Step0Started</span>
+</span><span id="__span-3-24"><a id="__codelineno-3-24" name="__codelineno-3-24" href="#__codelineno-3-24"></a><span class="w">      </span><span class="nt">status</span><span class="p">:</span><span class="w"> </span><span class="s">"True"</span>
+</span><span id="__span-3-25"><a id="__codelineno-3-25" name="__codelineno-3-25" href="#__codelineno-3-25"></a><span class="w">      </span><span class="nt">reason</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PreExecuteCompleted</span>
+</span><span id="__span-3-26"><a id="__codelineno-3-26" name="__codelineno-3-26" href="#__codelineno-3-26"></a><span class="w">      </span><span class="nt">message</span><span class="p">:</span><span class="w"> </span><span class="s">"Step</span><span class="nv"> </span><span class="s">0</span><span class="nv"> </span><span class="s">pre-execution</span><span class="nv"> </span><span class="s">completed,</span><span class="nv"> </span><span class="s">waiting</span><span class="nv"> </span><span class="s">for</span><span class="nv"> </span><span class="s">VRs</span><span class="nv"> </span><span class="s">to</span><span class="nv"> </span><span class="s">reach</span><span class="nv"> </span><span class="s">Secondary"</span>
+</span><span id="__span-3-27"><a id="__codelineno-3-27" name="__codelineno-3-27" href="#__codelineno-3-27"></a><span class="w">      </span><span class="nt">lastTransitionTime</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T14:00:30Z"</span>
+</span><span id="__span-3-28"><a id="__codelineno-3-28" name="__codelineno-3-28" href="#__codelineno-3-28"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Step0Complete</span>
+</span><span id="__span-3-29"><a id="__codelineno-3-29" name="__codelineno-3-29" href="#__codelineno-3-29"></a><span class="w">      </span><span class="nt">status</span><span class="p">:</span><span class="w"> </span><span class="s">"True"</span>
+</span><span id="__span-3-30"><a id="__codelineno-3-30" name="__codelineno-3-30" href="#__codelineno-3-30"></a><span class="w">      </span><span class="nt">reason</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">DemotionAndPromotionCompleted</span>
+</span><span id="__span-3-31"><a id="__codelineno-3-31" name="__codelineno-3-31" href="#__codelineno-3-31"></a><span class="w">      </span><span class="nt">message</span><span class="p">:</span><span class="w"> </span><span class="s">"VRs</span><span class="nv"> </span><span class="s">demoted,</span><span class="nv"> </span><span class="s">confirmed</span><span class="nv"> </span><span class="s">Secondary,</span><span class="nv"> </span><span class="s">and</span><span class="nv"> </span><span class="s">promoted</span><span class="nv"> </span><span class="s">to</span><span class="nv"> </span><span class="s">primary"</span>
+</span><span id="__span-3-32"><a id="__codelineno-3-32" name="__codelineno-3-32" href="#__codelineno-3-32"></a><span class="w">      </span><span class="nt">lastTransitionTime</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T14:02:15Z"</span>
+</span><span id="__span-3-33"><a id="__codelineno-3-33" name="__codelineno-3-33" href="#__codelineno-3-33"></a><span class="w">  </span><span class="nt">waves</span><span class="p">:</span>
+</span><span id="__span-3-34"><a id="__codelineno-3-34" name="__codelineno-3-34" href="#__codelineno-3-34"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">waveIndex</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span>
+</span><span id="__span-3-35"><a id="__codelineno-3-35" name="__codelineno-3-35" href="#__codelineno-3-35"></a><span class="w">      </span><span class="nt">startTime</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T14:02:16Z"</span>
+</span><span id="__span-3-36"><a id="__codelineno-3-36" name="__codelineno-3-36" href="#__codelineno-3-36"></a><span class="w">      </span><span class="nt">groups</span><span class="p">:</span>
+</span><span id="__span-3-37"><a id="__codelineno-3-37" name="__codelineno-3-37" href="#__codelineno-3-37"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">wave-0-group-0</span>
+</span><span id="__span-3-38"><a id="__codelineno-3-38" name="__codelineno-3-38" href="#__codelineno-3-38"></a><span class="w">          </span><span class="nt">result</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Completed</span>
+</span><span id="__span-3-39"><a id="__codelineno-3-39" name="__codelineno-3-39" href="#__codelineno-3-39"></a><span class="w">          </span><span class="nt">vmNames</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"db-primary"</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">"db-replica"</span><span class="p p-Indicator">]</span>
+</span><span id="__span-3-40"><a id="__codelineno-3-40" name="__codelineno-3-40" href="#__codelineno-3-40"></a><span class="w">          </span><span class="nt">startTime</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T14:02:16Z"</span>
+</span><span id="__span-3-41"><a id="__codelineno-3-41" name="__codelineno-3-41" href="#__codelineno-3-41"></a><span class="w">          </span><span class="nt">completionTime</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T14:03:00Z"</span>
+</span><span id="__span-3-42"><a id="__codelineno-3-42" name="__codelineno-3-42" href="#__codelineno-3-42"></a><span class="w">          </span><span class="nt">steps</span><span class="p">:</span>
+</span><span id="__span-3-43"><a id="__codelineno-3-43" name="__codelineno-3-43" href="#__codelineno-3-43"></a><span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">SetSource</span>
+</span><span id="__span-3-44"><a id="__codelineno-3-44" name="__codelineno-3-44" href="#__codelineno-3-44"></a><span class="w">              </span><span class="nt">status</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Succeeded</span>
+</span><span id="__span-3-45"><a id="__codelineno-3-45" name="__codelineno-3-45" href="#__codelineno-3-45"></a><span class="w">              </span><span class="nt">message</span><span class="p">:</span><span class="w"> </span><span class="s">"Set</span><span class="nv"> </span><span class="s">source</span><span class="nv"> </span><span class="s">for</span><span class="nv"> </span><span class="s">volume</span><span class="nv"> </span><span class="s">group</span><span class="nv"> </span><span class="s">ns-erp-database"</span>
+</span><span id="__span-3-46"><a id="__codelineno-3-46" name="__codelineno-3-46" href="#__codelineno-3-46"></a><span class="w">              </span><span class="nt">timestamp</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T14:02:30Z"</span>
+</span><span id="__span-3-47"><a id="__codelineno-3-47" name="__codelineno-3-47" href="#__codelineno-3-47"></a><span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">SetSource</span>
+</span><span id="__span-3-48"><a id="__codelineno-3-48" name="__codelineno-3-48" href="#__codelineno-3-48"></a><span class="w">              </span><span class="nt">status</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Succeeded</span>
+</span><span id="__span-3-49"><a id="__codelineno-3-49" name="__codelineno-3-49" href="#__codelineno-3-49"></a><span class="w">              </span><span class="nt">message</span><span class="p">:</span><span class="w"> </span><span class="s">"Set</span><span class="nv"> </span><span class="s">source</span><span class="nv"> </span><span class="s">for</span><span class="nv"> </span><span class="s">volume</span><span class="nv"> </span><span class="s">group</span><span class="nv"> </span><span class="s">vm-default-db-replica"</span>
+</span><span id="__span-3-50"><a id="__codelineno-3-50" name="__codelineno-3-50" href="#__codelineno-3-50"></a><span class="w">              </span><span class="nt">timestamp</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T14:02:45Z"</span>
+</span><span id="__span-3-51"><a id="__codelineno-3-51" name="__codelineno-3-51" href="#__codelineno-3-51"></a><span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">StartVM</span>
+</span><span id="__span-3-52"><a id="__codelineno-3-52" name="__codelineno-3-52" href="#__codelineno-3-52"></a><span class="w">              </span><span class="nt">status</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Succeeded</span>
+</span><span id="__span-3-53"><a id="__codelineno-3-53" name="__codelineno-3-53" href="#__codelineno-3-53"></a><span class="w">              </span><span class="nt">message</span><span class="p">:</span><span class="w"> </span><span class="s">"Started</span><span class="nv"> </span><span class="s">VM</span><span class="nv"> </span><span class="s">db-primary"</span>
+</span><span id="__span-3-54"><a id="__codelineno-3-54" name="__codelineno-3-54" href="#__codelineno-3-54"></a><span class="w">              </span><span class="nt">timestamp</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T14:02:50Z"</span>
+</span><span id="__span-3-55"><a id="__codelineno-3-55" name="__codelineno-3-55" href="#__codelineno-3-55"></a><span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">StartVM</span>
+</span><span id="__span-3-56"><a id="__codelineno-3-56" name="__codelineno-3-56" href="#__codelineno-3-56"></a><span class="w">              </span><span class="nt">status</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Succeeded</span>
+</span><span id="__span-3-57"><a id="__codelineno-3-57" name="__codelineno-3-57" href="#__codelineno-3-57"></a><span class="w">              </span><span class="nt">message</span><span class="p">:</span><span class="w"> </span><span class="s">"Started</span><span class="nv"> </span><span class="s">VM</span><span class="nv"> </span><span class="s">db-replica"</span>
+</span><span id="__span-3-58"><a id="__codelineno-3-58" name="__codelineno-3-58" href="#__codelineno-3-58"></a><span class="w">              </span><span class="nt">timestamp</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T14:03:00Z"</span>
+</span><span id="__span-3-59"><a id="__codelineno-3-59" name="__codelineno-3-59" href="#__codelineno-3-59"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">waveIndex</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+</span><span id="__span-3-60"><a id="__codelineno-3-60" name="__codelineno-3-60" href="#__codelineno-3-60"></a><span class="w">      </span><span class="nt">startTime</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T14:03:30Z"</span>
+</span><span id="__span-3-61"><a id="__codelineno-3-61" name="__codelineno-3-61" href="#__codelineno-3-61"></a><span class="w">      </span><span class="nt">groups</span><span class="p">:</span>
+</span><span id="__span-3-62"><a id="__codelineno-3-62" name="__codelineno-3-62" href="#__codelineno-3-62"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">wave-1-group-0</span>
+</span><span id="__span-3-63"><a id="__codelineno-3-63" name="__codelineno-3-63" href="#__codelineno-3-63"></a><span class="w">          </span><span class="nt">result</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">InProgress</span>
+</span><span id="__span-3-64"><a id="__codelineno-3-64" name="__codelineno-3-64" href="#__codelineno-3-64"></a><span class="w">          </span><span class="nt">vmNames</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"app-server-1"</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">"app-server-2"</span><span class="p p-Indicator">]</span>
+</span><span id="__span-3-65"><a id="__codelineno-3-65" name="__codelineno-3-65" href="#__codelineno-3-65"></a><span class="w">          </span><span class="nt">startTime</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T14:03:30Z"</span>
+</span><span id="__span-3-66"><a id="__codelineno-3-66" name="__codelineno-3-66" href="#__codelineno-3-66"></a><span class="w">          </span><span class="nt">steps</span><span class="p">:</span>
+</span><span id="__span-3-67"><a id="__codelineno-3-67" name="__codelineno-3-67" href="#__codelineno-3-67"></a><span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">SetSource</span>
+</span><span id="__span-3-68"><a id="__codelineno-3-68" name="__codelineno-3-68" href="#__codelineno-3-68"></a><span class="w">              </span><span class="nt">status</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Succeeded</span>
+</span><span id="__span-3-69"><a id="__codelineno-3-69" name="__codelineno-3-69" href="#__codelineno-3-69"></a><span class="w">              </span><span class="nt">message</span><span class="p">:</span><span class="w"> </span><span class="s">"Set</span><span class="nv"> </span><span class="s">source</span><span class="nv"> </span><span class="s">for</span><span class="nv"> </span><span class="s">volume</span><span class="nv"> </span><span class="s">group</span><span class="nv"> </span><span class="s">vm-default-app-server-1"</span>
+</span><span id="__span-3-70"><a id="__codelineno-3-70" name="__codelineno-3-70" href="#__codelineno-3-70"></a><span class="w">              </span><span class="nt">timestamp</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T14:03:35Z"</span>
+</span></code></pre></div>
+<h3 id="disaster-failover-partially-succeeded">Disaster Failover (Partially Succeeded)<a class="headerlink" href="#disaster-failover-partially-succeeded" title="Permanent link">&para;</a></h3>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">soteria.io/v1alpha1</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">DRExecution</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">erp-disaster-20260901</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">soteria-system</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">  </span><span class="nt">labels</span><span class="p">:</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">    </span><span class="nt">soteria.io/plan-name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">erp-full-stack</span>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">  </span><span class="nt">annotations</span><span class="p">:</span>
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">    </span><span class="nt">soteria.io/triggered-by</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">oncall-engineer@example.com</span>
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="nt">spec</span><span class="p">:</span>
+</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="w">  </span><span class="nt">planName</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">erp-full-stack</span>
+</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="w">  </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">disaster</span>
+</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="nt">status</span><span class="p">:</span>
+</span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="w">  </span><span class="nt">phase</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PartiallySucceeded</span>
+</span><span id="__span-4-15"><a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="w">  </span><span class="nt">isActive</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+</span><span id="__span-4-16"><a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="w">  </span><span class="nt">result</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">PartiallySucceeded</span>
+</span><span id="__span-4-17"><a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a><span class="w">  </span><span class="nt">startTime</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T03:15:00Z"</span>
+</span><span id="__span-4-18"><a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a><span class="w">  </span><span class="nt">completionTime</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T03:18:45Z"</span>
+</span><span id="__span-4-19"><a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a><span class="w">  </span><span class="nt">duration</span><span class="p">:</span><span class="w"> </span><span class="s">"3m45s"</span>
+</span><span id="__span-4-20"><a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a><span class="w">  </span><span class="nt">conditions</span><span class="p">:</span>
+</span><span id="__span-4-21"><a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Progressing</span>
+</span><span id="__span-4-22"><a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a><span class="w">      </span><span class="nt">status</span><span class="p">:</span><span class="w"> </span><span class="s">"False"</span>
+</span><span id="__span-4-23"><a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a><span class="w">      </span><span class="nt">reason</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ExecutionPartiallySucceeded</span>
+</span><span id="__span-4-24"><a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a><span class="w">      </span><span class="nt">message</span><span class="p">:</span><span class="w"> </span><span class="s">"Execution</span><span class="nv"> </span><span class="s">completed:</span><span class="nv"> </span><span class="s">PartiallySucceeded"</span>
+</span><span id="__span-4-25"><a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a><span class="w">      </span><span class="nt">lastTransitionTime</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T03:18:45Z"</span>
+</span><span id="__span-4-26"><a id="__codelineno-4-26" name="__codelineno-4-26" href="#__codelineno-4-26"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Ready</span>
+</span><span id="__span-4-27"><a id="__codelineno-4-27" name="__codelineno-4-27" href="#__codelineno-4-27"></a><span class="w">      </span><span class="nt">status</span><span class="p">:</span><span class="w"> </span><span class="s">"True"</span>
+</span><span id="__span-4-28"><a id="__codelineno-4-28" name="__codelineno-4-28" href="#__codelineno-4-28"></a><span class="w">      </span><span class="nt">reason</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ExecutionPartiallySucceeded</span>
+</span><span id="__span-4-29"><a id="__codelineno-4-29" name="__codelineno-4-29" href="#__codelineno-4-29"></a><span class="w">      </span><span class="nt">message</span><span class="p">:</span><span class="w"> </span><span class="s">"Execution</span><span class="nv"> </span><span class="s">completed:</span><span class="nv"> </span><span class="s">PartiallySucceeded"</span>
+</span><span id="__span-4-30"><a id="__codelineno-4-30" name="__codelineno-4-30" href="#__codelineno-4-30"></a><span class="w">      </span><span class="nt">lastTransitionTime</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T03:18:45Z"</span>
+</span><span id="__span-4-31"><a id="__codelineno-4-31" name="__codelineno-4-31" href="#__codelineno-4-31"></a><span class="w">  </span><span class="nt">waves</span><span class="p">:</span>
+</span><span id="__span-4-32"><a id="__codelineno-4-32" name="__codelineno-4-32" href="#__codelineno-4-32"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">waveIndex</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span>
+</span><span id="__span-4-33"><a id="__codelineno-4-33" name="__codelineno-4-33" href="#__codelineno-4-33"></a><span class="w">      </span><span class="nt">startTime</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T03:15:01Z"</span>
+</span><span id="__span-4-34"><a id="__codelineno-4-34" name="__codelineno-4-34" href="#__codelineno-4-34"></a><span class="w">      </span><span class="nt">completionTime</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T03:18:45Z"</span>
+</span><span id="__span-4-35"><a id="__codelineno-4-35" name="__codelineno-4-35" href="#__codelineno-4-35"></a><span class="w">      </span><span class="nt">groups</span><span class="p">:</span>
+</span><span id="__span-4-36"><a id="__codelineno-4-36" name="__codelineno-4-36" href="#__codelineno-4-36"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">wave-0-group-0</span>
+</span><span id="__span-4-37"><a id="__codelineno-4-37" name="__codelineno-4-37" href="#__codelineno-4-37"></a><span class="w">          </span><span class="nt">result</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Completed</span>
+</span><span id="__span-4-38"><a id="__codelineno-4-38" name="__codelineno-4-38" href="#__codelineno-4-38"></a><span class="w">          </span><span class="nt">vmNames</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"db-primary"</span><span class="p p-Indicator">]</span>
+</span><span id="__span-4-39"><a id="__codelineno-4-39" name="__codelineno-4-39" href="#__codelineno-4-39"></a><span class="w">          </span><span class="nt">startTime</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T03:15:01Z"</span>
+</span><span id="__span-4-40"><a id="__codelineno-4-40" name="__codelineno-4-40" href="#__codelineno-4-40"></a><span class="w">          </span><span class="nt">completionTime</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T03:16:30Z"</span>
+</span><span id="__span-4-41"><a id="__codelineno-4-41" name="__codelineno-4-41" href="#__codelineno-4-41"></a><span class="w">          </span><span class="nt">steps</span><span class="p">:</span>
+</span><span id="__span-4-42"><a id="__codelineno-4-42" name="__codelineno-4-42" href="#__codelineno-4-42"></a><span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">SetSource</span>
+</span><span id="__span-4-43"><a id="__codelineno-4-43" name="__codelineno-4-43" href="#__codelineno-4-43"></a><span class="w">              </span><span class="nt">status</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Succeeded</span>
+</span><span id="__span-4-44"><a id="__codelineno-4-44" name="__codelineno-4-44" href="#__codelineno-4-44"></a><span class="w">              </span><span class="nt">message</span><span class="p">:</span><span class="w"> </span><span class="s">"Set</span><span class="nv"> </span><span class="s">source</span><span class="nv"> </span><span class="s">for</span><span class="nv"> </span><span class="s">volume</span><span class="nv"> </span><span class="s">group</span><span class="nv"> </span><span class="s">ns-erp-database"</span>
+</span><span id="__span-4-45"><a id="__codelineno-4-45" name="__codelineno-4-45" href="#__codelineno-4-45"></a><span class="w">              </span><span class="nt">timestamp</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T03:15:15Z"</span>
+</span><span id="__span-4-46"><a id="__codelineno-4-46" name="__codelineno-4-46" href="#__codelineno-4-46"></a><span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">StartVM</span>
+</span><span id="__span-4-47"><a id="__codelineno-4-47" name="__codelineno-4-47" href="#__codelineno-4-47"></a><span class="w">              </span><span class="nt">status</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Succeeded</span>
+</span><span id="__span-4-48"><a id="__codelineno-4-48" name="__codelineno-4-48" href="#__codelineno-4-48"></a><span class="w">              </span><span class="nt">message</span><span class="p">:</span><span class="w"> </span><span class="s">"Started</span><span class="nv"> </span><span class="s">VM</span><span class="nv"> </span><span class="s">db-primary"</span>
+</span><span id="__span-4-49"><a id="__codelineno-4-49" name="__codelineno-4-49" href="#__codelineno-4-49"></a><span class="w">              </span><span class="nt">timestamp</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T03:16:30Z"</span>
+</span><span id="__span-4-50"><a id="__codelineno-4-50" name="__codelineno-4-50" href="#__codelineno-4-50"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">wave-0-group-1</span>
+</span><span id="__span-4-51"><a id="__codelineno-4-51" name="__codelineno-4-51" href="#__codelineno-4-51"></a><span class="w">          </span><span class="nt">result</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Failed</span>
+</span><span id="__span-4-52"><a id="__codelineno-4-52" name="__codelineno-4-52" href="#__codelineno-4-52"></a><span class="w">          </span><span class="nt">vmNames</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"cache-server"</span><span class="p p-Indicator">]</span>
+</span><span id="__span-4-53"><a id="__codelineno-4-53" name="__codelineno-4-53" href="#__codelineno-4-53"></a><span class="w">          </span><span class="nt">error</span><span class="p">:</span><span class="w"> </span><span class="s">"step</span><span class="nv"> </span><span class="s">SetSource</span><span class="nv"> </span><span class="s">failed</span><span class="nv"> </span><span class="s">for</span><span class="nv"> </span><span class="s">vm-default-cache:</span><span class="nv"> </span><span class="s">replication</span><span class="nv"> </span><span class="s">state</span><span class="nv"> </span><span class="s">transition</span><span class="nv"> </span><span class="s">invalid"</span>
+</span><span id="__span-4-54"><a id="__codelineno-4-54" name="__codelineno-4-54" href="#__codelineno-4-54"></a><span class="w">          </span><span class="nt">startTime</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T03:15:01Z"</span>
+</span><span id="__span-4-55"><a id="__codelineno-4-55" name="__codelineno-4-55" href="#__codelineno-4-55"></a><span class="w">          </span><span class="nt">completionTime</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T03:15:20Z"</span>
+</span><span id="__span-4-56"><a id="__codelineno-4-56" name="__codelineno-4-56" href="#__codelineno-4-56"></a><span class="w">          </span><span class="nt">steps</span><span class="p">:</span>
+</span><span id="__span-4-57"><a id="__codelineno-4-57" name="__codelineno-4-57" href="#__codelineno-4-57"></a><span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">SetSource</span>
+</span><span id="__span-4-58"><a id="__codelineno-4-58" name="__codelineno-4-58" href="#__codelineno-4-58"></a><span class="w">              </span><span class="nt">status</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Failed</span>
+</span><span id="__span-4-59"><a id="__codelineno-4-59" name="__codelineno-4-59" href="#__codelineno-4-59"></a><span class="w">              </span><span class="nt">message</span><span class="p">:</span><span class="w"> </span><span class="s">"Failed</span><span class="nv"> </span><span class="s">to</span><span class="nv"> </span><span class="s">set</span><span class="nv"> </span><span class="s">source</span><span class="nv"> </span><span class="s">for</span><span class="nv"> </span><span class="s">volume</span><span class="nv"> </span><span class="s">group</span><span class="nv"> </span><span class="s">vm-default-cache:</span><span class="nv"> </span><span class="s">replication</span><span class="nv"> </span><span class="s">state</span><span class="nv"> </span><span class="s">transition</span><span class="nv"> </span><span class="s">invalid"</span>
+</span><span id="__span-4-60"><a id="__codelineno-4-60" name="__codelineno-4-60" href="#__codelineno-4-60"></a><span class="w">              </span><span class="nt">timestamp</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T03:15:20Z"</span>
+</span></code></pre></div>
+<h3 id="completed-execution-with-retry-history">Completed Execution with Retry History<a class="headerlink" href="#completed-execution-with-retry-history" title="Permanent link">&para;</a></h3>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">soteria.io/v1alpha1</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">DRExecution</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">erp-disaster-20260901</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">soteria-system</span>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">  </span><span class="nt">labels</span><span class="p">:</span>
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">    </span><span class="nt">soteria.io/plan-name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">erp-full-stack</span>
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="nt">spec</span><span class="p">:</span>
+</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="w">  </span><span class="nt">planName</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">erp-full-stack</span>
+</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="w">  </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">disaster</span>
+</span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="nt">status</span><span class="p">:</span>
+</span><span id="__span-5-12"><a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a><span class="w">  </span><span class="nt">phase</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Succeeded</span>
+</span><span id="__span-5-13"><a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a><span class="w">  </span><span class="nt">isActive</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+</span><span id="__span-5-14"><a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a><span class="w">  </span><span class="nt">result</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Succeeded</span>
+</span><span id="__span-5-15"><a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a><span class="w">  </span><span class="nt">startTime</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T03:15:00Z"</span>
+</span><span id="__span-5-16"><a id="__codelineno-5-16" name="__codelineno-5-16" href="#__codelineno-5-16"></a><span class="w">  </span><span class="nt">completionTime</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T03:25:00Z"</span>
+</span><span id="__span-5-17"><a id="__codelineno-5-17" name="__codelineno-5-17" href="#__codelineno-5-17"></a><span class="w">  </span><span class="nt">duration</span><span class="p">:</span><span class="w"> </span><span class="s">"10m0s"</span>
+</span><span id="__span-5-18"><a id="__codelineno-5-18" name="__codelineno-5-18" href="#__codelineno-5-18"></a><span class="w">  </span><span class="nt">conditions</span><span class="p">:</span>
+</span><span id="__span-5-19"><a id="__codelineno-5-19" name="__codelineno-5-19" href="#__codelineno-5-19"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Progressing</span>
+</span><span id="__span-5-20"><a id="__codelineno-5-20" name="__codelineno-5-20" href="#__codelineno-5-20"></a><span class="w">      </span><span class="nt">status</span><span class="p">:</span><span class="w"> </span><span class="s">"False"</span>
+</span><span id="__span-5-21"><a id="__codelineno-5-21" name="__codelineno-5-21" href="#__codelineno-5-21"></a><span class="w">      </span><span class="nt">reason</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ExecutionSucceeded</span>
+</span><span id="__span-5-22"><a id="__codelineno-5-22" name="__codelineno-5-22" href="#__codelineno-5-22"></a><span class="w">      </span><span class="nt">message</span><span class="p">:</span><span class="w"> </span><span class="s">"Execution</span><span class="nv"> </span><span class="s">completed:</span><span class="nv"> </span><span class="s">Succeeded"</span>
+</span><span id="__span-5-23"><a id="__codelineno-5-23" name="__codelineno-5-23" href="#__codelineno-5-23"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Ready</span>
+</span><span id="__span-5-24"><a id="__codelineno-5-24" name="__codelineno-5-24" href="#__codelineno-5-24"></a><span class="w">      </span><span class="nt">status</span><span class="p">:</span><span class="w"> </span><span class="s">"True"</span>
+</span><span id="__span-5-25"><a id="__codelineno-5-25" name="__codelineno-5-25" href="#__codelineno-5-25"></a><span class="w">      </span><span class="nt">reason</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ExecutionSucceeded</span>
+</span><span id="__span-5-26"><a id="__codelineno-5-26" name="__codelineno-5-26" href="#__codelineno-5-26"></a><span class="w">      </span><span class="nt">message</span><span class="p">:</span><span class="w"> </span><span class="s">"Execution</span><span class="nv"> </span><span class="s">completed:</span><span class="nv"> </span><span class="s">Succeeded"</span>
+</span><span id="__span-5-27"><a id="__codelineno-5-27" name="__codelineno-5-27" href="#__codelineno-5-27"></a><span class="w">  </span><span class="nt">waves</span><span class="p">:</span>
+</span><span id="__span-5-28"><a id="__codelineno-5-28" name="__codelineno-5-28" href="#__codelineno-5-28"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">waveIndex</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span>
+</span><span id="__span-5-29"><a id="__codelineno-5-29" name="__codelineno-5-29" href="#__codelineno-5-29"></a><span class="w">      </span><span class="nt">startTime</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T03:15:01Z"</span>
+</span><span id="__span-5-30"><a id="__codelineno-5-30" name="__codelineno-5-30" href="#__codelineno-5-30"></a><span class="w">      </span><span class="nt">completionTime</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T03:25:00Z"</span>
+</span><span id="__span-5-31"><a id="__codelineno-5-31" name="__codelineno-5-31" href="#__codelineno-5-31"></a><span class="w">      </span><span class="nt">groups</span><span class="p">:</span>
+</span><span id="__span-5-32"><a id="__codelineno-5-32" name="__codelineno-5-32" href="#__codelineno-5-32"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">wave-0-group-0</span>
+</span><span id="__span-5-33"><a id="__codelineno-5-33" name="__codelineno-5-33" href="#__codelineno-5-33"></a><span class="w">          </span><span class="nt">result</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Completed</span>
+</span><span id="__span-5-34"><a id="__codelineno-5-34" name="__codelineno-5-34" href="#__codelineno-5-34"></a><span class="w">          </span><span class="nt">vmNames</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"db-primary"</span><span class="p p-Indicator">]</span>
+</span><span id="__span-5-35"><a id="__codelineno-5-35" name="__codelineno-5-35" href="#__codelineno-5-35"></a><span class="w">          </span><span class="nt">startTime</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T03:15:01Z"</span>
+</span><span id="__span-5-36"><a id="__codelineno-5-36" name="__codelineno-5-36" href="#__codelineno-5-36"></a><span class="w">          </span><span class="nt">completionTime</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T03:16:30Z"</span>
+</span><span id="__span-5-37"><a id="__codelineno-5-37" name="__codelineno-5-37" href="#__codelineno-5-37"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">wave-0-group-1</span>
+</span><span id="__span-5-38"><a id="__codelineno-5-38" name="__codelineno-5-38" href="#__codelineno-5-38"></a><span class="w">          </span><span class="nt">result</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Completed</span>
+</span><span id="__span-5-39"><a id="__codelineno-5-39" name="__codelineno-5-39" href="#__codelineno-5-39"></a><span class="w">          </span><span class="nt">vmNames</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"cache-server"</span><span class="p p-Indicator">]</span>
+</span><span id="__span-5-40"><a id="__codelineno-5-40" name="__codelineno-5-40" href="#__codelineno-5-40"></a><span class="w">          </span><span class="nt">retryCount</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+</span><span id="__span-5-41"><a id="__codelineno-5-41" name="__codelineno-5-41" href="#__codelineno-5-41"></a><span class="w">          </span><span class="nt">startTime</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T03:20:00Z"</span>
+</span><span id="__span-5-42"><a id="__codelineno-5-42" name="__codelineno-5-42" href="#__codelineno-5-42"></a><span class="w">          </span><span class="nt">completionTime</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T03:25:00Z"</span>
+</span><span id="__span-5-43"><a id="__codelineno-5-43" name="__codelineno-5-43" href="#__codelineno-5-43"></a><span class="w">          </span><span class="nt">steps</span><span class="p">:</span>
+</span><span id="__span-5-44"><a id="__codelineno-5-44" name="__codelineno-5-44" href="#__codelineno-5-44"></a><span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">SetSource</span>
+</span><span id="__span-5-45"><a id="__codelineno-5-45" name="__codelineno-5-45" href="#__codelineno-5-45"></a><span class="w">              </span><span class="nt">status</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Succeeded</span>
+</span><span id="__span-5-46"><a id="__codelineno-5-46" name="__codelineno-5-46" href="#__codelineno-5-46"></a><span class="w">              </span><span class="nt">message</span><span class="p">:</span><span class="w"> </span><span class="s">"Set</span><span class="nv"> </span><span class="s">source</span><span class="nv"> </span><span class="s">for</span><span class="nv"> </span><span class="s">volume</span><span class="nv"> </span><span class="s">group</span><span class="nv"> </span><span class="s">vm-default-cache"</span>
+</span><span id="__span-5-47"><a id="__codelineno-5-47" name="__codelineno-5-47" href="#__codelineno-5-47"></a><span class="w">              </span><span class="nt">timestamp</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T03:22:00Z"</span>
+</span><span id="__span-5-48"><a id="__codelineno-5-48" name="__codelineno-5-48" href="#__codelineno-5-48"></a><span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">StartVM</span>
+</span><span id="__span-5-49"><a id="__codelineno-5-49" name="__codelineno-5-49" href="#__codelineno-5-49"></a><span class="w">              </span><span class="nt">status</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Succeeded</span>
+</span><span id="__span-5-50"><a id="__codelineno-5-50" name="__codelineno-5-50" href="#__codelineno-5-50"></a><span class="w">              </span><span class="nt">message</span><span class="p">:</span><span class="w"> </span><span class="s">"Started</span><span class="nv"> </span><span class="s">VM</span><span class="nv"> </span><span class="s">cache-server"</span>
+</span><span id="__span-5-51"><a id="__codelineno-5-51" name="__codelineno-5-51" href="#__codelineno-5-51"></a><span class="w">              </span><span class="nt">timestamp</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-01T03:25:00Z"</span>
+</span></code></pre></div>
+<h3 id="re-protect-execution">Re-protect Execution<a class="headerlink" href="#re-protect-execution" title="Permanent link">&para;</a></h3>
+<p>Re-protect executions operate directly on volume groups without the wave executor.
+The <code>waves</code> field is not populated. Results are tracked via conditions only.</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">soteria.io/v1alpha1</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">DRExecution</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">erp-reprotect-20260902</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">soteria-system</span>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">  </span><span class="nt">labels</span><span class="p">:</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">    </span><span class="nt">soteria.io/plan-name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">erp-full-stack</span>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="nt">spec</span><span class="p">:</span>
+</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">  </span><span class="nt">planName</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">erp-full-stack</span>
+</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">  </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">reprotect</span>
+</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="nt">status</span><span class="p">:</span>
+</span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="w">  </span><span class="nt">phase</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Succeeded</span>
+</span><span id="__span-6-13"><a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="w">  </span><span class="nt">isActive</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+</span><span id="__span-6-14"><a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="w">  </span><span class="nt">result</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Succeeded</span>
+</span><span id="__span-6-15"><a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a><span class="w">  </span><span class="nt">startTime</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-02T10:00:00Z"</span>
+</span><span id="__span-6-16"><a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a><span class="w">  </span><span class="nt">completionTime</span><span class="p">:</span><span class="w"> </span><span class="s">"2026-09-02T10:02:30Z"</span>
+</span><span id="__span-6-17"><a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a><span class="w">  </span><span class="nt">duration</span><span class="p">:</span><span class="w"> </span><span class="s">"2m30s"</span>
+</span><span id="__span-6-18"><a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a><span class="w">  </span><span class="nt">conditions</span><span class="p">:</span>
+</span><span id="__span-6-19"><a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Progressing</span>
+</span><span id="__span-6-20"><a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a><span class="w">      </span><span class="nt">status</span><span class="p">:</span><span class="w"> </span><span class="s">"True"</span>
+</span><span id="__span-6-21"><a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a><span class="w">      </span><span class="nt">reason</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ExecutionStarted</span>
+</span><span id="__span-6-22"><a id="__codelineno-6-22" name="__codelineno-6-22" href="#__codelineno-6-22"></a><span class="w">      </span><span class="nt">message</span><span class="p">:</span><span class="w"> </span><span class="s">"Execution</span><span class="nv"> </span><span class="s">started</span><span class="nv"> </span><span class="s">for</span><span class="nv"> </span><span class="s">plan</span><span class="nv"> </span><span class="s">erp-full-stack</span><span class="nv"> </span><span class="s">in</span><span class="nv"> </span><span class="s">reprotect</span><span class="nv"> </span><span class="s">mode"</span>
+</span><span id="__span-6-23"><a id="__codelineno-6-23" name="__codelineno-6-23" href="#__codelineno-6-23"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Ready</span>
+</span><span id="__span-6-24"><a id="__codelineno-6-24" name="__codelineno-6-24" href="#__codelineno-6-24"></a><span class="w">      </span><span class="nt">status</span><span class="p">:</span><span class="w"> </span><span class="s">"True"</span>
+</span><span id="__span-6-25"><a id="__codelineno-6-25" name="__codelineno-6-25" href="#__codelineno-6-25"></a><span class="w">      </span><span class="nt">reason</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ReprotectSucceeded</span>
+</span><span id="__span-6-26"><a id="__codelineno-6-26" name="__codelineno-6-26" href="#__codelineno-6-26"></a><span class="w">      </span><span class="nt">message</span><span class="p">:</span><span class="w"> </span><span class="s">"Re-protect</span><span class="nv"> </span><span class="s">completed:</span><span class="nv"> </span><span class="s">Succeeded"</span>
+</span><span id="__span-6-27"><a id="__codelineno-6-27" name="__codelineno-6-27" href="#__codelineno-6-27"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ReprotectPhase</span>
+</span><span id="__span-6-28"><a id="__codelineno-6-28" name="__codelineno-6-28" href="#__codelineno-6-28"></a><span class="w">      </span><span class="nt">status</span><span class="p">:</span><span class="w"> </span><span class="s">"True"</span>
+</span><span id="__span-6-29"><a id="__codelineno-6-29" name="__codelineno-6-29" href="#__codelineno-6-29"></a><span class="w">      </span><span class="nt">reason</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Complete</span>
+</span><span id="__span-6-30"><a id="__codelineno-6-30" name="__codelineno-6-30" href="#__codelineno-6-30"></a><span class="w">      </span><span class="nt">message</span><span class="p">:</span><span class="w"> </span><span class="s">"Role</span><span class="nv"> </span><span class="s">setup:</span><span class="nv"> </span><span class="s">3/3,</span><span class="nv"> </span><span class="s">healthy:</span><span class="nv"> </span><span class="s">3/3"</span>
+</span></code></pre></div>
+<hr />
+<h2 id="key-constraints">Key Constraints<a class="headerlink" href="#key-constraints" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Constraint</th>
+<th>Details</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Immutable spec</strong></td>
+<td><code>planName</code> and <code>mode</code> cannot be changed after creation. Enforced by <code>ValidateDRExecutionUpdate</code>.</td>
+</tr>
+<tr>
+<td><strong>Human-triggered only</strong></td>
+<td>All failover requires explicit human initiation — no auto-failover, no failure detection.</td>
+</tr>
+<tr>
+<td><strong>Concurrent execution guard</strong></td>
+<td>Only one active (non-terminal) execution per plan is allowed, enforced by the admission concurrency gate using the <code>soteria.io/plan-name</code> label.</td>
+</tr>
+<tr>
+<td><strong>Fail-forward</strong></td>
+<td>Rollback is impossible when the source site is down. Failed DRGroups are marked <code>Failed</code>, the engine continues with remaining groups, and the execution reports <code>PartiallySucceeded</code>.</td>
+</tr>
+<tr>
+<td><strong>Retry restrictions</strong></td>
+<td>Only <code>PartiallySucceeded</code> is retryable. VMs must pass health validation before retry to prevent failover from unpredictable state.</td>
+</tr>
+<tr>
+<td><strong>Checkpointing</strong></td>
+<td>Status is persisted after each DRGroup completes. Pod restart resumes from the last checkpoint — at most one in-flight DRGroup is lost.</td>
+</tr>
+<tr>
+<td><strong>Site write-isolation</strong></td>
+<td>In multi-site mode, each controller writes only to its own <code>siteStatuses</code> entry. Cross-site reads are eventually consistent via ScyllaDB.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="related-resources">Related Resources<a class="headerlink" href="#related-resources" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../drplan/">DRPlan API Reference</a> — The plan that a DRExecution operates on.</li>
+<li><a href="../../../usage/failover/">Executing Failover</a> — Usage guide for triggering DR operations.</li>
+<li><a href="../../../architecture/dr-lifecycle/">DR Lifecycle</a> — Architecture overview of the 8-phase DR lifecycle.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["content.code.copy", "content.code.annotate", "navigation.instant", "navigation.tracking", "navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "search.suggest", "toc.follow"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

@@ -1,0 +1,2197 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Open-source, Kubernetes-native disaster recovery orchestrator for OpenShift Virtualization.">
+      
+      
+      
+        <link rel="canonical" href="https://raffaelespazzoli.github.io/soteria/docs/usage/waves/">
+      
+      
+        <link rel="prev" href="../creating-a-drplan/">
+      
+      
+        <link rel="next" href="../volumes/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Waves & Throttling - Soteria</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#waves-throttling" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Soteria" class="md-header__button md-logo" aria-label="Soteria" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Soteria
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Waves & Throttling
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/soteria-project/soteria" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    soteria-project/soteria
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Soteria" class="md-nav__button md-logo" aria-label="Soteria" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Soteria
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/soteria-project/soteria" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    soteria-project/soteria
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Installation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/prerequisites/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prerequisites
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_2" id="__nav_2_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ScyllaDB & Network
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    ScyllaDB & Network
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/scylladb/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/scylladb/submariner/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Submariner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/scylladb/cilium/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cilium Cluster Mesh
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/helm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Helm Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/dr-lifecycle/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DR Lifecycle
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../architecture/storage-drivers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage Drivers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Usage
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../creating-a-drplan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Creating a DRPlan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Waves & Throttling
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Waves & Throttling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#wave-formation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wave Formation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Wave Formation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#discovery-at-execution-time" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Discovery at Execution Time
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#execution-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Execution Pipeline
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sequential-wave-execution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sequential Wave Execution
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Sequential Wave Execution">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#vm-readiness-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VM Readiness Gate
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#drgroup-chunking-and-throttling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DRGroup Chunking and Throttling
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DRGroup Chunking and Throttling">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#how-maxconcurrentfailovers-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How maxConcurrentFailovers Works
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#chunking-algorithm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Chunking Algorithm
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#namespace-indivisibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Namespace Indivisibility
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#per-group-execution-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-Group Execution Path
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-0-planned-migration-pre-execution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 0: Planned Migration Pre-Execution
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fail-forward-semantics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fail-Forward Semantics
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#checkpointing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Checkpointing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#complete-execution-timeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Complete Execution Timeline
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration Reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../volumes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Volume Grouping
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../failover/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Executing Failover
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_5" id="__nav_4_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    UI Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    UI Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ui-guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ui-guide/plan-detail/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plan Detail
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../ui-guide/execution-monitor/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Execution Monitor
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_1" id="__nav_5_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/api/drplan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DRPlan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/api/drexecution/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DRExecution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/helm-values/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Helm Values
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contributing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/dev-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/storage-drivers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Writing Storage Drivers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#wave-formation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wave Formation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Wave Formation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#discovery-at-execution-time" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Discovery at Execution Time
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#execution-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Execution Pipeline
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sequential-wave-execution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sequential Wave Execution
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Sequential Wave Execution">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#vm-readiness-gate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VM Readiness Gate
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#drgroup-chunking-and-throttling" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DRGroup Chunking and Throttling
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="DRGroup Chunking and Throttling">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#how-maxconcurrentfailovers-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How maxConcurrentFailovers Works
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#chunking-algorithm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Chunking Algorithm
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#namespace-indivisibility" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Namespace Indivisibility
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#per-group-execution-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Per-Group Execution Path
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-0-planned-migration-pre-execution" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 0: Planned Migration Pre-Execution
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#fail-forward-semantics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fail-Forward Semantics
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#checkpointing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Checkpointing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#complete-execution-timeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Complete Execution Timeline
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration Reference
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="waves-throttling">Waves &amp; Throttling<a class="headerlink" href="#waves-throttling" title="Permanent link">&para;</a></h1>
+<p>Soteria executes DR operations in <strong>waves</strong> — ordered groups of VMs that
+fail over sequentially. Within each wave, VMs are chunked into <strong>DRGroups</strong>
+that respect a concurrency limit you set on the DRPlan. This page explains
+how waves form, how they execute, and how throttling keeps the process safe
+and predictable.</p>
+<h2 id="wave-formation">Wave Formation<a class="headerlink" href="#wave-formation" title="Permanent link">&para;</a></h2>
+<p>Every VM that belongs to a DRPlan is assigned to a wave via the
+<code>soteria.io/wave</code> label. The label value is a simple string — Soteria sorts
+waves <strong>lexicographically</strong> by this value, so <code>"1"</code> runs before <code>"2"</code>,
+<code>"a"</code> before <code>"b"</code>, and so on.</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">kubevirt.io/v1</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">VirtualMachine</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">postgres-primary</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">labels</span><span class="p">:</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="nt">soteria.io/drplan</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">erp-full-stack</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span><span class="nt">soteria.io/wave</span><span class="p">:</span><span class="w"> </span><span class="s">"1"</span><span class="w">       </span><span class="c1"># Database tier — starts first</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="nn">---</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">kubevirt.io/v1</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">VirtualMachine</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">app-server-1</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">  </span><span class="nt">labels</span><span class="p">:</span>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">    </span><span class="nt">soteria.io/drplan</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">erp-full-stack</span>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">    </span><span class="nt">soteria.io/wave</span><span class="p">:</span><span class="w"> </span><span class="s">"2"</span><span class="w">       </span><span class="c1"># Application tier — starts after DB</span>
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="nn">---</span>
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">kubevirt.io/v1</span>
+</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">VirtualMachine</span>
+</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">web-frontend-1</span>
+</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="w">  </span><span class="nt">labels</span><span class="p">:</span>
+</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="w">    </span><span class="nt">soteria.io/drplan</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">erp-full-stack</span>
+</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="w">    </span><span class="nt">soteria.io/wave</span><span class="p">:</span><span class="w"> </span><span class="s">"3"</span><span class="w">       </span><span class="c1"># Web tier — starts last</span>
+</span></code></pre></div>
+<div class="admonition tip">
+<p class="admonition-title">Naming convention</p>
+<p>Use numeric strings (<code>"1"</code>, <code>"2"</code>, <code>"3"</code>) for clarity. Because sorting
+is lexicographic, <code>"10"</code> sorts before <code>"2"</code>. If you need more than nine
+waves, zero-pad: <code>"01"</code>, <code>"02"</code>, … <code>"10"</code>.</p>
+</div>
+<div class="admonition info">
+<p class="admonition-title">VMs without a wave label</p>
+<p>VMs that lack the <code>soteria.io/wave</code> label are placed into a wave with an
+empty-string key. This wave sorts before all named waves, so unlabeled
+VMs execute first. To avoid surprises, always label your VMs explicitly.</p>
+</div>
+<h3 id="discovery-at-execution-time">Discovery at Execution Time<a class="headerlink" href="#discovery-at-execution-time" title="Permanent link">&para;</a></h3>
+<p>When a DRExecution is created, Soteria <strong>re-discovers</strong> VMs at execution time
+by listing all <code>VirtualMachine</code> resources that carry
+<code>soteria.io/drplan: &lt;plan-name&gt;</code>. It does not rely on cached DRPlan status.
+This ensures the wave grouping reflects the current state of the cluster —
+if you add or relabel a VM between executions, the next execution picks up
+the change.</p>
+<h2 id="execution-pipeline">Execution Pipeline<a class="headerlink" href="#execution-pipeline" title="Permanent link">&para;</a></h2>
+<p>The wave executor runs a fixed pipeline for every execution:</p>
+<pre class="mermaid"><code>flowchart LR
+    A[Discover VMs] --&gt; B[Group by Wave]
+    B --&gt; C[Resolve Volume Groups]
+    C --&gt; D[Chunk into DRGroups]
+    D --&gt; E[Execute Waves Sequentially]</code></pre>
+<ol>
+<li><strong>Discover</strong> — List VMs by <code>soteria.io/drplan</code> label.</li>
+<li><strong>Group by wave</strong> — Partition VMs into waves by <code>soteria.io/wave</code> value.</li>
+<li><strong>Resolve volume groups</strong> — Apply namespace consistency rules
+   (see <a href="../volumes/">Volume Grouping</a>).</li>
+<li><strong>Chunk</strong> — Split each wave's volume groups into DRGroup chunks that
+   respect <code>maxConcurrentFailovers</code>.</li>
+<li><strong>Execute</strong> — Run waves one at a time, sequentially.</li>
+</ol>
+<h2 id="sequential-wave-execution">Sequential Wave Execution<a class="headerlink" href="#sequential-wave-execution" title="Permanent link">&para;</a></h2>
+<p>Waves execute <strong>strictly in order</strong>: wave N must complete before wave N+1
+begins. This guarantees that infrastructure tiers start in the correct
+dependency order — databases before application servers, application servers
+before web frontends.</p>
+<pre class="mermaid"><code>sequenceDiagram
+    participant E as Executor
+    participant W1 as Wave 1 (DB)
+    participant W2 as Wave 2 (App)
+    participant W3 as Wave 3 (Web)
+
+    E-&gt;&gt;W1: Execute wave 1
+    Note over W1: SetSource + StartVM for all DB VMs
+    W1--&gt;&gt;E: All VMs Running ✓
+    E-&gt;&gt;W2: Execute wave 2
+    Note over W2: SetSource + StartVM for all App VMs
+    W2--&gt;&gt;E: All VMs Running ✓
+    E-&gt;&gt;W3: Execute wave 3
+    Note over W3: SetSource + StartVM for all Web VMs
+    W3--&gt;&gt;E: Complete ✓</code></pre>
+<h3 id="vm-readiness-gate">VM Readiness Gate<a class="headerlink" href="#vm-readiness-gate" title="Permanent link">&para;</a></h3>
+<p>After all <code>StartVM</code> operations in a wave complete, the executor waits for
+every VM in the wave to reach <strong>Running</strong> state. Wave N+1 does not begin
+until all wave N VMs are Running. This is the <strong>readiness gate</strong> — it
+ensures that downstream services don't start before their dependencies are
+actually available.</p>
+<p>The readiness timeout is controlled by <code>spec.vmReadyTimeout</code> on the DRPlan:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">soteria.io/v1alpha1</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">DRPlan</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">erp-full-stack</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="nt">spec</span><span class="p">:</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span><span class="nt">maxConcurrentFailovers</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">4</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">  </span><span class="nt">vmReadyTimeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5m</span><span class="w">        </span><span class="c1"># Default: 5 minutes</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">  </span><span class="c1"># ...</span>
+</span></code></pre></div>
+<p>If any VM fails to reach Running within the timeout, it is marked as failed.
+The executor uses <strong>fail-forward semantics</strong> — failed VMs don't block the
+remaining waves (see <a href="#fail-forward-semantics">Fail-Forward</a> below).</p>
+<h2 id="drgroup-chunking-and-throttling">DRGroup Chunking and Throttling<a class="headerlink" href="#drgroup-chunking-and-throttling" title="Permanent link">&para;</a></h2>
+<p>Within each wave, the VMs may exceed the concurrency limit set by
+<code>spec.maxConcurrentFailovers</code>. Soteria handles this by splitting the wave's
+volume groups into sequential <strong>DRGroup chunks</strong>, each containing at most
+<code>maxConcurrentFailovers</code> VMs.</p>
+<h3 id="how-maxconcurrentfailovers-works">How <code>maxConcurrentFailovers</code> Works<a class="headerlink" href="#how-maxconcurrentfailovers-works" title="Permanent link">&para;</a></h3>
+<p>The <code>maxConcurrentFailovers</code> field on <code>DRPlanSpec</code> limits the number of VMs
+that are processed concurrently within a single DRGroup chunk. It counts
+<strong>individual VMs</strong> regardless of their consistency level.</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">spec</span><span class="p">:</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">maxConcurrentFailovers</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">4</span><span class="w">   </span><span class="c1"># At most 4 VMs per chunk</span>
+</span></code></pre></div>
+<h3 id="chunking-algorithm">Chunking Algorithm<a class="headerlink" href="#chunking-algorithm" title="Permanent link">&para;</a></h3>
+<p>The chunker processes each wave independently:</p>
+<ol>
+<li><strong>Partition volume groups</strong> into namespace-level groups and VM-level
+   groups.</li>
+<li><strong>Place namespace groups first</strong> (largest first) because they are
+   indivisible.</li>
+<li><strong>Fill remaining capacity</strong> with VM-level groups (one VM each).</li>
+<li><strong>Start a new chunk</strong> when the current chunk is full.</li>
+</ol>
+<pre class="mermaid"><code>flowchart TD
+    subgraph "Wave 1 — 7 VMs, maxConcurrentFailovers = 4"
+        subgraph "Chunk A (4 VMs)"
+            VM1[postgres-primary]
+            VM2[postgres-replica]
+            VM3[redis-cache]
+            VM4[mq-broker]
+        end
+        subgraph "Chunk B (3 VMs)"
+            VM5[config-server]
+            VM6[log-collector]
+            VM7[metrics-agent]
+        end
+    end
+    style VM1 fill:#4CAF50,color:#fff
+    style VM2 fill:#4CAF50,color:#fff
+    style VM3 fill:#4CAF50,color:#fff
+    style VM4 fill:#4CAF50,color:#fff
+    style VM5 fill:#2196F3,color:#fff
+    style VM6 fill:#2196F3,color:#fff
+    style VM7 fill:#2196F3,color:#fff</code></pre>
+<p>Chunks within a wave execute <strong>sequentially</strong> — Chunk A completes (including
+its checkpoint write) before Chunk B begins. VM-level parallelism within each
+chunk is handled by the handler's internal goroutines: <code>SetSource</code> runs for
+all volume groups, then <code>StartVM</code> runs for all VMs in the chunk concurrently.</p>
+<h3 id="namespace-indivisibility">Namespace Indivisibility<a class="headerlink" href="#namespace-indivisibility" title="Permanent link">&para;</a></h3>
+<div class="admonition warning">
+<p class="admonition-title">Namespace-level volume groups cannot be split across chunks</p>
+<p>When a namespace uses <code>soteria.io/consistency-level: namespace</code>
+annotation, <strong>all VMs in that namespace within the same wave</strong> form a
+single, indivisible volume group. This group must fit entirely within one
+DRGroup chunk to preserve crash-consistent snapshot atomicity.</p>
+<p>For example, if a namespace has 3 VMs with namespace-level consistency
+and <code>maxConcurrentFailovers</code> is 4, those 3 VMs occupy 3 of the 4 slots
+in a single chunk. The remaining slot can be used by a VM-level group.</p>
+</div>
+<p><strong>Pre-flight validation:</strong> If any namespace-level volume group contains more
+VMs than <code>maxConcurrentFailovers</code> allows, the execution is <strong>rejected</strong>
+because that group can never fit in any chunk. The chunker records this as a
+<code>ChunkError</code> and the execution fails at initialization.</p>
+<p>For example, with <code>maxConcurrentFailovers: 3</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Scenario</th>
+<th>Result</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Namespace group has 2 VMs</td>
+<td>✅ Fits in a chunk (2 ≤ 3)</td>
+</tr>
+<tr>
+<td>Namespace group has 3 VMs</td>
+<td>✅ Fills an entire chunk (3 = 3)</td>
+</tr>
+<tr>
+<td>Namespace group has 4 VMs</td>
+<td>❌ Rejected — can never fit (4 &gt; 3)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="per-group-execution-path">Per-Group Execution Path<a class="headerlink" href="#per-group-execution-path" title="Permanent link">&para;</a></h3>
+<p>For each DRGroup chunk, the handler runs a unified two-step path:</p>
+<ol>
+<li><strong>SetSource</strong> — Promote each volume group to primary (writable) on the
+   target site.</li>
+<li><strong>StartVM</strong> — Start each VM in the chunk on the target site.</li>
+</ol>
+<p>This path is identical for both planned migration and disaster failover.
+The difference is in <strong>Step 0</strong> (pre-execution), not in the per-group path.</p>
+<h2 id="step-0-planned-migration-pre-execution">Step 0: Planned Migration Pre-Execution<a class="headerlink" href="#step-0-planned-migration-pre-execution" title="Permanent link">&para;</a></h2>
+<p>In <strong>planned migration</strong> mode (<code>GracefulShutdown: true</code>), Soteria runs a
+global Step 0 before any wave begins:</p>
+<ol>
+<li>
+<p><strong>Stop all origin VMs in reverse wave order</strong> — Dependants stop before
+   dependencies. Web frontends (wave 3) stop first, then application servers
+   (wave 2), then databases (wave 1). This ensures higher-tier services
+   drain gracefully before losing their backends.</p>
+</li>
+<li>
+<p><strong>Demote source volumes</strong> — Call <code>StopReplication</code> on each source volume
+   group to transition from primary to secondary. The storage system (e.g.,
+   rbd-mirror) automatically syncs the final demotion snapshot to the
+   target.</p>
+</li>
+<li>
+<p><strong>Wait for replication sync</strong> — The reconciler waits for all
+   VolumeReplications to confirm the target has caught up (configurable via
+   <code>spec.resyncTimeout</code>, default 10 minutes).</p>
+</li>
+</ol>
+<p>In <strong>disaster failover</strong> mode (<code>GracefulShutdown: false</code>), Step 0 is skipped
+entirely because the origin site may be unreachable.</p>
+<h2 id="fail-forward-semantics">Fail-Forward Semantics<a class="headerlink" href="#fail-forward-semantics" title="Permanent link">&para;</a></h2>
+<p>Soteria uses a <strong>fail-forward</strong> error model: if a DRGroup fails during
+execution, the failure is recorded but does <strong>not</strong> block subsequent chunks
+or waves.</p>
+<table>
+<thead>
+<tr>
+<th>Outcome</th>
+<th>All groups succeeded</th>
+<th>Some groups failed</th>
+<th>All groups failed</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Execution result</strong></td>
+<td><code>Succeeded</code></td>
+<td><code>PartiallySucceeded</code></td>
+<td><code>Failed</code></td>
+</tr>
+<tr>
+<td><strong>Plan phase advances?</strong></td>
+<td>✅ Yes</td>
+<td>✅ Yes</td>
+<td>❌ No</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">Retrying failed groups</p>
+<p>After a <code>PartiallySucceeded</code> execution, you can retry individual failed
+DRGroups by annotating the DRExecution with
+<code>soteria.io/retry-groups: &lt;group-name&gt;</code> or
+<code>soteria.io/retry-groups: all-failed</code>. See
+<a href="../failover/">Executing Failover</a> for details.</p>
+</div>
+<h2 id="checkpointing">Checkpointing<a class="headerlink" href="#checkpointing" title="Permanent link">&para;</a></h2>
+<p>After each DRGroup completes (success or failure), Soteria writes a
+<strong>checkpoint</strong> to the DRExecution status. This means:</p>
+<ul>
+<li>On pod restart, execution resumes from the last checkpoint — at most one
+  in-flight DRGroup is re-executed.</li>
+<li>All driver operations are idempotent, so retrying a checkpointed group is
+  safe.</li>
+<li>Wave-level checkpoints are written at the end of each wave.</li>
+</ul>
+<h2 id="complete-execution-timeline">Complete Execution Timeline<a class="headerlink" href="#complete-execution-timeline" title="Permanent link">&para;</a></h2>
+<p>Putting it all together, here is the full execution timeline for a planned
+migration with 3 waves and <code>maxConcurrentFailovers: 4</code>:</p>
+<pre class="mermaid"><code>sequenceDiagram
+    participant R as Reconciler
+    participant S0 as Step 0
+    participant W1 as Wave 1
+    participant W2 as Wave 2
+    participant W3 as Wave 3
+
+    R-&gt;&gt;S0: Start Step 0 (planned only)
+    Note over S0: Stop VMs: wave 3 → 2 → 1
+    Note over S0: StopReplication on all source VGs
+    Note over S0: Wait for replication sync
+    S0--&gt;&gt;R: Step 0 complete
+
+    R-&gt;&gt;W1: Execute wave 1
+    Note over W1: Chunk A: SetSource + StartVM (≤4 VMs)
+    Note over W1: Chunk B: SetSource + StartVM (remaining VMs)
+    Note over W1: Wait for all VMs → Running
+    W1--&gt;&gt;R: Wave 1 complete ✓
+
+    R-&gt;&gt;W2: Execute wave 2
+    Note over W2: Chunk A: SetSource + StartVM (≤4 VMs)
+    Note over W2: Wait for all VMs → Running
+    W2--&gt;&gt;R: Wave 2 complete ✓
+
+    R-&gt;&gt;W3: Execute wave 3
+    Note over W3: Chunk A: SetSource + StartVM (≤4 VMs)
+    Note over W3: Wait for all VMs → Running
+    W3--&gt;&gt;R: Wave 3 complete ✓
+
+    R-&gt;&gt;R: Compute result, advance plan phase</code></pre>
+<h2 id="configuration-reference">Configuration Reference<a class="headerlink" href="#configuration-reference" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Path</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Wave label</td>
+<td><code>metadata.labels["soteria.io/wave"]</code></td>
+<td>(none)</td>
+<td>Assigns a VM to a wave. Sorted lexicographically.</td>
+</tr>
+<tr>
+<td>Max concurrent failovers</td>
+<td><code>spec.maxConcurrentFailovers</code></td>
+<td>(required)</td>
+<td>Maximum VMs per DRGroup chunk. Must be ≥ 1.</td>
+</tr>
+<tr>
+<td>VM ready timeout</td>
+<td><code>spec.vmReadyTimeout</code></td>
+<td><code>5m</code></td>
+<td>Time to wait for VMs to reach Running after StartVM.</td>
+</tr>
+<tr>
+<td>Resync timeout</td>
+<td><code>spec.resyncTimeout</code></td>
+<td><code>10m</code></td>
+<td>Time to wait for VR/VGR sync during planned Step 0.</td>
+</tr>
+<tr>
+<td>Consistency level</td>
+<td>Namespace annotation <code>soteria.io/consistency-level</code></td>
+<td><code>vm</code></td>
+<td>Set to <code>namespace</code> for crash-consistent namespace groups.</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["content.code.copy", "content.code.annotate", "navigation.instant", "navigation.tracking", "navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "search.suggest", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

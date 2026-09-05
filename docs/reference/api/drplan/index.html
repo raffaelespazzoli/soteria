@@ -1,0 +1,3167 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Open-source, Kubernetes-native disaster recovery orchestrator for OpenShift Virtualization.">
+      
+      
+      
+        <link rel="canonical" href="https://raffaelespazzoli.github.io/soteria/docs/reference/api/drplan/">
+      
+      
+        <link rel="prev" href="../../../usage/ui-guide/execution-monitor/">
+      
+      
+        <link rel="next" href="../drexecution/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>DRPlan - Soteria</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#drplan-api-reference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Soteria" class="md-header__button md-logo" aria-label="Soteria" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Soteria
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              DRPlan
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/soteria-project/soteria" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    soteria-project/soteria
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Soteria" class="md-nav__button md-logo" aria-label="Soteria" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Soteria
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/soteria-project/soteria" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    soteria-project/soteria
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Installation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../installation/prerequisites/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prerequisites
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_2" id="__nav_2_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ScyllaDB & Network
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    ScyllaDB & Network
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../installation/scylladb/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../installation/scylladb/submariner/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Submariner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../installation/scylladb/cilium/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cilium Cluster Mesh
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../installation/helm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Helm Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/dr-lifecycle/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DR Lifecycle
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/storage-drivers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage Drivers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Usage
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/creating-a-drplan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Creating a DRPlan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/waves/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Waves & Throttling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/volumes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Volume Grouping
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/failover/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Executing Failover
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_5" id="__nav_4_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    UI Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    UI Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/ui-guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/ui-guide/plan-detail/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plan Detail
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/ui-guide/execution-monitor/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Execution Monitor
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5_1" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5_1" id="__nav_5_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_1_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DRPlan
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DRPlan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#resource-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resource Structure
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#spec-fields-drplanspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Spec Fields (DRPlanSpec)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Spec Fields (DRPlanSpec)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#volumereplicationdriverconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VolumeReplicationDriverConfig
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#status-fields-drplanstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status Fields (DRPlanStatus)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#nested-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Nested Types
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Nested Types">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#waveinfo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WaveInfo
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#volumegroupinfo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VolumeGroupInfo
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#discoveredvm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DiscoveredVM
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#discovereddisk" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DiscoveredDisk
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#preflightreport" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PreflightReport
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#preflightwave" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PreflightWave
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#preflightvm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PreflightVM
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#preflightchunk" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PreflightChunk
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#preflightvolumegroup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PreflightVolumeGroup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#volumegroupdisk" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VolumeGroupDisk
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#disksitemapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DiskSiteMapping
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#volumegrouphealth" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VolumeGroupHealth
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sitediscovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SiteDiscovery
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#conditions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Conditions
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#validation-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Validation Rules
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Validation Rules">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#create-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create Validation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#update-validation-immutability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Update Validation (Immutability)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driver-specific-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Driver-Specific Validation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#label-annotation-conventions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Label &amp; Annotation Conventions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-lifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase Lifecycle
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Examples">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#minimal-drplan-noop-driver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Minimal DRPlan (noop driver)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#full-drplan-csi-extension-driver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Full DRPlan (CSI Extension driver)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vm-labels-for-plan-membership" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VM Labels for Plan Membership
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#namespace-annotation-for-consistency-grouping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Namespace Annotation for Consistency Grouping
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#source-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Source Files
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../drexecution/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DRExecution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../helm-values/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Helm Values
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contributing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../contributing/dev-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../contributing/storage-drivers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Writing Storage Drivers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#resource-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Resource Structure
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#spec-fields-drplanspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Spec Fields (DRPlanSpec)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Spec Fields (DRPlanSpec)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#volumereplicationdriverconfig" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VolumeReplicationDriverConfig
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#status-fields-drplanstatus" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status Fields (DRPlanStatus)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#nested-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Nested Types
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Nested Types">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#waveinfo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        WaveInfo
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#volumegroupinfo" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VolumeGroupInfo
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#discoveredvm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DiscoveredVM
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#discovereddisk" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DiscoveredDisk
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#preflightreport" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PreflightReport
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#preflightwave" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PreflightWave
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#preflightvm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PreflightVM
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#preflightchunk" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PreflightChunk
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#preflightvolumegroup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        PreflightVolumeGroup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#volumegroupdisk" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VolumeGroupDisk
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#disksitemapping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DiskSiteMapping
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#volumegrouphealth" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VolumeGroupHealth
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#sitediscovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SiteDiscovery
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#conditions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Conditions
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#validation-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Validation Rules
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Validation Rules">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#create-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create Validation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#update-validation-immutability" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Update Validation (Immutability)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#driver-specific-validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Driver-Specific Validation
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#label-annotation-conventions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Label &amp; Annotation Conventions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#phase-lifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Phase Lifecycle
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Examples">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#minimal-drplan-noop-driver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Minimal DRPlan (noop driver)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#full-drplan-csi-extension-driver" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Full DRPlan (CSI Extension driver)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#vm-labels-for-plan-membership" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        VM Labels for Plan Membership
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#namespace-annotation-for-consistency-grouping" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Namespace Annotation for Consistency Grouping
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#source-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Source Files
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="drplan-api-reference">DRPlan API Reference<a class="headerlink" href="#drplan-api-reference" title="Permanent link">&para;</a></h1>
+<p><strong>API Group:</strong> <code>soteria.io/v1alpha1</code>
+<strong>Resource:</strong> <code>drplans</code>
+<strong>Scope:</strong> Namespaced
+<strong>Served by:</strong> Aggregated API Server (ScyllaDB-backed)</p>
+<p>The <code>DRPlan</code> resource defines a disaster recovery plan for a set of VMs
+selected by the <code>soteria.io/drplan</code> label. It describes which storage
+driver handles volume replication, which clusters serve as primary and
+secondary sites, and how VMs are grouped and executed in waves.</p>
+<div class="admonition info">
+<p class="admonition-title">Not a standard CRD</p>
+<p>DRPlan is served by the Soteria aggregated API server, not a
+conventional CRD. There is no manifest in <code>config/crd/bases/</code>.
+Validation is two-layered: the aggregated API server's strategy
+pipeline runs field-level checks, and a validating admission webhook
+provides defense-in-depth.</p>
+</div>
+<hr />
+<h2 id="resource-structure">Resource Structure<a class="headerlink" href="#resource-structure" title="Permanent link">&para;</a></h2>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">soteria.io/v1alpha1</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">DRPlan</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">&lt;string&gt;</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">&lt;string&gt;</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="nt">spec</span><span class="p">:</span><span class="w">   </span><span class="c1"># DRPlanSpec</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="l l-Scalar l-Scalar-Plain">...</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="nt">status</span><span class="p">:</span><span class="w"> </span><span class="c1"># DRPlanStatus (read-only, set by controller)</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">  </span><span class="l l-Scalar l-Scalar-Plain">...</span>
+</span></code></pre></div>
+<hr />
+<h2 id="spec-fields-drplanspec">Spec Fields (<code>DRPlanSpec</code>)<a class="headerlink" href="#spec-fields-drplanspec" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Validation</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>volumeReplicationDriver</code></td>
+<td><a href="#volumereplicationdriverconfig"><code>VolumeReplicationDriverConfig</code></a></td>
+<td><strong>Yes</strong></td>
+<td>—</td>
+<td>See nested table</td>
+<td>Configures the volume replication driver. <strong>Immutable after creation.</strong></td>
+</tr>
+<tr>
+<td><code>maxConcurrentFailovers</code></td>
+<td><code>int</code></td>
+<td><strong>Yes</strong></td>
+<td>—</td>
+<td>Minimum: 1</td>
+<td>Maximum number of concurrent VM failovers per wave chunk.</td>
+</tr>
+<tr>
+<td><code>primarySite</code></td>
+<td><code>string</code></td>
+<td><strong>Yes</strong></td>
+<td>—</td>
+<td>Must not be empty; must differ from <code>secondarySite</code></td>
+<td>Cluster name that originally owns the active workloads. <strong>Immutable after creation.</strong></td>
+</tr>
+<tr>
+<td><code>secondarySite</code></td>
+<td><code>string</code></td>
+<td><strong>Yes</strong></td>
+<td>—</td>
+<td>Must not be empty; must differ from <code>primarySite</code></td>
+<td>Cluster name that serves as the DR target. <strong>Immutable after creation.</strong></td>
+</tr>
+<tr>
+<td><code>vmReadyTimeout</code></td>
+<td><code>Duration</code></td>
+<td>No</td>
+<td><code>5m</code></td>
+<td>Must be a positive duration</td>
+<td>Maximum wait time for all VMs in a wave to reach Running state after StartVM. Per-wave timeout.</td>
+</tr>
+<tr>
+<td><code>resyncTimeout</code></td>
+<td><code>Duration</code></td>
+<td>No</td>
+<td><code>10m</code></td>
+<td>—</td>
+<td>Maximum wait time for VR/VGR resync completion during planned failover Step 0. Only applies to <code>planned_migration</code> mode.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="volumereplicationdriverconfig"><code>VolumeReplicationDriverConfig</code><a class="headerlink" href="#volumereplicationdriverconfig" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Required</th>
+<th>Default</th>
+<th>Validation</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>type</code></td>
+<td><code>string</code></td>
+<td><strong>Yes</strong></td>
+<td>—</td>
+<td>Enum: <code>noop</code>, <code>csi-extension</code></td>
+<td>Registered driver that handles volume replication operations. <strong>Immutable after creation.</strong></td>
+</tr>
+<tr>
+<td><code>volumeReplicationClass</code></td>
+<td><code>string</code></td>
+<td>No</td>
+<td>—</td>
+<td>Required when <code>type</code> is <code>csi-extension</code>; forbidden when <code>type</code> is <code>noop</code></td>
+<td>VolumeReplicationClass name stamped on VolumeReplication and VolumeGroupReplication CRs. Only applicable for the CSI Extension driver. <strong>Immutable after creation</strong> (covered by struct-level immutability).</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="status-fields-drplanstatus">Status Fields (<code>DRPlanStatus</code>)<a class="headerlink" href="#status-fields-drplanstatus" title="Permanent link">&para;</a></h2>
+<p>Status is read-only and populated by the DRPlan controller during reconciliation.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>phase</code></td>
+<td><code>string</code></td>
+<td>Current DR lifecycle rest state. Valid values: <code>SteadyState</code>, <code>FailedOver</code>, <code>DRedSteadyState</code>, <code>FailedBack</code>. Transient phases (<code>FailingOver</code>, <code>Reprotecting</code>, <code>FailingBack</code>, <code>ReprotectingBack</code>) are derived at runtime from the active DRExecution.</td>
+</tr>
+<tr>
+<td><code>activeSite</code></td>
+<td><code>string</code></td>
+<td>Cluster currently owning the active workloads. Set to <code>primarySite</code> on creation; flipped on failover/failback completion.</td>
+</tr>
+<tr>
+<td><code>conditions</code></td>
+<td><a href="#conditions"><code>[]metav1.Condition</code></a></td>
+<td>Standard Kubernetes conditions representing the latest observations of the plan's state.</td>
+</tr>
+<tr>
+<td><code>observedGeneration</code></td>
+<td><code>int64</code></td>
+<td>Most recent <code>.metadata.generation</code> observed by the controller.</td>
+</tr>
+<tr>
+<td><code>waves</code></td>
+<td><a href="#waveinfo"><code>[]WaveInfo</code></a></td>
+<td>Discovered VMs grouped by wave label value.</td>
+</tr>
+<tr>
+<td><code>discoveredVMCount</code></td>
+<td><code>int</code></td>
+<td>Total number of VMs discovered for this plan.</td>
+</tr>
+<tr>
+<td><code>preflight</code></td>
+<td><a href="#preflightreport"><code>*PreflightReport</code></a></td>
+<td>Pre-flight plan composition report, populated on every reconcile to give visibility into plan structure before execution.</td>
+</tr>
+<tr>
+<td><code>replicationHealth</code></td>
+<td><a href="#volumegrouphealth"><code>[]VolumeGroupHealth</code></a></td>
+<td>Per-volume-group replication status, populated by polling storage drivers on each reconcile cycle.</td>
+</tr>
+<tr>
+<td><code>primarySiteDiscovery</code></td>
+<td><a href="#sitediscovery"><code>*SiteDiscovery</code></a></td>
+<td>VMs discovered on the primary site cluster. Written exclusively by the primary site's Soteria instance.</td>
+</tr>
+<tr>
+<td><code>secondarySiteDiscovery</code></td>
+<td><a href="#sitediscovery"><code>*SiteDiscovery</code></a></td>
+<td>VMs discovered on the secondary site cluster. Written exclusively by the secondary site's Soteria instance.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="nested-types">Nested Types<a class="headerlink" href="#nested-types" title="Permanent link">&para;</a></h2>
+<h3 id="waveinfo"><code>WaveInfo</code><a class="headerlink" href="#waveinfo" title="Permanent link">&para;</a></h3>
+<p>Groups discovered VMs into a single execution wave. Only created when at least one VM belongs to the wave.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Required</th>
+<th>Validation</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>waveKey</code></td>
+<td><code>string</code></td>
+<td><strong>Yes</strong></td>
+<td>—</td>
+<td>Value of the <code>soteria.io/wave</code> label that groups these VMs.</td>
+</tr>
+<tr>
+<td><code>vms</code></td>
+<td><a href="#discoveredvm"><code>[]DiscoveredVM</code></a></td>
+<td><strong>Yes</strong></td>
+<td>MinItems: 1</td>
+<td>Discovered VMs in this wave.</td>
+</tr>
+<tr>
+<td><code>groups</code></td>
+<td><a href="#volumegroupinfo"><code>[]VolumeGroupInfo</code></a></td>
+<td>No</td>
+<td>—</td>
+<td>Volume groups formed from VMs in this wave. Populated after consistency resolution.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="volumegroupinfo"><code>VolumeGroupInfo</code><a class="headerlink" href="#volumegroupinfo" title="Permanent link">&para;</a></h3>
+<p>Describes a group of VM disks that are snapshotted atomically. Namespace-level groups ensure crash-consistent snapshots across all VMs sharing a namespace; VM-level groups scope consistency to a single VM's disks.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Required</th>
+<th>Validation</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td><code>string</code></td>
+<td><strong>Yes</strong></td>
+<td>Required</td>
+<td>Group identifier (e.g., <code>ns-erp-database</code> or <code>vm-default-web01</code>).</td>
+</tr>
+<tr>
+<td><code>namespace</code></td>
+<td><code>string</code></td>
+<td><strong>Yes</strong></td>
+<td>—</td>
+<td>Kubernetes namespace for VMs in this group.</td>
+</tr>
+<tr>
+<td><code>consistencyLevel</code></td>
+<td><code>string</code></td>
+<td><strong>Yes</strong></td>
+<td>Enum: <code>namespace</code>, <code>vm</code></td>
+<td>Whether this is a namespace-level or VM-level group.</td>
+</tr>
+<tr>
+<td><code>vmNames</code></td>
+<td><code>[]string</code></td>
+<td><strong>Yes</strong></td>
+<td>MinItems: 1</td>
+<td>VMs belonging to this volume group.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="discoveredvm"><code>DiscoveredVM</code><a class="headerlink" href="#discoveredvm" title="Permanent link">&para;</a></h3>
+<p>Identifies a VM discovered by a DRPlan's label selector.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td><code>string</code></td>
+<td>VM resource name.</td>
+</tr>
+<tr>
+<td><code>namespace</code></td>
+<td><code>string</code></td>
+<td>VM's namespace.</td>
+</tr>
+<tr>
+<td><code>disks</code></td>
+<td><a href="#discovereddisk"><code>[]DiscoveredDisk</code></a></td>
+<td>Per-disk PVC topology. Only disks backed by PersistentVolumeClaim or DataVolume volumes are included; other volume types (containerDisk, cloudInit, etc.) are silently omitted.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="discovereddisk"><code>DiscoveredDisk</code><a class="headerlink" href="#discovereddisk" title="Permanent link">&para;</a></h3>
+<p>Describes a single disk attached to a VM and its backing PVC.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td><code>string</code></td>
+<td>Disk name from the VM's <code>domain.devices.disks</code> spec (the guest-visible identifier).</td>
+</tr>
+<tr>
+<td><code>pvcName</code></td>
+<td><code>string</code></td>
+<td>PersistentVolumeClaim backing this disk. Empty when the PVC has not yet been created (e.g., DataVolume provisioning).</td>
+</tr>
+<tr>
+<td><code>storageClass</code></td>
+<td><code>string</code></td>
+<td>Storage class of the backing PVC. Empty when the PVC does not exist or has no <code>storageClassName</code>.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="preflightreport"><code>PreflightReport</code><a class="headerlink" href="#preflightreport" title="Permanent link">&para;</a></h3>
+<p>Pre-flight composition summary assembled from discovery, consistency, chunking, and storage backend data. Shows exactly how the plan would execute.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>primarySite</code></td>
+<td><code>string</code></td>
+<td>Declared primary cluster for this plan.</td>
+</tr>
+<tr>
+<td><code>secondarySite</code></td>
+<td><code>string</code></td>
+<td>Declared secondary (DR target) cluster.</td>
+</tr>
+<tr>
+<td><code>activeSite</code></td>
+<td><code>string</code></td>
+<td>Cluster currently owning the active workloads.</td>
+</tr>
+<tr>
+<td><code>activeExecution</code></td>
+<td><code>string</code></td>
+<td>Name of the in-progress DRExecution, or empty when idle. When non-empty, a warning is added.</td>
+</tr>
+<tr>
+<td><code>waves</code></td>
+<td><a href="#preflightwave"><code>[]PreflightWave</code></a></td>
+<td>Per-wave composition summaries.</td>
+</tr>
+<tr>
+<td><code>totalVMs</code></td>
+<td><code>int</code></td>
+<td>Total number of VMs in the plan.</td>
+</tr>
+<tr>
+<td><code>warnings</code></td>
+<td><code>[]string</code></td>
+<td>Non-blocking validation issues (e.g., unknown storage backend).</td>
+</tr>
+<tr>
+<td><code>sitesInSync</code></td>
+<td><code>bool</code></td>
+<td>Whether primary and secondary sites agree on the discovered VM set. Only meaningful in site-aware mode.</td>
+</tr>
+<tr>
+<td><code>siteDiscoveryDelta</code></td>
+<td><code>string</code></td>
+<td>VM differences between sites when <code>sitesInSync</code> is false. Omitted when sites agree.</td>
+</tr>
+<tr>
+<td><code>disksConsistent</code></td>
+<td><code>bool</code></td>
+<td>Whether all VMs have matching disk topology across sites. Only meaningful in site-aware mode with disk discovery on both sites.</td>
+</tr>
+<tr>
+<td><code>diskDiscoveryDelta</code></td>
+<td><code>string</code></td>
+<td>Per-VM disk topology differences when <code>disksConsistent</code> is false. Omitted when disks agree.</td>
+</tr>
+<tr>
+<td><code>generatedAt</code></td>
+<td><code>Time</code></td>
+<td>When this report was last computed.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="preflightwave"><code>PreflightWave</code><a class="headerlink" href="#preflightwave" title="Permanent link">&para;</a></h3>
+<p>Summarises a single execution wave in the pre-flight report.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>waveKey</code></td>
+<td><code>string</code></td>
+<td>Wave label value.</td>
+</tr>
+<tr>
+<td><code>vmCount</code></td>
+<td><code>int</code></td>
+<td>Total VMs in this wave.</td>
+</tr>
+<tr>
+<td><code>vms</code></td>
+<td><a href="#preflightvm"><code>[]PreflightVM</code></a></td>
+<td>Per-VM composition details.</td>
+</tr>
+<tr>
+<td><code>chunks</code></td>
+<td><a href="#preflightchunk"><code>[]PreflightChunk</code></a></td>
+<td>DRGroup chunking preview for this wave.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="preflightvm"><code>PreflightVM</code><a class="headerlink" href="#preflightvm" title="Permanent link">&para;</a></h3>
+<p>Single VM's composition attributes in the pre-flight report.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td><code>string</code></td>
+<td>VM resource name.</td>
+</tr>
+<tr>
+<td><code>namespace</code></td>
+<td><code>string</code></td>
+<td>VM's namespace.</td>
+</tr>
+<tr>
+<td><code>storageBackend</code></td>
+<td><code>string</code></td>
+<td>Plan's declared VolumeReplicationDriver stamped on every VM.</td>
+</tr>
+<tr>
+<td><code>consistencyLevel</code></td>
+<td><code>string</code></td>
+<td>Consistency level: <code>namespace</code> or <code>vm</code>.</td>
+</tr>
+<tr>
+<td><code>volumeGroupName</code></td>
+<td><code>string</code></td>
+<td>Volume group this VM belongs to.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="preflightchunk"><code>PreflightChunk</code><a class="headerlink" href="#preflightchunk" title="Permanent link">&para;</a></h3>
+<p>DRGroup chunk in the pre-flight chunking preview.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td><code>string</code></td>
+<td>DRGroup chunk name (e.g., <code>wave-1-group-0</code>).</td>
+</tr>
+<tr>
+<td><code>vmCount</code></td>
+<td><code>int</code></td>
+<td>Number of VMs in this chunk.</td>
+</tr>
+<tr>
+<td><code>vmNames</code></td>
+<td><code>[]string</code></td>
+<td>VM names in this chunk.</td>
+</tr>
+<tr>
+<td><code>volumeGroups</code></td>
+<td><a href="#preflightvolumegroup"><code>[]PreflightVolumeGroup</code></a></td>
+<td>Volume groups in this chunk, enriched with per-disk PVC topology.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="preflightvolumegroup"><code>PreflightVolumeGroup</code><a class="headerlink" href="#preflightvolumegroup" title="Permanent link">&para;</a></h3>
+<p>Volume group enriched with per-disk PVC topology.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td><code>string</code></td>
+<td>Volume group identifier (e.g., <code>ns-erp-database</code> or <code>vm-default-web01</code>).</td>
+</tr>
+<tr>
+<td><code>disks</code></td>
+<td><a href="#volumegroupdisk"><code>[]VolumeGroupDisk</code></a></td>
+<td>Disks and their per-site PVC mappings. Sorted by VM name then disk name.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="volumegroupdisk"><code>VolumeGroupDisk</code><a class="headerlink" href="#volumegroupdisk" title="Permanent link">&para;</a></h3>
+<p>Single disk within a volume group with per-site PVC mappings.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td><code>string</code></td>
+<td>Disk name from the VM's <code>domain.devices.disks</code> spec.</td>
+</tr>
+<tr>
+<td><code>sites</code></td>
+<td><a href="#disksitemapping"><code>[]DiskSiteMapping</code></a></td>
+<td>Per-site PVC mappings. Typically two entries (one per site).</td>
+</tr>
+</tbody>
+</table>
+<h3 id="disksitemapping"><code>DiskSiteMapping</code><a class="headerlink" href="#disksitemapping" title="Permanent link">&para;</a></h3>
+<p>Maps a disk to its PVC on a specific site.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>site</code></td>
+<td><code>string</code></td>
+<td>Cluster site name (e.g., <code>dc1</code>).</td>
+</tr>
+<tr>
+<td><code>pvcName</code></td>
+<td><code>string</code></td>
+<td>PersistentVolumeClaim backing this disk on the site.</td>
+</tr>
+<tr>
+<td><code>pvcNamespace</code></td>
+<td><code>string</code></td>
+<td>Namespace of the backing PVC on the site.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="volumegrouphealth"><code>VolumeGroupHealth</code><a class="headerlink" href="#volumegrouphealth" title="Permanent link">&para;</a></h3>
+<p>Replication health for a single volume group, populated by polling storage drivers on each reconcile cycle.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Validation</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td><code>string</code></td>
+<td>—</td>
+<td>Volume group identifier (e.g., <code>ns-erp-database</code>).</td>
+</tr>
+<tr>
+<td><code>namespace</code></td>
+<td><code>string</code></td>
+<td>—</td>
+<td>Kubernetes namespace for VMs in this group.</td>
+</tr>
+<tr>
+<td><code>health</code></td>
+<td><code>string</code></td>
+<td>Enum: <code>Healthy</code>, <code>Degraded</code>, <code>Syncing</code>, <code>NotReplicating</code>, <code>Error</code>, <code>Unknown</code></td>
+<td>Replication health status.</td>
+</tr>
+<tr>
+<td><code>lastSyncTime</code></td>
+<td><code>Time</code></td>
+<td>—</td>
+<td>When data was last successfully synchronized.</td>
+</tr>
+<tr>
+<td><code>lastChecked</code></td>
+<td><code>Time</code></td>
+<td>—</td>
+<td>When this health status was last polled.</td>
+</tr>
+<tr>
+<td><code>message</code></td>
+<td><code>string</code></td>
+<td>—</td>
+<td>Optional error or informational message.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="sitediscovery"><code>SiteDiscovery</code><a class="headerlink" href="#sitediscovery" title="Permanent link">&para;</a></h3>
+<p>VM discovery results from a single site's perspective. Each Soteria instance writes exclusively to the <code>SiteDiscovery</code> field matching its own site role.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>vms</code></td>
+<td><a href="#discoveredvm"><code>[]DiscoveredVM</code></a></td>
+<td>VMs discovered on this site.</td>
+</tr>
+<tr>
+<td><code>discoveredVMCount</code></td>
+<td><code>int</code></td>
+<td>Number of VMs discovered on this site.</td>
+</tr>
+<tr>
+<td><code>lastDiscoveryTime</code></td>
+<td><code>Time</code></td>
+<td>When the last discovery cycle completed on this site.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="conditions">Conditions<a class="headerlink" href="#conditions" title="Permanent link">&para;</a></h3>
+<p>DRPlan uses standard Kubernetes <code>metav1.Condition</code> objects. Each condition has:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>type</code></td>
+<td><code>string</code></td>
+<td>Condition type (e.g., <code>Ready</code>).</td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td><code>string</code></td>
+<td><code>True</code>, <code>False</code>, or <code>Unknown</code>.</td>
+</tr>
+<tr>
+<td><code>observedGeneration</code></td>
+<td><code>int64</code></td>
+<td>Generation observed when the condition was set.</td>
+</tr>
+<tr>
+<td><code>lastTransitionTime</code></td>
+<td><code>Time</code></td>
+<td>Last time the condition transitioned.</td>
+</tr>
+<tr>
+<td><code>reason</code></td>
+<td><code>string</code></td>
+<td>Machine-readable reason (PascalCase).</td>
+</tr>
+<tr>
+<td><code>message</code></td>
+<td><code>string</code></td>
+<td>Human-readable description.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="validation-rules">Validation Rules<a class="headerlink" href="#validation-rules" title="Permanent link">&para;</a></h2>
+<h3 id="create-validation">Create Validation<a class="headerlink" href="#create-validation" title="Permanent link">&para;</a></h3>
+<p>These rules are enforced on every <code>CREATE</code> operation by the aggregated API server strategy and the validating admission webhook:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Rule</th>
+<th>Error</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>spec.volumeReplicationDriver.type</code></td>
+<td>Must be one of <code>noop</code>, <code>csi-extension</code></td>
+<td><code>NotSupported</code> — unsupported value</td>
+</tr>
+<tr>
+<td><code>spec.volumeReplicationDriver.volumeReplicationClass</code></td>
+<td>Required when <code>type</code> is <code>csi-extension</code>; forbidden when <code>type</code> is <code>noop</code></td>
+<td><code>Required</code> / <code>Forbidden</code></td>
+</tr>
+<tr>
+<td><code>spec.maxConcurrentFailovers</code></td>
+<td>Must be ≥ 1</td>
+<td><code>Invalid</code> — must be greater than 0</td>
+</tr>
+<tr>
+<td><code>spec.primarySite</code></td>
+<td>Must not be empty</td>
+<td><code>Required</code></td>
+</tr>
+<tr>
+<td><code>spec.secondarySite</code></td>
+<td>Must not be empty; must differ from <code>primarySite</code></td>
+<td><code>Required</code> / <code>Invalid</code> — must differ from primarySite</td>
+</tr>
+<tr>
+<td><code>spec.vmReadyTimeout</code></td>
+<td>If set, must be a positive duration</td>
+<td><code>Invalid</code> — must be a positive duration</td>
+</tr>
+</tbody>
+</table>
+<h3 id="update-validation-immutability">Update Validation (Immutability)<a class="headerlink" href="#update-validation-immutability" title="Permanent link">&para;</a></h3>
+<p>These fields are <strong>immutable after creation</strong>. Any change is rejected with a <code>Forbidden</code> error:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Constraint</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>spec.volumeReplicationDriver</code></td>
+<td>Entire struct is immutable (type, volumeReplicationClass)</td>
+</tr>
+<tr>
+<td><code>spec.primarySite</code></td>
+<td>Immutable</td>
+</tr>
+<tr>
+<td><code>spec.secondarySite</code></td>
+<td>Immutable</td>
+</tr>
+</tbody>
+</table>
+<p>All create-time validations also run on updates.</p>
+<h3 id="driver-specific-validation">Driver-Specific Validation<a class="headerlink" href="#driver-specific-validation" title="Permanent link">&para;</a></h3>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">noop</label><label for="__tabbed_1_2">csi-extension</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<p>The <code>noop</code> driver requires no additional configuration:</p>
+<ul>
+<li><code>volumeReplicationClass</code>: <strong>Must not be set</strong> (forbidden for noop driver).</li>
+</ul>
+</div>
+<div class="tabbed-block">
+<p>The CSI Extension driver requires:</p>
+<ul>
+<li><code>volumeReplicationClass</code>: <strong>Required</strong> — the VolumeReplicationClass name stamped on VR/VGR CRs.</li>
+</ul>
+</div>
+</div>
+</div>
+<hr />
+<h2 id="label-annotation-conventions">Label &amp; Annotation Conventions<a class="headerlink" href="#label-annotation-conventions" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Applies To</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>soteria.io/drplan</code></td>
+<td>VirtualMachine</td>
+<td>Declares membership in a DRPlan. Label keys can only have one value per resource, structurally enforcing one-plan-per-VM exclusivity.</td>
+</tr>
+<tr>
+<td><code>soteria.io/wave</code></td>
+<td>VirtualMachine</td>
+<td>Assigns VMs to execution waves. The value is the wave key (e.g., <code>"1"</code>, <code>"2"</code>).</td>
+</tr>
+<tr>
+<td><code>soteria.io/consistency-level</code></td>
+<td>Namespace (annotation)</td>
+<td>Controls consistency-level grouping. Set to <code>namespace</code> to group all VMs in that namespace into a single VolumeGroup. Defaults to <code>vm</code> (per-VM grouping).</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="phase-lifecycle">Phase Lifecycle<a class="headerlink" href="#phase-lifecycle" title="Permanent link">&para;</a></h2>
+<p>DRPlan follows an 8-phase symmetric lifecycle. Only <strong>rest states</strong> are persisted in <code>status.phase</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Persisted Rest State</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SteadyState</code></td>
+<td>Normal operation. Primary site is active, replication flows A→B.</td>
+</tr>
+<tr>
+<td><code>FailedOver</code></td>
+<td>Workloads are running on the secondary site. No replication.</td>
+</tr>
+<tr>
+<td><code>DRedSteadyState</code></td>
+<td>Post-reprotect. Secondary site is active, replication flows B→A.</td>
+</tr>
+<tr>
+<td><code>FailedBack</code></td>
+<td>Workloads returned to primary site. No replication.</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Transient phases</strong> are derived at runtime from the active DRExecution's mode — they are never stored:</p>
+<table>
+<thead>
+<tr>
+<th>Transient Phase</th>
+<th>Derived When</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>FailingOver</code></td>
+<td>Active execution in <code>planned_migration</code> or <code>disaster</code> mode from <code>SteadyState</code></td>
+</tr>
+<tr>
+<td><code>Reprotecting</code></td>
+<td>Active execution in <code>reprotect</code> mode from <code>FailedOver</code></td>
+</tr>
+<tr>
+<td><code>FailingBack</code></td>
+<td>Active execution in <code>planned_migration</code> or <code>disaster</code> mode from <code>DRedSteadyState</code></td>
+</tr>
+<tr>
+<td><code>ReprotectingBack</code></td>
+<td>Active execution in <code>reprotect</code> mode from <code>FailedBack</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">&para;</a></h2>
+<h3 id="minimal-drplan-noop-driver">Minimal DRPlan (noop driver)<a class="headerlink" href="#minimal-drplan-noop-driver" title="Permanent link">&para;</a></h3>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">soteria.io/v1alpha1</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">DRPlan</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-dr-plan</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">dr-plans</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="nt">spec</span><span class="p">:</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">  </span><span class="nt">volumeReplicationDriver</span><span class="p">:</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">noop</span>
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">  </span><span class="nt">maxConcurrentFailovers</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5</span>
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">  </span><span class="nt">primarySite</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">dc1</span>
+</span><span id="__span-1-11"><a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="w">  </span><span class="nt">secondarySite</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">dc2</span>
+</span></code></pre></div>
+<h3 id="full-drplan-csi-extension-driver">Full DRPlan (CSI Extension driver)<a class="headerlink" href="#full-drplan-csi-extension-driver" title="Permanent link">&para;</a></h3>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">soteria.io/v1alpha1</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">DRPlan</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">erp-full-stack</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">dr-plans</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="nt">spec</span><span class="p">:</span>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">  </span><span class="c1"># Volume replication driver configuration (immutable after creation)</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">  </span><span class="nt">volumeReplicationDriver</span><span class="p">:</span>
+</span><span id="__span-2-9"><a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">csi-extension</span>
+</span><span id="__span-2-10"><a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="w">    </span><span class="c1"># VolumeReplicationClass for VR/VGR CRs (required for csi-extension)</span>
+</span><span id="__span-2-11"><a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="w">    </span><span class="nt">volumeReplicationClass</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">odf-rbd-volumereplicationclass</span>
+</span><span id="__span-2-12"><a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a><span class="w">  </span><span class="c1"># Maximum concurrent VM failovers per wave chunk (minimum: 1)</span>
+</span><span id="__span-2-13"><a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a><span class="w">  </span><span class="nt">maxConcurrentFailovers</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
+</span><span id="__span-2-14"><a id="__codelineno-2-14" name="__codelineno-2-14" href="#__codelineno-2-14"></a><span class="w">  </span><span class="c1"># Site definitions (both immutable after creation)</span>
+</span><span id="__span-2-15"><a id="__codelineno-2-15" name="__codelineno-2-15" href="#__codelineno-2-15"></a><span class="w">  </span><span class="nt">primarySite</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">east</span>
+</span><span id="__span-2-16"><a id="__codelineno-2-16" name="__codelineno-2-16" href="#__codelineno-2-16"></a><span class="w">  </span><span class="nt">secondarySite</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">west</span>
+</span><span id="__span-2-17"><a id="__codelineno-2-17" name="__codelineno-2-17" href="#__codelineno-2-17"></a><span class="w">  </span><span class="c1"># Maximum time to wait for VMs to reach Running state per wave (default: 5m)</span>
+</span><span id="__span-2-18"><a id="__codelineno-2-18" name="__codelineno-2-18" href="#__codelineno-2-18"></a><span class="w">  </span><span class="nt">vmReadyTimeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10m</span>
+</span><span id="__span-2-19"><a id="__codelineno-2-19" name="__codelineno-2-19" href="#__codelineno-2-19"></a><span class="w">  </span><span class="c1"># Maximum time to wait for VR/VGR resync during planned migration Step 0 (default: 10m)</span>
+</span><span id="__span-2-20"><a id="__codelineno-2-20" name="__codelineno-2-20" href="#__codelineno-2-20"></a><span class="w">  </span><span class="nt">resyncTimeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">15m</span>
+</span></code></pre></div>
+<h3 id="vm-labels-for-plan-membership">VM Labels for Plan Membership<a class="headerlink" href="#vm-labels-for-plan-membership" title="Permanent link">&para;</a></h3>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">kubevirt.io/v1</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">VirtualMachine</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">erp-app-01</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">erp</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">  </span><span class="nt">labels</span><span class="p">:</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">    </span><span class="c1"># Associates this VM with the "erp-full-stack" DRPlan</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">    </span><span class="nt">soteria.io/drplan</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">erp-full-stack</span>
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="w">    </span><span class="c1"># Places this VM in wave "1" for ordered execution</span>
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="w">    </span><span class="nt">soteria.io/wave</span><span class="p">:</span><span class="w"> </span><span class="s">"1"</span>
+</span></code></pre></div>
+<h3 id="namespace-annotation-for-consistency-grouping">Namespace Annotation for Consistency Grouping<a class="headerlink" href="#namespace-annotation-for-consistency-grouping" title="Permanent link">&para;</a></h3>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">v1</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Namespace</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">erp</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">  </span><span class="nt">annotations</span><span class="p">:</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">    </span><span class="c1"># Groups all VMs in this namespace into a single VolumeGroup</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">    </span><span class="c1"># for crash-consistent snapshots (default is "vm" — per-VM grouping)</span>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">    </span><span class="nt">soteria.io/consistency-level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">namespace</span>
+</span></code></pre></div>
+<hr />
+<h2 id="source-files">Source Files<a class="headerlink" href="#source-files" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>pkg/apis/soteria.io/v1alpha1/types.go</code></td>
+<td>DRPlan struct definitions and kubebuilder markers</td>
+</tr>
+<tr>
+<td><code>pkg/apis/soteria.io/v1alpha1/validation.go</code></td>
+<td><code>ValidateDRPlan</code> and <code>ValidateDRPlanUpdate</code> field-level validation</td>
+</tr>
+<tr>
+<td><code>pkg/apis/soteria.io/v1alpha1/defaults.go</code></td>
+<td>Defaulting logic (kubebuilder markers handle defaults for <code>vmReadyTimeout</code>, <code>resyncTimeout</code>)</td>
+</tr>
+<tr>
+<td><code>pkg/admission/drplan_validator.go</code></td>
+<td>Validating admission webhook (defense-in-depth)</td>
+</tr>
+</tbody>
+</table>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["content.code.copy", "content.code.annotate", "navigation.instant", "navigation.tracking", "navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "search.suggest", "toc.follow"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

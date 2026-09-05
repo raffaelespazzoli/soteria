@@ -1,0 +1,2937 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Open-source, Kubernetes-native disaster recovery orchestrator for OpenShift Virtualization.">
+      
+      
+      
+        <link rel="canonical" href="https://raffaelespazzoli.github.io/soteria/docs/installation/scylladb/submariner/">
+      
+      
+        <link rel="prev" href="../overview/">
+      
+      
+        <link rel="next" href="../cilium/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Submariner - Soteria</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#scylladb-with-submariner" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="Soteria" class="md-header__button md-logo" aria-label="Soteria" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Soteria
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Submariner
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/soteria-project/soteria" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    soteria-project/soteria
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="Soteria" class="md-nav__button md-logo" aria-label="Soteria" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Soteria
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/soteria-project/soteria" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    soteria-project/soteria
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Installation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../prerequisites/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prerequisites
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_2_2" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_2_2" id="__nav_2_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ScyllaDB & Network
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_2_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    ScyllaDB & Network
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Submariner
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Submariner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#architecture-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architecture overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prerequisites
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-1-cert-manager-and-tls-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 1 — cert-manager and TLS setup
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Step 1 — cert-manager and TLS setup">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#11-create-the-shared-issuer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.1 — Create the shared Issuer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-api-server-tls-certificate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.2 — API server TLS certificate
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-2-scylladb-mtls-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 2 — ScyllaDB mTLS configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Step 2 — ScyllaDB mTLS configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-scyllayaml-configmap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1 — scylla.yaml ConfigMap
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-tls-volumes-on-scyllacluster" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2 — TLS volumes on ScyllaCluster
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-combined-ca-configmap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.3 — Combined CA ConfigMap
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-3-submariner-mcs-serviceexport" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 3 — Submariner MCS ServiceExport
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-4-deploy-scylladb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 4 — Deploy ScyllaDB
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Step 4 — Deploy ScyllaDB">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-kustomize-overlay-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.1 — Kustomize overlay structure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-set-the-container-image" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.2 — Set the container image
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#43-deploy-etl6-seed-dc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.3 — Deploy etl6 (seed DC)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4.3 — Deploy etl6 (seed DC)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#create-the-combined-ca-configmap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create the combined CA ConfigMap
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#wait-for-scylladb-readiness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wait for ScyllaDB readiness
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#44-deploy-etl7-joining-dc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.4 — Deploy etl7 (joining DC)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-5-post-deploy-tls-volume-patch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 5 — Post-deploy TLS volume patch
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Step 5 — Post-deploy TLS volume patch">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51-identify-the-statefulset-and-scylla-container-index" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.1 — Identify the StatefulSet and scylla container index
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#52-patch-volumes-and-volume-mounts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.2 — Patch volumes and volume mounts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#53-wait-for-pods-to-restart" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.3 — Wait for pods to restart
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-6-verify-multi-dc-convergence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 6 — Verify multi-DC convergence
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Step 6 — Verify multi-DC convergence">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#61-nodetool-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.1 — nodetool status
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#62-cql-connectivity-check" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.2 — CQL connectivity check
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#63-verify-the-soteria-keyspace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.3 — Verify the Soteria keyspace
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#64-verify-soteria-api-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.4 — Verify Soteria API server
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#soteria-manager-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Soteria manager configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tear-down" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tear down
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Troubleshooting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#scylladb-pods-stuck-in-crashloopbackoff" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ScyllaDB pods stuck in CrashLoopBackOff
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#etl7-nodes-not-joining-the-cluster" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        etl7 nodes not joining the cluster
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#apiservice-not-available" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        APIService not available
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#viewing-soteria-logs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Viewing Soteria logs
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../cilium/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cilium Cluster Mesh
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../helm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Helm Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/dr-lifecycle/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DR Lifecycle
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../architecture/storage-drivers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage Drivers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Usage
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/creating-a-drplan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Creating a DRPlan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/waves/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Waves & Throttling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/volumes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Volume Grouping
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/failover/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Executing Failover
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_5" id="__nav_4_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    UI Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    UI Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/ui-guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/ui-guide/plan-detail/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plan Detail
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/ui-guide/execution-monitor/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Execution Monitor
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_1" id="__nav_5_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/api/drplan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DRPlan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/api/drexecution/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DRExecution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/helm-values/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Helm Values
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contributing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../contributing/dev-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../contributing/storage-drivers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Writing Storage Drivers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#architecture-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architecture overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#prerequisites" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prerequisites
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-1-cert-manager-and-tls-setup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 1 — cert-manager and TLS setup
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Step 1 — cert-manager and TLS setup">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#11-create-the-shared-issuer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.1 — Create the shared Issuer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#12-api-server-tls-certificate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1.2 — API server TLS certificate
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-2-scylladb-mtls-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 2 — ScyllaDB mTLS configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Step 2 — ScyllaDB mTLS configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21-scyllayaml-configmap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1 — scylla.yaml ConfigMap
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22-tls-volumes-on-scyllacluster" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2 — TLS volumes on ScyllaCluster
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#23-combined-ca-configmap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.3 — Combined CA ConfigMap
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-3-submariner-mcs-serviceexport" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 3 — Submariner MCS ServiceExport
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-4-deploy-scylladb" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 4 — Deploy ScyllaDB
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Step 4 — Deploy ScyllaDB">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#41-kustomize-overlay-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.1 — Kustomize overlay structure
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#42-set-the-container-image" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.2 — Set the container image
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#43-deploy-etl6-seed-dc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.3 — Deploy etl6 (seed DC)
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4.3 — Deploy etl6 (seed DC)">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#create-the-combined-ca-configmap" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create the combined CA ConfigMap
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#wait-for-scylladb-readiness" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Wait for ScyllaDB readiness
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#44-deploy-etl7-joining-dc" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4.4 — Deploy etl7 (joining DC)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-5-post-deploy-tls-volume-patch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 5 — Post-deploy TLS volume patch
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Step 5 — Post-deploy TLS volume patch">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51-identify-the-statefulset-and-scylla-container-index" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.1 — Identify the StatefulSet and scylla container index
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#52-patch-volumes-and-volume-mounts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.2 — Patch volumes and volume mounts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#53-wait-for-pods-to-restart" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.3 — Wait for pods to restart
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-6-verify-multi-dc-convergence" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 6 — Verify multi-DC convergence
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Step 6 — Verify multi-DC convergence">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#61-nodetool-status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.1 — nodetool status
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#62-cql-connectivity-check" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.2 — CQL connectivity check
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#63-verify-the-soteria-keyspace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.3 — Verify the Soteria keyspace
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#64-verify-soteria-api-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.4 — Verify Soteria API server
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#soteria-manager-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Soteria manager configuration
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tear-down" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tear down
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Troubleshooting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#scylladb-pods-stuck-in-crashloopbackoff" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        ScyllaDB pods stuck in CrashLoopBackOff
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#etl7-nodes-not-joining-the-cluster" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        etl7 nodes not joining the cluster
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#apiservice-not-available" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        APIService not available
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#viewing-soteria-logs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Viewing Soteria logs
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="scylladb-with-submariner">ScyllaDB with Submariner<a class="headerlink" href="#scylladb-with-submariner" title="Permanent link">&para;</a></h1>
+<p>This guide walks through deploying ScyllaDB as a multi-datacenter cluster
+across two Kubernetes clusters connected via
+<a href="https://submariner.io/">Submariner</a> Multicluster Services (MCS).
+Soteria uses ScyllaDB for cross-site state replication (DRPlans,
+DRExecutions) with eventual consistency
+(<code>NetworkTopologyStrategy</code>, <code>LOCAL_ONE</code> reads/writes).</p>
+<p>The reference deployment uses two clusters—<strong>etl6</strong> (seed DC) and
+<strong>etl7</strong> (joining DC)—but the procedure generalises to any pair of
+Submariner-connected clusters.</p>
+<hr />
+<h2 id="architecture-overview">Architecture overview<a class="headerlink" href="#architecture-overview" title="Permanent link">&para;</a></h2>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>┌──────────── Cluster etl6 ────────────┐   ┌──────────── Cluster etl7 ────────────┐
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>│  ScyllaDB DC "etl6" (seed)           │   │  ScyllaDB DC "etl7" (joins etl6)     │
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>│  ┌────────┐  ┌────────┐             │   │  ┌────────┐  ┌────────┐             │
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>│  │ node-0 │  │ node-1 │             │   │  │ node-0 │  │ node-1 │             │
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>│  └───┬────┘  └───┬────┘             │   │  └───┬────┘  └───┬────┘             │
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>│      │  gossip   │                   │   │      │  gossip   │                   │
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>│      └─────┬─────┘                   │   │      └─────┬─────┘                   │
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>│            │                         │   │            │                         │
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>│  ServiceExport ──────── Submariner MCS ──────── externalSeeds                  │
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>│  soteria-scylladb-client             │   │  soteria-scylladb-client             │
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>│            │                         │   │  .soteria.svc.clusterset.local       │
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>│  Soteria controller-manager          │   │  Soteria controller-manager          │
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>│  (--scylladb-local-dc=etl6)         │   │  (--scylladb-local-dc=etl7)         │
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>└──────────────────────────────────────┘   └──────────────────────────────────────┘
+</span></code></pre></div>
+<p>Cross-DC seed discovery uses Submariner MCS: etl6 exports the ScyllaDB
+client headless service via a <code>ServiceExport</code>, and etl7 references it as
+an external seed at
+<code>soteria-scylladb-client.soteria.svc.clusterset.local</code>.</p>
+<hr />
+<h2 id="prerequisites">Prerequisites<a class="headerlink" href="#prerequisites" title="Permanent link">&para;</a></h2>
+<p>Before starting, verify the following on <strong>both</strong> clusters:</p>
+<table>
+<thead>
+<tr>
+<th>Requirement</th>
+<th>How to check</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>kubectl</code> contexts <code>etl6</code> and <code>etl7</code> configured</td>
+<td><code>kubectl --context=etl6 cluster-info</code></td>
+</tr>
+<tr>
+<td><code>kustomize</code> installed (or use <code>make kustomize</code>)</td>
+<td><code>kustomize version</code></td>
+</tr>
+<tr>
+<td><a href="https://cert-manager.io/">cert-manager</a> installed</td>
+<td><code>kubectl get crd certificates.cert-manager.io</code></td>
+</tr>
+<tr>
+<td><a href="https://operator.docs.scylladb.com/">scylla-operator</a> installed</td>
+<td><code>kubectl get crd scyllaclusters.scylla.scylladb.com</code></td>
+</tr>
+<tr>
+<td>Submariner with MCS API active</td>
+<td><code>kubectl get crd serviceexports.multicluster.x-k8s.io</code></td>
+</tr>
+<tr>
+<td>Issuer <code>soteria-internal</code> in <code>soteria</code> namespace</td>
+<td><code>kubectl -n soteria get issuer soteria-internal</code></td>
+</tr>
+<tr>
+<td>Container image available</td>
+<td><code>make docker-build docker-push IMG=&lt;registry&gt;/&lt;image&gt;:&lt;tag&gt;</code></td>
+</tr>
+</tbody>
+</table>
+<div class="admonition tip">
+<p class="admonition-title">Shared CA requirement</p>
+<p>Both clusters <strong>must</strong> trust the same Certificate Authority for
+ScyllaDB internode mTLS. The <code>soteria-internal</code> Issuer on each
+cluster must reference the same CA key pair. Cross-CA trust is
+<strong>not</strong> supported.</p>
+</div>
+<hr />
+<h2 id="step-1-cert-manager-and-tls-setup">Step 1 — cert-manager and TLS setup<a class="headerlink" href="#step-1-cert-manager-and-tls-setup" title="Permanent link">&para;</a></h2>
+<p>Soteria's Submariner overlay switches <strong>all</strong> cert-manager <code>Certificate</code>
+resources from the default <code>soteria-ca</code> Issuer to <code>soteria-internal</code>.
+This includes:</p>
+<table>
+<thead>
+<tr>
+<th>Certificate</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>soteria-scylladb-serving</code></td>
+<td>ScyllaDB server-side TLS (internode + CQL)</td>
+</tr>
+<tr>
+<td><code>soteria-scylladb-client</code></td>
+<td>Soteria → ScyllaDB client mTLS</td>
+</tr>
+<tr>
+<td><code>soteria-serving-cert</code></td>
+<td>Webhook serving certificate</td>
+</tr>
+<tr>
+<td><code>soteria-metrics-certs</code></td>
+<td>Metrics endpoint TLS</td>
+</tr>
+<tr>
+<td><code>soteria-apiserver-cert</code></td>
+<td>Aggregated API server TLS</td>
+</tr>
+</tbody>
+</table>
+<h3 id="11-create-the-shared-issuer">1.1 — Create the shared Issuer<a class="headerlink" href="#11-create-the-shared-issuer" title="Permanent link">&para;</a></h3>
+<p>Create the <code>soteria-internal</code> Issuer on <strong>both</strong> clusters. The Issuer
+must reference a <code>Secret</code> containing the shared CA key pair:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">cert-manager.io/v1</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Issuer</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">soteria-internal</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">soteria</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="nt">spec</span><span class="p">:</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">  </span><span class="nt">ca</span><span class="p">:</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">    </span><span class="nt">secretName</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">soteria-internal-ca</span><span class="w">  </span><span class="c1"># must contain tls.crt + tls.key</span>
+</span></code></pre></div>
+<p>Apply on both clusters:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>kubectl<span class="w"> </span>--context<span class="o">=</span>etl6<span class="w"> </span>-n<span class="w"> </span>soteria<span class="w"> </span>apply<span class="w"> </span>-f<span class="w"> </span>issuer.yaml
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>kubectl<span class="w"> </span>--context<span class="o">=</span>etl7<span class="w"> </span>-n<span class="w"> </span>soteria<span class="w"> </span>apply<span class="w"> </span>-f<span class="w"> </span>issuer.yaml
+</span></code></pre></div>
+<div class="admonition warning">
+<p class="admonition-title">Same CA key pair</p>
+<p>The <code>soteria-internal-ca</code> Secret <strong>must</strong> contain identical CA
+certificate and key on both clusters. Generate the CA once, then
+distribute the Secret to both clusters. If each cluster has its
+own CA, internode mTLS handshakes will fail.</p>
+</div>
+<h3 id="12-api-server-tls-certificate">1.2 — API server TLS certificate<a class="headerlink" href="#12-api-server-tls-certificate" title="Permanent link">&para;</a></h3>
+<p>The base overlay includes an API server <code>Certificate</code>
+(<code>hack/overlays/base/apiserver-cert.yaml</code>) that is issued by
+<code>soteria-internal</code>:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">cert-manager.io/v1</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Certificate</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">soteria-apiserver-cert</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">soteria</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="nt">spec</span><span class="p">:</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">  </span><span class="nt">secretName</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">soteria-apiserver-tls</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">  </span><span class="nt">duration</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">8760h</span><span class="w">    </span><span class="c1"># 1 year</span>
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="w">  </span><span class="nt">renewBefore</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">720h</span><span class="w">  </span><span class="c1"># 30 days</span>
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="w">  </span><span class="nt">issuerRef</span><span class="p">:</span>
+</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="w">    </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">soteria-internal</span>
+</span><span id="__span-3-12"><a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="w">    </span><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Issuer</span>
+</span><span id="__span-3-13"><a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a><span class="w">  </span><span class="nt">commonName</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">soteria-apiserver</span>
+</span><span id="__span-3-14"><a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a><span class="w">  </span><span class="nt">dnsNames</span><span class="p">:</span>
+</span><span id="__span-3-15"><a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">soteria-apiserver.soteria.svc</span>
+</span><span id="__span-3-16"><a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">soteria-apiserver.soteria.svc.cluster.local</span>
+</span><span id="__span-3-17"><a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a><span class="w">  </span><span class="nt">usages</span><span class="p">:</span>
+</span><span id="__span-3-18"><a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">server auth</span>
+</span></code></pre></div>
+<p>The DNS names are wired automatically by kustomize replacements from the
+<code>soteria-apiserver</code> Service.</p>
+<hr />
+<h2 id="step-2-scylladb-mtls-configuration">Step 2 — ScyllaDB mTLS configuration<a class="headerlink" href="#step-2-scylladb-mtls-configuration" title="Permanent link">&para;</a></h2>
+<h3 id="21-scyllayaml-configmap">2.1 — scylla.yaml ConfigMap<a class="headerlink" href="#21-scyllayaml-configmap" title="Permanent link">&para;</a></h3>
+<p>The overlay creates a <code>ConfigMap</code> named <code>scylla-config</code> that overrides
+both server and client encryption options
+(<code>hack/overlays/base/scylladb-tls-config.yaml</code>):</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">v1</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ConfigMap</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">scylla-config</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">soteria</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="nt">data</span><span class="p">:</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">  </span><span class="nt">scylla.yaml</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">|</span>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">    </span><span class="no">server_encryption_options:</span>
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">      </span><span class="no">internode_encryption: all</span>
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">      </span><span class="no">certificate: /etc/scylla/certmanager-tls/tls.crt</span>
+</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="w">      </span><span class="no">keyfile: /etc/scylla/certmanager-tls/tls.key</span>
+</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="w">      </span><span class="no">truststore: /etc/scylla/certmanager-ca/ca-bundle.crt</span>
+</span><span id="__span-4-13"><a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="w">      </span><span class="no">require_client_auth: true</span>
+</span><span id="__span-4-14"><a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="w">    </span><span class="no">client_encryption_options:</span>
+</span><span id="__span-4-15"><a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="w">      </span><span class="no">enabled: true</span>
+</span><span id="__span-4-16"><a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="w">      </span><span class="no">certificate: /etc/scylla/certmanager-tls/tls.crt</span>
+</span><span id="__span-4-17"><a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a><span class="w">      </span><span class="no">keyfile: /etc/scylla/certmanager-tls/tls.key</span>
+</span><span id="__span-4-18"><a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a><span class="w">      </span><span class="no">truststore: /etc/scylla/combined-ca/ca-bundle.crt</span>
+</span><span id="__span-4-19"><a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a><span class="w">      </span><span class="no">require_client_auth: true</span>
+</span></code></pre></div>
+<p>Key details:</p>
+<ul>
+<li><strong>Internode</strong> (<code>server_encryption_options</code>): encrypts all gossip and
+  streaming traffic. The truststore points to the cert-manager CA.</li>
+<li><strong>Client</strong> (<code>client_encryption_options</code>): encrypts CQL connections.
+  The truststore points to a <strong>combined CA</strong> bundle (see below).</li>
+</ul>
+<h3 id="22-tls-volumes-on-scyllacluster">2.2 — TLS volumes on ScyllaCluster<a class="headerlink" href="#22-tls-volumes-on-scyllacluster" title="Permanent link">&para;</a></h3>
+<p>The ScyllaCluster TLS patch (<code>hack/overlays/base/scylladb-tls-patch.yaml</code>)
+adds three volumes and mounts to rack-level configuration:</p>
+<table>
+<thead>
+<tr>
+<th>Volume</th>
+<th>Source</th>
+<th>Mount path</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>certmanager-serving</code></td>
+<td>Secret <code>scylladb-serving-tls</code></td>
+<td><code>/etc/scylla/certmanager-tls</code></td>
+</tr>
+<tr>
+<td><code>certmanager-ca</code></td>
+<td>Secret <code>scylladb-serving-tls</code> (key <code>ca.crt</code>)</td>
+<td><code>/etc/scylla/certmanager-ca</code></td>
+</tr>
+<tr>
+<td><code>combined-ca</code></td>
+<td>ConfigMap <code>scylladb-combined-ca</code></td>
+<td><code>/etc/scylla/combined-ca</code></td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">Operator volume propagation workaround</p>
+<p>scylla-operator v1.20.2 does <strong>not</strong> propagate rack-level
+<code>volumes</code>/<code>volumeMounts</code> from the <code>ScyllaCluster</code> CR to the
+<code>StatefulSet</code>. The deployment script patches the StatefulSet
+directly as a post-deploy step (see
+<a href="#step-5-post-deploy-tls-volume-patch">Step 5</a>).</p>
+</div>
+<h3 id="23-combined-ca-configmap">2.3 — Combined CA ConfigMap<a class="headerlink" href="#23-combined-ca-configmap" title="Permanent link">&para;</a></h3>
+<p>ScyllaDB client connections need to trust both the cert-manager CA and
+the scylla-operator's internal client CA. The deployment script builds a
+<code>scylladb-combined-ca</code> ConfigMap at deploy time by concatenating:</p>
+<ol>
+<li><code>ca.crt</code> from the <code>scylladb-serving-tls</code> Secret (cert-manager CA)</li>
+<li><code>ca-bundle.crt</code> from the <code>soteria-scylladb-local-client-ca</code> ConfigMap
+   (operator client CA)</li>
+</ol>
+<p>This ConfigMap is created automatically during deployment (see
+<a href="#step-4-deploy-scylladb">Step 4</a>).</p>
+<hr />
+<h2 id="step-3-submariner-mcs-serviceexport">Step 3 — Submariner MCS ServiceExport<a class="headerlink" href="#step-3-submariner-mcs-serviceexport" title="Permanent link">&para;</a></h2>
+<p>The base overlay includes a <code>ServiceExport</code> resource
+(<code>hack/overlays/base/serviceexport.yaml</code>) that exports the ScyllaDB
+client headless service for cross-cluster discovery:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">multicluster.x-k8s.io/v1alpha1</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ServiceExport</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">soteria-scylladb-client</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">  </span><span class="nt">namespace</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">soteria</span>
+</span></code></pre></div>
+<p>Once applied, Submariner makes the ScyllaDB endpoints available at:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>soteria-scylladb-client.soteria.svc.clusterset.local
+</span></code></pre></div>
+<p>The joining DC (etl7) uses this DNS name as its external seed.</p>
+<hr />
+<h2 id="step-4-deploy-scylladb">Step 4 — Deploy ScyllaDB<a class="headerlink" href="#step-4-deploy-scylladb" title="Permanent link">&para;</a></h2>
+<h3 id="41-kustomize-overlay-structure">4.1 — Kustomize overlay structure<a class="headerlink" href="#41-kustomize-overlay-structure" title="Permanent link">&para;</a></h3>
+<p>The overlays are organised in three layers:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>hack/overlays/
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>├── base/                    # Shared resources and patches
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>│   ├── kustomization.yaml   # Imports config/default, adds TLS + MCS
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>│   ├── serviceexport.yaml   # MCS ServiceExport
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>│   ├── apiserver-cert.yaml  # API server Certificate
+</span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>│   ├── apiserver-rbac.yaml  # auth-delegation + admission RBAC
+</span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>│   ├── scylladb-tls-config.yaml   # scylla.yaml mTLS ConfigMap
+</span><span id="__span-7-8"><a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>│   ├── scylladb-tls-patch.yaml    # ScyllaCluster TLS volumes
+</span><span id="__span-7-9"><a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a>│   ├── manager-scylladb-patch.yaml # Manager TLS volume mounts
+</span><span id="__span-7-10"><a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>│   ├── manager-args-patch.yaml     # ScyllaDB + API server args
+</span><span id="__span-7-11"><a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>│   ├── manager-apiserver-patch.yaml # API server port/probes
+</span><span id="__span-7-12"><a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>│   └── storageclass-xfs.yaml       # Lab StorageClass
+</span><span id="__span-7-13"><a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a>├── etl6/                    # Seed DC overlay
+</span><span id="__span-7-14"><a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a>│   ├── kustomization.yaml   # Patches: DC name = etl6, no externalSeeds
+</span><span id="__span-7-15"><a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a>│   ├── scyllacluster-patch.yaml
+</span><span id="__span-7-16"><a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a>│   └── manager-dc-patch.yaml       # --scylladb-local-dc=etl6
+</span><span id="__span-7-17"><a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a>└── etl7/                    # Joining DC overlay
+</span><span id="__span-7-18"><a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a>    ├── kustomization.yaml   # Patches: DC name = etl7, externalSeeds
+</span><span id="__span-7-19"><a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a>    ├── scyllacluster-patch.yaml
+</span><span id="__span-7-20"><a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a>    └── manager-dc-patch.yaml       # --scylladb-local-dc=etl7
+</span></code></pre></div>
+<p>The <strong>etl6</strong> ScyllaCluster patch sets the datacenter name and clears
+zone affinity:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># hack/overlays/etl6/scyllacluster-patch.yaml</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">op</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">replace</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">  </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/spec/datacenter/name</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">  </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">etl6</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">op</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">replace</span>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">  </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/spec/datacenter/racks/0/placement</span>
+</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="w">  </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{}</span>
+</span></code></pre></div>
+<p>The <strong>etl7</strong> patch adds <code>externalSeeds</code> pointing to the Submariner MCS
+DNS name:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># hack/overlays/etl7/scyllacluster-patch.yaml</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">op</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">replace</span>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">  </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/spec/datacenter/name</span>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">  </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">etl7</span>
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">op</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">add</span>
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="w">  </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/spec/externalSeeds</span>
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="w">  </span><span class="nt">value</span><span class="p">:</span>
+</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">soteria-scylladb-client.soteria.svc.clusterset.local</span>
+</span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">op</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">replace</span>
+</span><span id="__span-9-10"><a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a><span class="w">  </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/spec/datacenter/racks/0/placement</span>
+</span><span id="__span-9-11"><a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a><span class="w">  </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{}</span>
+</span></code></pre></div>
+<h3 id="42-set-the-container-image">4.2 — Set the container image<a class="headerlink" href="#42-set-the-container-image" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nb">cd</span><span class="w"> </span>config/manager
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>kustomize<span class="w"> </span>edit<span class="w"> </span><span class="nb">set</span><span class="w"> </span>image<span class="w"> </span><span class="s2">"controller=&lt;registry&gt;/&lt;image&gt;:&lt;tag&gt;"</span>
+</span></code></pre></div>
+<h3 id="43-deploy-etl6-seed-dc">4.3 — Deploy etl6 (seed DC)<a class="headerlink" href="#43-deploy-etl6-seed-dc" title="Permanent link">&para;</a></h3>
+<p>Deploy the seed cluster <strong>first</strong>. It has no <code>externalSeeds</code> because it
+is the first DC in the ScyllaDB cluster:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>kustomize<span class="w"> </span>build<span class="w"> </span>--load-restrictor<span class="w"> </span>LoadRestrictionsNone<span class="w"> </span>hack/overlays/etl6<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">  </span><span class="p">|</span><span class="w"> </span>kubectl<span class="w"> </span>--context<span class="o">=</span>etl6<span class="w"> </span>apply<span class="w"> </span>--server-side<span class="w"> </span>--force-conflicts<span class="w"> </span>-f<span class="w"> </span>-
+</span></code></pre></div>
+<h4 id="create-the-combined-ca-configmap">Create the combined CA ConfigMap<a class="headerlink" href="#create-the-combined-ca-configmap" title="Permanent link">&para;</a></h4>
+<p>After applying the manifests, wait for cert-manager to issue the
+<code>scylladb-serving-tls</code> Secret and for the scylla-operator to create the
+<code>soteria-scylladb-local-client-ca</code> ConfigMap, then build the combined CA
+bundle:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="c1"># Wait for both secrets to appear (poll up to 5 minutes)</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="nv">CM_CA</span><span class="o">=</span><span class="s2">""</span>
+</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="nv">OP_CA</span><span class="o">=</span><span class="s2">""</span>
+</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="k">for</span><span class="w"> </span>i<span class="w"> </span><span class="k">in</span><span class="w"> </span><span class="k">$(</span>seq<span class="w"> </span><span class="m">1</span><span class="w"> </span><span class="m">60</span><span class="k">)</span><span class="p">;</span><span class="w"> </span><span class="k">do</span>
+</span><span id="__span-12-5"><a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="w">  </span><span class="nv">raw_ca</span><span class="o">=</span><span class="k">$(</span>kubectl<span class="w"> </span>--context<span class="o">=</span>etl6<span class="w"> </span>-n<span class="w"> </span>soteria<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-12-6"><a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a><span class="w">    </span>get<span class="w"> </span>secret<span class="w"> </span>scylladb-serving-tls<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-12-7"><a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a><span class="w">    </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{.data.ca\.crt}'</span><span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">true</span>
+</span><span id="__span-12-8"><a id="__codelineno-12-8" name="__codelineno-12-8" href="#__codelineno-12-8"></a><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>-n<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">raw_ca</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+</span><span id="__span-12-9"><a id="__codelineno-12-9" name="__codelineno-12-9" href="#__codelineno-12-9"></a><span class="w">    </span><span class="nv">CM_CA</span><span class="o">=</span><span class="k">$(</span><span class="nb">echo</span><span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">raw_ca</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>base64<span class="w"> </span>-d<span class="k">)</span>
+</span><span id="__span-12-10"><a id="__codelineno-12-10" name="__codelineno-12-10" href="#__codelineno-12-10"></a><span class="w">  </span><span class="k">fi</span>
+</span><span id="__span-12-11"><a id="__codelineno-12-11" name="__codelineno-12-11" href="#__codelineno-12-11"></a><span class="w">  </span><span class="nv">OP_CA</span><span class="o">=</span><span class="k">$(</span>kubectl<span class="w"> </span>--context<span class="o">=</span>etl6<span class="w"> </span>-n<span class="w"> </span>soteria<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-12-12"><a id="__codelineno-12-12" name="__codelineno-12-12" href="#__codelineno-12-12"></a><span class="w">    </span>get<span class="w"> </span>configmap<span class="w"> </span>soteria-scylladb-local-client-ca<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-12-13"><a id="__codelineno-12-13" name="__codelineno-12-13" href="#__codelineno-12-13"></a><span class="w">    </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{.data.ca-bundle\.crt}'</span><span class="w"> </span><span class="m">2</span>&gt;/dev/null<span class="k">)</span><span class="w"> </span><span class="o">||</span><span class="w"> </span><span class="nb">true</span>
+</span><span id="__span-12-14"><a id="__codelineno-12-14" name="__codelineno-12-14" href="#__codelineno-12-14"></a><span class="w">  </span><span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>-n<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">CM_CA</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span><span class="o">]</span><span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span><span class="o">[</span><span class="w"> </span>-n<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">OP_CA</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+</span><span id="__span-12-15"><a id="__codelineno-12-15" name="__codelineno-12-15" href="#__codelineno-12-15"></a><span class="w">    </span><span class="k">break</span>
+</span><span id="__span-12-16"><a id="__codelineno-12-16" name="__codelineno-12-16" href="#__codelineno-12-16"></a><span class="w">  </span><span class="k">fi</span>
+</span><span id="__span-12-17"><a id="__codelineno-12-17" name="__codelineno-12-17" href="#__codelineno-12-17"></a><span class="w">  </span>sleep<span class="w"> </span><span class="m">5</span>
+</span><span id="__span-12-18"><a id="__codelineno-12-18" name="__codelineno-12-18" href="#__codelineno-12-18"></a><span class="k">done</span>
+</span><span id="__span-12-19"><a id="__codelineno-12-19" name="__codelineno-12-19" href="#__codelineno-12-19"></a>
+</span><span id="__span-12-20"><a id="__codelineno-12-20" name="__codelineno-12-20" href="#__codelineno-12-20"></a><span class="c1"># Create the combined CA ConfigMap</span>
+</span><span id="__span-12-21"><a id="__codelineno-12-21" name="__codelineno-12-21" href="#__codelineno-12-21"></a>kubectl<span class="w"> </span>--context<span class="o">=</span>etl6<span class="w"> </span>-n<span class="w"> </span>soteria<span class="w"> </span>apply<span class="w"> </span>-f<span class="w"> </span>-<span class="w"> </span><span class="s">&lt;&lt;EOF</span>
+</span><span id="__span-12-22"><a id="__codelineno-12-22" name="__codelineno-12-22" href="#__codelineno-12-22"></a><span class="s">apiVersion: v1</span>
+</span><span id="__span-12-23"><a id="__codelineno-12-23" name="__codelineno-12-23" href="#__codelineno-12-23"></a><span class="s">kind: ConfigMap</span>
+</span><span id="__span-12-24"><a id="__codelineno-12-24" name="__codelineno-12-24" href="#__codelineno-12-24"></a><span class="s">metadata:</span>
+</span><span id="__span-12-25"><a id="__codelineno-12-25" name="__codelineno-12-25" href="#__codelineno-12-25"></a><span class="s">  name: scylladb-combined-ca</span>
+</span><span id="__span-12-26"><a id="__codelineno-12-26" name="__codelineno-12-26" href="#__codelineno-12-26"></a><span class="s">  namespace: soteria</span>
+</span><span id="__span-12-27"><a id="__codelineno-12-27" name="__codelineno-12-27" href="#__codelineno-12-27"></a><span class="s">data:</span>
+</span><span id="__span-12-28"><a id="__codelineno-12-28" name="__codelineno-12-28" href="#__codelineno-12-28"></a><span class="s">  ca-bundle.crt: |</span>
+</span><span id="__span-12-29"><a id="__codelineno-12-29" name="__codelineno-12-29" href="#__codelineno-12-29"></a><span class="s">$(echo "${CM_CA}" | sed 's/^/    /')</span>
+</span><span id="__span-12-30"><a id="__codelineno-12-30" name="__codelineno-12-30" href="#__codelineno-12-30"></a><span class="s">$(echo "${OP_CA}" | sed 's/^/    /')</span>
+</span><span id="__span-12-31"><a id="__codelineno-12-31" name="__codelineno-12-31" href="#__codelineno-12-31"></a><span class="s">EOF</span>
+</span></code></pre></div>
+<h4 id="wait-for-scylladb-readiness">Wait for ScyllaDB readiness<a class="headerlink" href="#wait-for-scylladb-readiness" title="Permanent link">&para;</a></h4>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>kubectl<span class="w"> </span>--context<span class="o">=</span>etl6<span class="w"> </span>-n<span class="w"> </span>soteria<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">  </span>get<span class="w"> </span>scyllaclusters.scylla.scylladb.com<span class="w"> </span>soteria-scylladb<span class="w"> </span>-w
+</span></code></pre></div>
+<p>Wait until <code>.status.racks.rack1.readyMembers</code> reaches the expected count
+(default: <strong>2</strong>).</p>
+<h3 id="44-deploy-etl7-joining-dc">4.4 — Deploy etl7 (joining DC)<a class="headerlink" href="#44-deploy-etl7-joining-dc" title="Permanent link">&para;</a></h3>
+<p>Deploy etl7 <strong>only after</strong> etl6 ScyllaDB is fully ready:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>kustomize<span class="w"> </span>build<span class="w"> </span>--load-restrictor<span class="w"> </span>LoadRestrictionsNone<span class="w"> </span>hack/overlays/etl7<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="w">  </span><span class="p">|</span><span class="w"> </span>kubectl<span class="w"> </span>--context<span class="o">=</span>etl7<span class="w"> </span>apply<span class="w"> </span>--server-side<span class="w"> </span>--force-conflicts<span class="w"> </span>-f<span class="w"> </span>-
+</span></code></pre></div>
+<p>Repeat the combined CA creation and readiness wait for etl7:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="c1"># (Same combined CA script as above, but with --context=etl7)</span>
+</span></code></pre></div>
+<hr />
+<h2 id="step-5-post-deploy-tls-volume-patch">Step 5 — Post-deploy TLS volume patch<a class="headerlink" href="#step-5-post-deploy-tls-volume-patch" title="Permanent link">&para;</a></h2>
+<div class="admonition warning">
+<p class="admonition-title">Operator workaround</p>
+<p>This step is required because scylla-operator v1.20.2 does not
+propagate rack-level <code>volumes</code>/<code>volumeMounts</code> to the StatefulSet.
+If a future operator version supports this, skip this step.</p>
+</div>
+<p>For <strong>each</strong> cluster (<code>etl6</code> and <code>etl7</code>):</p>
+<h3 id="51-identify-the-statefulset-and-scylla-container-index">5.1 — Identify the StatefulSet and scylla container index<a class="headerlink" href="#51-identify-the-statefulset-and-scylla-container-index" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="nv">CTX</span><span class="o">=</span><span class="s2">"etl6"</span><span class="w">  </span><span class="c1"># repeat with etl7</span>
+</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>
+</span><span id="__span-16-3"><a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a><span class="nv">STS</span><span class="o">=</span><span class="k">$(</span>kubectl<span class="w"> </span>--context<span class="o">=</span><span class="s2">"</span><span class="si">${</span><span class="nv">CTX</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span>-n<span class="w"> </span>soteria<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-16-4"><a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="w">  </span>get<span class="w"> </span>sts<span class="w"> </span>-l<span class="w"> </span>scylla/cluster<span class="o">=</span>soteria-scylladb<span class="w"> </span>-o<span class="w"> </span>name<span class="w"> </span><span class="p">|</span><span class="w"> </span>head<span class="w"> </span>-1<span class="k">)</span>
+</span><span id="__span-16-5"><a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a>
+</span><span id="__span-16-6"><a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a><span class="nv">SCYLLA_IDX</span><span class="o">=</span><span class="k">$(</span>kubectl<span class="w"> </span>--context<span class="o">=</span><span class="s2">"</span><span class="si">${</span><span class="nv">CTX</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span>-n<span class="w"> </span>soteria<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-16-7"><a id="__codelineno-16-7" name="__codelineno-16-7" href="#__codelineno-16-7"></a><span class="w">  </span>get<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">STS</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span>-o<span class="w"> </span>json<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-16-8"><a id="__codelineno-16-8" name="__codelineno-16-8" href="#__codelineno-16-8"></a><span class="w">  </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">'.spec.template.spec.containers</span>
+</span><span id="__span-16-9"><a id="__codelineno-16-9" name="__codelineno-16-9" href="#__codelineno-16-9"></a><span class="s1">           | to_entries[] | select(.value.name=="scylla") | .key'</span><span class="k">)</span>
+</span></code></pre></div>
+<h3 id="52-patch-volumes-and-volume-mounts">5.2 — Patch volumes and volume mounts<a class="headerlink" href="#52-patch-volumes-and-volume-mounts" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="c1"># Check if already patched</span>
+</span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a><span class="nv">HAS_CM_VOL</span><span class="o">=</span><span class="k">$(</span>kubectl<span class="w"> </span>--context<span class="o">=</span><span class="s2">"</span><span class="si">${</span><span class="nv">CTX</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span>-n<span class="w"> </span>soteria<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-17-3"><a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a><span class="w">  </span>get<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">STS</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span>-o<span class="w"> </span>json<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-17-4"><a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a><span class="w">  </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">'[.spec.template.spec.volumes[].name]</span>
+</span><span id="__span-17-5"><a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a><span class="s1">           | if index("certmanager-serving") then "yes" else "no" end'</span><span class="k">)</span>
+</span><span id="__span-17-6"><a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>
+</span><span id="__span-17-7"><a id="__codelineno-17-7" name="__codelineno-17-7" href="#__codelineno-17-7"></a><span class="k">if</span><span class="w"> </span><span class="o">[</span><span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">HAS_CM_VOL</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"no"</span><span class="w"> </span><span class="o">]</span><span class="p">;</span><span class="w"> </span><span class="k">then</span>
+</span><span id="__span-17-8"><a id="__codelineno-17-8" name="__codelineno-17-8" href="#__codelineno-17-8"></a><span class="w">  </span><span class="c1"># Add volumes</span>
+</span><span id="__span-17-9"><a id="__codelineno-17-9" name="__codelineno-17-9" href="#__codelineno-17-9"></a><span class="w">  </span>kubectl<span class="w"> </span>--context<span class="o">=</span><span class="s2">"</span><span class="si">${</span><span class="nv">CTX</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span>-n<span class="w"> </span>soteria<span class="w"> </span>patch<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">STS</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span>--type<span class="o">=</span>json<span class="w"> </span>-p<span class="w"> </span><span class="s2">"[</span>
+</span><span id="__span-17-10"><a id="__codelineno-17-10" name="__codelineno-17-10" href="#__codelineno-17-10"></a><span class="s2">    {\"op\":\"add\",\"path\":\"/spec/template/spec/volumes/-\",</span>
+</span><span id="__span-17-11"><a id="__codelineno-17-11" name="__codelineno-17-11" href="#__codelineno-17-11"></a><span class="s2">     \"value\":{\"name\":\"certmanager-serving\",</span>
+</span><span id="__span-17-12"><a id="__codelineno-17-12" name="__codelineno-17-12" href="#__codelineno-17-12"></a><span class="s2">                \"secret\":{\"secretName\":\"scylladb-serving-tls\"}}},</span>
+</span><span id="__span-17-13"><a id="__codelineno-17-13" name="__codelineno-17-13" href="#__codelineno-17-13"></a><span class="s2">    {\"op\":\"add\",\"path\":\"/spec/template/spec/volumes/-\",</span>
+</span><span id="__span-17-14"><a id="__codelineno-17-14" name="__codelineno-17-14" href="#__codelineno-17-14"></a><span class="s2">     \"value\":{\"name\":\"certmanager-ca\",</span>
+</span><span id="__span-17-15"><a id="__codelineno-17-15" name="__codelineno-17-15" href="#__codelineno-17-15"></a><span class="s2">                \"secret\":{\"secretName\":\"scylladb-serving-tls\",</span>
+</span><span id="__span-17-16"><a id="__codelineno-17-16" name="__codelineno-17-16" href="#__codelineno-17-16"></a><span class="s2">                            \"items\":[{\"key\":\"ca.crt\",</span>
+</span><span id="__span-17-17"><a id="__codelineno-17-17" name="__codelineno-17-17" href="#__codelineno-17-17"></a><span class="s2">                                        \"path\":\"ca-bundle.crt\"}]}}},</span>
+</span><span id="__span-17-18"><a id="__codelineno-17-18" name="__codelineno-17-18" href="#__codelineno-17-18"></a><span class="s2">    {\"op\":\"add\",\"path\":\"/spec/template/spec/volumes/-\",</span>
+</span><span id="__span-17-19"><a id="__codelineno-17-19" name="__codelineno-17-19" href="#__codelineno-17-19"></a><span class="s2">     \"value\":{\"name\":\"combined-ca\",</span>
+</span><span id="__span-17-20"><a id="__codelineno-17-20" name="__codelineno-17-20" href="#__codelineno-17-20"></a><span class="s2">                \"configMap\":{\"name\":\"scylladb-combined-ca\"}}}</span>
+</span><span id="__span-17-21"><a id="__codelineno-17-21" name="__codelineno-17-21" href="#__codelineno-17-21"></a><span class="s2">  ]"</span>
+</span><span id="__span-17-22"><a id="__codelineno-17-22" name="__codelineno-17-22" href="#__codelineno-17-22"></a>
+</span><span id="__span-17-23"><a id="__codelineno-17-23" name="__codelineno-17-23" href="#__codelineno-17-23"></a><span class="w">  </span><span class="c1"># Add volume mounts to the scylla container</span>
+</span><span id="__span-17-24"><a id="__codelineno-17-24" name="__codelineno-17-24" href="#__codelineno-17-24"></a><span class="w">  </span>kubectl<span class="w"> </span>--context<span class="o">=</span><span class="s2">"</span><span class="si">${</span><span class="nv">CTX</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span>-n<span class="w"> </span>soteria<span class="w"> </span>patch<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">STS</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span>--type<span class="o">=</span>json<span class="w"> </span>-p<span class="w"> </span><span class="s2">"[</span>
+</span><span id="__span-17-25"><a id="__codelineno-17-25" name="__codelineno-17-25" href="#__codelineno-17-25"></a><span class="s2">    {\"op\":\"add\",</span>
+</span><span id="__span-17-26"><a id="__codelineno-17-26" name="__codelineno-17-26" href="#__codelineno-17-26"></a><span class="s2">     \"path\":\"/spec/template/spec/containers/</span><span class="si">${</span><span class="nv">SCYLLA_IDX</span><span class="si">}</span><span class="s2">/volumeMounts/-\",</span>
+</span><span id="__span-17-27"><a id="__codelineno-17-27" name="__codelineno-17-27" href="#__codelineno-17-27"></a><span class="s2">     \"value\":{\"name\":\"certmanager-serving\",</span>
+</span><span id="__span-17-28"><a id="__codelineno-17-28" name="__codelineno-17-28" href="#__codelineno-17-28"></a><span class="s2">                \"mountPath\":\"/etc/scylla/certmanager-tls\",</span>
+</span><span id="__span-17-29"><a id="__codelineno-17-29" name="__codelineno-17-29" href="#__codelineno-17-29"></a><span class="s2">                \"readOnly\":true}},</span>
+</span><span id="__span-17-30"><a id="__codelineno-17-30" name="__codelineno-17-30" href="#__codelineno-17-30"></a><span class="s2">    {\"op\":\"add\",</span>
+</span><span id="__span-17-31"><a id="__codelineno-17-31" name="__codelineno-17-31" href="#__codelineno-17-31"></a><span class="s2">     \"path\":\"/spec/template/spec/containers/</span><span class="si">${</span><span class="nv">SCYLLA_IDX</span><span class="si">}</span><span class="s2">/volumeMounts/-\",</span>
+</span><span id="__span-17-32"><a id="__codelineno-17-32" name="__codelineno-17-32" href="#__codelineno-17-32"></a><span class="s2">     \"value\":{\"name\":\"certmanager-ca\",</span>
+</span><span id="__span-17-33"><a id="__codelineno-17-33" name="__codelineno-17-33" href="#__codelineno-17-33"></a><span class="s2">                \"mountPath\":\"/etc/scylla/certmanager-ca\",</span>
+</span><span id="__span-17-34"><a id="__codelineno-17-34" name="__codelineno-17-34" href="#__codelineno-17-34"></a><span class="s2">                \"readOnly\":true}},</span>
+</span><span id="__span-17-35"><a id="__codelineno-17-35" name="__codelineno-17-35" href="#__codelineno-17-35"></a><span class="s2">    {\"op\":\"add\",</span>
+</span><span id="__span-17-36"><a id="__codelineno-17-36" name="__codelineno-17-36" href="#__codelineno-17-36"></a><span class="s2">     \"path\":\"/spec/template/spec/containers/</span><span class="si">${</span><span class="nv">SCYLLA_IDX</span><span class="si">}</span><span class="s2">/volumeMounts/-\",</span>
+</span><span id="__span-17-37"><a id="__codelineno-17-37" name="__codelineno-17-37" href="#__codelineno-17-37"></a><span class="s2">     \"value\":{\"name\":\"combined-ca\",</span>
+</span><span id="__span-17-38"><a id="__codelineno-17-38" name="__codelineno-17-38" href="#__codelineno-17-38"></a><span class="s2">                \"mountPath\":\"/etc/scylla/combined-ca\",</span>
+</span><span id="__span-17-39"><a id="__codelineno-17-39" name="__codelineno-17-39" href="#__codelineno-17-39"></a><span class="s2">                \"readOnly\":true}}</span>
+</span><span id="__span-17-40"><a id="__codelineno-17-40" name="__codelineno-17-40" href="#__codelineno-17-40"></a><span class="s2">  ]"</span>
+</span><span id="__span-17-41"><a id="__codelineno-17-41" name="__codelineno-17-41" href="#__codelineno-17-41"></a>
+</span><span id="__span-17-42"><a id="__codelineno-17-42" name="__codelineno-17-42" href="#__codelineno-17-42"></a><span class="w">  </span><span class="c1"># Restart ScyllaDB pods to pick up the new volumes</span>
+</span><span id="__span-17-43"><a id="__codelineno-17-43" name="__codelineno-17-43" href="#__codelineno-17-43"></a><span class="w">  </span>kubectl<span class="w"> </span>--context<span class="o">=</span><span class="s2">"</span><span class="si">${</span><span class="nv">CTX</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span>-n<span class="w"> </span>soteria<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-17-44"><a id="__codelineno-17-44" name="__codelineno-17-44" href="#__codelineno-17-44"></a><span class="w">    </span>delete<span class="w"> </span>pods<span class="w"> </span>-l<span class="w"> </span>scylla/cluster<span class="o">=</span>soteria-scylladb<span class="w"> </span>--wait<span class="o">=</span><span class="nb">false</span>
+</span><span id="__span-17-45"><a id="__codelineno-17-45" name="__codelineno-17-45" href="#__codelineno-17-45"></a><span class="k">fi</span>
+</span></code></pre></div>
+<h3 id="53-wait-for-pods-to-restart">5.3 — Wait for pods to restart<a class="headerlink" href="#53-wait-for-pods-to-restart" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>kubectl<span class="w"> </span>--context<span class="o">=</span><span class="s2">"</span><span class="si">${</span><span class="nv">CTX</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span>-n<span class="w"> </span>soteria<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-18-2"><a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="w">  </span>get<span class="w"> </span>scyllaclusters.scylla.scylladb.com<span class="w"> </span>soteria-scylladb<span class="w"> </span>-w
+</span></code></pre></div>
+<p>Wait until <code>.status.racks.rack1.readyMembers</code> returns to the expected
+count on both clusters.</p>
+<hr />
+<h2 id="step-6-verify-multi-dc-convergence">Step 6 — Verify multi-DC convergence<a class="headerlink" href="#step-6-verify-multi-dc-convergence" title="Permanent link">&para;</a></h2>
+<h3 id="61-nodetool-status">6.1 — nodetool status<a class="headerlink" href="#61-nodetool-status" title="Permanent link">&para;</a></h3>
+<p>Run <code>nodetool status</code> from any ScyllaDB pod to confirm nodes from
+<strong>both</strong> datacenters are visible and in <strong>UN</strong> (Up/Normal) state:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="nv">ETL6_POD</span><span class="o">=</span><span class="k">$(</span>kubectl<span class="w"> </span>--context<span class="o">=</span>etl6<span class="w"> </span>-n<span class="w"> </span>soteria<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-19-2"><a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="w">  </span>get<span class="w"> </span>pods<span class="w"> </span>-l<span class="w"> </span>scylla/cluster<span class="o">=</span>soteria-scylladb<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-19-3"><a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="w">  </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{.items[0].metadata.name}'</span><span class="k">)</span>
+</span><span id="__span-19-4"><a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a>
+</span><span id="__span-19-5"><a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>kubectl<span class="w"> </span>--context<span class="o">=</span>etl6<span class="w"> </span>-n<span class="w"> </span>soteria<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-19-6"><a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a><span class="w">  </span><span class="nb">exec</span><span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">ETL6_POD</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span>-c<span class="w"> </span>scylla<span class="w"> </span>--<span class="w"> </span>nodetool<span class="w"> </span>status
+</span></code></pre></div>
+<p>Expected output (4 nodes, 2 per DC):</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>Datacenter: etl6
+</span><span id="__span-20-2"><a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>===============
+</span><span id="__span-20-3"><a id="__codelineno-20-3" name="__codelineno-20-3" href="#__codelineno-20-3"></a>Status=Up/Down
+</span><span id="__span-20-4"><a id="__codelineno-20-4" name="__codelineno-20-4" href="#__codelineno-20-4"></a>|/ State=Normal/Leaving/Joining/Moving
+</span><span id="__span-20-5"><a id="__codelineno-20-5" name="__codelineno-20-5" href="#__codelineno-20-5"></a>--  Address       Load       Tokens  ...  Rack
+</span><span id="__span-20-6"><a id="__codelineno-20-6" name="__codelineno-20-6" href="#__codelineno-20-6"></a>UN  10.x.x.1     256.0 KB   256     ...  rack1
+</span><span id="__span-20-7"><a id="__codelineno-20-7" name="__codelineno-20-7" href="#__codelineno-20-7"></a>UN  10.x.x.2     256.0 KB   256     ...  rack1
+</span><span id="__span-20-8"><a id="__codelineno-20-8" name="__codelineno-20-8" href="#__codelineno-20-8"></a>
+</span><span id="__span-20-9"><a id="__codelineno-20-9" name="__codelineno-20-9" href="#__codelineno-20-9"></a>Datacenter: etl7
+</span><span id="__span-20-10"><a id="__codelineno-20-10" name="__codelineno-20-10" href="#__codelineno-20-10"></a>===============
+</span><span id="__span-20-11"><a id="__codelineno-20-11" name="__codelineno-20-11" href="#__codelineno-20-11"></a>Status=Up/Down
+</span><span id="__span-20-12"><a id="__codelineno-20-12" name="__codelineno-20-12" href="#__codelineno-20-12"></a>|/ State=Normal/Leaving/Joining/Moving
+</span><span id="__span-20-13"><a id="__codelineno-20-13" name="__codelineno-20-13" href="#__codelineno-20-13"></a>--  Address       Load       Tokens  ...  Rack
+</span><span id="__span-20-14"><a id="__codelineno-20-14" name="__codelineno-20-14" href="#__codelineno-20-14"></a>UN  10.y.y.1     256.0 KB   256     ...  rack1
+</span><span id="__span-20-15"><a id="__codelineno-20-15" name="__codelineno-20-15" href="#__codelineno-20-15"></a>UN  10.y.y.2     256.0 KB   256     ...  rack1
+</span></code></pre></div>
+<p>All nodes should show <strong>UN</strong>. If any show <strong>DN</strong> (Down/Normal) or are
+missing, check Submariner connectivity and the <code>externalSeeds</code>
+configuration.</p>
+<h3 id="62-cql-connectivity-check">6.2 — CQL connectivity check<a class="headerlink" href="#62-cql-connectivity-check" title="Permanent link">&para;</a></h3>
+<p>Verify CQL connections work with mTLS from a ScyllaDB pod:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-21-1"><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>kubectl<span class="w"> </span>--context<span class="o">=</span>etl6<span class="w"> </span>-n<span class="w"> </span>soteria<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-21-2"><a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="w">  </span><span class="nb">exec</span><span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">ETL6_POD</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span>-c<span class="w"> </span>scylla<span class="w"> </span>--<span class="w"> </span>cqlsh<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-21-3"><a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a><span class="w">    </span>--ssl<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-21-4"><a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="w">    </span>--connect-timeout<span class="o">=</span><span class="m">10</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-21-5"><a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a><span class="w">    </span><span class="k">$(</span>kubectl<span class="w"> </span>--context<span class="o">=</span>etl6<span class="w"> </span>-n<span class="w"> </span>soteria<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-21-6"><a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a><span class="w">        </span>get<span class="w"> </span>pod<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">ETL6_POD</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{.status.podIP}'</span><span class="k">)</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-21-7"><a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a><span class="w">    </span><span class="m">9142</span>
+</span></code></pre></div>
+<p>If the connection succeeds, the CQL shell prompt appears. Type
+<code>DESCRIBE KEYSPACES;</code> to list available keyspaces, then <code>EXIT;</code>.</p>
+<h3 id="63-verify-the-soteria-keyspace">6.3 — Verify the Soteria keyspace<a class="headerlink" href="#63-verify-the-soteria-keyspace" title="Permanent link">&para;</a></h3>
+<p>Soteria auto-creates its keyspace with <code>NetworkTopologyStrategy</code>
+replication. Verify it:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-22-1"><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>kubectl<span class="w"> </span>--context<span class="o">=</span>etl6<span class="w"> </span>-n<span class="w"> </span>soteria<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-22-2"><a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a><span class="w">  </span><span class="nb">exec</span><span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">ETL6_POD</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span>-c<span class="w"> </span>scylla<span class="w"> </span>--<span class="w"> </span>cqlsh<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-22-3"><a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a><span class="w">    </span>--ssl<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-22-4"><a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a><span class="w">    </span><span class="k">$(</span>kubectl<span class="w"> </span>--context<span class="o">=</span>etl6<span class="w"> </span>-n<span class="w"> </span>soteria<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-22-5"><a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a><span class="w">        </span>get<span class="w"> </span>pod<span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">ETL6_POD</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{.status.podIP}'</span><span class="k">)</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-22-6"><a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a><span class="w">    </span><span class="m">9142</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-22-7"><a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a><span class="w">    </span>-e<span class="w"> </span><span class="s2">"DESCRIBE KEYSPACE soteria;"</span>
+</span></code></pre></div>
+<p>The output should show <code>NetworkTopologyStrategy</code> with replication
+factors matching the <code>--scylladb-dc-replication</code> flag:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-23-1"><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>CREATE KEYSPACE soteria WITH replication = {
+</span><span id="__span-23-2"><a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a>  'class': 'NetworkTopologyStrategy',
+</span><span id="__span-23-3"><a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a>  'etl6': '2',
+</span><span id="__span-23-4"><a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a>  'etl7': '2'
+</span><span id="__span-23-5"><a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a>} AND tablets = {'enabled': false};
+</span></code></pre></div>
+<h3 id="64-verify-soteria-api-server">6.4 — Verify Soteria API server<a class="headerlink" href="#64-verify-soteria-api-server" title="Permanent link">&para;</a></h3>
+<p>Check that the aggregated API server is registered and available on
+both clusters:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-24-1"><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a><span class="k">for</span><span class="w"> </span>ctx<span class="w"> </span><span class="k">in</span><span class="w"> </span>etl6<span class="w"> </span>etl7<span class="p">;</span><span class="w"> </span><span class="k">do</span>
+</span><span id="__span-24-2"><a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a><span class="w">  </span><span class="nb">echo</span><span class="w"> </span><span class="s2">"</span><span class="si">${</span><span class="nv">ctx</span><span class="si">}</span><span class="s2">:"</span>
+</span><span id="__span-24-3"><a id="__codelineno-24-3" name="__codelineno-24-3" href="#__codelineno-24-3"></a><span class="w">  </span>kubectl<span class="w"> </span>--context<span class="o">=</span><span class="s2">"</span><span class="si">${</span><span class="nv">ctx</span><span class="si">}</span><span class="s2">"</span><span class="w"> </span>get<span class="w"> </span>apiservice<span class="w"> </span>v1alpha1.soteria.io<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-24-4"><a id="__codelineno-24-4" name="__codelineno-24-4" href="#__codelineno-24-4"></a><span class="w">    </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'  Available={.status.conditions[?(@.type=="Available")].status}'</span>
+</span><span id="__span-24-5"><a id="__codelineno-24-5" name="__codelineno-24-5" href="#__codelineno-24-5"></a><span class="w">  </span><span class="nb">echo</span>
+</span><span id="__span-24-6"><a id="__codelineno-24-6" name="__codelineno-24-6" href="#__codelineno-24-6"></a><span class="k">done</span>
+</span></code></pre></div>
+<p>Expected output:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-25-1"><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>etl6:
+</span><span id="__span-25-2"><a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>  Available=True
+</span><span id="__span-25-3"><a id="__codelineno-25-3" name="__codelineno-25-3" href="#__codelineno-25-3"></a>etl7:
+</span><span id="__span-25-4"><a id="__codelineno-25-4" name="__codelineno-25-4" href="#__codelineno-25-4"></a>  Available=True
+</span></code></pre></div>
+<hr />
+<h2 id="soteria-manager-configuration">Soteria manager configuration<a class="headerlink" href="#soteria-manager-configuration" title="Permanent link">&para;</a></h2>
+<p>The kustomize overlays configure the Soteria controller-manager with
+the following ScyllaDB and API server flags:</p>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--secure-port</code></td>
+<td><code>6443</code></td>
+</tr>
+<tr>
+<td><code>--scylladb-contact-points</code></td>
+<td><code>soteria-scylladb-client.soteria.svc:9142</code></td>
+</tr>
+<tr>
+<td><code>--scylladb-keyspace</code></td>
+<td><code>soteria</code></td>
+</tr>
+<tr>
+<td><code>--scylladb-dc-replication</code></td>
+<td><code>etl6:2,etl7:2</code></td>
+</tr>
+<tr>
+<td><code>--scylladb-tls-cert</code></td>
+<td><code>/etc/soteria/scylladb-client-tls/tls.crt</code></td>
+</tr>
+<tr>
+<td><code>--scylladb-tls-key</code></td>
+<td><code>/etc/soteria/scylladb-client-tls/tls.key</code></td>
+</tr>
+<tr>
+<td><code>--scylladb-tls-ca</code></td>
+<td><code>/etc/soteria/scylladb-client-tls/ca.crt</code></td>
+</tr>
+<tr>
+<td><code>--scylladb-tls-server-name</code></td>
+<td><code>soteria-scylladb-client.soteria.svc</code></td>
+</tr>
+<tr>
+<td><code>--tls-cert-file</code></td>
+<td><code>/etc/soteria/apiserver-tls/tls.crt</code></td>
+</tr>
+<tr>
+<td><code>--tls-private-key-file</code></td>
+<td><code>/etc/soteria/apiserver-tls/tls.key</code></td>
+</tr>
+<tr>
+<td><code>--scylladb-local-dc</code></td>
+<td><code>etl6</code> or <code>etl7</code> (per-cluster)</td>
+</tr>
+<tr>
+<td><code>--site-name</code></td>
+<td><code>etl6</code> or <code>etl7</code> (per-cluster)</td>
+</tr>
+</tbody>
+</table>
+<p>The manager pod mounts two TLS secrets:</p>
+<ul>
+<li><code>soteria-apiserver-tls</code> → <code>/etc/soteria/apiserver-tls</code></li>
+<li><code>soteria-scylladb-client-tls</code> → <code>/etc/soteria/scylladb-client-tls</code></li>
+</ul>
+<hr />
+<h2 id="tear-down">Tear down<a class="headerlink" href="#tear-down" title="Permanent link">&para;</a></h2>
+<p>To remove the deployment from both clusters:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-26-1"><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>./hack/stretched-local-test.sh<span class="w"> </span>stop
+</span></code></pre></div>
+<p>This deletes all kustomize-managed resources from both clusters in
+reverse order (etl7 first, then etl6).</p>
+<hr />
+<h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
+<h3 id="scylladb-pods-stuck-in-crashloopbackoff">ScyllaDB pods stuck in CrashLoopBackOff<a class="headerlink" href="#scylladb-pods-stuck-in-crashloopbackoff" title="Permanent link">&para;</a></h3>
+<p>Check if the TLS volumes are correctly mounted:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-27-1"><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>kubectl<span class="w"> </span>--context<span class="o">=</span>etl6<span class="w"> </span>-n<span class="w"> </span>soteria<span class="w"> </span>describe<span class="w"> </span>pod<span class="w"> </span>-l<span class="w"> </span>scylla/cluster<span class="o">=</span>soteria-scylladb
+</span></code></pre></div>
+<p>Look for volume mount errors. Common causes:</p>
+<ul>
+<li><code>scylladb-serving-tls</code> Secret not yet issued by cert-manager</li>
+<li><code>scylladb-combined-ca</code> ConfigMap not created</li>
+<li>Issuer <code>soteria-internal</code> not configured or CA Secret missing</li>
+</ul>
+<h3 id="etl7-nodes-not-joining-the-cluster">etl7 nodes not joining the cluster<a class="headerlink" href="#etl7-nodes-not-joining-the-cluster" title="Permanent link">&para;</a></h3>
+<ol>
+<li>
+<p>Verify Submariner MCS is working:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-28-1"><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>kubectl<span class="w"> </span>--context<span class="o">=</span>etl7<span class="w"> </span>get<span class="w"> </span>serviceimports<span class="w"> </span>-A
+</span></code></pre></div>
+<p>You should see <code>soteria-scylladb-client</code> imported.</p>
+</li>
+<li>
+<p>Verify DNS resolution from a pod in etl7:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-29-1"><a id="__codelineno-29-1" name="__codelineno-29-1" href="#__codelineno-29-1"></a>kubectl<span class="w"> </span>--context<span class="o">=</span>etl7<span class="w"> </span>-n<span class="w"> </span>soteria<span class="w"> </span>run<span class="w"> </span>dns-test<span class="w"> </span>--rm<span class="w"> </span>-it<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-29-2"><a id="__codelineno-29-2" name="__codelineno-29-2" href="#__codelineno-29-2"></a><span class="w">  </span>--image<span class="o">=</span>busybox<span class="w"> </span>--<span class="w"> </span>nslookup<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-29-3"><a id="__codelineno-29-3" name="__codelineno-29-3" href="#__codelineno-29-3"></a><span class="w">  </span>soteria-scylladb-client.soteria.svc.clusterset.local
+</span></code></pre></div>
+</li>
+<li>
+<p>Check the ScyllaCluster <code>externalSeeds</code>:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-30-1"><a id="__codelineno-30-1" name="__codelineno-30-1" href="#__codelineno-30-1"></a>kubectl<span class="w"> </span>--context<span class="o">=</span>etl7<span class="w"> </span>-n<span class="w"> </span>soteria<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-30-2"><a id="__codelineno-30-2" name="__codelineno-30-2" href="#__codelineno-30-2"></a><span class="w">  </span>get<span class="w"> </span>scyllaclusters.scylla.scylladb.com<span class="w"> </span>soteria-scylladb<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-30-3"><a id="__codelineno-30-3" name="__codelineno-30-3" href="#__codelineno-30-3"></a><span class="w">  </span>-o<span class="w"> </span><span class="nv">jsonpath</span><span class="o">=</span><span class="s1">'{.spec.externalSeeds}'</span>
+</span></code></pre></div>
+</li>
+</ol>
+<h3 id="apiservice-not-available">APIService not available<a class="headerlink" href="#apiservice-not-available" title="Permanent link">&para;</a></h3>
+<p>Check cert-manager CA injection:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-31-1"><a id="__codelineno-31-1" name="__codelineno-31-1" href="#__codelineno-31-1"></a>kubectl<span class="w"> </span>--context<span class="o">=</span>etl6<span class="w"> </span>get<span class="w"> </span>apiservice<span class="w"> </span>v1alpha1.soteria.io<span class="w"> </span>-o<span class="w"> </span>yaml<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-31-2"><a id="__codelineno-31-2" name="__codelineno-31-2" href="#__codelineno-31-2"></a><span class="w">  </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>cert-manager.io/inject-ca-from
+</span></code></pre></div>
+<p>The annotation should point to <code>soteria/soteria-apiserver-cert</code>. If
+the CA is not injected, verify the <code>soteria-apiserver-cert</code> Certificate
+is in a <code>Ready</code> state:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-32-1"><a id="__codelineno-32-1" name="__codelineno-32-1" href="#__codelineno-32-1"></a>kubectl<span class="w"> </span>--context<span class="o">=</span>etl6<span class="w"> </span>-n<span class="w"> </span>soteria<span class="w"> </span>get<span class="w"> </span>certificate<span class="w"> </span>soteria-apiserver-cert
+</span></code></pre></div>
+<h3 id="viewing-soteria-logs">Viewing Soteria logs<a class="headerlink" href="#viewing-soteria-logs" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-33-1"><a id="__codelineno-33-1" name="__codelineno-33-1" href="#__codelineno-33-1"></a>kubectl<span class="w"> </span>--context<span class="o">=</span>etl6<span class="w"> </span>-n<span class="w"> </span>soteria<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-33-2"><a id="__codelineno-33-2" name="__codelineno-33-2" href="#__codelineno-33-2"></a><span class="w">  </span>logs<span class="w"> </span>deployment/soteria-controller-manager<span class="w"> </span>-c<span class="w"> </span>manager<span class="w"> </span>-f
+</span><span id="__span-33-3"><a id="__codelineno-33-3" name="__codelineno-33-3" href="#__codelineno-33-3"></a>kubectl<span class="w"> </span>--context<span class="o">=</span>etl7<span class="w"> </span>-n<span class="w"> </span>soteria<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-33-4"><a id="__codelineno-33-4" name="__codelineno-33-4" href="#__codelineno-33-4"></a><span class="w">  </span>logs<span class="w"> </span>deployment/soteria-controller-manager<span class="w"> </span>-c<span class="w"> </span>manager<span class="w"> </span>-f
+</span></code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["content.code.copy", "content.code.annotate", "navigation.instant", "navigation.tracking", "navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "search.suggest", "toc.follow"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
