@@ -1,6 +1,6 @@
 # Story 17.12: Waves & Throttling
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -37,20 +37,20 @@ Then the formation, sequencing, and throttling behavior matches the actual code
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Research wave formation and execution (AC: 1, 2, 5)
-  - [ ] 1.1: Read PRD FR11–FR15 for the conceptual wave design
-  - [ ] 1.2: Walk `pkg/engine/discovery.go` for VM discovery and wave grouping by `soteria.io/wave` label
-  - [ ] 1.3: Walk `pkg/engine/executor.go` for sequential wave execution and fail-forward semantics
-  - [ ] 1.4: Walk `pkg/engine/failover.go` for reverse-wave VM shutdown in Step 0 (planned migration)
-- [ ] Task 2: Research chunking and throttling (AC: 3, 5)
-  - [ ] 2.1: Walk `pkg/engine/chunker.go` for DRGroup chunking respecting `maxConcurrentFailovers`
-  - [ ] 2.2: Walk `pkg/engine/consistency.go` for namespace-level VolumeGroup indivisibility constraint
-  - [ ] 2.3: Review test scenarios in `pkg/engine/` for edge cases
-- [ ] Task 3: Write the documentation page (AC: 1, 2, 3, 4)
-  - [ ] 3.1: Write `docs/usage/waves-and-throttling.md` covering wave formation from labels, VM grouping, sequential execution, maxConcurrentFailovers, DRGroup chunking, startup ordering
-  - [ ] 3.2: Add diagrams showing wave execution timeline (e.g., wave → chunk → group flow)
-- [ ] Task 4: Verify accuracy (AC: 5)
-  - [ ] 4.1: Verify all behavior descriptions match actual engine code
+- [x] Task 1: Research wave formation and execution (AC: 1, 2, 5)
+  - [x] 1.1: Read PRD FR11–FR15 for the conceptual wave design
+  - [x] 1.2: Walk `pkg/engine/discovery.go` for VM discovery and wave grouping by `soteria.io/wave` label
+  - [x] 1.3: Walk `pkg/engine/executor.go` for sequential wave execution and fail-forward semantics
+  - [x] 1.4: Walk `pkg/engine/failover.go` for reverse-wave VM shutdown in Step 0 (planned migration)
+- [x] Task 2: Research chunking and throttling (AC: 3, 5)
+  - [x] 2.1: Walk `pkg/engine/chunker.go` for DRGroup chunking respecting `maxConcurrentFailovers`
+  - [x] 2.2: Walk `pkg/engine/consistency.go` for namespace-level VolumeGroup indivisibility constraint
+  - [x] 2.3: Review test scenarios in `pkg/engine/` for edge cases
+- [x] Task 3: Write the documentation page (AC: 1, 2, 3, 4)
+  - [x] 3.1: Write `docs/usage/waves.md` covering wave formation from labels, VM grouping, sequential execution, maxConcurrentFailovers, DRGroup chunking, startup ordering
+  - [x] 3.2: Add diagrams showing wave execution timeline (e.g., wave → chunk → group flow)
+- [x] Task 4: Verify accuracy (AC: 5)
+  - [x] 4.1: Verify all behavior descriptions match actual engine code
 
 ## Dev Notes
 
@@ -109,8 +109,33 @@ Start from the PRD (`_bmad-output/planning-artifacts/prd.md`), architecture doc 
 
 ### Agent Model Used
 
+Claude Opus 4.6 (Cursor)
+
 ### Debug Log References
+
+No debug issues encountered. Documentation-only story.
 
 ### Completion Notes List
 
+- ✅ Wrote comprehensive `docs/usage/waves.md` covering all 5 acceptance criteria
+- ✅ Wave formation from `soteria.io/wave` label with lexicographic sorting documented (AC1)
+- ✅ Sequential wave execution with readiness gate documented (AC2, AC4)
+- ✅ `maxConcurrentFailovers` VM counting, namespace indivisibility, chunking algorithm documented (AC3)
+- ✅ Step 0 planned migration pre-execution (reverse wave VM stop + StopReplication) documented
+- ✅ Fail-forward semantics and checkpointing documented
+- ✅ 4 Mermaid diagrams added: pipeline flowchart, sequence diagram, chunk visualization, full timeline
+- ✅ Configuration reference table with all relevant fields and defaults
+- ✅ All 18 key claims verified against engine source code (AC5)
+- ✅ mkdocs build --strict passes successfully
+- Note: File written to `docs/usage/waves.md` (matching existing mkdocs.yml nav entry) rather than `docs/usage/waves-and-throttling.md` as originally specified in story
+
 ### File List
+
+| File | Action | Description |
+|------|--------|-------------|
+| docs/usage/waves.md | MODIFIED | Replaced placeholder with comprehensive waves & throttling documentation |
+| _bmad-output/implementation-artifacts/17-12-waves-and-throttling.md | MODIFIED | Updated task checkboxes, status, dev agent record |
+
+### Change Log
+
+- 2026-09-05: Implemented story 17.12 — wrote comprehensive Waves & Throttling documentation page
