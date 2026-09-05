@@ -1,6 +1,6 @@
 # Story 17.5: ScyllaDB with Submariner
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -37,16 +37,16 @@ Then there are verification steps to confirm ScyllaDB nodes have discovered each
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Extract deployment procedure from scripts (AC: 1, 4)
-  - [ ] 1.1: Read `hack/stretched-local-test.sh` end-to-end to extract the actual deployment sequence
-  - [ ] 1.2: Examine kustomize overlays in `hack/overlays/` for Submariner-specific configuration
-- [ ] Task 2: Document TLS and certificate setup (AC: 2)
-  - [ ] 2.1: Walk the cert-manager and TLS setup used in the script
-  - [ ] 2.2: Document shared CA setup, Issuer "soteria-internal", and mTLS configuration
-- [ ] Task 3: Write the deployment guide (AC: 1, 2, 3, 4, 5)
-  - [ ] 3.1: Write `docs/installation/scylladb/submariner.md` covering: cert-manager setup, shared CA, scylla-operator install, ScyllaCluster with ServiceExport, mTLS configuration, convergence verification
-  - [ ] 3.2: Add verification commands (nodetool status, CQL connectivity checks)
-  - [ ] 3.3: Verify that documented commands match actual script behavior
+- [x] Task 1: Extract deployment procedure from scripts (AC: 1, 4)
+  - [x] 1.1: Read `hack/stretched-local-test.sh` end-to-end to extract the actual deployment sequence
+  - [x] 1.2: Examine kustomize overlays in `hack/overlays/` for Submariner-specific configuration
+- [x] Task 2: Document TLS and certificate setup (AC: 2)
+  - [x] 2.1: Walk the cert-manager and TLS setup used in the script
+  - [x] 2.2: Document shared CA setup, Issuer "soteria-internal", and mTLS configuration
+- [x] Task 3: Write the deployment guide (AC: 1, 2, 3, 4, 5)
+  - [x] 3.1: Write `docs/installation/scylladb/submariner.md` covering: cert-manager setup, shared CA, scylla-operator install, ScyllaCluster with ServiceExport, mTLS configuration, convergence verification
+  - [x] 3.2: Add verification commands (nodetool status, CQL connectivity checks)
+  - [x] 3.3: Verify that documented commands match actual script behavior
 
 ## Dev Notes
 
@@ -112,8 +112,30 @@ Start from the PRD (`_bmad-output/planning-artifacts/prd.md`), architecture doc 
 
 ### Agent Model Used
 
+Claude Opus 4.6 (Cursor)
+
 ### Debug Log References
+
+- Read all 18 kustomize overlay files from hack/overlays/{base,etl6,etl7}/
+- Read hack/stretched-local-test.sh end-to-end (572 lines)
+- Validated mkdocs build with --strict; fixed 2 broken anchor links (#step-N-- → #step-N-)
+- All Go tests pass (make test), no regressions from documentation changes
 
 ### Completion Notes List
 
+- ✅ Task 1: Extracted full deployment sequence from stretched-local-test.sh and all 18 overlay files
+- ✅ Task 2: Documented cert-manager TLS setup including shared CA requirement, soteria-internal Issuer, all 5 Certificate resources, mTLS scylla.yaml ConfigMap, combined CA bundle, and the operator volume propagation workaround
+- ✅ Task 3: Wrote comprehensive guide covering architecture overview, prerequisites table, cert-manager setup, ScyllaDB mTLS config, Submariner MCS ServiceExport, kustomize overlay structure, step-by-step deploy for etl6 (seed) and etl7 (joining), post-deploy STS TLS volume patch, convergence verification (nodetool status, CQL connectivity, keyspace validation, APIService check), manager flag reference table, tear-down instructions, and troubleshooting section
+- mkdocs build passes with --strict, no broken links
+
 ### File List
+
+| File | Action |
+|------|--------|
+| `docs/installation/scylladb/submariner.md` | MODIFIED (replaced placeholder with full guide) |
+| `_bmad-output/implementation-artifacts/17-5-scylladb-submariner.md` | MODIFIED (status + task checkboxes + dev record) |
+| `_bmad-output/implementation-artifacts/sprint-status.yaml` | MODIFIED (17-5 status: ready-for-dev → review) |
+
+### Change Log
+
+- 2026-09-05: Implemented story 17.5 — wrote comprehensive ScyllaDB with Submariner deployment guide based on hack/stretched-local-test.sh and hack/overlays/
