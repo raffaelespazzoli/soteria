@@ -4,6 +4,13 @@ on:
     tags:
       - "v*"
 
+# NOTE: Helm chart publishing is handled exclusively by release.yml using
+# chart-releaser-action. If the reusable workflow below also publishes a
+# Helm chart to gh-pages (via a helm-release job), its output will be
+# overwritten by release.yml's publish-chart job. Both workflows use the
+# "gh-pages" concurrency group to serialise writes, but only release.yml's
+# chart package is canonical.
+
 jobs:
   release:
     uses: redhat-cop/github-workflows-operators/.github/workflows/release-operator.yml@v1

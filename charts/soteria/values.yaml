@@ -176,7 +176,7 @@ ui:
   standalone:
     image:
       # repository: Container image for the standalone UI.
-      repository: quay.io/soteria-project/soteria-ui
+      repository: quay.io/soteria-project/soteria-standalone-ui
       # tag: Image tag for the standalone UI.
       tag: ""
     gateway:

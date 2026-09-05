@@ -10,8 +10,8 @@ concurrency:
   group: release-${{ github.ref_name }}
   cancel-in-progress: false
 
-permissions:
-  contents: write
+# Permissions scoped per-job below; workflow-level default is restrictive.
+permissions: {}
 
 env:
   REGISTRY: quay.io
@@ -24,6 +24,8 @@ jobs:
   # ------------------------------------------------------------------
   build-images:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -32,6 +34,10 @@ jobs:
         id: version
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
+          if [[ -z "$VERSION" ]] || ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            echo "::error::Invalid version: $VERSION (tag must be v<semver>)"
+            exit 1
+          fi
           echo "VERSION=$VERSION" >> "$GITHUB_OUTPUT"
           if [[ "$VERSION" == *-* ]]; then
             echo "IS_PRERELEASE=true" >> "$GITHUB_OUTPUT"
@@ -39,11 +45,11 @@ jobs:
             echo "IS_PRERELEASE=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Set up QEMU for multi-arch builds
         uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Login to quay.io
         uses: docker/login-action@v3
@@ -60,6 +66,7 @@ jobs:
           file: console-plugin/Dockerfile
           platforms: ${{ env.BUILD_PLATFORMS }}
           push: true
+          provenance: false
           tags: |
             ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/soteria-console-plugin:${{ steps.version.outputs.VERSION }}
             ${{ steps.version.outputs.IS_PRERELEASE == 'false' && format('{0}/{1}/soteria-console-plugin:latest', env.REGISTRY, env.REGISTRY_ORG) || '' }}
@@ -72,16 +79,25 @@ jobs:
           file: console-plugin/Dockerfile.standalone
           platforms: ${{ env.BUILD_PLATFORMS }}
           push: true
+          provenance: false
           tags: |
             ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/soteria-standalone-ui:${{ steps.version.outputs.VERSION }}
             ${{ steps.version.outputs.IS_PRERELEASE == 'false' && format('{0}/{1}/soteria-standalone-ui:latest', env.REGISTRY, env.REGISTRY_ORG) || '' }}
 
   # ------------------------------------------------------------------
   # Job 2: Package and publish the Helm chart to GitHub Pages
+  # NOTE: This is the canonical Helm chart publisher. If the reusable
+  # workflow in release-operator.yml also publishes a Helm chart to
+  # gh-pages, that job must be disabled to avoid race conditions.
   # ------------------------------------------------------------------
   publish-chart:
     runs-on: ubuntu-latest
     needs: build-images
+    permissions:
+      contents: write
+    concurrency:
+      group: gh-pages
+      cancel-in-progress: false
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -94,8 +110,11 @@ jobs:
 
       - name: Update Chart.yaml version and appVersion
         run: |
-          sed -i "s/^version:.*/version: ${{ steps.version.outputs.VERSION }}/" charts/soteria/Chart.yaml
-          sed -i "s/^appVersion:.*/appVersion: \"${{ steps.version.outputs.VERSION }}\"/" charts/soteria/Chart.yaml
+          VERSION="${{ steps.version.outputs.VERSION }}"
+          sed -i "s/^version:.*/version: ${VERSION}/" charts/soteria/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"${GITHUB_REF_NAME}\"/" charts/soteria/Chart.yaml
+          grep -q "^version: ${VERSION}$" charts/soteria/Chart.yaml || { echo "::error::Chart.yaml version update failed"; exit 1; }
+          grep -q "^appVersion: \"${GITHUB_REF_NAME}\"$" charts/soteria/Chart.yaml || { echo "::error::Chart.yaml appVersion update failed"; exit 1; }
           echo "Updated Chart.yaml:"
           cat charts/soteria/Chart.yaml
 
@@ -111,5 +130,7 @@ jobs:
         uses: helm/chart-releaser-action@v1
         with:
           charts_dir: charts
+          skip_existing: true
+          mark_as_latest: ${{ !contains(github.ref_name, '-') }}
         env:
           CR_TOKEN: "${{ secrets.GITHUB_TOKEN }}"

@@ -14,7 +14,7 @@ for hosting the Soteria Helm chart repository.
 
 Run these commands from a local clone of the repository:
 
-```bash
+````bash
 # Create an orphan branch (no commit history)
 git checkout --orphan gh-pages
 
@@ -48,7 +48,7 @@ EOF
 git add README.md
 git commit -m "Initialize gh-pages branch for Helm chart hosting"
 git push origin gh-pages
-```
+````
 
 ## 2. Enable GitHub Pages
 
@@ -106,7 +106,7 @@ This triggers both release workflows:
 
 1. Check **Actions** tab for workflow run status.
 2. Confirm images appear on quay.io:
-   - `quay.io/soteria-project/soteria:0.1.0-rc1`
+   - `quay.io/soteria-project/soteria:v0.1.0-rc1`
    - `quay.io/soteria-project/soteria-console-plugin:0.1.0-rc1`
    - `quay.io/soteria-project/soteria-standalone-ui:0.1.0-rc1`
 3. Confirm the Helm chart index is published:
