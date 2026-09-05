@@ -1,0 +1,183 @@
+# =============================================================================
+# Soteria Helm Chart — values.yaml
+# Storage-agnostic disaster recovery orchestrator for OpenShift Virtualization
+# =============================================================================
+
+# -- Override the chart name used in resource names and labels.
+nameOverride: ""
+# -- Override the full release name used in resource names.
+fullnameOverride: ""
+
+# -----------------------------------------------------------------------------
+# Site configuration
+# Each Soteria instance belongs to a named site with a role in the DR topology.
+# -----------------------------------------------------------------------------
+site:
+  # name: Unique identifier for this site (passed as --site-name to controller).
+  # Must be set per-cluster; used to determine reconcile ownership.
+  name: ""
+  # role: This site's initial role — "seed" bootstraps the ScyllaDB cluster,
+  # "joining" connects to an existing seed.
+  role: seed  # seed | joining
+
+# -----------------------------------------------------------------------------
+# Controller (manager) configuration
+# Governs the single-binary (aggregated API server + controller) deployment.
+# Resource defaults mirror config/manager/manager.yaml.
+# -----------------------------------------------------------------------------
+controller:
+  image:
+    # repository: Container image for the Soteria controller.
+    repository: quay.io/soteria-project/soteria
+    # tag: Image tag. Overrides appVersion from Chart.yaml when set.
+    tag: ""
+    # pullPolicy: Kubernetes image pull policy.
+    pullPolicy: IfNotPresent
+  # replicas: Number of controller pods. All replicas serve the aggregated API;
+  # leader election controls which replica runs the workflow engine.
+  replicas: 1
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      cpu: 500m
+      memory: 128Mi
+  leaderElection:
+    # enabled: Enable leader election for the workflow engine.
+    # When true, only one replica runs reconciliation loops; all serve API.
+    enabled: true
+  apiserver:
+    # port: Port for the aggregated API server (serves DRPlan/DRExecution).
+    port: 6443
+  # serviceAccount: Override the default service account name.
+  # When empty, the chart generates a name using the fullname template.
+  serviceAccount:
+    name: ""
+
+# -----------------------------------------------------------------------------
+# TLS configuration
+# References a cert-manager Issuer or ClusterIssuer for all TLS certificates
+# (aggregated API server serving cert, ScyllaDB client mTLS, webhook certs).
+# -----------------------------------------------------------------------------
+tls:
+  issuerRef:
+    # name: Name of the cert-manager Issuer or ClusterIssuer.
+    name: soteria-ca
+    # kind: "Issuer" (namespace-scoped) or "ClusterIssuer" (cluster-scoped).
+    kind: Issuer
+
+# -----------------------------------------------------------------------------
+# ScyllaDB configuration
+# Controls how the controller connects to its ScyllaDB backend.
+# Mode selects between chart-managed ScyllaCluster or external connection.
+# Common fields apply to both modes.
+# -----------------------------------------------------------------------------
+scylladb:
+  # mode: "managed" deploys a ScyllaCluster CR via scylla-operator;
+  # "external" connects to a pre-existing ScyllaDB cluster.
+  mode: managed  # managed | external
+
+  # -- Common fields (apply to both managed and external modes) --
+
+  # keyspace: ScyllaDB keyspace for Soteria's KV store.
+  keyspace: soteria
+  # localDC: Local datacenter name for DC-aware routing (e.g. "dc1").
+  # Required for multi-DC deployments.
+  localDC: ""
+  # dcReplication: Auto-create keyspace with NetworkTopologyStrategy.
+  # Comma-separated dc:rf pairs (e.g. "etl6:2,etl7:2").
+  # When empty, the keyspace must already exist.
+  dcReplication: ""
+
+  # -- Managed mode (scylla-operator ScyllaCluster) --
+  # Defaults mirror hack/multisite/overlays/base/scyllacluster.yaml.
+  managed:
+    # version: ScyllaDB version for the managed cluster.
+    version: "2026.1.3"
+    # rack: Default rack configuration.
+    rack:
+      name: rack1
+    # members: Number of ScyllaDB nodes per rack.
+    members: 1
+    # storage: Persistent volume settings for ScyllaDB data.
+    storage:
+      capacity: 5Gi
+      storageClassName: ""
+    # developerMode: Relax production constraints (single-node, lower resources).
+    # Suitable for development and CI environments only.
+    developerMode: true
+    # resources: ScyllaDB pod resource requests/limits.
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        cpu: "1"
+        memory: 1Gi
+    # externalSeeds: List of seed addresses for multi-DC cluster joining.
+    # Populated on "joining" sites to connect to the seed DC.
+    externalSeeds: []
+
+  # -- External mode (pre-existing ScyllaDB cluster) --
+  external:
+    # contactPoints: Comma-separated host:port pairs for the external cluster.
+    contactPoints: ""
+    tls:
+      # enabled: Enable TLS for connections to the external cluster.
+      enabled: false
+      # secretName: Name of the Kubernetes Secret containing TLS client
+      # cert (tls.crt), key (tls.key), and CA (ca.crt).
+      secretName: ""
+
+# -----------------------------------------------------------------------------
+# Networking configuration
+# Selects the cross-cluster networking layer for multi-site DR.
+# -----------------------------------------------------------------------------
+networking:
+  # mode: Cross-cluster networking backend.
+  # "submariner" uses Submariner ServiceExport/Import for service discovery.
+  # "cilium" uses Cilium ClusterMesh for direct pod-to-pod connectivity.
+  mode: submariner  # submariner | cilium
+
+  # -- Submariner-specific settings --
+  submariner: {}
+
+  # -- Cilium-specific settings --
+  cilium: {}
+
+  # TODO: cUDN (Cluster User-Defined Network) networking mode — future work.
+  # Will provide OVN-based cross-cluster connectivity as an alternative to
+  # Submariner and Cilium.
+
+# -----------------------------------------------------------------------------
+# UI configuration
+# Controls which UI frontend is deployed alongside the controller.
+# -----------------------------------------------------------------------------
+ui:
+  # mode: UI deployment strategy.
+  # "console-plugin" registers as an OCP dynamic console plugin.
+  # "standalone" deploys a standalone web UI behind a Gateway API route.
+  # "none" disables the UI entirely.
+  mode: console-plugin  # console-plugin | standalone | none
+
+  # -- OCP Console Plugin settings --
+  consolePlugin:
+    image:
+      # repository: Container image for the console plugin nginx proxy.
+      repository: quay.io/soteria-project/soteria-console-plugin
+      # tag: Image tag for the console plugin.
+      tag: ""
+
+  # -- Standalone UI settings --
+  standalone:
+    image:
+      # repository: Container image for the standalone UI.
+      repository: quay.io/soteria-project/soteria-ui
+      # tag: Image tag for the standalone UI.
+      tag: ""
+    gateway:
+      # name: Name of the Gateway resource to attach HTTPRoute to.
+      name: ""
+      # className: GatewayClass for the standalone UI gateway.
+      className: ""
