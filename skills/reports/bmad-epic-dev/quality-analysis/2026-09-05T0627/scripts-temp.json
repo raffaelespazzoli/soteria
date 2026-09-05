@@ -1,0 +1,54 @@
+{
+  "scanner": "scripts",
+  "script": "scan-scripts.py",
+  "version": "2.0.0",
+  "skill_path": "/home/rspazzol/git/dr-orchestrator/.cursor/skills/bmad-epic-dev",
+  "timestamp": "2026-09-05T10:28:13.755454+00:00",
+  "status": "warning",
+  "findings": [
+    {
+      "file": "scripts/epic-plan.py",
+      "line": 0,
+      "severity": "high",
+      "category": "lint-setup",
+      "title": "uv not found on PATH \u2014 cannot run ruff for Python linting",
+      "detail": "",
+      "action": "Install uv: https://docs.astral.sh/uv/getting-started/installation/"
+    }
+  ],
+  "assessments": {
+    "lint_summary": {
+      "tools_used": [],
+      "files_linted": 1,
+      "lint_issues": 0
+    },
+    "script_summary": {
+      "total_scripts": 1,
+      "by_type": {
+        "python": 1,
+        "shell": 0,
+        "node": 0,
+        "other": 0
+      },
+      "scripts": {
+        "python": [
+          "epic-plan.py"
+        ]
+      },
+      "missing_tests": []
+    }
+  },
+  "summary": {
+    "total_findings": 1,
+    "by_severity": {
+      "critical": 0,
+      "high": 1,
+      "medium": 0,
+      "low": 0
+    },
+    "by_category": {
+      "lint-setup": 1
+    },
+    "assessment": ""
+  }
+}

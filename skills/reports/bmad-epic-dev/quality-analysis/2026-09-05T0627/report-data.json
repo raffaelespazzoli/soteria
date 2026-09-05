@@ -1,0 +1,557 @@
+{
+  "meta": {
+    "skill_name": "bmad-epic-dev",
+    "skill_path": "/home/rspazzol/git/dr-orchestrator/.cursor/skills/bmad-epic-dev",
+    "timestamp": "2026-09-05T06:27:00Z",
+    "scanner_count": 8
+  },
+  "narrative": "This is an exceptionally well-architected orchestration skill with production-grade resume behavior, rigorous adversarial review isolation, and smart use of deterministic scripts. The primary opportunity is completing the automation story: three interaction points block headless execution, and the orchestrator's prompt layer carries ~1,000 tokens of template boilerplate that scripts could eliminate. Path reference issues (bare _bmad without {project-root}) need a quick fix.",
+  "grade": "Good",
+  "broken": [
+    {
+      "title": "Bare _bmad reference without {project-root} prefix (contract anchor)",
+      "file": "references/phase-logic.md",
+      "line": 10,
+      "detail": "The customization preamble instruction references `_bmad/custom/<skill>.toml` without the `{project-root}` prefix. In a subagent context where the working directory may differ, this resolves to the wrong location.",
+      "action": "Change to `{project-root}/_bmad/custom/<skill>.toml`.",
+      "severity": "high",
+      "source": "path-standards"
+    },
+    {
+      "title": "Bare _bmad reference without {project-root} prefix (config resolution)",
+      "file": "references/phase-logic.md",
+      "line": 47,
+      "detail": "The review model resolution references `_bmad/config.user.yaml` without the `{project-root}` prefix, creating the same working-directory resolution risk.",
+      "action": "Change to `{project-root}/_bmad/config.user.yaml`.",
+      "severity": "high",
+      "source": "path-standards"
+    },
+    {
+      "title": "uv not found — Python linting unavailable",
+      "file": "scripts/epic-plan.py",
+      "line": 0,
+      "detail": "The environment lacks uv, so ruff cannot lint the Python script. This is an environment setup issue, not a skill defect.",
+      "action": "Install uv: https://docs.astral.sh/uv/getting-started/installation/",
+      "severity": "high",
+      "source": "scripts"
+    }
+  ],
+  "opportunities": [
+    {
+      "name": "Automation & Headless Readiness",
+      "description": "The skill is 80% of the way to headless-capable — --commit-policy, --skip-confirmations, and checkpoint-driven resume are already in place. But three interaction points block unattended execution: the mandatory Phase A review gate, decision-needed relays with no escalation policy, and orphaned worktree prompts with no default action. A CI pipeline invoking this skill will always stall.",
+      "severity": "high",
+      "impact": "Unlocks CI pipelines, chained-agent orchestration, and scheduled builds — the highest-value automation use cases for an epic-dev skill.",
+      "action": "Implement a --headless flag that auto-approves specs (with a log warning), fails fast on decision-needed relays, auto-cleans orphaned worktrees, and writes an epic-{N}-summary.json on completion/halt.",
+      "finding_count": 6,
+      "findings": [
+        {
+          "title": "Phase A review gate is un-overridable — blocks all CI/headless use",
+          "file": "references/phase-logic.md",
+          "line": 106,
+          "detail": "--skip-confirmations explicitly doesn't override the mandatory spec review gate. No flag exists to bypass it.",
+          "source": "enhancement-opportunities"
+        },
+        {
+          "title": "No structured exit artifact — completion is prose only",
+          "file": "references/phase-logic.md",
+          "line": 342,
+          "detail": "The completion report is human-readable prose. CI pipelines need machine-readable JSON with story statuses, commit SHAs, and review verdicts.",
+          "source": "enhancement-opportunities"
+        },
+        {
+          "title": "Decision-needed relays have no automation policy",
+          "file": "references/phase-logic.md",
+          "line": 96,
+          "detail": "When a subagent reports decision_needed, the orchestrator always halts for human input. No --on-decision=fail option for CI.",
+          "source": "enhancement-opportunities"
+        },
+        {
+          "title": "No phase-entry flag for experts resuming partially-complete epics",
+          "file": "references/phase-logic.md",
+          "line": 56,
+          "detail": "Even when all stories are ready-for-dev, experts must walk through Step 0's full plan and approval. No --start-phase=B or auto-detection.",
+          "source": "enhancement-opportunities"
+        },
+        {
+          "title": "Orphaned worktree prompt has no default action for automation",
+          "file": "references/phase-logic.md",
+          "line": 371,
+          "detail": "On resume, orphaned worktrees trigger an interactive prompt with no --clean-worktrees or --resume-worktrees default.",
+          "source": "enhancement-opportunities"
+        },
+        {
+          "title": "Three-Mode Architecture incomplete — headless mode missing",
+          "file": "SKILL.md",
+          "line": 15,
+          "detail": "Two modes exist (interactive + reduced-ceremony via --skip-confirmations). A true --headless mode with auto-approve, fail-fast, and structured output would complete the trifecta.",
+          "source": "enhancement-opportunities"
+        }
+      ]
+    },
+    {
+      "name": "Orchestrator Context Bloat from Templates & Read-Ahead",
+      "description": "The orchestrator reads four large subagent prompt templates (~600 tokens), reproduces them with variable substitution, and pre-reads story specs + diffs (~1,000–3,000 tokens per story) before delegating to review subagents. This bloats the parent's context window proportionally to layer width.",
+      "severity": "medium",
+      "impact": "Eliminating template text and delegating reads would save ~920 tokens of static template cost plus 1,000–3,000 tokens per reviewed story in parent context, improving reliability for wide dependency layers.",
+      "action": "Build a render-prompt.py script that stores templates, accepts key-value args, and outputs fully rendered prompts. Refactor Phase B.2 to delegate diff extraction and spec reading to the review subagent.",
+      "finding_count": 7,
+      "findings": [
+        {
+          "title": "~600 tokens of subagent prompt template text the LLM reads and reproduces",
+          "file": "references/phase-logic.md",
+          "line": 79,
+          "detail": "Four prompt templates (create-story, dev-story, code-review, fix-pass) are inline text that the LLM reads and reproduces with variable substitution.",
+          "source": "script-opportunities"
+        },
+        {
+          "title": "Customization preamble repeated verbatim 4× (~320 tokens)",
+          "file": "references/phase-logic.md",
+          "line": 80,
+          "detail": "The IMPORTANT — Team customizations block is copied identically into all four subagent templates.",
+          "source": "script-opportunities"
+        },
+        {
+          "title": "Parent reads diffs + specs before delegating to review subagents",
+          "file": "references/phase-logic.md",
+          "line": 197,
+          "detail": "For N stories in a layer, the parent accumulates N diffs + N specs in context — tokens it never uses beyond copy-pasting into prompts.",
+          "source": "execution-efficiency"
+        },
+        {
+          "title": "Sequential per-story description before batch review launch",
+          "file": "references/phase-logic.md",
+          "line": 196,
+          "detail": "Steps 7a-7c describe per-story sequential flow, then step 8 says 'launch all simultaneously' — may cause LLM to process sequentially.",
+          "source": "execution-efficiency"
+        },
+        {
+          "title": "Subagent return formats not JSON-enforced",
+          "file": "references/phase-logic.md",
+          "line": 86,
+          "detail": "Return fields specified in natural language rather than strict JSON schema, causing 50-200 tokens of conversational filler per response.",
+          "source": "execution-efficiency"
+        },
+        {
+          "title": "Commit message templates could fold into prompt renderer",
+          "file": "references/phase-logic.md",
+          "line": 119,
+          "detail": "Three commit message templates with variable substitution are trivially deterministic.",
+          "source": "script-opportunities"
+        },
+        {
+          "title": "Config files loaded without explicit parallel instruction",
+          "file": "SKILL.md",
+          "line": 33,
+          "detail": "Two config file reads not explicitly marked for parallel loading. Minor — small files, negligible impact.",
+          "source": "execution-efficiency"
+        }
+      ]
+    },
+    {
+      "name": "Unbounded Iteration Risks",
+      "description": "While the review fix cycle (B.3) is capped at 2 iterations, higher-level loops lack termination guards. The review-spawned story loop (B.7 → Phase A → Phase B) can theoretically cycle indefinitely. Circular dependencies are silently absorbed into orphan layers. Unknown-status stories are silently skipped.",
+      "severity": "medium",
+      "impact": "Adding bounds prevents runaway subagent costs, infinite git history growth, and silent data loss from skipped stories.",
+      "action": "Add max_review_spawn_iterations (default: 2) for the B.7 loop. Detect circular dependencies in epic-plan.py and surface warnings. Treat unknown-status stories as backlog or warn explicitly.",
+      "finding_count": 4,
+      "findings": [
+        {
+          "title": "Review-spawned story loop (B.7→A→B) has no termination bound",
+          "file": "references/phase-logic.md",
+          "line": 330,
+          "detail": "B.7 loops back to Phase A when code review spawns new stories. A pathological review generating fix stories could loop indefinitely.",
+          "source": "enhancement-opportunities"
+        },
+        {
+          "title": "No explicit iteration bound on Phase A ↔ B.7 outer loop",
+          "file": "references/phase-logic.md",
+          "line": 330,
+          "detail": "B.3's 2-cycle limit is well-bounded, but the outer Phase A → B → B.7 → Phase A loop has no equivalent guard.",
+          "source": "workflow-integrity"
+        },
+        {
+          "title": "Circular dependencies silently placed in orphan layer",
+          "file": "scripts/epic-plan.py",
+          "line": 0,
+          "detail": "build_dependency_layers places unreachable stories in a final orphan layer without distinguishing circular deps from independent stories.",
+          "source": "skill-cohesion"
+        },
+        {
+          "title": "Unknown-status stories silently skipped",
+          "file": "references/phase-logic.md",
+          "line": 361,
+          "detail": "Stories in the epic file but missing from sprint-status get status 'unknown' and don't match any Phase A/B filter — silently excluded.",
+          "source": "enhancement-opportunities"
+        }
+      ]
+    },
+    {
+      "name": "Reference Self-Containment Gaps",
+      "description": "Phase-logic.md back-references SKILL.md for commit-policy semantics and uses bare _bmad paths. During long-running orchestration, context compaction could drop SKILL.md, leaving the orchestrator without critical definitions.",
+      "severity": "medium",
+      "impact": "Eliminates compaction risk for commit-policy behavior, reduces maintenance burden for model list, removes dead reference.",
+      "action": "Add a 1-line commit-policy definition to the contract anchor in phase-logic.md. Add a maintenance note for the model slug list. Remove user_name from the resolve list or document its purpose.",
+      "finding_count": 4,
+      "findings": [
+        {
+          "title": "Commit-policy semantics defined only in SKILL.md, not phase-logic.md",
+          "file": "references/phase-logic.md",
+          "line": 14,
+          "detail": "The valid values for --commit-policy (auto|ask|skip) and their behaviors are only in SKILL.md. If compacted during Phase B, semantics are lost.",
+          "source": "prompt-craft"
+        },
+        {
+          "title": "Model slug list hardcoded with no canonical-source note",
+          "file": "references/phase-logic.md",
+          "line": 49,
+          "detail": "Four model slugs are hardcoded. If the platform's available models change, this list becomes stale with no pointer to where it's maintained.",
+          "source": "prompt-craft"
+        },
+        {
+          "title": "user_name resolved but never referenced in workflow logic",
+          "file": "SKILL.md",
+          "line": 39,
+          "detail": "On Activation resolves user_name from config, but neither SKILL.md nor phase-logic.md ever uses it. Creates a dead-reference appearance.",
+          "source": "workflow-integrity"
+        },
+        {
+          "title": "Skip-confirmations behavior not defined in contract anchor",
+          "file": "references/phase-logic.md",
+          "line": 14,
+          "detail": "The contract anchor lists --skip-confirmations as an arg to respect but doesn't define what it suppresses. The name is self-documenting, but a one-line definition improves compaction resilience.",
+          "source": "prompt-craft"
+        }
+      ]
+    },
+    {
+      "name": "Merge Conflict Recovery Gap",
+      "description": "The skill handles every failure mode with clear resume instructions — except merge conflicts, the most common real-world failure in a worktree-based parallel workflow. When a merge in B.4 fails, the user is left in an undocumented state.",
+      "severity": "high",
+      "impact": "Prevents the most frustrating failure mode in the workflow by giving users clear recovery steps and making resume deterministic after conflicts.",
+      "action": "Define a merge-conflict story state (or document exact manual recovery: resolve conflict, complete merge, mark done, clean worktree, re-invoke). Add partial-merge rollback guidance for multi-story layers.",
+      "finding_count": 3,
+      "findings": [
+        {
+          "title": "No merge-conflict state in resume behavior table",
+          "file": "references/phase-logic.md",
+          "line": 361,
+          "detail": "After a merge conflict, the story is marked 'review' (passed) but the merge failed. The resume table doesn't define what happens next.",
+          "source": "enhancement-opportunities"
+        },
+        {
+          "title": "No partial-merge rollback guidance for multi-story layers",
+          "file": "references/phase-logic.md",
+          "line": 285,
+          "detail": "If story 2 of 3 conflicts during merge in B.4, story 1 is already merged. No guidance on whether to revert or resolve forward.",
+          "source": "skill-cohesion"
+        },
+        {
+          "title": "Worktree failure recovery unspecified",
+          "file": "references/phase-logic.md",
+          "line": 143,
+          "detail": "B.1 assumes worktree creation succeeds. If it fails (branch exists, locked .git/worktrees), no orchestrator-level guidance.",
+          "source": "enhancement-opportunities"
+        }
+      ]
+    }
+  ],
+  "strengths": [
+    {
+      "title": "Adversarial review isolation is architecturally enforced",
+      "detail": "Dev and review use different subagent types, different LLM models, and zero context leakage. The contract anchor restates this at the top of phase-logic.md where it survives context compaction. This is the gold standard for automated code review."
+    },
+    {
+      "title": "epic-plan.py is a model script integration",
+      "detail": "Offloading DAG computation, topological sort, and status cross-referencing to a deterministic Python script saves hundreds of LLM tokens and eliminates non-determinism. The script-first, LLM-fallback gate is the pattern all skills should follow."
+    },
+    {
+      "title": "Resume behavior is production-grade",
+      "detail": "Sprint-status.yaml as the sole checkpoint, with story states mapping directly to resume positions, is elegant and robust. Orphaned worktree detection on resume handles real-world interrupted sessions."
+    },
+    {
+      "title": "Progressive disclosure is exemplary",
+      "detail": "SKILL.md at 44 lines / 715 tokens is remarkably lean for an orchestrator managing specs, parallel dev, adversarial review, and fix cycles. All detail lives in references/phase-logic.md — loaded once per activation."
+    },
+    {
+      "title": "Contract anchor designed for compaction survival",
+      "detail": "The clearly marked constraint block at the top of phase-logic.md places non-negotiable rules where they resist context window pressure during long-running orchestrations."
+    },
+    {
+      "title": "Dependency-layer parallelism is carefully reasoned",
+      "detail": "Phase A parallelizes markdown specs (no conflicts). Phase B parallelizes via git worktrees (separate working directories). Sequential merge maintains linear history. This reflects genuine understanding of when parallelism is safe."
+    },
+    {
+      "title": "Intent guard prevents expensive mistakes",
+      "detail": "Catching a single-story reference (e.g., '13.2') before launching a multi-hour full-epic orchestration is a small but high-value interaction pattern."
+    },
+    {
+      "title": "Bounded review fix cycles with escalation",
+      "detail": "The 2-cycle cap in B.3 acknowledges that persistent review disagreements are likely design questions, not code fixes. Escalating to the user prevents infinite loops while preserving review rigor."
+    },
+    {
+      "title": "Self-contained subagent templates",
+      "detail": "Each template includes customization loading, story context, specific instructions, output format, and scope guards (e.g., 'DO NOT run code review'). Subagents execute autonomously without external references."
+    },
+    {
+      "title": "Fail-forward within a layer",
+      "detail": "In-flight dev subagents complete even when one fails, avoiding wasted work. New layers don't start until the current layer resolves, preventing cascading failures."
+    }
+  ],
+  "detailed_analysis": {
+    "structure": {
+      "assessment": "Structurally sound with clean file organization: SKILL.md (entry), references/phase-logic.md (execution logic), scripts/epic-plan.py (deterministic computation), and scripts/tests/test-epic-plan.py (tests). Frontmatter is well-formed. The pre-pass classified the skill as simple-utility due to the absence of numbered stage files, but the skill actually implements complex multi-phase orchestration via its reference file — a valid design choice.",
+      "findings": [
+        {
+          "title": "Pre-pass type classification mismatch",
+          "file": "workflow-integrity-prepass.json",
+          "line": 0,
+          "detail": "Pre-pass detected simple-utility because there are no numbered stage files at root. The skill is actually a complex orchestration workflow. Informational for pre-pass algorithm improvement.",
+          "source": "workflow-integrity"
+        }
+      ]
+    },
+    "craft": {
+      "assessment": "Strong overview quality at 23 lines establishing mission, domain framing, and role clarity. Excellent progressive disclosure — SKILL.md at 44 lines / 715 tokens is among the leanest orchestrator skills possible while phase-logic.md carries the full execution detail. The contract anchor at the top of phase-logic.md is a standout defensive design pattern.",
+      "overview_quality": "appropriate",
+      "progressive_disclosure": "good",
+      "findings": [
+        {
+          "title": "Customization preamble repetition is structural necessity, not waste",
+          "file": "references/phase-logic.md",
+          "line": 80,
+          "detail": "Each of the 4 templates runs in isolated subagent context, so the repeated preamble is required. Acknowledged as well-designed by the prompt-craft scanner.",
+          "source": "prompt-craft"
+        }
+      ]
+    },
+    "cohesion": {
+      "assessment": "Highly cohesive orchestration skill. Stage flow is logical — every phase builds on prior outputs. Parallelism strategy is carefully reasoned. The adversarial review contract is the most rigorous design element. Minor gaps in execution plan staleness after Phase A gate and cross-platform skill resolution.",
+      "dimensions": {
+        "stage_flow": {
+          "score": "strong",
+          "notes": "Clean linear top-level flow (Step 0 → A → B → Completion) with well-structured B sub-phases. No dead-end stages. B.7 elegantly closes the review-spawned story cycle."
+        },
+        "purpose_alignment": {
+          "score": "strong",
+          "notes": "Promises match behavior. Design principles (orchestrator-not-implementer, fresh subagents, different review model, halt-on-failure) are consistently honored throughout."
+        },
+        "complexity": {
+          "score": "strong",
+          "notes": "Complexity matches the task's decision space. epic-plan.py is a smart complexity reducer. B.6 sequential fallback adds necessary duplication."
+        },
+        "gap_redundancy": {
+          "score": "moderate",
+          "notes": "Execution plan may be stale after Phase A gate. Cross-platform skill resolution is fragile. No concurrent-epic guard."
+        }
+      },
+      "findings": [
+        {
+          "title": "Execution plan may be stale after Phase A review gate",
+          "file": "references/phase-logic.md",
+          "line": 106,
+          "detail": "User is invited to edit specs during the review gate, but the execution plan (dependency layers, story list) is not re-computed afterward.",
+          "source": "skill-cohesion"
+        },
+        {
+          "title": "Cross-platform skill resolution fragility",
+          "file": "references/phase-logic.md",
+          "line": 80,
+          "detail": "Sub-skills in .claude/skills/ resolved by name only from .cursor/skills/. If discovery mechanism changes, subagent prompts silently fail.",
+          "source": "skill-cohesion"
+        },
+        {
+          "title": "B.6 sequential fallback positioned after B.5 but is an alternative execution mode",
+          "file": "references/phase-logic.md",
+          "line": 310,
+          "detail": "Cosmetic positioning issue — B.6 is an alternative to B.1-B.5, not a stage that runs after B.5. Could confuse a weaker model.",
+          "source": "skill-cohesion"
+        },
+        {
+          "title": "No concurrent-epic guard",
+          "file": "references/phase-logic.md",
+          "line": 18,
+          "detail": "Nothing prevents running bmad-epic-dev for two epics simultaneously. Sprint-status.yaml is a shared file — concurrent writes could corrupt it.",
+          "source": "enhancement-opportunities"
+        }
+      ]
+    },
+    "efficiency": {
+      "assessment": "Well-optimized with dependency-layer parallelism, deterministic Python pre-pass, worktree-based isolation, and strict orchestrator-not-implementer contract. The main concern — parent context bloat from pre-reading diffs and specs — is addressed in the Orchestrator Context Bloat opportunity theme.",
+      "findings": []
+    },
+    "experience": {
+      "assessment": "The skill serves a wide range of users with varying levels of friction. First-timers benefit from intent guards and execution plan displays but lack coaching at the review gate. Experts appreciate --commit-policy and --skip-confirmations but want phase-entry and parallelism controls. The biggest gap is automation support — three interaction points block headless execution.",
+      "journeys": [
+        {
+          "archetype": "first-timer",
+          "summary": "A developer new to BMad types 'implement epic 16' and encounters worktrees, model routing, and a review gate with no coaching on what to verify.",
+          "friction_points": [
+            "Worktree concept unexplained — extra directories appear with no context",
+            "Review model auto-selection has no qualitative guidance",
+            "Phase A review gate lists files but doesn't coach what to check"
+          ],
+          "bright_spots": [
+            "Intent guard catches single-story misfire elegantly",
+            "Execution plan display educates on epic structure and parallelism",
+            "Resume behavior means mistakes aren't catastrophic"
+          ]
+        },
+        {
+          "archetype": "expert",
+          "summary": "A power user with pre-reviewed specs wants maximum throughput but must walk through Step 0 approval and an un-overridable review gate.",
+          "friction_points": [
+            "No phase-entry flag to skip to Phase B",
+            "Phase A review gate is un-overridable even with --skip-confirmations",
+            "No parallelism cap (--max-parallel) for resource-constrained environments",
+            "Review cycle limit (2) is hard-coded, not configurable"
+          ],
+          "bright_spots": [
+            "--commit-policy=skip respects expert workflows",
+            "--skip-confirmations removes most ceremony",
+            "Worktree parallelism is genuinely fast"
+          ]
+        },
+        {
+          "archetype": "confused",
+          "summary": "User types 'dev epic 13' but may have meant deploy, status check, or a different epic number entirely.",
+          "friction_points": [
+            "Intent guard only catches story-vs-epic confusion, not dev-vs-deploy",
+            "No 'list available epics' helper when epic number is wrong",
+            "No guard against accidental second invocation while subagents are running"
+          ],
+          "bright_spots": [
+            "Epic 'done' status detected immediately — cheap exit",
+            "Intent guard for story references works well"
+          ]
+        },
+        {
+          "archetype": "edge-case",
+          "summary": "Valid but unusual setups — circular dependencies, non-standard epic locations, unexpected story statuses — encounter silent failures.",
+          "friction_points": [
+            "Circular dependencies produce orphan layers silently",
+            "Unknown-status stories silently skipped",
+            "Multi-epic concurrent execution unguarded"
+          ],
+          "bright_spots": [
+            "DAG re-parse on resume handles partial completion",
+            "Story status cross-referencing is thorough for known states"
+          ]
+        },
+        {
+          "archetype": "hostile-environment",
+          "summary": "Git worktree failures, model outages, or disk issues create recovery cliffs.",
+          "friction_points": [
+            "Worktree creation failure recovery unspecified",
+            "Merge conflict recovery is a documentation cliff",
+            "Model unavailability mid-epic has no retry or fallback",
+            "Python version mismatch possible with epic-plan.py"
+          ],
+          "bright_spots": [
+            "Sequential fallback (B.6) is well-documented",
+            "Orphaned worktree detection on resume is thoughtful"
+          ]
+        },
+        {
+          "archetype": "automator",
+          "summary": "CI pipeline runs the skill with --commit-policy=auto --skip-confirmations but stalls at the mandatory review gate.",
+          "friction_points": [
+            "Phase A review gate blocks all headless execution",
+            "No structured exit artifact for CI consumption",
+            "No timeout mechanism for hung subagents",
+            "Commit message format is not configurable"
+          ],
+          "bright_spots": [
+            "--commit-policy and --skip-confirmations cover most automation needs",
+            "Sprint-status checkpoint is inherently automation-friendly"
+          ]
+        }
+      ],
+      "autonomous": {
+        "potential": "easily-adaptable",
+        "notes": "Three targeted flags (--headless, --on-decision=fail, --clean-worktrees) plus a JSON exit summary would make the skill fully headless-capable. The state machine is already externalized in sprint-status.yaml; only interaction points need parameterization."
+      },
+      "findings": [
+        {
+          "title": "Phase A review gate coaching would transform gate from ceremony to value",
+          "file": "references/phase-logic.md",
+          "line": 106,
+          "detail": "A few bullets on what to verify (testable acceptance criteria, correct dependencies, scope alignment) would help first-timers use the gate effectively.",
+          "source": "enhancement-opportunities"
+        }
+      ]
+    },
+    "scripts": {
+      "assessment": "The existing epic-plan.py covers the heaviest deterministic block and is well-tested. However, ~1,970 tokens of additional deterministic work remain in the prompt layer — prompt rendering, review model resolution, sprint-status verification, git command construction, and worktree detection. A phased script buildout would eliminate this tax.",
+      "token_savings": "~1,970 estimated total across 9 opportunities",
+      "findings": [
+        {
+          "title": "Sprint-status verification at 3+ checkpoints could be scripted",
+          "file": "references/phase-logic.md",
+          "line": 100,
+          "detail": "Re-reading sprint-status.yaml to verify state transitions at multiple checkpoints is deterministic. ~250 tokens savings.",
+          "source": "script-opportunities"
+        },
+        {
+          "title": "Git diff command construction with exclude patterns",
+          "file": "references/phase-logic.md",
+          "line": 198,
+          "detail": "Two diff command templates with static exclude patterns and variable substitution. ~150 tokens savings.",
+          "source": "script-opportunities"
+        },
+        {
+          "title": "Git merge + cleanup command sequence",
+          "file": "references/phase-logic.md",
+          "line": 285,
+          "detail": "Fixed 4-command sequence (checkout, merge, worktree remove, branch delete) with variable substitution. ~120 tokens savings.",
+          "source": "script-opportunities"
+        },
+        {
+          "title": "Resume state→action mapping is a pure lookup table",
+          "file": "references/phase-logic.md",
+          "line": 361,
+          "detail": "A 5-row state-to-action table that could be a required_action field in epic-plan.py output. ~100 tokens savings.",
+          "source": "script-opportunities"
+        }
+      ]
+    }
+  },
+  "recommendations": [
+    {
+      "rank": 1,
+      "action": "Add --headless automation mode (auto-approve specs, fail-fast on decisions, structured JSON exit artifact, auto-clean worktrees)",
+      "resolves": 6,
+      "effort": "medium"
+    },
+    {
+      "rank": 2,
+      "action": "Build render-prompt.py for subagent prompt rendering — eliminate ~920 tokens of template boilerplate and delegate spec/diff reading to review subagents",
+      "resolves": 7,
+      "effort": "medium"
+    },
+    {
+      "rank": 3,
+      "action": "Add iteration bounds to all loops — max_review_spawn_iterations (default 2), circular dependency detection in epic-plan.py, unknown-status story warnings",
+      "resolves": 4,
+      "effort": "low"
+    },
+    {
+      "rank": 4,
+      "action": "Fix path references and self-containment gaps — add {project-root} prefix to 2 bare paths, add commit-policy definition to contract anchor, document model slug maintenance source",
+      "resolves": 4,
+      "effort": "low"
+    },
+    {
+      "rank": 5,
+      "action": "Define merge conflict recovery — document exact manual recovery procedure, consider merge-conflict state in sprint-status, add partial-merge rollback guidance",
+      "resolves": 3,
+      "effort": "low"
+    },
+    {
+      "rank": 6,
+      "action": "Extend epic-plan.py with --resolve-review-model, --check-worktrees, and per-story required_action fields",
+      "resolves": 4,
+      "effort": "low"
+    }
+  ]
+}

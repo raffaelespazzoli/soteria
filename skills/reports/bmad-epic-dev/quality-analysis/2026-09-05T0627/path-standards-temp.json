@@ -1,0 +1,52 @@
+{
+  "scanner": "path-standards",
+  "script": "scan-path-standards.py",
+  "version": "2.1.0",
+  "skill_path": "/home/rspazzol/git/dr-orchestrator/.cursor/skills/bmad-epic-dev",
+  "timestamp": "2026-09-05T10:28:12.667090+00:00",
+  "files_scanned": [
+    "SKILL.md",
+    "references/phase-logic.md"
+  ],
+  "status": "fail",
+  "findings": [
+    {
+      "file": "references/phase-logic.md",
+      "line": 10,
+      "severity": "high",
+      "category": "bare-bmad",
+      "title": "Bare _bmad reference without {project-root} prefix",
+      "detail": "- **All subagent prompts include the customization preamble** \u2014 load `_bmad/custom/<skill>.toml` before executing",
+      "action": ""
+    },
+    {
+      "file": "references/phase-logic.md",
+      "line": 47,
+      "severity": "high",
+      "category": "bare-bmad",
+      "title": "Bare _bmad reference without {project-root} prefix",
+      "detail": "- Else if `_bmad/config.user.yaml` has `bmm.review_model` \u2192 use it",
+      "action": ""
+    }
+  ],
+  "assessments": {},
+  "summary": {
+    "total_findings": 2,
+    "by_severity": {
+      "critical": 0,
+      "high": 2,
+      "medium": 0,
+      "low": 0
+    },
+    "by_category": {
+      "double_prefix": 0,
+      "bare_bmad": 2,
+      "absolute_path": 0,
+      "relative_prefix": 0,
+      "bare_internal_path": 0,
+      "frontmatter": 0,
+      "structure": 0
+    },
+    "assessment": "Path standards scan complete"
+  }
+}

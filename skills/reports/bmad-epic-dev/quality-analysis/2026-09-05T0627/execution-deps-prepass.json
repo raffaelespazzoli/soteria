@@ -1,0 +1,27 @@
+{
+  "scanner": "execution-efficiency-prepass",
+  "script": "prepass-execution-deps.py",
+  "version": "1.0.0",
+  "skill_path": "/home/rspazzol/git/dr-orchestrator/.cursor/skills/bmad-epic-dev",
+  "timestamp": "2026-09-05T10:28:30.507021+00:00",
+  "status": "pass",
+  "dependency_graph": {
+    "stages": [],
+    "hard_dependencies": {},
+    "soft_dependencies": {},
+    "cycles": [],
+    "transitive_redundancies": [],
+    "parallel_groups": []
+  },
+  "sequential_patterns": [],
+  "issues": [],
+  "summary": {
+    "total_issues": 0,
+    "by_severity": {
+      "critical": 0,
+      "high": 0,
+      "medium": 0,
+      "low": 0
+    }
+  }
+}
