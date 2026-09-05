@@ -1,6 +1,6 @@
 # Story 17.18: API Reference: DRPlan
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -37,19 +37,19 @@ Then every field, type, default, and validation rule is accurate
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Extract spec field definitions (AC: 1, 3, 5)
-  - [ ] 1.1: Walk `pkg/apis/soteria.io/v1alpha1/types.go` for DRPlan, DRPlanSpec, VolumeReplicationDriverConfig — all fields and kubebuilder markers
-  - [ ] 1.2: Walk `pkg/apis/soteria.io/v1alpha1/validation.go` for ValidateDRPlan and ValidateDRPlanUpdate rules
-  - [ ] 1.3: Walk `pkg/apis/soteria.io/v1alpha1/defaults.go` for defaulting logic
-  - [ ] 1.4: Walk `pkg/admission/drplan_validator.go` for webhook-based validation (field-level)
-- [ ] Task 2: Extract status field definitions (AC: 2, 5)
-  - [ ] 2.1: Walk `pkg/apis/soteria.io/v1alpha1/types.go` for DRPlanStatus and all nested types (WaveInfo, VolumeGroupInfo, PreflightReport, VolumeGroupHealth, SiteDiscovery, etc.)
-- [ ] Task 3: Write the reference page (AC: 1, 2, 3, 4)
-  - [ ] 3.1: Write `docs/reference/api/drplan.md` with full field reference tables for spec and status
-  - [ ] 3.2: Document validation rules (Required, Minimum, Enum, Immutable fields)
-  - [ ] 3.3: Add complete YAML examples for minimal and full configurations
-- [ ] Task 4: Verify accuracy (AC: 5)
-  - [ ] 4.1: Cross-reference every documented field against the actual types.go
+- [x] Task 1: Extract spec field definitions (AC: 1, 3, 5)
+  - [x] 1.1: Walk `pkg/apis/soteria.io/v1alpha1/types.go` for DRPlan, DRPlanSpec, VolumeReplicationDriverConfig — all fields and kubebuilder markers
+  - [x] 1.2: Walk `pkg/apis/soteria.io/v1alpha1/validation.go` for ValidateDRPlan and ValidateDRPlanUpdate rules
+  - [x] 1.3: Walk `pkg/apis/soteria.io/v1alpha1/defaults.go` for defaulting logic
+  - [x] 1.4: Walk `pkg/admission/drplan_validator.go` for webhook-based validation (field-level)
+- [x] Task 2: Extract status field definitions (AC: 2, 5)
+  - [x] 2.1: Walk `pkg/apis/soteria.io/v1alpha1/types.go` for DRPlanStatus and all nested types (WaveInfo, VolumeGroupInfo, PreflightReport, VolumeGroupHealth, SiteDiscovery, etc.)
+- [x] Task 3: Write the reference page (AC: 1, 2, 3, 4)
+  - [x] 3.1: Write `docs/reference/api/drplan.md` with full field reference tables for spec and status
+  - [x] 3.2: Document validation rules (Required, Minimum, Enum, Immutable fields)
+  - [x] 3.3: Add complete YAML examples for minimal and full configurations
+- [x] Task 4: Verify accuracy (AC: 5)
+  - [x] 4.1: Cross-reference every documented field against the actual types.go
 
 ## Dev Notes
 
@@ -114,8 +114,33 @@ Start from the PRD (`_bmad-output/planning-artifacts/prd.md`), architecture doc 
 
 ### Agent Model Used
 
+Claude Opus 4.6
+
 ### Debug Log References
+
+None — documentation-only story, no debugging required.
 
 ### Completion Notes List
 
+- Replaced stub placeholder in `docs/reference/api/drplan.md` with exhaustive API reference
+- Documented all 6 DRPlanSpec fields with types, required/optional, defaults, and validation rules
+- Documented all 10 DRPlanStatus fields with types and descriptions
+- Documented 13 nested types: VolumeReplicationDriverConfig, WaveInfo, VolumeGroupInfo, DiscoveredVM, DiscoveredDisk, PreflightReport, PreflightWave, PreflightVM, PreflightChunk, PreflightVolumeGroup, VolumeGroupDisk, DiskSiteMapping, VolumeGroupHealth, SiteDiscovery, Conditions
+- Documented all create and update validation rules from validation.go and the admission webhook
+- Documented immutable fields: volumeReplicationDriver (struct), primarySite, secondarySite
+- Documented driver-specific validation (noop vs csi-extension) with tabbed display
+- Added 4 YAML examples: minimal (noop), full (csi-extension), VM labels, namespace annotation
+- Documented label/annotation conventions: soteria.io/drplan, soteria.io/wave, soteria.io/consistency-level
+- Documented the 8-phase lifecycle (4 rest states persisted, 4 transient derived at runtime)
+- Verified mkdocs builds successfully with --strict mode
+- Cross-referenced every field against types.go, validation.go, defaults.go, and drplan_validator.go
+
+### Change Log
+
+- 2026-09-05: Initial implementation of DRPlan API reference (Story 17.18)
+
 ### File List
+
+| File | Action |
+|------|--------|
+| docs/reference/api/drplan.md | MODIFIED (replaced stub with full API reference) |
