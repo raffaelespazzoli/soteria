@@ -1,0 +1,17 @@
+{{- if eq .Values.ui.mode "console-plugin" }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "soteria.fullname" . }}-console-plugin-serving-cert
+  labels:
+    {{- include "soteria.labels" . | nindent 4 }}
+    app.kubernetes.io/component: console-plugin
+spec:
+  secretName: {{ include "soteria.fullname" . }}-console-plugin-serving-cert
+  issuerRef:
+    name: {{ .Values.tls.issuerRef.name }}
+    kind: {{ .Values.tls.issuerRef.kind }}
+  dnsNames:
+    - {{ include "soteria.fullname" . }}-console-plugin.{{ .Release.Namespace }}.svc
+    - {{ include "soteria.fullname" . }}-console-plugin.{{ .Release.Namespace }}.svc.cluster.local
+{{- end }}

@@ -1,0 +1,63 @@
+{{- if eq .Values.ui.mode "console-plugin" }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "soteria.fullname" . }}-console-plugin
+  labels:
+    {{- include "soteria.labels" . | nindent 4 }}
+    app.kubernetes.io/component: console-plugin
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "soteria.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: console-plugin
+  template:
+    metadata:
+      labels:
+        {{- include "soteria.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: console-plugin
+    spec:
+      containers:
+        - name: console-plugin
+          image: "{{ .Values.ui.consolePlugin.image.repository }}:{{ .Values.ui.consolePlugin.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9443
+              name: https
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 10m
+              memory: 50Mi
+            limits:
+              memory: 100Mi
+          livenessProbe:
+            httpGet:
+              path: /plugin-manifest.json
+              port: 9443
+              scheme: HTTPS
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /plugin-manifest.json
+              port: 9443
+              scheme: HTTPS
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          volumeMounts:
+            - name: serving-cert
+              mountPath: /var/serving-cert
+              readOnly: true
+            - name: nginx-tls-conf
+              mountPath: /opt/app-root/etc/nginx.d
+              readOnly: true
+      volumes:
+        - name: serving-cert
+          secret:
+            secretName: {{ include "soteria.fullname" . }}-console-plugin-serving-cert
+        - name: nginx-tls-conf
+          configMap:
+            name: {{ include "soteria.fullname" . }}-console-plugin-nginx
+{{- end }}
