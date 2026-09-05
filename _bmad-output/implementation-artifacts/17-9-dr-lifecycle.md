@@ -1,6 +1,6 @@
 # Story 17.9: DR Lifecycle & State Machine
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -42,19 +42,19 @@ Then fail-forward semantics are explained — how partial failures are handled d
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Extract state machine from code (AC: 1, 2, 5)
-  - [ ] 1.1: Read PRD FR9-FR19 for the conceptual state machine
-  - [ ] 1.2: Read architecture state machine section
-  - [ ] 1.3: Walk `pkg/engine/failover.go` to extract actual state transition logic
-  - [ ] 1.4: Examine phase constants in `pkg/apis/soteria.io/v1alpha1/types.go`
-- [ ] Task 2: Document handler behavior (AC: 3, 6)
-  - [ ] 2.1: Walk FailoverHandler (failover.go) for planned migration vs disaster behavior
-  - [ ] 2.2: Walk ReprotectHandler (reprotect.go) for re-protection workflow
-  - [ ] 2.3: Review test cases in `pkg/engine/failover_test.go` for edge cases and scenarios
-- [ ] Task 3: Write the lifecycle documentation (AC: 1, 2, 3, 4, 5, 6)
-  - [ ] 3.1: Write `docs/architecture/dr-lifecycle.md` covering: 4 rest states, 4 transitions, planned vs disaster differences, Step 0, fail-forward semantics
-  - [ ] 3.2: Create Mermaid state diagram with all states and transitions
-  - [ ] 3.3: Verify state names and transition conditions match code exactly
+- [x] Task 1: Extract state machine from code (AC: 1, 2, 5)
+  - [x] 1.1: Read PRD FR9-FR19 for the conceptual state machine
+  - [x] 1.2: Read architecture state machine section
+  - [x] 1.3: Walk `pkg/engine/failover.go` to extract actual state transition logic
+  - [x] 1.4: Examine phase constants in `pkg/apis/soteria.io/v1alpha1/types.go`
+- [x] Task 2: Document handler behavior (AC: 3, 6)
+  - [x] 2.1: Walk FailoverHandler (failover.go) for planned migration vs disaster behavior
+  - [x] 2.2: Walk ReprotectHandler (reprotect.go) for re-protection workflow
+  - [x] 2.3: Review test cases in `pkg/engine/failover_test.go` for edge cases and scenarios
+- [x] Task 3: Write the lifecycle documentation (AC: 1, 2, 3, 4, 5, 6)
+  - [x] 3.1: Write `docs/architecture/dr-lifecycle.md` covering: 4 rest states, 4 transitions, planned vs disaster differences, Step 0, fail-forward semantics
+  - [x] 3.2: Create Mermaid state diagram with all states and transitions
+  - [x] 3.3: Verify state names and transition conditions match code exactly
 
 ## Dev Notes
 
@@ -122,9 +122,27 @@ Start from the PRD (`_bmad-output/planning-artifacts/prd.md`), architecture doc 
 ## Dev Agent Record
 
 ### Agent Model Used
+Claude Opus 4.6 (Cursor)
 
 ### Debug Log References
+N/A — documentation-only story, no debugging required.
 
 ### Completion Notes List
+- ✅ Replaced placeholder `docs/architecture/dr-lifecycle.md` with comprehensive DR lifecycle documentation
+- ✅ Documented all 4 rest states (SteadyState, FailedOver, DRedSteadyState, FailedBack) with replication direction and workload location — AC1
+- ✅ Documented all 4 transitions (FailingOver, Reprotecting, FailingBack, ReprotectingBack) with trigger conditions, execution modes, and handlers — AC2
+- ✅ Documented planned migration vs disaster differences: Step 0 behavior, GracefulShutdown config, data loss implications, side-by-side comparison table — AC3
+- ✅ Created Mermaid stateDiagram-v2 showing all 8 phases with correct arrows and transition labels — AC4
+- ✅ All phase names verified against `pkg/apis/soteria.io/v1alpha1/types.go` constants — AC5
+- ✅ Documented fail-forward semantics: GroupError structured errors, PartiallySucceeded outcomes, phase advancement rules, retry mechanism — AC6
+- ✅ Additional sections: re-protect two-sided design, checkpointing/resume, site-aware reconciliation, code references
+- ✅ MkDocs build passes with `--strict` flag — no warnings or errors
+- ✅ All pre-existing unit tests pass (25 packages, 0 failures)
+
+### Change Log
+- 2026-09-05: Story 17.9 implemented — comprehensive DR lifecycle documentation with Mermaid state diagram
 
 ### File List
+| File | Action | Description |
+|------|--------|-------------|
+| `docs/architecture/dr-lifecycle.md` | MODIFIED | Replaced placeholder with comprehensive DR lifecycle & state machine documentation |

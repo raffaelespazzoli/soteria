@@ -1,5 +1,5 @@
 # generated: 2026-04-06
-# last_updated: 2026-09-05T05:45-04:00
+# last_updated: 2026-09-05T06:33-04:00
 # 15-13 created: Remove Demotion Health Gate from Step 0 — checkVRsHealthy requires role=Target only (remove health=Healthy requirement). After 15.11 removed ResyncVolume, demoted VRs never reach Completed=True/Degraded=False because no sync cycle exists without an active primary. The health gate is a dead gate that hangs planned migration indefinitely on real ODF clusters. Also adds missing timeout to multi-site health wait. Corrects 15.11 AC2. (~1 reconciler file, ~1 engine doc file, ~1 test file, ~15 lines core change)
 # 15-12 created: Event-Driven Discovery — Eliminate Unconditional Status Writes & LWW Race — replace unconditional `siteDiscoveryDue` flag with actual VM-list comparison so `updateStatus` and `reconcilePassiveSite` skip writes when nothing changed, add `LastDiscoveryTime` conditional update, expand `vmRelevantChangePredicate` to detect VM disk/volume changes (VR/VGR creation trigger), keep 10-minute requeueInterval as safety net for health polling. Fixes ScyllaDB LWW race where recovering site's controller clobbers surviving site's correct Phase/ActiveSite by writing stale plan blob with newer timestamp. (~1 reconciler file, ~1 test file, ~80 lines)
 # 15-9 created: Full Lifecycle E2E Test — test/multisite/ (Ginkgo/Gomega, //go:build multisite). Two-client architecture (east+west via EAST_KUBECONFIG/WEST_KUBECONFIG), BeforeSuite deploys 6 VMs (cirros container disk boot + rook-ceph-block PVC data disk, wave structure from stretched-local-test.sh) + DRPlan fedora-app (csi-extension + rook-ceph-rbd-vrc), 4-transition lifecycle test (SteadyState→FailedOver→DRedSteadyState→FailedBack→SteadyState) with Epic 15 feature assertions: resync guard (ResyncPending condition lifecycle during planned migration), ShadowPV cross-cluster PV provisioning (ShadowPV resource existence + entry verification), reprotect simplification (GetReplicationStatus + conditional ResyncVolume), per-transition assertions (Duration, Phase, IsActive, all conditions healthy), real-storage assertions (non-zero lastSyncTime, measurable RPO), log scanning for checkpoint conflicts + immutability violations (verifies Story 13.7 fixes hold), configurable timeouts for real Ceph RBD timing. (~4 Go test files)
@@ -450,7 +450,7 @@ development_status:
   17-6-scylladb-cilium: ready-for-dev
   17-7-helm-installation: backlog  # blocked: needs Epic 16 chart
   17-8-architecture-overview: ready-for-dev
-  17-9-dr-lifecycle: ready-for-dev
+  17-9-dr-lifecycle: done
   17-10-storage-drivers: ready-for-dev
   17-11-creating-a-drplan: ready-for-dev
   17-12-waves-and-throttling: ready-for-dev
