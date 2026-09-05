@@ -438,7 +438,7 @@ development_status:
   16-5-console-plugin-templates: done
   16-6-standalone-ui-templates: ready-for-dev
   16-7-install-script: ready-for-dev
-  16-8-release-pipeline: ready-for-dev
+  16-8-release-pipeline: review
 
   # Epic 17: Documentation Site
   epic-17: in-progress
