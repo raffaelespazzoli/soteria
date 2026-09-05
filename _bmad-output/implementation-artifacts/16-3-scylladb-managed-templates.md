@@ -1,6 +1,6 @@
 # Story 16.3: ScyllaDB Managed Templates
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -53,26 +53,26 @@ Then no ScyllaCluster, ScyllaDB ConfigMap, ScyllaDB Certificate, ServiceExport, 
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create ScyllaCluster CR template (AC: 1, 2, 7)
-  - [ ] 1.1: Create `templates/scylladb/scyllacluster.yaml` guarded by `{{- if eq .Values.scylladb.mode "managed" }}`
-  - [ ] 1.2: Wire datacenter name from `scylladb.localDC`, rack config (name, members, storage, resources) from `scylladb.managed.*`
-  - [ ] 1.3: Wire `externalSeeds` from `scylladb.managed.externalSeeds` (list)
-  - [ ] 1.4: Wire `developerMode` from `scylladb.managed.developerMode`
-  - [ ] 1.5: Add conditional `broadcastOptions` block — for Submariner: `nodes.type: ServiceClusterIP`, `clients.type: ServiceClusterIP`; for Cilium: `nodes.type: PodIP`, `clients.type: PodIP`
-  - [ ] 1.6: Wire `scyllaConfig: scylla-config` and rack-level `volumes`/`volumeMounts` for mTLS certs (based on `hack/multisite/overlays/base/scylladb-tls-patch.yaml`)
-- [ ] Task 2: Create mTLS ConfigMap template (AC: 3, 7)
-  - [ ] 2.1: Create `templates/scylladb/configmap-mtls.yaml` guarded by managed mode, containing `scylla.yaml` with `server_encryption_options` and `client_encryption_options` (mirror `hack/multisite/overlays/base/scylladb-tls-config.yaml`)
-- [ ] Task 3: Create ScyllaDB Certificate template (AC: 4, 7)
-  - [ ] 3.1: Create `templates/scylladb/certificate.yaml` guarded by managed mode, referencing `tls.issuerRef`, with server+client auth usages and DNS names for the ScyllaDB headless service (mirror `config/certmanager/scylladb-serving-cert.yaml`)
-- [ ] Task 4: Create ServiceExport template (AC: 5, 7)
-  - [ ] 4.1: Create `templates/scylladb/serviceexport.yaml` guarded by `scylladb.mode=managed AND networking.mode=submariner`
-  - [ ] 4.2: Export the ScyllaDB client headless service (mirror `hack/overlays/base/serviceexport.yaml`)
-- [ ] Task 5: Add Cilium global service annotation (AC: 6, 7)
-  - [ ] 5.1: In `scyllacluster.yaml`, add conditional annotation `service.cilium.io/global: "true"` when `networking.mode=cilium`
-- [ ] Task 6: Verify rendering (AC: 1–7)
-  - [ ] 6.1: Run `helm template` with `scylladb.mode=managed, networking.mode=submariner` — verify ScyllaCluster + ServiceExport present
-  - [ ] 6.2: Run `helm template` with `scylladb.mode=managed, networking.mode=cilium` — verify Cilium annotation, no ServiceExport
-  - [ ] 6.3: Run `helm template` with `scylladb.mode=external` — verify no ScyllaDB resources
+- [x] Task 1: Create ScyllaCluster CR template (AC: 1, 2, 7)
+  - [x] 1.1: Create `templates/scylladb/scyllacluster.yaml` guarded by `{{- if eq .Values.scylladb.mode "managed" }}`
+  - [x] 1.2: Wire datacenter name from `scylladb.localDC`, rack config (name, members, storage, resources) from `scylladb.managed.*`
+  - [x] 1.3: Wire `externalSeeds` from `scylladb.managed.externalSeeds` (list)
+  - [x] 1.4: Wire `developerMode` from `scylladb.managed.developerMode`
+  - [x] 1.5: Add conditional `broadcastOptions` block — for Submariner: `nodes.type: ServiceClusterIP`, `clients.type: ServiceClusterIP`; for Cilium: `nodes.type: PodIP`, `clients.type: PodIP`
+  - [x] 1.6: Wire `scyllaConfig: scylla-config` and rack-level `volumes`/`volumeMounts` for mTLS certs (based on `hack/multisite/overlays/base/scylladb-tls-patch.yaml`)
+- [x] Task 2: Create mTLS ConfigMap template (AC: 3, 7)
+  - [x] 2.1: Create `templates/scylladb/configmap-mtls.yaml` guarded by managed mode, containing `scylla.yaml` with `server_encryption_options` and `client_encryption_options` (mirror `hack/multisite/overlays/base/scylladb-tls-config.yaml`)
+- [x] Task 3: Create ScyllaDB Certificate template (AC: 4, 7)
+  - [x] 3.1: Create `templates/scylladb/certificate.yaml` guarded by managed mode, referencing `tls.issuerRef`, with server+client auth usages and DNS names for the ScyllaDB headless service (mirror `config/certmanager/scylladb-serving-cert.yaml`)
+- [x] Task 4: Create ServiceExport template (AC: 5, 7)
+  - [x] 4.1: Create `templates/scylladb/serviceexport.yaml` guarded by `scylladb.mode=managed AND networking.mode=submariner`
+  - [x] 4.2: Export the ScyllaDB client headless service (mirror `hack/overlays/base/serviceexport.yaml`)
+- [x] Task 5: Add Cilium global service annotation (AC: 6, 7)
+  - [x] 5.1: In `scyllacluster.yaml`, add conditional annotation `service.cilium.io/global: "true"` when `networking.mode=cilium`
+- [x] Task 6: Verify rendering (AC: 1–7)
+  - [x] 6.1: Run `helm template` with `scylladb.mode=managed, networking.mode=submariner` — verify ScyllaCluster + ServiceExport present
+  - [x] 6.2: Run `helm template` with `scylladb.mode=managed, networking.mode=cilium` — verify Cilium annotation, no ServiceExport
+  - [x] 6.3: Run `helm template` with `scylladb.mode=external` — verify no ScyllaDB resources
 
 ## Dev Notes
 
@@ -173,9 +173,23 @@ metadata:
 ## Dev Agent Record
 
 ### Agent Model Used
+Claude Opus 4.6
 
 ### Debug Log References
+None — all tasks completed without errors.
 
 ### Completion Notes List
+- ✅ Task 1: Created ScyllaCluster CR template with conditional broadcastOptions (Submariner: ServiceClusterIP, Cilium: PodIP), datacenter/rack config wired from values, TLS volumes/volumeMounts, scyllaConfig reference, and `required` validation on localDC.
+- ✅ Task 2: Created mTLS ConfigMap template mirroring `hack/multisite/overlays/base/scylladb-tls-config.yaml` with server_encryption_options and client_encryption_options.
+- ✅ Task 3: Created cert-manager Certificate template with templated dnsNames using fullname helper, issuerRef from `tls.issuerRef`, and server+client auth usages.
+- ✅ Task 4: Created ServiceExport template with dual guard (`managed` AND `submariner`).
+- ✅ Task 5: Added conditional Cilium annotation `service.cilium.io/global: "true"` on ScyllaCluster CR metadata when `networking.mode=cilium`.
+- ✅ Task 6: All three `helm template` scenarios verified: managed+submariner, managed+cilium, external mode.
+- ⚠️ Known: scylla-operator (v1.21) may not propagate rack-level volumes/volumeMounts to StatefulSet — install script handles this post-deploy.
 
 ### File List
+- `charts/soteria/templates/scylladb/scyllacluster.yaml` (NEW)
+- `charts/soteria/templates/scylladb/configmap-mtls.yaml` (NEW)
+- `charts/soteria/templates/scylladb/certificate.yaml` (NEW)
+- `charts/soteria/templates/scylladb/serviceexport.yaml` (NEW)
+- `_bmad-output/implementation-artifacts/16-3-scylladb-managed-templates.md` (MODIFIED)

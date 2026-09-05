@@ -1,0 +1,75 @@
+{{- if eq .Values.scylladb.mode "managed" }}
+apiVersion: scylla.scylladb.com/v1
+kind: ScyllaCluster
+metadata:
+  name: {{ include "soteria.fullname" . }}-scylladb
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "soteria.labels" . | nindent 4 }}
+  {{- if eq .Values.networking.mode "cilium" }}
+  annotations:
+    service.cilium.io/global: "true"
+  {{- end }}
+spec:
+  version: {{ .Values.scylladb.managed.version | quote }}
+  developerMode: {{ .Values.scylladb.managed.developerMode }}
+  exposeOptions:
+    broadcastOptions:
+      nodes:
+        {{- if eq .Values.networking.mode "submariner" }}
+        type: ServiceClusterIP
+        {{- else }}
+        type: PodIP
+        {{- end }}
+      clients:
+        {{- if eq .Values.networking.mode "submariner" }}
+        type: ServiceClusterIP
+        {{- else }}
+        type: PodIP
+        {{- end }}
+    nodeService:
+      type: Headless
+  {{- with .Values.scylladb.managed.externalSeeds }}
+  externalSeeds:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  datacenter:
+    name: {{ required "scylladb.localDC is required when scylladb.mode=managed" .Values.scylladb.localDC }}
+    racks:
+      - name: {{ .Values.scylladb.managed.rack.name }}
+        members: {{ .Values.scylladb.managed.members }}
+        storage:
+          capacity: {{ .Values.scylladb.managed.storage.capacity }}
+          {{- with .Values.scylladb.managed.storage.storageClassName }}
+          storageClassName: {{ . }}
+          {{- end }}
+        resources:
+          {{- toYaml .Values.scylladb.managed.resources | nindent 10 }}
+        scyllaConfig: scylla-config
+        volumes:
+          - name: certmanager-serving
+            secret:
+              secretName: scylladb-serving-tls
+          - name: certmanager-ca
+            secret:
+              secretName: scylladb-serving-tls
+              items:
+                - key: ca.crt
+                  path: ca-bundle.crt
+          - name: combined-ca
+            secret:
+              secretName: scylladb-serving-tls
+              items:
+                - key: ca.crt
+                  path: ca-bundle.crt
+        volumeMounts:
+          - name: certmanager-serving
+            mountPath: /etc/scylla/certmanager-tls
+            readOnly: true
+          - name: certmanager-ca
+            mountPath: /etc/scylla/certmanager-ca
+            readOnly: true
+          - name: combined-ca
+            mountPath: /etc/scylla/combined-ca
+            readOnly: true
+{{- end }}

@@ -1,0 +1,9 @@
+{{- if and (eq .Values.scylladb.mode "managed") (eq .Values.networking.mode "submariner") }}
+apiVersion: multicluster.x-k8s.io/v1alpha1
+kind: ServiceExport
+metadata:
+  name: {{ include "soteria.fullname" . }}-scylladb-client
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "soteria.labels" . | nindent 4 }}
+{{- end }}
