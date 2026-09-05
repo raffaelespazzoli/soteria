@@ -50,6 +50,12 @@ linters:
           - lll
         path: pkg/apis/*
       - linters:
+          - dupl
+        path: _test\.go
+      - linters:
+          - dupl
+        path: pkg/drivers/
+      - linters:
           - lll
         source: "^//\\s*\\+kubebuilder:"
     paths:

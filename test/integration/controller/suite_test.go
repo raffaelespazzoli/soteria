@@ -172,7 +172,7 @@ func TestMain(m *testing.M) {
 		Scheme:        mgr.GetScheme(),
 		LocalSite:     "dc-east",
 		APIReader:     mgr.GetAPIReader(),
-		EventRecorder: mgr.GetEventRecorderFor("shadowpv-consumer"), //nolint:staticcheck // TODO: migrate to mgr.GetEventRecorder() (events.k8s.io/v1 API)
+		EventRecorder: eventBroadcaster.NewRecorder("shadowpv-consumer"),
 	}).SetupWithManager(mgr); err != nil {
 		panic(fmt.Sprintf("setting up ShadowPV consumer controller: %v", err))
 	}

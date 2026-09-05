@@ -28,7 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	"k8s.io/client-go/util/retry"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -46,7 +46,7 @@ const consumerLabel = "soteria.io/shadowpv-consumer"
 // +kubebuilder:rbac:groups=soteria.io,resources=shadowpvs/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups="",resources=persistentvolumes,verbs=get;list;watch;create
 // +kubebuilder:rbac:groups=ceph.rook.io,resources=cephblockpools,verbs=get;list;watch
-// +kubebuilder:rbac:groups="",resources=events,verbs=create;patch
+// +kubebuilder:rbac:groups=events.k8s.io,resources=events,verbs=create;patch
 
 // ShadowPVConsumerReconciler watches ShadowPV resources, identifies entries
 // from remote clusters, and creates local PVs with Ceph pool-ID rewrite so
@@ -56,7 +56,7 @@ type ShadowPVConsumerReconciler struct {
 	Scheme        *runtime.Scheme
 	LocalSite     string
 	APIReader     client.Reader
-	EventRecorder record.EventRecorder
+	EventRecorder events.EventRecorder
 }
 
 func (r *ShadowPVConsumerReconciler) Reconcile(
@@ -100,8 +100,8 @@ func (r *ShadowPVConsumerReconciler) reconcilePV(
 		if existingPV.Labels[consumerLabel] == spv.Name {
 			return nil
 		}
-		r.EventRecorder.Eventf(spv, corev1.EventTypeWarning, "PVConflict",
-			"PV %s exists but was not created by ShadowPV consumer (missing label %s=%s)",
+		r.EventRecorder.Eventf(spv, nil, corev1.EventTypeWarning, "PVConflict",
+			"Reconcile", "PV %s exists but was not created by ShadowPV consumer (missing label %s=%s)",
 			entry.PVName, consumerLabel, spv.Name)
 		return r.setConflictConditionWithRetry(ctx, spv, entry.PVName)
 	}
@@ -112,8 +112,8 @@ func (r *ShadowPVConsumerReconciler) reconcilePV(
 	pvSpec := entry.PV.DeepCopy()
 	if pvSpec.CSI != nil && pvSpec.CSI.VolumeHandle != "" {
 		if _, parseErr := csiextension.ParseVolumeHandle(pvSpec.CSI.VolumeHandle); parseErr != nil {
-			r.EventRecorder.Eventf(spv, corev1.EventTypeWarning, "PoolIDRewriteSkipped",
-				"PV %s has non-Ceph volume handle format — creating with original handle",
+			r.EventRecorder.Eventf(spv, nil, corev1.EventTypeWarning, "PoolIDRewriteSkipped",
+				"Reconcile", "PV %s has non-Ceph volume handle format — creating with original handle",
 				entry.PVName)
 		} else {
 			rewritten, rewriteErr := r.rewriteVolumeHandle(ctx, pvSpec.CSI.VolumeHandle, pvSpec.CSI.VolumeAttributes, poolCache)
@@ -153,8 +153,8 @@ func (r *ShadowPVConsumerReconciler) reconcilePV(
 			if racePV.Labels[consumerLabel] == spv.Name {
 				return nil
 			}
-			r.EventRecorder.Eventf(spv, corev1.EventTypeWarning, "PVConflict",
-				"PV %s exists but was not created by ShadowPV consumer (missing label %s=%s)",
+			r.EventRecorder.Eventf(spv, nil, corev1.EventTypeWarning, "PVConflict",
+				"Reconcile", "PV %s exists but was not created by ShadowPV consumer (missing label %s=%s)",
 				entry.PVName, consumerLabel, spv.Name)
 			return r.setConflictConditionWithRetry(ctx, spv, entry.PVName)
 		}

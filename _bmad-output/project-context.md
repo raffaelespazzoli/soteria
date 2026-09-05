@@ -47,6 +47,7 @@ Use latest stable versions for all dependencies unless a specific constraint is 
 
 **Go:**
 
+- **Never discard errors with `_ =`** — always check the error return and log it. Even when the error is non-fatal and does not change control flow, it must be logged for observability. In production code use structured logging (`log.FromContext(ctx)` or stdlib `log.Printf`); in test code use `t.Logf` or `t.Errorf`. Example: `if err := f.Close(); err != nil { log.Printf("Closing file: %v", err) }` — not `_ = f.Close()`
 - Error wrapping: lowercase, no punctuation, wrap with `%w` — `fmt.Errorf("setting volume %s to source: %w", name, err)`
 - Sentinel errors use `Err` prefix — `ErrPlanNotFound`, `ErrInvalidState`
 - Driver implementations return typed errors from `pkg/drivers/errors.go` — never raw errors

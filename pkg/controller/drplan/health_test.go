@@ -781,7 +781,9 @@ func TestReconcileVolumeReplication_PrimarySite_CallsCreateVolumeGroupWithPrimar
 		LocalSite:       testPrimarySite,
 	}
 
-	_ = r.reconcileVolumeReplication(context.Background(), plan, waves)
+	if err := r.reconcileVolumeReplication(context.Background(), plan, waves); err != nil {
+		t.Logf("reconcileVolumeReplication returned error: %v", err)
+	}
 
 	calls := fakeDriver.CallsTo("CreateVolumeGroup")
 	if len(calls) != 1 {
@@ -845,7 +847,9 @@ func TestReconcileVolumeReplication_SecondarySite_CallsCreateVolumeGroupWithSeco
 		LocalSite:       testSecondarySite,
 	}
 
-	_ = r.reconcileVolumeReplication(context.Background(), plan, waves)
+	if err := r.reconcileVolumeReplication(context.Background(), plan, waves); err != nil {
+		t.Logf("reconcileVolumeReplication returned error: %v", err)
+	}
 
 	calls := fakeDriver.CallsTo("CreateVolumeGroup")
 	if len(calls) != 1 {
@@ -915,7 +919,9 @@ func TestReconcileVolumeReplication_SkippedDuringActiveExecution(t *testing.T) {
 		LocalSite:       testPrimarySite,
 	}
 
-	_ = r.reconcileVolumeReplication(context.Background(), plan, waves)
+	if err := r.reconcileVolumeReplication(context.Background(), plan, waves); err != nil {
+		t.Logf("reconcileVolumeReplication returned error: %v", err)
+	}
 
 	calls := fakeDriver.CallsTo("CreateVolumeGroup")
 	if len(calls) != 0 {
@@ -968,7 +974,9 @@ func TestReconcileVolumeReplication_FallbackToPrimarySiteWhenActiveSiteEmpty(t *
 		LocalSite:       testPrimarySite,
 	}
 
-	_ = r.reconcileVolumeReplication(context.Background(), plan, waves)
+	if err := r.reconcileVolumeReplication(context.Background(), plan, waves); err != nil {
+		t.Logf("reconcileVolumeReplication returned error: %v", err)
+	}
 
 	calls := fakeDriver.CallsTo("CreateVolumeGroup")
 	if len(calls) != 1 {

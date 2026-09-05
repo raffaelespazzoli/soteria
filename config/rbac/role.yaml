@@ -29,14 +29,6 @@ rules:
   verbs:
   - get
 - apiGroups:
-  - ""
-  - events.k8s.io
-  resources:
-  - events
-  verbs:
-  - create
-  - patch
-- apiGroups:
   - ceph.rook.io
   resources:
   - cephblockpools
@@ -44,6 +36,13 @@ rules:
   - get
   - list
   - watch
+- apiGroups:
+  - events.k8s.io
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
 - apiGroups:
   - kubevirt.io
   resources:

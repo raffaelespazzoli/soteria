@@ -150,7 +150,7 @@ dev-cluster: ## Provision a local Kind cluster for development.
 ##@ Build
 
 .PHONY: build
-build: manifests generate fmt vet ## Build manager binary.
+build: manifests generate fmt vet lint ## Build manager binary.
 	go build -o bin/manager ./cmd/soteria/
 
 .PHONY: run

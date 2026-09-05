@@ -29,7 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -38,12 +38,12 @@ import (
 	"github.com/soteria-project/soteria/pkg/drivers"
 )
 
-func newConsumerReconciler(objs ...client.Object) (*ShadowPVConsumerReconciler, *record.FakeRecorder) {
+func newConsumerReconciler(objs ...client.Object) (*ShadowPVConsumerReconciler, *events.FakeRecorder) {
 	scheme := newTestScheme()
 	cb := fake.NewClientBuilder().WithScheme(scheme).WithObjects(objs...).
 		WithStatusSubresource(&soteriav1alpha1.ShadowPV{})
 	cl := cb.Build()
-	recorder := record.NewFakeRecorder(10)
+	recorder := events.NewFakeRecorder(10)
 	return &ShadowPVConsumerReconciler{
 		Client:        cl,
 		Scheme:        scheme,
@@ -135,7 +135,7 @@ func TestConsumer_RemoteEntry_CreatesPV(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Reconcile failed: %v", err)
 	}
-	if result.Requeue {
+	if result.RequeueAfter != 0 {
 		t.Fatal("Unexpected requeue")
 	}
 

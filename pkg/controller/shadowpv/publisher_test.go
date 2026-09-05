@@ -140,7 +140,7 @@ func TestPublisher_VR_CreatesShadowPV(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Reconcile failed: %v", err)
 	}
-	if result.Requeue {
+	if result.RequeueAfter != 0 {
 		t.Fatal("Unexpected requeue")
 	}
 
@@ -186,7 +186,7 @@ func TestPublisher_VGR_MultiplePVCs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Reconcile failed: %v", err)
 	}
-	if result.Requeue {
+	if result.RequeueAfter != 0 {
 		t.Fatal("Unexpected requeue")
 	}
 

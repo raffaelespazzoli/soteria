@@ -1560,6 +1560,8 @@ func (r *DRExecutionReconciler) dispatchByRole(
 // After disaster recovery the VRs may still be in a stale primary state
 // because the site was down during failover; this function demotes them
 // to secondary and then waits for replication health.
+//
+//nolint:unparam // error return kept for reconciler interface consistency; errors handled via RequeueAfter
 func (r *DRExecutionReconciler) reconcileReprotectPassive(
 	ctx context.Context,
 	exec *soteriav1alpha1.DRExecution,
