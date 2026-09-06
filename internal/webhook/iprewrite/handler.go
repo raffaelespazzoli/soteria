@@ -23,10 +23,12 @@ package iprewrite
 import (
 	"context"
 	"encoding/json"
-	"net/http"
+	"sort"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/utils/ptr"
+	virtv1 "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 )
@@ -34,10 +36,6 @@ import (
 const (
 	// IPRewriteLabel is the label that triggers init container injection.
 	IPRewriteLabel = "soteria.io/ip-rewrite"
-
-	// MigrationJobLabel is set by KubeVirt on migration target pods.
-	// Pods with this label must NOT have their disks modified.
-	MigrationJobLabel = "kubevirt.io/migrationJobLabel"
 
 	// soteriaAnnotationPrefix is the prefix for all Soteria annotations.
 	soteriaAnnotationPrefix = "soteria.io/"
@@ -53,6 +51,12 @@ const (
 
 	// diskMountPrefix is the base path where PVC volumes are mounted.
 	diskMountPrefix = "/disks/"
+
+	// diskDevicePrefix is the base path where block-mode PVC volumes are exposed.
+	diskDevicePrefix = "/disks/"
+
+	// DefaultInitContainerImage is the default image for the IP rewrite init container.
+	DefaultInitContainerImage = "quay.io/raffaelespazzoli/soteria-ip-rewrite:latest"
 
 	// MutatePodPath is the webhook endpoint path.
 	MutatePodPath = "/mutate-v1-pod"
@@ -72,21 +76,33 @@ type Handler struct {
 // Handle processes a pod admission request. It injects an IP rewrite init
 // container when the pod has the soteria.io/ip-rewrite label and is not a
 // migration pod.
+//
+// On internal errors the handler returns admission.Allowed (fail-open) with a
+// logged error, matching the MutatingWebhookConfiguration's failurePolicy: Ignore.
 func (h *Handler) Handle(ctx context.Context, req admission.Request) admission.Response {
 	logger := log.FromContext(ctx)
 
 	pod := &corev1.Pod{}
 	if err := json.Unmarshal(req.Object.Raw, pod); err != nil {
-		logger.Error(err, "Failed to unmarshal Pod")
-		return admission.Errored(http.StatusBadRequest, err)
+		logger.Error(err, "Failed to unmarshal Pod, admitting unmodified (fail-open)")
+		return admission.Allowed("")
 	}
 
 	logger = logger.WithValues("pod", pod.Name, "namespace", req.Namespace)
 
 	// Migration pods must not have their disks modified.
-	if _, isMigration := pod.Labels[MigrationJobLabel]; isMigration {
+	// Uses the KubeVirt API constant (resolves to "kubevirt.io/migrationJobUID").
+	if _, isMigration := pod.Labels[virtv1.MigrationJobLabel]; isMigration {
 		logger.Info("Skipping injection for migration pod")
 		return admission.Allowed("")
+	}
+
+	// Guard: skip if an ip-rewrite init container is already present.
+	for _, c := range pod.Spec.InitContainers {
+		if c.Name == initContainerName {
+			logger.Info("Init container already present, skipping injection")
+			return admission.Allowed("")
+		}
 	}
 
 	envVars := annotationsToEnvVars(pod.Annotations)
@@ -95,14 +111,26 @@ func (h *Handler) Handle(ctx context.Context, req admission.Request) admission.R
 		return admission.Allowed("")
 	}
 
-	volumeMounts := pvcVolumeMounts(pod.Spec.Volumes)
+	image := h.InitContainerImage
+	if image == "" {
+		image = DefaultInitContainerImage
+	}
+
+	// Determine which PVC volumes use block mode vs filesystem mode by
+	// inspecting existing containers' volumeDevices declarations.
+	blockVolumes := blockModeVolumes(pod)
+	volumeMounts, volumeDevices := pvcVolumeAccess(pod.Spec.Volumes, blockVolumes)
 
 	initContainer := corev1.Container{
-		Name:         initContainerName,
-		Image:        h.InitContainerImage,
-		Env:          envVars,
-		VolumeMounts: volumeMounts,
+		Name:          initContainerName,
+		Image:         image,
+		Env:           envVars,
+		VolumeMounts:  volumeMounts,
+		VolumeDevices: volumeDevices,
 		SecurityContext: &corev1.SecurityContext{
+			RunAsUser:                ptr.To(int64(0)),
+			RunAsNonRoot:             ptr.To(false),
+			AllowPrivilegeEscalation: ptr.To(true),
 			Capabilities: &corev1.Capabilities{
 				Add: []corev1.Capability{"SYS_ADMIN"},
 			},
@@ -114,20 +142,21 @@ func (h *Handler) Handle(ctx context.Context, req admission.Request) admission.R
 
 	marshaledPod, err := json.Marshal(pod)
 	if err != nil {
-		logger.Error(err, "Failed to marshal mutated Pod")
-		return admission.Errored(http.StatusInternalServerError, err)
+		logger.Error(err, "Failed to marshal mutated Pod, admitting unmodified (fail-open)")
+		return admission.Allowed("")
 	}
 
 	logger.Info("Injected IP rewrite init container",
-		"image", h.InitContainerImage,
+		"image", image,
 		"envVars", len(envVars),
-		"volumeMounts", len(volumeMounts))
+		"volumeMounts", len(volumeMounts),
+		"volumeDevices", len(volumeDevices))
 
 	return admission.PatchResponseFromRaw(req.Object.Raw, marshaledPod)
 }
 
 // annotationsToEnvVars converts Soteria IP/DNS annotations to environment
-// variables for the init container.
+// variables for the init container. Keys are sorted for deterministic output.
 //
 // Transformation rules:
 //   - soteria.io/dns          → SOTERIA_DNS
@@ -135,13 +164,19 @@ func (h *Handler) Handle(ctx context.Context, req admission.Request) admission.R
 //   - Other soteria.io/* annotations are ignored (e.g. soteria.io/drplan)
 //   - Non-soteria.io annotations are ignored
 func annotationsToEnvVars(annotations map[string]string) []corev1.EnvVar {
+	// Collect and sort annotation keys for deterministic output.
+	keys := make([]string, 0, len(annotations))
+	for key := range annotations {
+		if strings.HasPrefix(key, soteriaAnnotationPrefix) {
+			keys = append(keys, key)
+		}
+	}
+	sort.Strings(keys)
+
 	var envVars []corev1.EnvVar
 
-	for key, value := range annotations {
-		if !strings.HasPrefix(key, soteriaAnnotationPrefix) {
-			continue
-		}
-
+	for _, key := range keys {
+		value := annotations[key]
 		suffix := key[len(soteriaAnnotationPrefix):]
 
 		switch {
@@ -152,7 +187,6 @@ func annotationsToEnvVars(annotations map[string]string) []corev1.EnvVar {
 			})
 
 		case strings.HasSuffix(suffix, ipSuffix):
-			// Strip trailing "-ip", uppercase, replace "-" with "_", wrap with SOTERIA_ prefix and _IP suffix.
 			name := suffix[:len(suffix)-len(ipSuffix)]
 			envName := "SOTERIA_" + strings.ToUpper(strings.ReplaceAll(name, "-", "_")) + "_IP"
 			envVars = append(envVars, corev1.EnvVar{
@@ -165,13 +199,42 @@ func annotationsToEnvVars(annotations map[string]string) []corev1.EnvVar {
 	return envVars
 }
 
-// pvcVolumeMounts returns VolumeMount entries for all PVC-backed volumes in
-// the pod spec. Each PVC volume is mounted at /disks/<volumeName>.
-func pvcVolumeMounts(volumes []corev1.Volume) []corev1.VolumeMount {
+// blockModeVolumes builds a set of volume names that are used as raw block
+// devices by any container or init container in the pod. When a volume appears
+// in volumeDevices, guestfish must receive it as a device path, not a mount.
+func blockModeVolumes(pod *corev1.Pod) map[string]bool {
+	blocks := make(map[string]bool)
+	for _, c := range pod.Spec.Containers {
+		for _, vd := range c.VolumeDevices {
+			blocks[vd.Name] = true
+		}
+	}
+	for _, c := range pod.Spec.InitContainers {
+		for _, vd := range c.VolumeDevices {
+			blocks[vd.Name] = true
+		}
+	}
+	return blocks
+}
+
+// pvcVolumeAccess returns VolumeMount and VolumeDevice entries for all
+// PVC-backed volumes. Block-mode volumes (identified by blockVolumes) are
+// exposed as VolumeDevices; filesystem-mode volumes are mounted normally.
+func pvcVolumeAccess(volumes []corev1.Volume, blockVolumes map[string]bool) ([]corev1.VolumeMount, []corev1.VolumeDevice) {
 	var mounts []corev1.VolumeMount
+	var devices []corev1.VolumeDevice
 
 	for _, vol := range volumes {
-		if vol.PersistentVolumeClaim != nil {
+		if vol.PersistentVolumeClaim == nil {
+			continue
+		}
+
+		if blockVolumes[vol.Name] {
+			devices = append(devices, corev1.VolumeDevice{
+				Name:       vol.Name,
+				DevicePath: diskDevicePrefix + vol.Name,
+			})
+		} else {
 			mounts = append(mounts, corev1.VolumeMount{
 				Name:      vol.Name,
 				MountPath: diskMountPrefix + vol.Name,
@@ -179,5 +242,5 @@ func pvcVolumeMounts(volumes []corev1.Volume) []corev1.VolumeMount {
 		}
 	}
 
-	return mounts
+	return mounts, devices
 }

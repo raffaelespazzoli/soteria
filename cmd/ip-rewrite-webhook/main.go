@@ -24,6 +24,7 @@ limitations under the License.
 package main
 
 import (
+	"crypto/tls"
 	"flag"
 	"os"
 
@@ -39,25 +40,39 @@ func main() {
 	var certDir string
 	var port int
 	var initContainerImage string
+	var enableHTTP2 bool
 
 	flag.StringVar(&certDir, "cert-dir", "/tmp/k8s-webhook-server/serving-certs",
 		"Directory containing the TLS certificate and key (tls.crt, tls.key)")
 	flag.IntVar(&port, "port", 9443, "Webhook server port")
 	flag.StringVar(&initContainerImage, "init-container-image",
-		"quay.io/raffaelespazzoli/soteria-ip-rewrite:latest",
+		iprewrite.DefaultInitContainerImage,
 		"Image for the IP rewrite init container")
+	flag.BoolVar(&enableHTTP2, "enable-http2", false,
+		"If set, HTTP/2 will be enabled for the webhook server")
 
-	opts := zap.Options{Development: true}
+	opts := zap.Options{Development: false}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 	setupLog := ctrl.Log.WithName("setup")
 
+	// Disable HTTP/2 by default to mitigate HTTP/2 Stream Cancellation
+	// and Rapid Reset CVEs (GHSA-qppj-fm5r-hxr3).
+	var tlsOpts []func(*tls.Config)
+	if !enableHTTP2 {
+		tlsOpts = append(tlsOpts, func(c *tls.Config) {
+			setupLog.Info("Disabling HTTP/2")
+			c.NextProtos = []string{"http/1.1"}
+		})
+	}
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		WebhookServer: webhook.NewServer(webhook.Options{
 			Port:    port,
 			CertDir: certDir,
+			TLSOpts: tlsOpts,
 		}),
 		HealthProbeBindAddress: ":8081",
 	})
@@ -77,7 +92,7 @@ func main() {
 		setupLog.Error(err, "Failed to set up health check")
 		os.Exit(1)
 	}
-	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
+	if err := mgr.AddReadyzCheck("readyz", mgr.GetWebhookServer().StartedChecker()); err != nil {
 		setupLog.Error(err, "Failed to set up ready check")
 		os.Exit(1)
 	}
