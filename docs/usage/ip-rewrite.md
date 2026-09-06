@@ -426,8 +426,9 @@ filesystem. Only pods created for initial VM boot receive the init container.
   static IP configuration.
 - **Hostname rewrite** — Not supported. Only IP, gateway, and DNS are
   modified.
-- **ARM64 guests** — Not supported. The init container image is
-  single-architecture `linux/amd64`.
+- **ARM64 guests** — ARM64 support is available (the init container image is
+  multi-architecture), but ARM Windows guests are not yet certified by OCP
+  Virtualization.
 - **Non-RHEL Linux** — Only RHEL 7–10 is supported. Ubuntu, Fedora, SUSE,
   and other distributions are not handled.
 

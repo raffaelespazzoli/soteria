@@ -201,7 +201,7 @@ docker-push: ## Push docker image with the manager.
 
 .PHONY: docker-build-ip-rewrite
 docker-build-ip-rewrite: ## Build ip-rewrite init container image.
-	$(CONTAINER_TOOL) build --platform linux/amd64 -f build/ip-rewrite/Containerfile -t $(IP_REWRITE_IMG) build/ip-rewrite/
+	$(CONTAINER_TOOL) build -f build/ip-rewrite/Containerfile -t $(IP_REWRITE_IMG) build/ip-rewrite/
 
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
 # architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:

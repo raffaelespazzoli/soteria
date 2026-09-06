@@ -266,8 +266,8 @@ This is the guestfs-tools image built on CentOS Stream 9.
   have a static IP configuration.
 - **Guest hostname rewrite** — Not supported. Only IP address, gateway, and
   DNS servers are modified.
-- **ARM64 guests** — Not supported. The init container image is
-  single-architecture `linux/amd64`. ARM64 support is deferred until OCP
-  Virtualization certifies ARM Windows guests.
+- **ARM64 guests** — ARM64 support is available (the init container image is
+  multi-architecture), but ARM Windows guests are not yet certified by OCP
+  Virtualization.
 - **Non-RHEL Linux** — Distributions such as Ubuntu, Fedora, or SUSE are not
   supported. Only RHEL 7–10 is handled on the Linux side.

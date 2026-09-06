@@ -11,7 +11,7 @@
 #             └──────────────────────→ docs ────────┘
 #
 # Each build job produces a multi-arch image (amd64, arm64, ppc64le) in a
-# single Buildx call, except ip-rewrite which is amd64-only.
+# single Buildx call.
 # ---------------------------------------------------------------------------
 name: release
 
@@ -203,7 +203,7 @@ jobs:
           cache-from: type=gha,scope=standalone-ui
           cache-to: type=gha,mode=max,scope=standalone-ui
 
-  # ── 3d. Build & push ip-rewrite init container (single-arch) ───────────
+  # ── 3d. Build & push ip-rewrite init container (multi-arch) ──────────────
   build-ip-rewrite:
     name: Build ip-rewrite image
     needs: validate
@@ -212,6 +212,9 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v7
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -228,7 +231,7 @@ jobs:
         with:
           context: build/ip-rewrite/
           file: build/ip-rewrite/Containerfile
-          platforms: linux/amd64
+          platforms: ${{ env.BUILD_PLATFORMS }}
           push: true
           provenance: false
           tags: |
