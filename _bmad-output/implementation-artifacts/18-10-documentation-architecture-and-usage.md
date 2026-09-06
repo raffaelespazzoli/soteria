@@ -1,6 +1,6 @@
 # Story 18.10: Documentation — Architecture & Usage
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -49,28 +49,28 @@ Then the diagram renders correctly in the documentation site
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create `docs/architecture/ip-rewrite.md` — Architecture page (AC: 1, 3, 4)
-  - [ ] 1.1: Write overview section — standalone add-on, no Soteria CRD dependency
-  - [ ] 1.2: Write annotation and label contract section with YAML examples
-  - [ ] 1.3: Write mutating webhook flow section — objectSelector, CREATE interception, init container injection
-  - [ ] 1.4: Write OS detection section — virt-inspector, boot disk identification
-  - [ ] 1.5: Write Linux rewrite section — Augeas, ifcfg (RHEL 7/8), NM keyfile (RHEL 8/9/10)
-  - [ ] 1.6: Write Windows rewrite section — hivex, SYSTEM hive, ControlSet, adapter GUID
-  - [ ] 1.7: Write migration detection section — `kubevirt.io/migrationJobLabel` skip logic
-  - [ ] 1.8: Create Mermaid sequence diagram — full flow from annotation to VM boot
-  - [ ] 1.9: Write fail-open policy section — `failurePolicy: Ignore`
-- [ ] Task 2: Create `docs/usage/ip-rewrite.md` — Usage guide page (AC: 2, 3)
-  - [ ] 2.1: Write prerequisites section — cert-manager, OCP Virt / KubeVirt, SCC
-  - [ ] 2.2: Write installation section — `helm install` with chart path, namespace, values
-  - [ ] 2.3: Write single-NIC usage section — step-by-step with kubectl commands
-  - [ ] 2.4: Write multi-NIC usage section — multiple interface annotations
-  - [ ] 2.5: Write DNS configuration section — optional `soteria.io/dns` annotation
-  - [ ] 2.6: Write verification section — init container logs, QEMU guest agent
-  - [ ] 2.7: Write troubleshooting section — SCC, guestfish errors, unsupported OS, migration skip
-- [ ] Task 3: Add cross-links from existing architecture overview page (AC: 3)
-  - [ ] 3.1: Add IP rewrite mention to `docs/architecture/overview.md` component table under "Other Components" or as a new standalone section
-- [ ] Task 4: Verify pages build without errors (AC: 4)
-  - [ ] 4.1: Run `mkdocs build --strict` and confirm zero warnings and zero errors
+- [x] Task 1: Create `docs/architecture/ip-rewrite.md` — Architecture page (AC: 1, 3, 4)
+  - [x] 1.1: Write overview section — standalone add-on, no Soteria CRD dependency
+  - [x] 1.2: Write annotation and label contract section with YAML examples
+  - [x] 1.3: Write mutating webhook flow section — objectSelector, CREATE interception, init container injection
+  - [x] 1.4: Write OS detection section — virt-inspector, boot disk identification
+  - [x] 1.5: Write Linux rewrite section — Augeas, ifcfg (RHEL 7/8), NM keyfile (RHEL 8/9/10)
+  - [x] 1.6: Write Windows rewrite section — hivex, SYSTEM hive, ControlSet, adapter GUID
+  - [x] 1.7: Write migration detection section — `kubevirt.io/migrationJobLabel` skip logic
+  - [x] 1.8: Create Mermaid sequence diagram — full flow from annotation to VM boot
+  - [x] 1.9: Write fail-open policy section — `failurePolicy: Ignore`
+- [x] Task 2: Create `docs/usage/ip-rewrite.md` — Usage guide page (AC: 2, 3)
+  - [x] 2.1: Write prerequisites section — cert-manager, OCP Virt / KubeVirt, SCC
+  - [x] 2.2: Write installation section — `helm install` with chart path, namespace, values
+  - [x] 2.3: Write single-NIC usage section — step-by-step with kubectl commands
+  - [x] 2.4: Write multi-NIC usage section — multiple interface annotations
+  - [x] 2.5: Write DNS configuration section — optional `soteria.io/dns` annotation
+  - [x] 2.6: Write verification section — init container logs, QEMU guest agent
+  - [x] 2.7: Write troubleshooting section — SCC, guestfish errors, unsupported OS, migration skip
+- [x] Task 3: Add cross-links from existing architecture overview page (AC: 3)
+  - [x] 3.1: Add IP rewrite mention to `docs/architecture/overview.md` component table under "Other Components" or as a new standalone section
+- [x] Task 4: Verify pages build without errors (AC: 4)
+  - [x] 4.1: Run `mkdocs build --strict` and confirm zero warnings and zero errors
 
 ## Dev Notes
 
@@ -470,10 +470,26 @@ Epic 17 established the documentation methodology for this project. Key principl
 
 ### Agent Model Used
 
-*(To be filled by dev agent)*
+Claude Opus 4.6
 
 ### Debug Log References
 
+No debug issues encountered.
+
 ### Completion Notes List
 
+- Architecture page (`docs/architecture/ip-rewrite.md`) created with all AC1 content: overview, annotation/label contract with tabbed YAML examples, full Mermaid sequence diagram, webhook interception flow, OS detection, Linux (Augeas) and Windows (hivex) rewrite paths, migration detection, fail-open policy, components table, supported OS matrix, and known limitations.
+- Usage guide page (`docs/usage/ip-rewrite.md`) created with all AC2 content: prerequisites, Helm installation, single-NIC and multi-NIC step-by-step with kubectl commands, DNS configuration, verification (init container logs + guest agent), and troubleshooting (SCC, guestfish, unsupported OS, webhook unavailable, migration skip).
+- Both pages follow existing mkdocs-material conventions (AC3): H1/H2/H3 hierarchy, admonitions (`!!! warning`, `!!! note`, `!!! info`, `!!! tip`), tabbed content (`=== "Tab"`), YAML/bash code blocks, relative cross-links, and table formatting matching `docs/architecture/overview.md` and `docs/usage/failover.md`.
+- Cross-link added to `docs/architecture/overview.md` Other Components table (Task 3).
+- `mkdocs build --strict` passes with zero warnings and zero errors (AC4).
+- `mkdocs.yml` nav NOT modified (Story 18.11 scope).
+- All existing tests pass — zero regressions (documentation-only story, no Go code changes).
+
 ### File List
+
+- `docs/architecture/ip-rewrite.md` — NEW — Architecture page
+- `docs/usage/ip-rewrite.md` — NEW — Usage guide page
+- `docs/architecture/overview.md` — MODIFIED — Added IP Rewrite Webhook row to Other Components table
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — MODIFIED — 18-10 status → review
+- `_bmad-output/implementation-artifacts/18-10-documentation-architecture-and-usage.md` — MODIFIED — Tasks checked, status → review

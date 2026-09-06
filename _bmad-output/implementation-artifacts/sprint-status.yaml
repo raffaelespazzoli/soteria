@@ -481,5 +481,5 @@ development_status:
   18-7-unit-and-integration-tests-disk-image-fixtures: ready-for-dev
   18-8-e2e-validation-vm-boot-with-rewritten-ip: ready-for-dev
   18-9-ci-and-release-pipeline-integration: done
-  18-10-documentation-architecture-and-usage: ready-for-dev
+  18-10-documentation-architecture-and-usage: review
   18-11-documentation-reference-and-nav-update: ready-for-dev
