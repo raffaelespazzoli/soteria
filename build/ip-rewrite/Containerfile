@@ -1,0 +1,40 @@
+# Build the ip-rewrite init container image.
+#
+# This image provides guestfs-tools (guestfish, virt-inspector), Augeas,
+# hivex, and NTFS support for inspecting and modifying guest VM filesystems.
+# It is used as an init container injected into virt-launcher pods to rewrite
+# static IP configuration on guest disks before VM boot.
+#
+# Build:
+#   podman build -t soteria-ip-rewrite:dev build/ip-rewrite/
+#
+# Run (requires SYS_ADMIN for the libguestfs appliance):
+#   podman run --rm --cap-add SYS_ADMIN soteria-ip-rewrite:dev guestfish --version
+
+FROM registry.access.redhat.com/ubi9/ubi
+
+# Install guestfs-tools and all required dependencies for guest filesystem
+# manipulation. libguestfs-winsupport replaces ntfs-3g (EPEL-only on RHEL 9)
+# and provides NTFS support via the libguestfs supermin appliance.
+#
+# Packages:
+#   guestfs-tools          - guestfish, virt-inspector, libguestfs appliance
+#   augeas                 - augtool CLI for structured config editing
+#   hivex                  - hivexregedit, hivexget for Windows registry editing
+#   libguestfs-winsupport  - NTFS driver for the libguestfs supermin appliance
+RUN dnf install -y --nodocs --setopt=install_weak_deps=False \
+        guestfs-tools \
+        augeas \
+        hivex \
+        libguestfs-winsupport \
+    && dnf clean all \
+    && rm -rf /var/cache/dnf /var/log/dnf*
+
+# Required for running libguestfs inside a container — uses the kernel
+# directly instead of connecting to libvirtd.
+ENV LIBGUESTFS_BACKEND=direct
+
+# Placeholder for scripts added by Story 18.2 (entrypoint, handlers).
+RUN mkdir -p /scripts
+
+# Entrypoint will be set by Story 18.2 when scripts are COPY'd in.
