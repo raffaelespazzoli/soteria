@@ -535,6 +535,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/ip-rewrite/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IP Rewrite (Standalone)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2525,9 +2553,9 @@ This is the guestfs-tools image built on CentOS Stream 9.</p>
   have a static IP configuration.</li>
 <li><strong>Guest hostname rewrite</strong> — Not supported. Only IP address, gateway, and
   DNS servers are modified.</li>
-<li><strong>ARM64 guests</strong> — Not supported. The init container image is
-  single-architecture <code>linux/amd64</code>. ARM64 support is deferred until OCP
-  Virtualization certifies ARM Windows guests.</li>
+<li><strong>ARM64 guests</strong> — ARM64 support is available (the init container image is
+  multi-architecture), but ARM Windows guests are not yet certified by OCP
+  Virtualization.</li>
 <li><strong>Non-RHEL Linux</strong> — Distributions such as Ubuntu, Fedora, or SUSE are not
   supported. Only RHEL 7–10 is handled on the Linux side.</li>
 </ul>

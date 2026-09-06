@@ -535,6 +535,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/ip-rewrite/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IP Rewrite (Standalone)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2395,8 +2423,9 @@ filesystem. Only pods created for initial VM boot receive the init container.</p
   static IP configuration.</li>
 <li><strong>Hostname rewrite</strong> — Not supported. Only IP, gateway, and DNS are
   modified.</li>
-<li><strong>ARM64 guests</strong> — Not supported. The init container image is
-  single-architecture <code>linux/amd64</code>.</li>
+<li><strong>ARM64 guests</strong> — ARM64 support is available (the init container image is
+  multi-architecture), but ARM Windows guests are not yet certified by OCP
+  Virtualization.</li>
 <li><strong>Non-RHEL Linux</strong> — Only RHEL 7–10 is supported. Ubuntu, Fedora, SUSE,
   and other distributions are not handled.</li>
 </ul>
