@@ -40,7 +40,7 @@ fi
 : "${WINDOWS_TARGET_IP:=10.0.2.110}"
 : "${WINDOWS_TARGET_ANNOTATION:=10.0.2.110/24;10.0.2.1}"
 
-: "${RHEL_BOOT_TIMEOUT:=120}"
+: "${RHEL_BOOT_TIMEOUT:=300}"
 : "${WINDOWS_BOOT_TIMEOUT:=360}"
 : "${GUEST_AGENT_TIMEOUT:=300}"
 : "${GUEST_AGENT_POLL_INTERVAL:=10}"
@@ -110,24 +110,26 @@ wait_for_vmi_deleted() {
 # Guest agent helpers
 # ---------------------------------------------------------------------------
 
-# Wait for the QEMU guest agent to report a specific IP address.
+# Wait for the guest agent to report a specific IP via VMI status.
+# KubeVirt populates vmi.status.interfaces[].ipAddresses from the guest agent.
 wait_for_guest_agent_ip() {
     local vm="$1" ns="$2" expected_ip="$3" timeout="${4:-${GUEST_AGENT_TIMEOUT}}"
     log_info "Waiting for guest agent to report IP ${expected_ip} on ${vm} (timeout: ${timeout}s)"
     local end=$((SECONDS + timeout))
     while [[ ${SECONDS} -lt ${end} ]]; do
         local ips
-        ips=$(virtctl guestosinfo "${vm}" -n "${ns}" -o json 2>/dev/null \
-            | jq -r '.interfaces[]?.ipAddresses[]? // empty' 2>/dev/null) || true
-        if echo "${ips}" | grep -qF "${expected_ip}"; then
-            log_info "Guest agent reports IP: ${expected_ip}"
+        ips=$(kubectl get vmi "${vm}" -n "${ns}" \
+            -o jsonpath='{.status.interfaces[*].ipAddresses[*]}' 2>/dev/null) || true
+        if echo "${ips}" | tr ' ' '\n' | grep -qF "${expected_ip}"; then
+            log_info "VMI status reports IP: ${expected_ip}"
             return 0
         fi
         sleep "${GUEST_AGENT_POLL_INTERVAL}"
     done
     log_error "Guest agent did not report IP ${expected_ip} within ${timeout}s"
-    log_error "Last guest agent output:"
-    virtctl guestosinfo "${vm}" -n "${ns}" -o json 2>&1 || true
+    log_error "Current VMI interface status:"
+    kubectl get vmi "${vm}" -n "${ns}" -o json 2>/dev/null \
+        | jq '.status.interfaces // "no interfaces"' 2>&1 || true
     return 1
 }
 
@@ -135,13 +137,17 @@ wait_for_guest_agent_ip() {
 # Init container verification
 # ---------------------------------------------------------------------------
 
-# Find the virt-launcher pod for a VM.
+# Find the active virt-launcher pod for a VM.
+# Filters out Terminating pods (those with a deletionTimestamp) to avoid
+# selecting a stale pod after stop+start.
 get_virt_launcher_pod() {
     local vm="$1" ns="$2"
     kubectl get pods -n "${ns}" \
         -l "kubevirt.io/vm=${vm}" \
-        --field-selector=status.phase!=Succeeded \
-        -o jsonpath='{.items[0].metadata.name}' 2>/dev/null
+        --field-selector=status.phase=Running \
+        -o json 2>/dev/null \
+        | jq -r '.items[] | select(.metadata.deletionTimestamp == null) | .metadata.name' \
+        | head -1
 }
 
 # Verify the ip-rewrite init container exists and completed with exit code 0.
@@ -191,6 +197,104 @@ verify_no_init_container() {
 }
 
 # ---------------------------------------------------------------------------
+# DataVolume helpers
+# ---------------------------------------------------------------------------
+
+# Wait for a DataVolume to reach the Succeeded phase (import complete).
+wait_for_dv_ready() {
+    local dv="$1" ns="$2" timeout="${3:-600}"
+    log_info "Waiting for DataVolume ${dv} to reach Succeeded (timeout: ${timeout}s)"
+    local end=$((SECONDS + timeout))
+    while [[ ${SECONDS} -lt ${end} ]]; do
+        local phase
+        phase=$(kubectl get dv "${dv}" -n "${ns}" \
+            -o jsonpath='{.status.phase}' 2>/dev/null) || true
+        if [[ "${phase}" == "Succeeded" ]]; then
+            log_info "DataVolume ${dv} is Succeeded"
+            return 0
+        fi
+        log_info "DataVolume ${dv} phase: ${phase:-Pending} — waiting..."
+        sleep 15
+    done
+    log_error "DataVolume ${dv} did not reach Succeeded within ${timeout}s"
+    return 1
+}
+
+# ---------------------------------------------------------------------------
+# VM patching helpers
+# ---------------------------------------------------------------------------
+
+# Apply IP rewrite label and annotations to the VM's spec.template.metadata
+# so KubeVirt copies them onto the virt-launcher pod.
+apply_ip_rewrite_template_patch() {
+    local vm="$1" ns="$2" ip_annotation="$3"
+    log_info "Patching VM ${vm} template metadata with ip-rewrite label and annotations"
+    kubectl patch vm "${vm}" -n "${ns}" --type=merge -p "{
+      \"spec\": {\"template\": {\"metadata\": {
+        \"labels\": {\"soteria.io/ip-rewrite\": \"true\"},
+        \"annotations\": {\"soteria.io/eth0-ip\": \"${ip_annotation}\"}
+      }}}
+    }"
+}
+
+# Remove IP rewrite label and annotation from the VM's spec.template.metadata.
+remove_ip_rewrite_template_patch() {
+    local vm="$1" ns="$2"
+    log_info "Removing ip-rewrite label and annotations from VM ${vm} template metadata"
+    kubectl patch vm "${vm}" -n "${ns}" --type=json -p '[
+      {"op":"remove","path":"/spec/template/metadata/labels/soteria.io~1ip-rewrite"},
+      {"op":"remove","path":"/spec/template/metadata/annotations/soteria.io~1eth0-ip"}
+    ]' 2>/dev/null || true
+}
+
+# Remove the cloud-init volume and disk from a VM so it does not override
+# IP rewrite changes on subsequent boots.
+remove_cloud_init_volume() {
+    local vm="$1" ns="$2"
+    log_info "Removing cloudInitNoCloud volume and disk from VM ${vm}"
+    # Remove the volume entry
+    local vol_idx
+    vol_idx=$(kubectl get vm "${vm}" -n "${ns}" -o json \
+        | jq '.spec.template.spec.volumes | to_entries[] | select(.value.cloudInitNoCloud != null) | .key') || true
+    if [[ -n "${vol_idx}" ]]; then
+        local disk_name
+        disk_name=$(kubectl get vm "${vm}" -n "${ns}" -o json \
+            | jq -r ".spec.template.spec.volumes[${vol_idx}].name")
+        # Find the matching disk index
+        local disk_idx
+        disk_idx=$(kubectl get vm "${vm}" -n "${ns}" -o json \
+            | jq ".spec.template.spec.domain.devices.disks | to_entries[] | select(.value.name == \"${disk_name}\") | .key") || true
+
+        # Build the JSON patch — remove disk first (higher path), then volume
+        local patches="["
+        if [[ -n "${disk_idx}" ]]; then
+            patches+="{\"op\":\"remove\",\"path\":\"/spec/template/spec/domain/devices/disks/${disk_idx}\"},"
+        fi
+        patches+="{\"op\":\"remove\",\"path\":\"/spec/template/spec/volumes/${vol_idx}\"}"
+        patches+="]"
+
+        kubectl patch vm "${vm}" -n "${ns}" --type=json -p "${patches}"
+        log_info "Removed cloudInitNoCloud volume '${disk_name}' from VM ${vm}"
+    else
+        log_info "No cloudInitNoCloud volume found on VM ${vm} — skipping"
+    fi
+}
+
+# Safely start a VM — skip if already running.
+safe_start_vm() {
+    local vm="$1" ns="$2"
+    if kubectl get vmi "${vm}" -n "${ns}" &>/dev/null; then
+        local phase
+        phase=$(kubectl get vmi "${vm}" -n "${ns}" -o jsonpath='{.status.phase}' 2>/dev/null) || true
+        if [[ "${phase}" == "Running" || "${phase}" == "Scheduling" || "${phase}" == "Scheduled" ]]; then
+            log_info "VM ${vm} is already in phase ${phase} — skipping start"
+            return 0
+        fi
+    fi
+    virtctl start "${vm}" -n "${ns}"
+}
+
+# ---------------------------------------------------------------------------
 # Namespace helpers
 # ---------------------------------------------------------------------------
 
@@ -201,4 +305,37 @@ ensure_namespace() {
         log_info "Creating namespace ${ns}"
         kubectl create namespace "${ns}"
     fi
+}
+
+# ---------------------------------------------------------------------------
+# Pod label verification helpers
+# ---------------------------------------------------------------------------
+
+# Verify that the virt-launcher pod has the expected label on it.
+verify_pod_label() {
+    local vm="$1" ns="$2" label_key="$3" label_value="${4:-}"
+    local pod
+    pod=$(get_virt_launcher_pod "${vm}" "${ns}")
+    if [[ -z "${pod}" ]]; then
+        log_fail "No virt-launcher pod found for VM ${vm}"
+        return 1
+    fi
+    local actual
+    actual=$(kubectl get pod "${pod}" -n "${ns}" \
+        -o jsonpath="{.metadata.labels['${label_key}']}" 2>/dev/null) || true
+    if [[ -n "${label_value}" ]]; then
+        if [[ "${actual}" == "${label_value}" ]]; then
+            log_pass "Pod ${pod} has label ${label_key}=${label_value}"
+            return 0
+        fi
+        log_fail "Pod ${pod} label ${label_key}=${actual} (expected ${label_value})"
+        return 1
+    fi
+    # Just check presence
+    if [[ -n "${actual}" ]]; then
+        log_pass "Pod ${pod} has label ${label_key}=${actual}"
+        return 0
+    fi
+    log_fail "Pod ${pod} does not have label ${label_key}"
+    return 1
 }

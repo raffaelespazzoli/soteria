@@ -42,8 +42,7 @@ cleanup() {
     fi
     log_info "Cleaning up RHEL test resources"
     virtctl stop "${RHEL_VM_NAME}" -n "${E2E_NAMESPACE}" 2>/dev/null || true
-    kubectl label vm "${RHEL_VM_NAME}" -n "${E2E_NAMESPACE}" soteria.io/ip-rewrite- 2>/dev/null || true
-    kubectl annotate vm "${RHEL_VM_NAME}" -n "${E2E_NAMESPACE}" soteria.io/eth0-ip- 2>/dev/null || true
+    remove_ip_rewrite_template_patch "${RHEL_VM_NAME}" "${E2E_NAMESPACE}" 2>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -56,11 +55,19 @@ log_info "Step 1: Applying RHEL 9 VM manifest and starting VM"
 ensure_namespace "${E2E_NAMESPACE}"
 
 if ! kubectl get vm "${RHEL_VM_NAME}" -n "${E2E_NAMESPACE}" &>/dev/null; then
-    kubectl apply -f "${SCRIPT_DIR}/manifests/rhel9-test-vm.yaml"
+    export VM_NAME="${RHEL_VM_NAME}" DV_ACCESS_MODE="${RHEL_DV_ACCESS_MODE:-ReadWriteMany}"
+    envsubst < "${SCRIPT_DIR}/manifests/rhel9-test-vm.yaml" \
+        | kubectl apply -n "${E2E_NAMESPACE}" -f -
+fi
+
+# Wait for the DataVolume import to complete before starting
+DV_NAME="${RHEL_VM_NAME}-dv"
+if kubectl get dv "${DV_NAME}" -n "${E2E_NAMESPACE}" &>/dev/null; then
+    wait_for_dv_ready "${DV_NAME}" "${E2E_NAMESPACE}" 600
 fi
 
 # Start the VM (running: false in manifest)
-virtctl start "${RHEL_VM_NAME}" -n "${E2E_NAMESPACE}"
+safe_start_vm "${RHEL_VM_NAME}" "${E2E_NAMESPACE}"
 wait_for_vmi_running "${RHEL_VM_NAME}" "${E2E_NAMESPACE}" "${RHEL_BOOT_TIMEOUT}"
 
 # =========================================================================
@@ -90,14 +97,14 @@ log_info "Step 3: Stopping VM for IP rewrite"
 virtctl stop "${RHEL_VM_NAME}" -n "${E2E_NAMESPACE}"
 wait_for_vmi_deleted "${RHEL_VM_NAME}" "${E2E_NAMESPACE}" "${VM_STOP_TIMEOUT}"
 
-log_info "Step 3: Annotating and labelling VM for IP rewrite"
-kubectl annotate vm "${RHEL_VM_NAME}" -n "${E2E_NAMESPACE}" \
-    "soteria.io/eth0-ip=${RHEL_TARGET_ANNOTATION}" --overwrite
-kubectl label vm "${RHEL_VM_NAME}" -n "${E2E_NAMESPACE}" \
-    soteria.io/ip-rewrite=true --overwrite
+# Remove cloud-init volume so it does not override the rewritten IP on boot
+remove_cloud_init_volume "${RHEL_VM_NAME}" "${E2E_NAMESPACE}"
+
+log_info "Step 3: Patching VM template metadata with IP rewrite label and annotations"
+apply_ip_rewrite_template_patch "${RHEL_VM_NAME}" "${E2E_NAMESPACE}" "${RHEL_TARGET_ANNOTATION}"
 
 log_info "Step 3: Starting VM with IP rewrite"
-virtctl start "${RHEL_VM_NAME}" -n "${E2E_NAMESPACE}"
+safe_start_vm "${RHEL_VM_NAME}" "${E2E_NAMESPACE}"
 wait_for_vmi_running "${RHEL_VM_NAME}" "${E2E_NAMESPACE}" "${RHEL_BOOT_TIMEOUT}"
 
 # =========================================================================
@@ -109,6 +116,13 @@ if verify_init_container_completed "${RHEL_VM_NAME}" "${E2E_NAMESPACE}"; then
     pass "ip-rewrite init container completed successfully"
 else
     fail "Init container verification" "ip-rewrite init container did not complete successfully"
+fi
+
+# Verify the virt-launcher pod actually has the label and annotations
+if verify_pod_label "${RHEL_VM_NAME}" "${E2E_NAMESPACE}" "soteria.io/ip-rewrite" "true"; then
+    pass "Virt-launcher pod has soteria.io/ip-rewrite=true label"
+else
+    fail "Pod label check" "Virt-launcher pod missing soteria.io/ip-rewrite label"
 fi
 
 # =========================================================================

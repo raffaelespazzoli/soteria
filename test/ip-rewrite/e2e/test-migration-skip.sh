@@ -61,16 +61,26 @@ log_info "Step 1: Ensuring VM ${MIGRATION_VM_NAME} is running with IP rewrite la
 
 ensure_namespace "${E2E_NAMESPACE}"
 
-# Ensure the VM has the label and annotation
-kubectl label vm "${MIGRATION_VM_NAME}" -n "${E2E_NAMESPACE}" \
-    soteria.io/ip-rewrite=true --overwrite
-kubectl annotate vm "${MIGRATION_VM_NAME}" -n "${E2E_NAMESPACE}" \
-    "soteria.io/eth0-ip=${RHEL_TARGET_ANNOTATION}" --overwrite
+# Create the VM if it does not exist
+if ! kubectl get vm "${MIGRATION_VM_NAME}" -n "${E2E_NAMESPACE}" &>/dev/null; then
+    log_info "VM ${MIGRATION_VM_NAME} does not exist — creating from manifest"
+    export VM_NAME="${MIGRATION_VM_NAME}" DV_ACCESS_MODE="${RHEL_DV_ACCESS_MODE:-ReadWriteMany}"
+    envsubst < "${SCRIPT_DIR}/manifests/rhel9-test-vm.yaml" \
+        | kubectl apply -n "${E2E_NAMESPACE}" -f -
+    # Wait for DataVolume import
+    DV_NAME="${MIGRATION_VM_NAME}-dv"
+    if kubectl get dv "${DV_NAME}" -n "${E2E_NAMESPACE}" &>/dev/null; then
+        wait_for_dv_ready "${DV_NAME}" "${E2E_NAMESPACE}" 600
+    fi
+fi
+
+# Patch VM template metadata with IP rewrite label and annotations
+apply_ip_rewrite_template_patch "${MIGRATION_VM_NAME}" "${E2E_NAMESPACE}" "${RHEL_TARGET_ANNOTATION}"
 
 # If VM is not running, start it
 if ! kubectl get vmi "${MIGRATION_VM_NAME}" -n "${E2E_NAMESPACE}" &>/dev/null; then
     log_info "VM is not running — starting it"
-    virtctl start "${MIGRATION_VM_NAME}" -n "${E2E_NAMESPACE}" 2>/dev/null || true
+    safe_start_vm "${MIGRATION_VM_NAME}" "${E2E_NAMESPACE}"
 fi
 wait_for_vmi_running "${MIGRATION_VM_NAME}" "${E2E_NAMESPACE}" "${RHEL_BOOT_TIMEOUT}"
 
@@ -110,20 +120,38 @@ log_info "Step 4: Verifying migration target pod has no ip-rewrite init containe
 
 # After migration, the "current" virt-launcher pod is the migration target.
 # The original pod will have been terminated or be in a completed state.
-# Get the active (non-completed) virt-launcher pod.
+# Get the active (non-terminated) virt-launcher pod.
 target_pod=$(kubectl get pods -n "${E2E_NAMESPACE}" \
     -l "kubevirt.io/vm=${MIGRATION_VM_NAME}" \
     --field-selector=status.phase=Running \
-    --sort-by=.metadata.creationTimestamp \
-    -o jsonpath='{.items[-1:].metadata.name}' 2>/dev/null)
+    -o json 2>/dev/null \
+    | jq -r '[.items[] | select(.metadata.deletionTimestamp == null)] | sort_by(.metadata.creationTimestamp) | last | .metadata.name' 2>/dev/null)
 
-if [[ -z "${target_pod}" ]]; then
+if [[ -z "${target_pod}" || "${target_pod}" == "null" ]]; then
     fail "Migration target pod lookup" "Could not find running virt-launcher pod after migration"
     exit 1
 fi
 
 log_info "Migration target pod: ${target_pod}"
 
+# AC3 assertion: target pod should have the migration label AND ip-rewrite label
+migration_uid=$(kubectl get pod "${target_pod}" -n "${E2E_NAMESPACE}" \
+    -o jsonpath='{.metadata.labels.kubevirt\.io/migrationJobUID}' 2>/dev/null) || true
+if [[ -n "${migration_uid}" ]]; then
+    pass "Migration target pod has kubevirt.io/migrationJobUID=${migration_uid}"
+else
+    fail "Migration label check" "Migration target pod missing kubevirt.io/migrationJobUID label"
+fi
+
+ip_rewrite_label=$(kubectl get pod "${target_pod}" -n "${E2E_NAMESPACE}" \
+    -o jsonpath='{.metadata.labels.soteria\.io/ip-rewrite}' 2>/dev/null) || true
+if [[ "${ip_rewrite_label}" == "true" ]]; then
+    pass "Migration target pod has soteria.io/ip-rewrite=true label"
+else
+    fail "IP rewrite label check" "Migration target pod missing soteria.io/ip-rewrite=true label"
+fi
+
+# Verify NO ip-rewrite init container on migration target pod
 init_names=$(kubectl get pod "${target_pod}" -n "${E2E_NAMESPACE}" \
     -o jsonpath='{.spec.initContainers[*].name}' 2>/dev/null)
 

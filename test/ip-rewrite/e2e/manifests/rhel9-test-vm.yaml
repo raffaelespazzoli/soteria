@@ -7,14 +7,18 @@
 #   - Static IP 10.0.1.50/24 configured via cloud-init networkData.
 #
 # IMPORTANT — cloud-init may re-apply network configuration on subsequent boots,
-# overriding the handler's IP rewrite. For production validation, use a pre-baked
+# overriding the handler's IP rewrite. The test script removes the cloudInitNoCloud
+# volume before applying the rewrite. For production validation, use a pre-baked
 # VM image with static IP configured directly in the guest OS (not via cloud-init)
 # and remove the cloudInitNoCloud volume. See README.md for details.
+#
+# Variables (substituted via envsubst):
+#   ${VM_NAME}          — VM and DataVolume name (default set in helpers.sh)
+#   ${DV_ACCESS_MODE}   — DataVolume access mode (default: ReadWriteMany)
 apiVersion: kubevirt.io/v1
 kind: VirtualMachine
 metadata:
-  name: rhel9-ip-rewrite-test
-  namespace: ip-rewrite-e2e
+  name: ${VM_NAME}
 spec:
   running: false
   template:
@@ -33,6 +37,9 @@ spec:
           interfaces:
             - name: default
               masquerade: {}
+        firmware:
+          kernelBoot:
+            kernelArgs: "net.ifnames=0 biosdevname=0"
         resources:
           requests:
             memory: 2Gi
@@ -42,13 +49,15 @@ spec:
       volumes:
         - name: rootdisk
           dataVolume:
-            name: rhel9-ip-rewrite-test-dv
+            name: ${VM_NAME}-dv
         - name: cloudinitdisk
           cloudInitNoCloud:
             networkData: |
               version: 2
               ethernets:
                 eth0:
+                  match:
+                    driver: virtio
                   addresses:
                     - 10.0.1.50/24
                   gateway4: 10.0.1.1
@@ -63,7 +72,7 @@ spec:
                 - systemctl enable --now qemu-guest-agent
   dataVolumeTemplates:
     - metadata:
-        name: rhel9-ip-rewrite-test-dv
+        name: ${VM_NAME}-dv
       spec:
         source:
           registry:
@@ -75,7 +84,7 @@ spec:
             url: "docker://registry.redhat.io/rhel9/rhel-guest-image:latest"
         pvc:
           accessModes:
-            - ReadWriteOnce
+            - ${DV_ACCESS_MODE}
           resources:
             requests:
               storage: 30Gi

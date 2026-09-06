@@ -38,6 +38,10 @@ while [[ $# -gt 0 ]]; do
             shift
             ;;
         --test)
+            if [[ $# -lt 2 || "$2" == -* ]]; then
+                log_error "--test requires an argument: rhel, windows, migration, failopen"
+                exit 1
+            fi
             RUN_SINGLE="$2"
             shift 2
             ;;
@@ -140,6 +144,16 @@ fi
 # --- AC5: Webhook fail-open ---
 if should_run "failopen"; then
     run_test "Webhook Fail-Open (AC5)" "${SCRIPT_DIR}/test-webhook-failopen.sh"
+fi
+
+# Catch unknown --test names
+if [[ -n "${RUN_SINGLE}" ]] && \
+   [[ "${RUN_SINGLE}" != "rhel" ]] && \
+   [[ "${RUN_SINGLE}" != "windows" ]] && \
+   [[ "${RUN_SINGLE}" != "migration" ]] && \
+   [[ "${RUN_SINGLE}" != "failopen" ]]; then
+    log_error "Unknown test name: '${RUN_SINGLE}'. Valid names: rhel, windows, migration, failopen"
+    SUITE_FAILED=$((SUITE_FAILED + 1))
 fi
 
 # ---------------------------------------------------------------------------

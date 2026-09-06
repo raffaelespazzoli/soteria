@@ -44,8 +44,7 @@ cleanup() {
     fi
     log_info "Cleaning up Windows test resources"
     virtctl stop "${WINDOWS_VM_NAME}" -n "${E2E_NAMESPACE}" 2>/dev/null || true
-    kubectl label vm "${WINDOWS_VM_NAME}" -n "${E2E_NAMESPACE}" soteria.io/ip-rewrite- 2>/dev/null || true
-    kubectl annotate vm "${WINDOWS_VM_NAME}" -n "${E2E_NAMESPACE}" soteria.io/eth0-ip- 2>/dev/null || true
+    remove_ip_rewrite_template_patch "${WINDOWS_VM_NAME}" "${E2E_NAMESPACE}" 2>/dev/null || true
 }
 trap cleanup EXIT
 
@@ -58,11 +57,13 @@ log_info "Step 1: Applying Windows Server 2022 VM manifest and starting VM"
 ensure_namespace "${E2E_NAMESPACE}"
 
 if ! kubectl get vm "${WINDOWS_VM_NAME}" -n "${E2E_NAMESPACE}" &>/dev/null; then
-    kubectl apply -f "${SCRIPT_DIR}/manifests/win2022-test-vm.yaml"
+    export VM_NAME="${WINDOWS_VM_NAME}"
+    envsubst < "${SCRIPT_DIR}/manifests/win2022-test-vm.yaml" \
+        | kubectl apply -n "${E2E_NAMESPACE}" -f -
 fi
 
 # Start the VM (running: false in manifest)
-virtctl start "${WINDOWS_VM_NAME}" -n "${E2E_NAMESPACE}"
+safe_start_vm "${WINDOWS_VM_NAME}" "${E2E_NAMESPACE}"
 wait_for_vmi_running "${WINDOWS_VM_NAME}" "${E2E_NAMESPACE}" "${WINDOWS_BOOT_TIMEOUT}"
 
 # =========================================================================
@@ -92,14 +93,11 @@ log_info "Step 3: Stopping VM for IP rewrite"
 virtctl stop "${WINDOWS_VM_NAME}" -n "${E2E_NAMESPACE}"
 wait_for_vmi_deleted "${WINDOWS_VM_NAME}" "${E2E_NAMESPACE}" "${VM_STOP_TIMEOUT}"
 
-log_info "Step 3: Annotating and labelling VM for IP rewrite"
-kubectl annotate vm "${WINDOWS_VM_NAME}" -n "${E2E_NAMESPACE}" \
-    "soteria.io/eth0-ip=${WINDOWS_TARGET_ANNOTATION}" --overwrite
-kubectl label vm "${WINDOWS_VM_NAME}" -n "${E2E_NAMESPACE}" \
-    soteria.io/ip-rewrite=true --overwrite
+log_info "Step 3: Patching VM template metadata with IP rewrite label and annotations"
+apply_ip_rewrite_template_patch "${WINDOWS_VM_NAME}" "${E2E_NAMESPACE}" "${WINDOWS_TARGET_ANNOTATION}"
 
 log_info "Step 3: Starting VM with IP rewrite"
-virtctl start "${WINDOWS_VM_NAME}" -n "${E2E_NAMESPACE}"
+safe_start_vm "${WINDOWS_VM_NAME}" "${E2E_NAMESPACE}"
 wait_for_vmi_running "${WINDOWS_VM_NAME}" "${E2E_NAMESPACE}" "${WINDOWS_BOOT_TIMEOUT}"
 
 # =========================================================================
@@ -111,6 +109,13 @@ if verify_init_container_completed "${WINDOWS_VM_NAME}" "${E2E_NAMESPACE}"; then
     pass "ip-rewrite init container completed successfully"
 else
     fail "Init container verification" "ip-rewrite init container did not complete successfully"
+fi
+
+# Verify the virt-launcher pod actually has the label and annotations
+if verify_pod_label "${WINDOWS_VM_NAME}" "${E2E_NAMESPACE}" "soteria.io/ip-rewrite" "true"; then
+    pass "Virt-launcher pod has soteria.io/ip-rewrite=true label"
+else
+    fail "Pod label check" "Virt-launcher pod missing soteria.io/ip-rewrite label"
 fi
 
 # =========================================================================

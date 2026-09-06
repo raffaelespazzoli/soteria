@@ -6,15 +6,17 @@
 #       - QEMU guest agent for Windows installed and running as a service
 #         (from https://github.com/virtio-win/virtio-win-pkg-scripts)
 #       - Static IP 10.0.1.60/24, gateway 10.0.1.1 pre-configured
-#   - The PVC name defaults to "win2022-ip-rewrite-test-pvc" in namespace
-#     "ip-rewrite-e2e". Override via environment variables in test scripts.
+#   - The PVC name defaults to "${VM_NAME}-pvc" in the test namespace.
+#     Override via environment variables in test scripts.
 #   - Microsoft licensing precludes automated image provisioning — the PVC
 #     must be prepared manually from a licensed Windows Server 2022 ISO.
+#
+# Variables (substituted via envsubst):
+#   ${VM_NAME}  — VM name (default set in helpers.sh)
 apiVersion: kubevirt.io/v1
 kind: VirtualMachine
 metadata:
-  name: win2022-ip-rewrite-test
-  namespace: ip-rewrite-e2e
+  name: ${VM_NAME}
 spec:
   running: false
   template:
@@ -59,4 +61,4 @@ spec:
         - name: rootdisk
           persistentVolumeClaim:
             # Replace with your pre-created Windows Server 2022 PVC name.
-            claimName: win2022-ip-rewrite-test-pvc
+            claimName: ${VM_NAME}-pvc

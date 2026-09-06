@@ -83,10 +83,11 @@ log_info "Step 2: Scaling webhook deployment to 0 replicas"
 kubectl scale deployment -n "${WEBHOOK_NAMESPACE}" \
     -l "${WEBHOOK_DEPLOYMENT_LABEL}" --replicas=0
 
-# Wait for pods to terminate
+# Wait for pods to terminate — fail if they are still Running after timeout
 log_info "Waiting for webhook pods to terminate"
 local_timeout=60
 end=$((SECONDS + local_timeout))
+webhook_pods_down=false
 while [[ ${SECONDS} -lt ${end} ]]; do
     pod_count=$(kubectl get pods -n "${WEBHOOK_NAMESPACE}" \
         -l "${WEBHOOK_DEPLOYMENT_LABEL}" \
@@ -94,15 +95,32 @@ while [[ ${SECONDS} -lt ${end} ]]; do
         -o name 2>/dev/null | wc -l)
     if [[ "${pod_count}" -eq 0 ]]; then
         log_info "All webhook pods terminated"
+        webhook_pods_down=true
         break
     fi
     sleep 5
 done
+if [[ "${webhook_pods_down}" != "true" ]]; then
+    log_error "Webhook pods still running after ${local_timeout}s — cannot validate fail-open"
+    exit 1
+fi
 
 # =========================================================================
 # Step 3: Ensure VM is stopped, label it, then start
 # =========================================================================
 log_info "Step 3: Preparing and starting VM with IP rewrite label (webhook down)"
+
+# Create the VM if it does not exist
+if ! kubectl get vm "${FAILOPEN_VM_NAME}" -n "${E2E_NAMESPACE}" &>/dev/null; then
+    log_info "VM ${FAILOPEN_VM_NAME} does not exist — creating from manifest"
+    export VM_NAME="${FAILOPEN_VM_NAME}" DV_ACCESS_MODE="${RHEL_DV_ACCESS_MODE:-ReadWriteMany}"
+    envsubst < "${SCRIPT_DIR}/manifests/rhel9-test-vm.yaml" \
+        | kubectl apply -n "${E2E_NAMESPACE}" -f -
+    DV_NAME="${FAILOPEN_VM_NAME}-dv"
+    if kubectl get dv "${DV_NAME}" -n "${E2E_NAMESPACE}" &>/dev/null; then
+        wait_for_dv_ready "${DV_NAME}" "${E2E_NAMESPACE}" 600
+    fi
+fi
 
 # Stop VM if running
 if kubectl get vmi "${FAILOPEN_VM_NAME}" -n "${E2E_NAMESPACE}" &>/dev/null; then
@@ -110,14 +128,11 @@ if kubectl get vmi "${FAILOPEN_VM_NAME}" -n "${E2E_NAMESPACE}" &>/dev/null; then
     wait_for_vmi_deleted "${FAILOPEN_VM_NAME}" "${E2E_NAMESPACE}" "${VM_STOP_TIMEOUT}"
 fi
 
-# Ensure the VM has the IP rewrite label
-kubectl label vm "${FAILOPEN_VM_NAME}" -n "${E2E_NAMESPACE}" \
-    soteria.io/ip-rewrite=true --overwrite
-kubectl annotate vm "${FAILOPEN_VM_NAME}" -n "${E2E_NAMESPACE}" \
-    "soteria.io/eth0-ip=${RHEL_TARGET_ANNOTATION}" --overwrite
+# Patch template metadata with IP rewrite label and annotations
+apply_ip_rewrite_template_patch "${FAILOPEN_VM_NAME}" "${E2E_NAMESPACE}" "${RHEL_TARGET_ANNOTATION}"
 
 # Start VM — should succeed because failurePolicy: Ignore
-virtctl start "${FAILOPEN_VM_NAME}" -n "${E2E_NAMESPACE}"
+safe_start_vm "${FAILOPEN_VM_NAME}" "${E2E_NAMESPACE}"
 
 # =========================================================================
 # Step 4: Verify VM starts and has NO init container

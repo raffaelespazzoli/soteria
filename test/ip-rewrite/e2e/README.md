@@ -26,8 +26,15 @@ AC4 (VM without label is unaffected) is validated implicitly during the initial 
    ```
 3. **IP rewrite webhook chart** installed:
    ```bash
+   # Standard Kubernetes
    helm install soteria-ip-rewrite charts/soteria-ip-rewrite/ \
        -n soteria-ip-rewrite --create-namespace
+
+   # OpenShift — enable SCC and include the E2E namespace
+   helm install soteria-ip-rewrite charts/soteria-ip-rewrite/ \
+       -n soteria-ip-rewrite --create-namespace \
+       --set scc.enabled=true \
+       --set "scc.namespaces={soteria-ip-rewrite,ip-rewrite-e2e}"
    ```
 4. **IP rewrite init container image** accessible from the cluster — either pushed to a registry the cluster can pull from or loaded into the cluster's internal registry
 5. **At least 2 schedulable nodes** for live migration tests (AC3)
@@ -102,7 +109,8 @@ All test scripts support configuration via environment variables:
 | `WINDOWS_INITIAL_IP` | `10.0.1.60` | Initial static IP on the Windows VM |
 | `WINDOWS_TARGET_IP` | `10.0.2.110` | Expected IP after rewrite |
 | `WINDOWS_TARGET_ANNOTATION` | `10.0.2.110/24;10.0.2.1` | Full annotation value for Windows rewrite |
-| `RHEL_BOOT_TIMEOUT` | `120` | Seconds to wait for RHEL VM boot |
+| `RHEL_DV_ACCESS_MODE` | `ReadWriteMany` | DataVolume access mode (`ReadWriteMany` required for live migration) |
+| `RHEL_BOOT_TIMEOUT` | `300` | Seconds to wait for RHEL VM boot (includes DataVolume import) |
 | `WINDOWS_BOOT_TIMEOUT` | `360` | Seconds to wait for Windows VM boot |
 | `GUEST_AGENT_TIMEOUT` | `300` | Seconds to wait for guest agent to report |
 | `MIGRATION_TIMEOUT` | `300` | Seconds to wait for live migration |
@@ -166,7 +174,15 @@ test/ip-rewrite/e2e/
 
 ### Cloud-init overrides IP rewrite
 
-Cloud-init may re-apply its network configuration on subsequent boots, undoing the IP rewrite. Solutions:
+Cloud-init may re-apply its network configuration on subsequent boots, undoing the IP rewrite. The RHEL test script automatically removes the `cloudInitNoCloud` volume from the VM spec before the rewrite boot. Other solutions:
 1. Use a pre-baked VM image with static IP configured in the guest OS directly
-2. Remove the `cloudInitNoCloud` volume from the VM manifest
+2. Remove the `cloudInitNoCloud` volume from the VM manifest before the rewrite boot
 3. Configure cloud-init to apply network config only on first boot (`network: {config: disabled}` in `/etc/cloud/cloud.cfg.d/`)
+
+### Label and annotation placement
+
+The `soteria.io/ip-rewrite` label and `soteria.io/eth0-ip` annotation must be on `spec.template.metadata` (not the VM's top-level `metadata`). KubeVirt only copies `spec.template.metadata` onto the VMI and virt-launcher pod. The test scripts use `kubectl patch vm --type=merge` to set these correctly.
+
+### Live migration requires ReadWriteMany storage
+
+The AC3 migration test requires the RHEL DataVolume to use `ReadWriteMany` (RWX) access mode. Set `RHEL_DV_ACCESS_MODE=ReadWriteMany` (default). If only `ReadWriteOnce` storage is available, the migration test will fail — skip it with `--test rhel`.
