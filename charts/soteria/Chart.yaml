@@ -10,4 +10,4 @@ dependencies:
   - name: soteria-ip-rewrite
     version: "0.1.0"
     repository: "file://../soteria-ip-rewrite"
-    condition: ipRewrite.enabled
+    condition: soteria-ip-rewrite.enabled

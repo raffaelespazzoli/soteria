@@ -1,8 +1,8 @@
 {{- /*
 ClusterRole granting "use" of the IP rewrite SecurityContextConstraints.
-Only rendered when scc.enabled is true (OpenShift clusters).
+Only rendered when both scc.enabled and scc.create are true.
 */ -}}
-{{- if .Values.scc.enabled }}
+{{- if and .Values.scc.enabled .Values.scc.create }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:

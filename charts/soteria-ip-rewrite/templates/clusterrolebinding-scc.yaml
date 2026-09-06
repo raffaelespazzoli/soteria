@@ -1,9 +1,9 @@
 {{- /*
-ClusterRoleBinding — grants the SCC "use" ClusterRole to ServiceAccounts
-in the release namespace (default) and any additional configured namespaces.
-Only rendered when scc.enabled is true (OpenShift clusters).
+ClusterRoleBinding — grants the SCC "use" ClusterRole to specific
+virt-launcher ServiceAccounts in configured namespaces.
+Only rendered when both scc.enabled and scc.create are true.
 */ -}}
-{{- if .Values.scc.enabled }}
+{{- if and .Values.scc.enabled .Values.scc.create }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
@@ -15,13 +15,16 @@ roleRef:
   kind: ClusterRole
   name: {{ printf "%s-scc-use" (include "soteria-ip-rewrite.fullname" .) | trunc 63 | trimSuffix "-" }}
 subjects:
-  - kind: Group
-    apiGroup: rbac.authorization.k8s.io
-    name: system:serviceaccounts:{{ .Release.Namespace }}
-  {{- range .Values.scc.namespaces }}
-  - kind: Group
-    apiGroup: rbac.authorization.k8s.io
-    name: system:serviceaccounts:{{ . }}
+  {{- $namespaces := .Values.scc.namespaces | default list }}
+  {{- if not $namespaces }}
+  {{- $namespaces = list .Release.Namespace }}
+  {{- end }}
+  {{- range $ns := $namespaces }}
+  {{- range $.Values.scc.serviceAccountNames }}
+  - kind: ServiceAccount
+    name: {{ . }}
+    namespace: {{ $ns }}
+  {{- end }}
   {{- end }}
   {{- range .Values.scc.additionalSubjects }}
   - {{- toYaml . | nindent 4 }}

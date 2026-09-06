@@ -2,5 +2,5 @@ dependencies:
 - name: soteria-ip-rewrite
   repository: file://../soteria-ip-rewrite
   version: 0.1.0
-digest: sha256:7d83b43759022a99ad7411612e80e9f47b56849d1f561a3a44c188be1de21d5e
-generated: "2026-09-06T06:12:02.158070527-04:00"
+digest: sha256:d7bab87118338a3a1dd3af917d026800a1ebb257392a6caf163ab9f255b95234
+generated: "2026-09-06T06:27:27.742750472-04:00"

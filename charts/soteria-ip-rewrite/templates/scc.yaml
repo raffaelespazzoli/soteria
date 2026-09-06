@@ -1,33 +1,47 @@
 {{- /*
 SecurityContextConstraints — OpenShift-specific resource that permits
 the SYS_ADMIN capability required by the guestfish appliance inside
-the IP rewrite init container. Only rendered when scc.enabled is true.
+the IP rewrite init container.
+
+This SCC is a superset of the virt-launcher SCC plus SYS_ADMIN. OpenShift
+selects ONE SCC for an entire pod, so the SCC must cover all capabilities
+and volume types that virt-launcher pods already require.
+
+Only rendered when both scc.enabled and scc.create are true.
 */ -}}
-{{- if .Values.scc.enabled }}
+{{- if and .Values.scc.enabled .Values.scc.create }}
 apiVersion: security.openshift.io/v1
 kind: SecurityContextConstraints
 metadata:
   name: {{ printf "%s-ip-rewrite" (include "soteria-ip-rewrite.fullname" .) | trunc 63 | trimSuffix "-" }}
   labels:
     {{- include "soteria-ip-rewrite.labels" . | nindent 4 }}
+  annotations:
+    soteria.io/description: "Superset of virt-launcher SCC + SYS_ADMIN for IP rewrite init container"
 allowedCapabilities:
   - SYS_ADMIN
+  - NET_BIND_SERVICE
+  - SYS_NICE
+  - SYS_PTRACE
 volumes:
-  - persistentVolumeClaim
-  - secret
   - configMap
-  - projected
+  - downwardAPI
   - emptyDir
-allowHostDirVolumePlugin: false
-allowHostNetwork: false
+  - hostPath
+  - persistentVolumeClaim
+  - projected
+  - secret
+allowHostDirVolumePlugin: true
+allowHostNetwork: true
 allowHostPorts: false
 allowHostPID: false
 allowHostIPC: false
 allowPrivilegedContainer: false
+allowPrivilegeEscalation: true
 runAsUser:
   type: RunAsAny
 seLinuxContext:
-  type: MustRunAs
+  type: RunAsAny
 fsGroup:
   type: RunAsAny
 supplementalGroups:

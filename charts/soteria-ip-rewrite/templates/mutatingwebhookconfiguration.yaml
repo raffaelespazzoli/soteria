@@ -12,7 +12,7 @@ metadata:
   annotations:
     cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ printf "%s-webhook-serving" (include "soteria-ip-rewrite.fullname" .) | trunc 63 | trimSuffix "-" }}
 webhooks:
-  - name: ip-rewrite.soteria.io
+  - name: {{ printf "%s.soteria.io" (include "soteria-ip-rewrite.fullname" .) }}
     admissionReviewVersions: ["v1"]
     clientConfig:
       service:
@@ -26,8 +26,7 @@ webhooks:
         soteria.io/ip-rewrite: "true"
     {{- with .Values.webhookConfig.namespaceSelector }}
     namespaceSelector:
-      matchLabels:
-        {{- toYaml . | nindent 8 }}
+      {{- toYaml . | nindent 6 }}
     {{- end }}
     rules:
       - apiGroups: [""]

@@ -190,14 +190,18 @@ ui:
 # -----------------------------------------------------------------------------
 # IP Rewrite sub-chart (standalone VM IP reconfiguration webhook)
 # When enabled, deploys the ip-rewrite mutating webhook as a sub-chart.
+# Values under this key pass directly to the soteria-ip-rewrite chart.
+# Condition key: soteria-ip-rewrite.enabled
 # -----------------------------------------------------------------------------
-ipRewrite:
+soteria-ip-rewrite:
   enabled: false
-  # Sub-chart values override — when enabled, override tls.issuerRef to share
-  # the parent chart's cert-manager issuer:
-  soteria-ip-rewrite:
-    tls:
-      issuerRef:
-        name: soteria-ca
-        kind: Issuer
-      createSelfSigned: false
+  # Override TLS to share the parent chart's cert-manager issuer:
+  tls:
+    issuerRef:
+      name: soteria-ca
+      kind: Issuer
+    createSelfSigned: false
+  # Disable SCC creation when the parent cluster's virt-launcher SCC is
+  # already patched with SYS_ADMIN:
+  # scc:
+  #   create: false

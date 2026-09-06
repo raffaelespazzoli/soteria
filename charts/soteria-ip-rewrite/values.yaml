@@ -62,19 +62,45 @@ tls:
 
 # -----------------------------------------------------------------------------
 # SecurityContextConstraints (OpenShift only)
-# The init container needs SYS_ADMIN capability for guestfish to operate.
-# Disable on vanilla Kubernetes clusters (no SCC API).
+#
+# The IP rewrite init container runs inside virt-launcher pods and needs
+# SYS_ADMIN for the guestfish appliance. OpenShift selects ONE SCC for the
+# entire pod, so the SCC must be a superset of what virt-launcher already
+# requires (NET_BIND_SERVICE, SYS_NICE, SYS_PTRACE, hostPath, etc.) PLUS
+# the additional SYS_ADMIN capability.
+#
+# IMPORTANT: You MUST list every namespace where VMs run in scc.namespaces
+# (or use scc.serviceAccountNames to bind to specific virt-launcher SAs).
+# The MWC intercepts pods cluster-wide, but SCC grants must cover the
+# namespaces where the init container actually runs.
+#
+# Alternative: If you prefer to patch the existing kubevirt-controller SCC
+# to add SYS_ADMIN, set scc.create: false and skip the chart-managed SCC.
 # -----------------------------------------------------------------------------
 scc:
   # enabled: Set to false on non-OpenShift clusters (vanilla K8s has no SCC API).
-  enabled: true
-  # additionalSubjects: Additional RBAC subjects granted SCC "use" permission.
-  # Each entry should be a valid RBAC subject (kind, name, namespace, apiGroup).
-  additionalSubjects: []
-  # namespaces: Namespaces whose ServiceAccounts can use the SCC.
-  # Must include namespaces where VMs run (virt-launcher pods need SYS_ADMIN).
+  # Defaults to false for broad compatibility; set to true on OpenShift.
+  enabled: false
+  # create: When true AND enabled, the chart creates a dedicated SCC that is
+  # a superset of the virt-launcher SCC plus SYS_ADMIN. Set to false if the
+  # existing kubevirt-controller SCC is already patched with SYS_ADMIN.
+  create: true
+  # serviceAccountNames: virt-launcher ServiceAccount names to bind the SCC to.
+  # KubeVirt typically uses a per-namespace SA. These are bound as explicit
+  # ServiceAccount subjects (kind: ServiceAccount) in the ClusterRoleBinding.
+  # Default: ["default"] — covers the common case where virt-launcher pods
+  # run under the "default" SA. Override with your actual virt-launcher SA names.
+  serviceAccountNames:
+    - default
+  # namespaces: Namespaces where VMs run (virt-launcher pods need the SCC).
+  # The SCC ClusterRoleBinding grants "use" to the serviceAccountNames in each
+  # of these namespaces. MUST include all namespaces where VMs with
+  # soteria.io/ip-rewrite: "true" are scheduled.
   # Empty list = release namespace only.
   namespaces: []
+  # additionalSubjects: Extra RBAC subjects granted SCC "use" permission.
+  # Each entry is a complete RBAC subject object (kind, name, namespace, apiGroup).
+  additionalSubjects: []
 
 # -----------------------------------------------------------------------------
 # MutatingWebhookConfiguration settings
