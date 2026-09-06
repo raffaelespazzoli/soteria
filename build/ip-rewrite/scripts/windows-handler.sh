@@ -29,10 +29,14 @@
 # Logging: log_info, log_warn, log_error from entrypoint.sh are available.
 # Exit convention: use `return` (not `exit`) since this is sourced.
 
+set -euo pipefail
+
 # ---------------------------------------------------------------------------
-# Temp file tracking and cleanup
+# Temp file tracking and cleanup (save/restore parent trap)
 # ---------------------------------------------------------------------------
 WIN_HANDLER_TMPDIR=$(mktemp -d /tmp/win-handler-XXXXXX)
+
+_WIN_PREV_TRAP=$(trap -p EXIT 2>/dev/null || true)
 
 win_handler_cleanup() {
     rm -rf "${WIN_HANDLER_TMPDIR}" 2>/dev/null || true
@@ -40,6 +44,7 @@ win_handler_cleanup() {
 trap win_handler_cleanup EXIT
 
 HIVE_LOCAL="${WIN_HANDLER_TMPDIR}/system.hive"
+HIVE_BACKUP="${WIN_HANDLER_TMPDIR}/system.hive.orig"
 REG_FILE="${WIN_HANDLER_TMPDIR}/ip-rewrite.reg"
 
 # ---------------------------------------------------------------------------
@@ -110,6 +115,33 @@ string_to_utf16le_multisz() {
     # String null terminator + multi-string list terminator (double null)
     hex+="00,00,00,00"
     echo "${hex}"
+}
+
+# ---------------------------------------------------------------------------
+# Utility: Compute network address from IP and subnet mask
+# Uses 10# prefix to force decimal parsing (prevents octal on 08/09)
+# ---------------------------------------------------------------------------
+ip_to_network() {
+    local ip="$1" mask="$2"
+    local a1 a2 a3 a4 m1 m2 m3 m4
+    IFS='.' read -r a1 a2 a3 a4 <<< "${ip}"
+    IFS='.' read -r m1 m2 m3 m4 <<< "${mask}"
+    printf "%d.%d.%d.%d" \
+        $(( 10#${a1} & 10#${m1} )) \
+        $(( 10#${a2} & 10#${m2} )) \
+        $(( 10#${a3} & 10#${m3} )) \
+        $(( 10#${a4} & 10#${m4} ))
+}
+
+# ---------------------------------------------------------------------------
+# Utility: Escape a string for .reg file REG_SZ value (double any backslashes
+# and escape embedded double-quotes)
+# ---------------------------------------------------------------------------
+reg_escape_sz() {
+    local s="$1"
+    s="${s//\\/\\\\}"
+    s="${s//\"/\\\"}"
+    printf '%s' "$s"
 }
 
 # =========================================================================
@@ -187,6 +219,14 @@ fi
 HIVE_SIZE=$(stat -c %s "${HIVE_LOCAL}" 2>/dev/null || stat -f %z "${HIVE_LOCAL}" 2>/dev/null)
 log_info "SYSTEM hive downloaded (${HIVE_SIZE} bytes)"
 
+# Check for Fast Startup / hiberfil.sys that would ignore offline edits
+HIBERFIL_CHECK=$(guestfish --ro -a "${REWRITE_DISK}" -i -- \
+    is-file "${SYSTEMROOT}/hiberfil.sys" 2>/dev/null || echo "false")
+if [[ "${HIBERFIL_CHECK}" == "true" ]]; then
+    log_warn "hiberfil.sys detected — Windows Fast Startup may ignore offline registry changes"
+    log_warn "If the VM boots with old IP settings, disable Fast Startup and try again"
+fi
+
 # =========================================================================
 # Phase 2: Adapter Discovery & Matching (hivexsh read-only)
 # =========================================================================
@@ -230,17 +270,21 @@ fi
 
 log_info "Found ${#GUID_LIST[@]} network adapter(s)"
 
-# Read adapter properties for matching
-declare -A ADAPTER_DHCP=()      # GUID -> EnableDHCP value
-declare -A ADAPTER_IPADDR=()    # GUID -> IPAddress value (first entry)
-declare -A ADAPTER_SUBNET=()    # GUID -> SubnetMask value (first entry)
+# Read adapter properties for matching.
+# Named `lsval <key>` in hivexsh prints the decoded value as plain text:
+#   DWORD  → decimal number (e.g. "0" or "1")
+#   MULTI_SZ → one string per line
+#   SZ → the string
+declare -A ADAPTER_DHCP=()      # GUID -> EnableDHCP value (0 or 1)
+declare -A ADAPTER_IPADDR=()    # GUID -> effective IP for matching
+declare -A ADAPTER_SUBNET=()    # GUID -> effective subnet for matching
 
 for guid in "${GUID_LIST[@]}"; do
     log_info "  Reading adapter ${guid}"
 
     ADAPTER_PATH="${INTERFACES_PATH}\\${guid}"
 
-    # Read EnableDHCP (REG_DWORD). hivexsh lsval prints "name"=type:value
+    # Read EnableDHCP (REG_DWORD) — named lsval returns plain decimal
     ENABLE_DHCP=""
     DHCP_OUTPUT=$(hivexsh "${HIVE_LOCAL}" 2>/dev/null <<HIVEOF || true
 cd \\${ADAPTER_PATH}
@@ -248,76 +292,59 @@ lsval EnableDHCP
 HIVEOF
     )
     if [[ -n "${DHCP_OUTPUT}" ]]; then
-        # Extract the DWORD value — hivexsh outputs: "EnableDHCP"=dword:00000000
-        ENABLE_DHCP=$(echo "${DHCP_OUTPUT}" | sed -n 's/.*dword:\([0-9a-fA-F]*\).*/\1/p')
-        ENABLE_DHCP=$((16#${ENABLE_DHCP:-0}))
+        ENABLE_DHCP=$(echo "${DHCP_OUTPUT}" | tr -d '[:space:]')
     fi
     ADAPTER_DHCP["${guid}"]="${ENABLE_DHCP:-}"
 
-    # Read IPAddress (REG_MULTI_SZ). hivexsh prints hex or decoded form
-    IP_OUTPUT=$(hivexsh "${HIVE_LOCAL}" 2>/dev/null <<HIVEOF || true
+    if [[ "${ENABLE_DHCP}" == "0" ]]; then
+        # Static IP — read IPAddress and SubnetMask (REG_MULTI_SZ plain text)
+        IP_OUTPUT=$(hivexsh "${HIVE_LOCAL}" 2>/dev/null <<HIVEOF || true
 cd \\${ADAPTER_PATH}
 lsval IPAddress
 HIVEOF
-    )
-
-    # Parse REG_MULTI_SZ — hivexsh outputs hex bytes for type 7
-    # We need to decode UTF-16LE hex to extract the IP string
-    IP_ADDR=""
-    if [[ -n "${IP_OUTPUT}" ]]; then
-        # Extract hex bytes after "hex(7):" from lsval output
-        HEX_BYTES=$(echo "${IP_OUTPUT}" | sed -n 's/.*hex(7):\(.*\)/\1/p' | tr -d ' \\\n\r')
-        if [[ -n "${HEX_BYTES}" ]]; then
-            # Decode UTF-16LE hex to ASCII (take bytes before first double-null)
-            IP_ADDR=""
-            IFS=',' read -ra BYTE_ARR <<< "${HEX_BYTES}"
-            local_i=0
-            while (( local_i < ${#BYTE_ARR[@]} - 1 )); do
-                low="${BYTE_ARR[$local_i]}"
-                high="${BYTE_ARR[$((local_i + 1))]}"
-                # Check for null terminator (00,00)
-                if [[ "${low}" == "00" && "${high}" == "00" ]]; then
-                    break
-                fi
-                # ASCII char is the low byte for UTF-16LE (high should be 00)
-                if [[ "${high}" == "00" ]]; then
-                    IP_ADDR+=$(printf "\\x${low}")
-                fi
-                local_i=$((local_i + 2))
-            done
+        )
+        IP_ADDR=""
+        if [[ -n "${IP_OUTPUT}" ]]; then
+            IP_ADDR=$(echo "${IP_OUTPUT}" | head -1 | tr -d '[:space:]')
         fi
-    fi
-    ADAPTER_IPADDR["${guid}"]="${IP_ADDR}"
+        ADAPTER_IPADDR["${guid}"]="${IP_ADDR}"
 
-    # Read SubnetMask similarly
-    MASK_OUTPUT=$(hivexsh "${HIVE_LOCAL}" 2>/dev/null <<HIVEOF || true
+        MASK_OUTPUT=$(hivexsh "${HIVE_LOCAL}" 2>/dev/null <<HIVEOF || true
 cd \\${ADAPTER_PATH}
 lsval SubnetMask
 HIVEOF
-    )
-
-    SUBNET_MASK=""
-    if [[ -n "${MASK_OUTPUT}" ]]; then
-        HEX_BYTES=$(echo "${MASK_OUTPUT}" | sed -n 's/.*hex(7):\(.*\)/\1/p' | tr -d ' \\\n\r')
-        if [[ -n "${HEX_BYTES}" ]]; then
-            IFS=',' read -ra BYTE_ARR <<< "${HEX_BYTES}"
-            local_i=0
-            while (( local_i < ${#BYTE_ARR[@]} - 1 )); do
-                low="${BYTE_ARR[$local_i]}"
-                high="${BYTE_ARR[$((local_i + 1))]}"
-                if [[ "${low}" == "00" && "${high}" == "00" ]]; then
-                    break
-                fi
-                if [[ "${high}" == "00" ]]; then
-                    SUBNET_MASK+=$(printf "\\x${low}")
-                fi
-                local_i=$((local_i + 2))
-            done
+        )
+        SUBNET_MASK=""
+        if [[ -n "${MASK_OUTPUT}" ]]; then
+            SUBNET_MASK=$(echo "${MASK_OUTPUT}" | head -1 | tr -d '[:space:]')
         fi
-    fi
-    ADAPTER_SUBNET["${guid}"]="${SUBNET_MASK}"
+        ADAPTER_SUBNET["${guid}"]="${SUBNET_MASK}"
+    else
+        # DHCP adapter — read DhcpIPAddress/DhcpSubnetMask for subnet matching
+        DHCP_IP_OUTPUT=$(hivexsh "${HIVE_LOCAL}" 2>/dev/null <<HIVEOF || true
+cd \\${ADAPTER_PATH}
+lsval DhcpIPAddress
+HIVEOF
+        )
+        DHCP_IP=""
+        if [[ -n "${DHCP_IP_OUTPUT}" ]]; then
+            DHCP_IP=$(echo "${DHCP_IP_OUTPUT}" | head -1 | tr -d '[:space:]')
+        fi
+        ADAPTER_IPADDR["${guid}"]="${DHCP_IP}"
 
-    log_info "    EnableDHCP=${ADAPTER_DHCP["${guid}"]:-N/A} IPAddress=${ADAPTER_IPADDR["${guid}"]:-N/A} SubnetMask=${ADAPTER_SUBNET["${guid}"]:-N/A}"
+        DHCP_MASK_OUTPUT=$(hivexsh "${HIVE_LOCAL}" 2>/dev/null <<HIVEOF || true
+cd \\${ADAPTER_PATH}
+lsval DhcpSubnetMask
+HIVEOF
+        )
+        DHCP_MASK=""
+        if [[ -n "${DHCP_MASK_OUTPUT}" ]]; then
+            DHCP_MASK=$(echo "${DHCP_MASK_OUTPUT}" | head -1 | tr -d '[:space:]')
+        fi
+        ADAPTER_SUBNET["${guid}"]="${DHCP_MASK}"
+    fi
+
+    log_info "    EnableDHCP=${ADAPTER_DHCP["${guid}"]:-N/A} IP=${ADAPTER_IPADDR["${guid}"]:-N/A} Mask=${ADAPTER_SUBNET["${guid}"]:-N/A}"
 done
 
 # ---------------------------------------------------------------------------
@@ -343,13 +370,8 @@ done
 
 log_info "Static-IP adapters: ${#STATIC_GUIDS[@]}, Total adapters: ${#ALL_GUIDS_SORTED[@]}"
 
-# ip_to_network: compute network address from IP and mask for subnet matching
-ip_to_network() {
-    local ip="$1" mask="$2"
-    IFS='.' read -r a1 a2 a3 a4 <<< "${ip}"
-    IFS='.' read -r m1 m2 m3 m4 <<< "${mask}"
-    printf "%d.%d.%d.%d" $(( a1 & m1 )) $(( a2 & m2 )) $(( a3 & m3 )) $(( a4 & m4 ))
-}
+# Track assigned GUIDs across all interface iterations
+declare -A ASSIGNED_GUIDS=()
 
 # Map each annotation interface to a GUID
 declare -A IFACE_TO_GUID=()
@@ -376,13 +398,16 @@ for ((i = 0; i < REWRITE_IFACE_COUNT; i++)); do
             matched_guid="${STATIC_GUIDS[0]}"
             log_info "  Single-NIC match: using first static-IP adapter ${matched_guid}"
         elif [[ ${#ALL_GUIDS_SORTED[@]} -ge 1 ]]; then
-            # All adapters are DHCP — pick first and warn
             matched_guid="${ALL_GUIDS_SORTED[0]}"
             log_warn "  No static-IP adapter found — selecting DHCP adapter ${matched_guid} (will convert to static)"
         fi
     else
-        # Multi-NIC: try subnet matching first
+        # Multi-NIC: try subnet matching first (skip already-assigned GUIDs)
         for guid in "${ALL_GUIDS_SORTED[@]}"; do
+            if [[ -n "${ASSIGNED_GUIDS["${guid}"]:-}" ]]; then
+                continue
+            fi
+
             existing_ip="${ADAPTER_IPADDR["${guid}"]:-}"
             existing_mask="${ADAPTER_SUBNET["${guid}"]:-}"
 
@@ -403,23 +428,17 @@ for ((i = 0; i < REWRITE_IFACE_COUNT; i++)); do
         if [[ -z "${matched_guid}" ]]; then
             log_info "  No subnet match — falling back to adapter index order"
             for guid in "${ALL_GUIDS_SORTED[@]}"; do
-                already_used=false
-                for assigned in "${IFACE_TO_GUID[@]}"; do
-                    if [[ "${assigned}" == "${guid}" ]]; then
-                        already_used=true
-                        break
-                    fi
-                done
-                if [[ "${already_used}" == "false" ]]; then
-                    matched_guid="${guid}"
-                    dhcp="${ADAPTER_DHCP["${guid}"]:-}"
-                    if [[ "${dhcp}" != "0" ]]; then
-                        log_warn "  Fallback selected DHCP adapter ${guid} (will convert to static)"
-                    else
-                        log_info "  Fallback selected adapter ${guid}"
-                    fi
-                    break
+                if [[ -n "${ASSIGNED_GUIDS["${guid}"]:-}" ]]; then
+                    continue
                 fi
+                matched_guid="${guid}"
+                dhcp="${ADAPTER_DHCP["${guid}"]:-}"
+                if [[ "${dhcp}" != "0" ]]; then
+                    log_warn "  Fallback selected DHCP adapter ${guid} (will convert to static)"
+                else
+                    log_info "  Fallback selected adapter ${guid}"
+                fi
+                break
             done
         fi
     fi
@@ -428,12 +447,13 @@ for ((i = 0; i < REWRITE_IFACE_COUNT; i++)); do
         log_error "No matching adapter found for interface ${i} (${iface})"
         log_error "Available adapters:"
         for guid in "${ALL_GUIDS_SORTED[@]}"; do
-            log_error "  ${guid}: EnableDHCP=${ADAPTER_DHCP["${guid}"]:-N/A} IPAddress=${ADAPTER_IPADDR["${guid}"]:-N/A}"
+            log_error "  ${guid}: EnableDHCP=${ADAPTER_DHCP["${guid}"]:-N/A} IP=${ADAPTER_IPADDR["${guid}"]:-N/A}"
         done
         return 1
     fi
 
     IFACE_TO_GUID["${i}"]="${matched_guid}"
+    ASSIGNED_GUIDS["${matched_guid}"]=1
     log_info "  Matched: interface ${i} (${iface}) → adapter ${matched_guid}"
 done
 
@@ -441,6 +461,10 @@ done
 # Phase 3: Write IP configuration via hivexregedit --merge
 # =========================================================================
 log_info "Phase 3: Writing IP configuration to SYSTEM hive"
+
+# Backup hive before modification (safety net for upload failure)
+cp -a "${HIVE_LOCAL}" "${HIVE_BACKUP}"
+log_info "Hive backed up to ${HIVE_BACKUP}"
 
 # Build .reg file header
 cat > "${REG_FILE}" <<'REGHEADER'
@@ -467,8 +491,8 @@ for ((i = 0; i < REWRITE_IFACE_COUNT; i++)); do
 
     log_info "Writing config for ${target_iface} → ${adapter_guid}: ip=${target_ip} mask=${target_mask} gw=${target_gw}"
 
-    # Append registry key and values to .reg file
-    # .reg file format uses single backslashes in key paths
+    # .reg key path: HKEY_LOCAL_MACHINE\SYSTEM is the hive root prefix
+    # hivexregedit --prefix strips this so paths resolve inside the hive
     REG_KEY_PATH="HKEY_LOCAL_MACHINE\\SYSTEM\\${CONTROLSET}\\Services\\Tcpip\\Parameters\\Interfaces\\${adapter_guid}"
 
     cat >> "${REG_FILE}" <<REGBLOCK
@@ -481,9 +505,10 @@ REGBLOCK
 
     # Add DNS if provided (per-adapter — Windows uses metric to select)
     if [[ -n "${REWRITE_DNS:-}" ]]; then
+        dns_escaped=$(reg_escape_sz "${REWRITE_DNS}")
         log_info "Writing DNS servers on ${target_iface}: ${REWRITE_DNS}"
         cat >> "${REG_FILE}" <<REGDNS
-"NameServer"="${REWRITE_DNS}"
+"NameServer"="${dns_escaped}"
 REGDNS
     fi
 
@@ -492,21 +517,25 @@ REGDNS
 done
 
 # Merge .reg file into the SYSTEM hive
+# --prefix strips the HKEY_LOCAL_MACHINE\SYSTEM prefix so keys resolve at hive root
 log_info "Merging registry changes into SYSTEM hive"
 
 MERGE_STDERR="${WIN_HANDLER_TMPDIR}/hivexregedit-merge.stderr"
-if ! hivexregedit --merge "${HIVE_LOCAL}" "${REG_FILE}" 2>"${MERGE_STDERR}"; then
+if ! hivexregedit --merge --prefix 'HKEY_LOCAL_MACHINE\SYSTEM' \
+    "${HIVE_LOCAL}" "${REG_FILE}" 2>"${MERGE_STDERR}"; then
     log_error "hivexregedit --merge failed"
     if [[ -s "${MERGE_STDERR}" ]]; then
         log_error "hivexregedit stderr: $(cat "${MERGE_STDERR}")"
     fi
+    log_info "Restoring original hive from backup"
+    cp -a "${HIVE_BACKUP}" "${HIVE_LOCAL}"
     return 1
 fi
 
 log_info "Registry changes merged successfully"
 
 # =========================================================================
-# Phase 4: Upload modified hive (guestfish)
+# Phase 4: Upload modified hive and clean transaction logs (guestfish)
 # =========================================================================
 log_info "Phase 4: Uploading modified SYSTEM hive to disk"
 
@@ -517,10 +546,35 @@ if ! guestfish -a "${REWRITE_DISK}" -i -- \
     if [[ -s "${UPLOAD_STDERR}" ]]; then
         log_error "guestfish stderr: $(cat "${UPLOAD_STDERR}")"
     fi
+    # Attempt to restore original hive to prevent bricked VM
+    log_warn "Attempting to restore original SYSTEM hive from backup"
+    if guestfish -a "${REWRITE_DISK}" -i -- \
+        upload "${HIVE_BACKUP}" "${HIVE_GUEST_PATH}" 2>/dev/null; then
+        log_info "Original SYSTEM hive restored successfully"
+    else
+        log_error "CRITICAL: Failed to restore original SYSTEM hive — disk may be in inconsistent state"
+    fi
     return 1
 fi
 
 log_info "SYSTEM hive uploaded successfully"
+
+# Truncate transaction logs so Windows does not replay stale journals.
+# The LOG/LOG1/LOG2 siblings beside the SYSTEM hive can undo our changes
+# on next boot. Use a single guestfish session; the "-" prefix makes
+# individual commands non-fatal (file may not exist).
+HIVE_DIR=$(dirname "${HIVE_GUEST_PATH}")
+LOG_STDERR="${WIN_HANDLER_TMPDIR}/gfish-logs.stderr"
+if guestfish -a "${REWRITE_DISK}" -i 2>"${LOG_STDERR}" <<GFEOF
+-truncate ${HIVE_DIR}/system.LOG
+-truncate ${HIVE_DIR}/system.LOG1
+-truncate ${HIVE_DIR}/system.LOG2
+GFEOF
+then
+    log_info "Transaction logs truncated (system.LOG/LOG1/LOG2)"
+else
+    log_warn "Could not truncate some transaction logs (non-fatal)"
+fi
 
 # =========================================================================
 # Success summary
@@ -541,5 +595,9 @@ done
 if [[ -n "${REWRITE_DNS:-}" ]]; then
     log_info "  DNS: ${REWRITE_DNS}"
 fi
+
+# Restore previous EXIT trap (avoid clobbering entrypoint's cleanup)
+win_handler_cleanup
+eval "${_WIN_PREV_TRAP:-trap - EXIT}"
 
 return 0

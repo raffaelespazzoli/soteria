@@ -630,16 +630,26 @@ podman run --rm --entrypoint /bin/bash soteria-ip-rewrite:dev \
 ## Code Review Record
 
 ### Review Model Used
-*(To be filled during code review — must differ from dev model)*
+External review (model differs from dev model)
 
 ### Review Findings
-*(To be filled during code review)*
+8 findings: 3 CRITICAL, 4 MAJOR, 1 MINOR (multiple sub-items)
 
 ### Decisions Needed / Decisions Taken
-*(To be filled during code review)*
+- Used `--prefix` approach (not hive-relative keys) for hivexregedit — cleaner, standard .reg format preserved
+- DNS set per-adapter (all modified interfaces) — Windows selects via metric
+- Transaction log truncation uses single guestfish session with `-` prefix for non-fatal cleanup
+- hiberfil.sys warning only (not refusal) — DR scenario may need to proceed despite Fast Startup
 
 ### Fixes Applied
-*(To be filled during code review)*
+1. **CRITICAL — `--prefix` for hivexregedit**: Added `--prefix 'HKEY_LOCAL_MACHINE\SYSTEM'` so .reg keys resolve correctly inside the SYSTEM hive
+2. **CRITICAL — lsval output parsing**: Named `lsval <key>` returns plain decoded text (not `dword:`/`hex(7):` format). Replaced sed-based hex parsing with `tr -d '[:space:]'` for DWORD and `head -1 | tr -d '[:space:]'` for MULTI_SZ strings
+3. **CRITICAL — Hive backup before merge**: `cp -a` before hivexregedit --merge. On merge failure, restores from backup. On upload failure, attempts to upload original hive back to disk
+4. **MAJOR — Multi-NIC assigned-GUID tracking**: Added `ASSIGNED_GUIDS` associative array; both subnet match and fallback loops skip already-assigned GUIDs
+5. **MAJOR — DhcpIPAddress/DhcpSubnetMask for DHCP adapters**: When EnableDHCP≠0, reads DhcpIPAddress and DhcpSubnetMask instead of IPAddress/SubnetMask for subnet matching
+6. **MAJOR — Transaction logs and hiberfil.sys**: After upload, truncates system.LOG/LOG1/LOG2 in single guestfish session (prevents stale journal replay). Warns on hiberfil.sys presence
+7. **MAJOR — Bash octal arithmetic in ip_to_network**: All octets use `10#${var}` prefix to force decimal interpretation (prevents `08`/`09` octal errors)
+8. **MINOR — Hardening**: Added `set -euo pipefail`, save/restore parent EXIT trap, `reg_escape_sz()` for DNS string escaping in .reg file
 
 ## Dev Agent Record
 
