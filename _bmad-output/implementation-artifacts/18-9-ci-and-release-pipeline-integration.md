@@ -1,6 +1,6 @@
 # Story 18.9: CI & Release Pipeline Integration
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -45,34 +45,34 @@ And no additional test targets are needed for the webhook Go code
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Add `build-ip-rewrite` job to `.github/workflows/ci.yml` (AC: 1, 4)
-  - [ ] 1.1: Add job `build-ip-rewrite` following the existing `build-soteria` / `build-console-plugin` / `build-standalone-ui` pattern
-  - [ ] 1.2: Set `context: build/ip-rewrite/` and `file: build/ip-rewrite/Containerfile`
-  - [ ] 1.3: Set `platforms: linux/amd64` (single-arch, NOT the `BUILD_PLATFORMS` env var)
-  - [ ] 1.4: Set `push: false`, `tags: soteria-ip-rewrite:ci`
-  - [ ] 1.5: Set `cache-from: type=gha,scope=ip-rewrite` and `cache-to: type=gha,mode=max,scope=ip-rewrite`
-  - [ ] 1.6: Do NOT include QEMU setup step (not needed for single-arch)
-- [ ] Task 2: Add `build-ip-rewrite` job to `.github/workflows/release.yml` (AC: 2)
-  - [ ] 2.1: Add job `build-ip-rewrite` under the "3x. Build & push" section, after `build-standalone-ui`
-  - [ ] 2.2: Set `needs: validate` (same as other build jobs)
-  - [ ] 2.3: Login to quay.io using existing secrets pattern
-  - [ ] 2.4: Set `platforms: linux/amd64` (single-arch, NOT `BUILD_PLATFORMS` env var)
-  - [ ] 2.5: Set `push: true` with version and conditional `latest` tags
-  - [ ] 2.6: Do NOT include QEMU setup step (not needed for single-arch)
-  - [ ] 2.7: Add `build-ip-rewrite` to the `needs` list of the `helm` job
-- [ ] Task 3: Update release `helm` job to package and publish `charts/soteria-ip-rewrite/` (AC: 3)
-  - [ ] 3.1: Add a step to stamp `charts/soteria-ip-rewrite/Chart.yaml` version (same pattern as main chart)
-  - [ ] 3.2: Add `helm lint charts/soteria-ip-rewrite` step
-  - [ ] 3.3: Add `helm package charts/soteria-ip-rewrite --destination /tmp/chart-package` step
-  - [ ] 3.4: Both chart packages (main + sub-chart) must be in `/tmp/chart-package/` before the `cp` step
-  - [ ] 3.5: Both charts are included in the `helm repo index` and gh-pages publish
-  - [ ] 3.6: Both chart `.tgz` files are uploaded as release artifacts
-- [ ] Task 4: Add `docker-build-ip-rewrite` Makefile target (AC: 1)
-  - [ ] 4.1: Add `IP_REWRITE_IMG` variable with default `quay.io/raffaelespazzoli/soteria-ip-rewrite:latest`
-  - [ ] 4.2: Add `.PHONY: docker-build-ip-rewrite` target that builds from `build/ip-rewrite/`
-- [ ] Task 5: Verify webhook unit tests are included in `make test` (AC: 5)
-  - [ ] 5.1: Confirm `go test $$(go list ./... | grep -v /e2e | grep -v /console-plugin/)` already includes `internal/webhook/iprewrite/...`
-  - [ ] 5.2: No Makefile changes needed if the glob already picks it up (it will — the package is under `./internal/...`)
+- [x] Task 1: Add `build-ip-rewrite` job to `.github/workflows/ci.yml` (AC: 1, 4)
+  - [x] 1.1: Add job `build-ip-rewrite` following the existing `build-soteria` / `build-console-plugin` / `build-standalone-ui` pattern
+  - [x] 1.2: Set `context: build/ip-rewrite/` and `file: build/ip-rewrite/Containerfile`
+  - [x] 1.3: Set `platforms: linux/amd64` (single-arch, NOT the `BUILD_PLATFORMS` env var)
+  - [x] 1.4: Set `push: false`, `tags: soteria-ip-rewrite:ci`
+  - [x] 1.5: Set `cache-from: type=gha,scope=ip-rewrite` and `cache-to: type=gha,mode=max,scope=ip-rewrite`
+  - [x] 1.6: Do NOT include QEMU setup step (not needed for single-arch)
+- [x] Task 2: Add `build-ip-rewrite` job to `.github/workflows/release.yml` (AC: 2)
+  - [x] 2.1: Add job `build-ip-rewrite` under the "3x. Build & push" section, after `build-standalone-ui`
+  - [x] 2.2: Set `needs: validate` (same as other build jobs)
+  - [x] 2.3: Login to quay.io using existing secrets pattern
+  - [x] 2.4: Set `platforms: linux/amd64` (single-arch, NOT `BUILD_PLATFORMS` env var)
+  - [x] 2.5: Set `push: true` with version and conditional `latest` tags
+  - [x] 2.6: Do NOT include QEMU setup step (not needed for single-arch)
+  - [x] 2.7: Add `build-ip-rewrite` to the `needs` list of the `helm` job
+- [x] Task 3: Update release `helm` job to package and publish `charts/soteria-ip-rewrite/` (AC: 3)
+  - [x] 3.1: Add a step to stamp `charts/soteria-ip-rewrite/Chart.yaml` version (same pattern as main chart)
+  - [x] 3.2: Add `helm lint charts/soteria-ip-rewrite` step
+  - [x] 3.3: Add `helm package charts/soteria-ip-rewrite --destination /tmp/chart-package` step
+  - [x] 3.4: Both chart packages (main + sub-chart) must be in `/tmp/chart-package/` before the `cp` step
+  - [x] 3.5: Both charts are included in the `helm repo index` and gh-pages publish
+  - [x] 3.6: Both chart `.tgz` files are uploaded as release artifacts
+- [x] Task 4: Add `docker-build-ip-rewrite` Makefile target (AC: 1)
+  - [x] 4.1: Add `IP_REWRITE_IMG` variable with default `quay.io/raffaelespazzoli/soteria-ip-rewrite:latest`
+  - [x] 4.2: Add `.PHONY: docker-build-ip-rewrite` target that builds from `build/ip-rewrite/`
+- [x] Task 5: Verify webhook unit tests are included in `make test` (AC: 5)
+  - [x] 5.1: Confirm `go test $$(go list ./... | grep -v /e2e | grep -v /console-plugin/)` already includes `internal/webhook/iprewrite/...`
+  - [x] 5.2: No Makefile changes needed if the glob already picks it up (it will — the package is under `./internal/...`)
 
 ## Dev Notes
 
@@ -337,10 +337,25 @@ cmd/ip-rewrite-webhook/            ← From Story 18.5 (compiled as part of Go b
 
 ### Agent Model Used
 
-*(To be filled by dev agent)*
+Claude Opus 4.6 (Cursor)
 
 ### Debug Log References
 
+No issues encountered during implementation.
+
 ### Completion Notes List
 
+- **AC1 (CI build):** Added `build-ip-rewrite` job to `ci.yml` with `context: build/ip-rewrite/`, `file: build/ip-rewrite/Containerfile`, `platforms: linux/amd64`, `push: false`, `tags: soteria-ip-rewrite:ci`, GHA cache with `scope=ip-rewrite`. No QEMU step (single-arch).
+- **AC2 (Release build+push):** Added `build-ip-rewrite` job to `release.yml` with `needs: validate`, quay.io login, `platforms: linux/amd64`, version + conditional `latest` tags, `push: true`, `provenance: false`. No QEMU step. Added to `helm` job's `needs` list.
+- **AC3 (Helm sub-chart):** Added conditional steps (guarded by `hashFiles('charts/soteria-ip-rewrite/Chart.yaml') != ''`) to stamp version, lint, and package `charts/soteria-ip-rewrite/` into `/tmp/chart-package/`. Existing glob-based `cp` and `helm repo index` steps automatically include both charts. Steps will activate once Story 18.6 delivers the chart directory.
+- **AC4 (Path filtering):** Workflow-level `paths-ignore` (`.md`, `docs/**`, etc.) already applies to all jobs including `build-ip-rewrite`. No per-job path filtering needed (consistent with other build jobs).
+- **AC5 (Webhook tests):** Verified `make test` glob (`go list ./... | grep -v /e2e | grep -v /console-plugin/`) already includes `internal/webhook/iprewrite/...`. No Makefile changes needed.
+- **Makefile:** Added `IP_REWRITE_IMG ?= quay.io/raffaelespazzoli/soteria-ip-rewrite:latest` variable and `docker-build-ip-rewrite` target.
+- **All tests pass** — no regressions introduced (pre and post verification).
+
 ### File List
+
+- `.github/workflows/ci.yml` — MODIFIED: added `build-ip-rewrite` job, updated header comment
+- `.github/workflows/release.yml` — MODIFIED: added `build-ip-rewrite` job, updated `helm` job with sub-chart steps, updated header comment and dependency graph
+- `Makefile` — MODIFIED: added `IP_REWRITE_IMG` variable and `docker-build-ip-rewrite` target
+- `_bmad-output/implementation-artifacts/18-9-ci-and-release-pipeline-integration.md` — MODIFIED: status → review, tasks checked, dev record filled

@@ -6,12 +6,12 @@
 #   validate ─┬→ build-soteria ──────────┐
 #             ├→ build-console-plugin ───├→ helm ──┬→ github-release
 #             ├→ build-standalone-ui ────┤         │
+#             ├→ build-ip-rewrite ───────┤         │
 #             ├→ test → helmchart-test ──┘         │
 #             └──────────────────────→ docs ────────┘
 #
 # Each build job produces a multi-arch image (amd64, arm64, ppc64le) in a
-# single Buildx call. Docker layer caching via GHA backend keeps subsequent
-# runs fast.
+# single Buildx call, except ip-rewrite which is amd64-only.
 # ---------------------------------------------------------------------------
 name: release
 
@@ -203,6 +203,40 @@ jobs:
           cache-from: type=gha,scope=standalone-ui
           cache-to: type=gha,mode=max,scope=standalone-ui
 
+  # ── 3d. Build & push ip-rewrite init container (single-arch) ───────────
+  build-ip-rewrite:
+    name: Build ip-rewrite image
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to quay.io
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v7
+        with:
+          context: build/ip-rewrite/
+          file: build/ip-rewrite/Containerfile
+          platforms: linux/amd64
+          push: true
+          provenance: false
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.REGISTRY_ORG }}/soteria-ip-rewrite:${{ needs.validate.outputs.version }}
+            ${{ needs.validate.outputs.is_prerelease == 'false' && format('{0}/{1}/soteria-ip-rewrite:latest', env.REGISTRY, env.REGISTRY_ORG) || '' }}
+          cache-from: type=gha,scope=ip-rewrite
+          cache-to: type=gha,mode=max,scope=ip-rewrite
+
   # ── 4. Smoke-test the Helm chart on Kind ──────────────────────────────
   helmchart-test:
     name: Helm chart smoke test
@@ -232,7 +266,7 @@ jobs:
   # ── 5. Publish the Helm chart ───────────────────────────────────────────
   helm:
     name: Publish Helm chart
-    needs: [validate, build-soteria, build-console-plugin, build-standalone-ui, helmchart-test]
+    needs: [validate, build-soteria, build-console-plugin, build-standalone-ui, build-ip-rewrite, helmchart-test]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -262,8 +296,25 @@ jobs:
             --set controller.image.tag="${{ needs.validate.outputs.version }}" \
             > /dev/null
 
+      - name: Stamp ip-rewrite sub-chart version
+        if: hashFiles('charts/soteria-ip-rewrite/Chart.yaml') != ''
+        run: |
+          VERSION="${{ needs.validate.outputs.version }}"
+          sed -i "s/^version:.*/version: ${VERSION}/" charts/soteria-ip-rewrite/Chart.yaml
+          sed -i "s/^appVersion:.*/appVersion: \"${{ github.ref_name }}\"/" charts/soteria-ip-rewrite/Chart.yaml
+          echo "--- charts/soteria-ip-rewrite/Chart.yaml ---"
+          cat charts/soteria-ip-rewrite/Chart.yaml
+
+      - name: Lint ip-rewrite sub-chart
+        if: hashFiles('charts/soteria-ip-rewrite/Chart.yaml') != ''
+        run: helm lint charts/soteria-ip-rewrite
+
       - name: Package chart
         run: helm package charts/soteria --destination /tmp/chart-package
+
+      - name: Package ip-rewrite sub-chart
+        if: hashFiles('charts/soteria-ip-rewrite/Chart.yaml') != ''
+        run: helm package charts/soteria-ip-rewrite --destination /tmp/chart-package
 
       - name: Prepare Helm repo directory
         run: |
@@ -300,7 +351,7 @@ jobs:
   # ── 6. Publish documentation ────────────────────────────────────────────
   docs:
     name: Publish docs
-    needs: [validate, build-soteria, build-console-plugin, build-standalone-ui, helmchart-test]
+    needs: [validate, build-soteria, build-console-plugin, build-standalone-ui, build-ip-rewrite, helmchart-test]
     runs-on: ubuntu-latest
     permissions:
       contents: write
