@@ -205,6 +205,7 @@ Each component has a well-defined role within the architecture:
 | **Admission Webhooks** | `pkg/admission` | Validates DRPlan fields (wave labels, concurrency settings), DRExecution state transitions, and VM-to-plan assignment consistency. DRPlan/DRExecution validation runs in-process via the aggregated API server admission plugin; VM validation uses the controller-runtime webhook server. |
 | **Metrics** | `pkg/metrics` | Exposes Prometheus metrics with the `soteria_` prefix: plan VM counts, failover durations, checkpoint write stats, and replication health gauges. |
 | **API Types** | `pkg/apis/soteria.io/v1alpha1` | CRD type definitions for DRPlan, DRExecution, and ShadowPV. Includes deepcopy generation, defaulting, and validation. |
+| **IP Rewrite Webhook** | `cmd/ip-rewrite-webhook` | Standalone mutating webhook that injects an init container into virt-launcher pods for offline guest filesystem IP reconfiguration. Independent of Soteria CRDs. See [IP Rewrite Architecture](ip-rewrite.md). |
 
 ## Data Flow
 
