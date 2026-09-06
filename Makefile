@@ -146,6 +146,14 @@ integration-scylladb: setup-envtest ## Run ScyllaDB integration tests (Docker/Po
 	TESTCONTAINERS_RYUK_DISABLED=true \
 	go test -tags=integration -p 1 $(INTEGRATION_SCYLLADB_PKGS) -v -count=1 -timeout 20m
 
+IP_REWRITE_TEST_DIR ?= test/ip-rewrite
+
+.PHONY: test-ip-rewrite
+test-ip-rewrite: ## Run IP rewrite handler integration tests (requires guestfish + hivex).
+	@command -v guestfish >/dev/null 2>&1 || { echo "guestfish not found. Install guestfs-tools (libguestfs-tools on Debian/Ubuntu)."; exit 1; }
+	@command -v hivexregedit >/dev/null 2>&1 || { echo "hivexregedit not found. Install hivex."; exit 1; }
+	LIBGUESTFS_BACKEND=direct bash $(IP_REWRITE_TEST_DIR)/run-tests.sh
+
 .PHONY: helm-lint
 helm-lint: ## Lint the Helm chart (quick, no cluster needed).
 	helm lint charts/$(OPERATOR_NAME)

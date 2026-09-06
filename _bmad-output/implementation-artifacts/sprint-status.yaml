@@ -478,7 +478,7 @@ development_status:
   18-4-windows-ip-rewrite-handler-hivex-based: done
   18-5-mutating-webhook-virt-launcher-init-container-injection: done
   18-6-helm-sub-chart-and-scc: done
-  18-7-unit-and-integration-tests-disk-image-fixtures: ready-for-dev
+  18-7-unit-and-integration-tests-disk-image-fixtures: review
   18-8-e2e-validation-vm-boot-with-rewritten-ip: ready-for-dev
   18-9-ci-and-release-pipeline-integration: done
   18-10-documentation-architecture-and-usage: done
