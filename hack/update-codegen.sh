@@ -21,6 +21,7 @@ set -o pipefail
 SCRIPT_ROOT=$(dirname "${BASH_SOURCE[0]}")/..
 cd "${SCRIPT_ROOT}"
 
+go mod download k8s.io/code-generator
 CODEGEN_PKG=$(go list -m -f '{{.Dir}}' k8s.io/code-generator)
 
 source "${CODEGEN_PKG}/kube_codegen.sh"
