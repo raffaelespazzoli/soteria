@@ -6,6 +6,7 @@
 #   • build-soteria     – build controller image (multi-arch on main, amd64 on PR)
 #   • build-console-plugin – build console-plugin image (same)
 #   • build-standalone-ui  – build standalone-ui image (same)
+#   • build-ip-rewrite  – build ip-rewrite init container (amd64 only)
 #   • helmchart-test    – lint, template, deploy chart on Kind
 #
 # Docker layer caching via GHA backend (cache-from/to: type=gha) caches
@@ -147,6 +148,27 @@ jobs:
           tags: soteria-standalone-ui:ci
           cache-from: type=gha,scope=standalone-ui
           cache-to: type=gha,mode=max,scope=standalone-ui
+
+  # ── Build ip-rewrite init container image (single-arch) ──────────────
+  build-ip-rewrite:
+    name: Build ip-rewrite image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build image
+        uses: docker/build-push-action@v7
+        with:
+          context: build/ip-rewrite/
+          file: build/ip-rewrite/Containerfile
+          platforms: linux/amd64
+          push: false
+          tags: soteria-ip-rewrite:ci
+          cache-from: type=gha,scope=ip-rewrite
+          cache-to: type=gha,mode=max,scope=ip-rewrite
 
   # ── Build, deploy & smoke-test the Helm chart on Kind ─────────────────
   helmchart-test:
