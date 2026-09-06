@@ -1,6 +1,6 @@
 # Story 18.3: RHEL IP Rewrite Handler — Augeas-Based
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -54,40 +54,40 @@ And no corruption is introduced to the disk image
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create `build/ip-rewrite/scripts/rhel-handler.sh` skeleton (AC: all)
-  - [ ] 1.1: Add shebang (`#!/usr/bin/env bash`), `set -euo pipefail`
-  - [ ] 1.2: Import logging helpers from entrypoint (or redefine — the handler is `source`d by entrypoint, so `log_info`/`log_warn`/`log_error` are already available)
-  - [ ] 1.3: Read all `REWRITE_*` environment variables set by the entrypoint (see Handler Interface Contract below)
-  - [ ] 1.4: Validate required variables are set (`REWRITE_DISK`, `REWRITE_IFACE_COUNT`, at least one `REWRITE_IFACE_0`)
-- [ ] Task 2: Implement config format auto-detection (AC: 2, 3)
-  - [ ] 2.1: Inside the guestfish session, after `aug-init / 0`, scan for NM keyfiles first: `aug-match /files/etc/NetworkManager/system-connections/*/connection/interface-name`
-  - [ ] 2.2: If a `.nmconnection` file exists for the target interface → use NM keyfile path
-  - [ ] 2.3: Fall back to ifcfg: check if `aug-get /files/etc/sysconfig/network-scripts/ifcfg-*/DEVICE` matches the interface name
-  - [ ] 2.4: If neither found, try matching ifcfg file by filename convention (`ifcfg-<iface>`)
-  - [ ] 2.5: Log which format was detected for each interface
-- [ ] Task 3: Implement ifcfg rewrite path (RHEL 7/8) using guestfish + Augeas (AC: 1, 2)
-  - [ ] 3.1: Use `aug-set /files/etc/sysconfig/network-scripts/ifcfg-<iface>/IPADDR <ip>` to set IP
-  - [ ] 3.2: Use `aug-set .../PREFIX <prefix>` to set prefix length
-  - [ ] 3.3: Use `aug-set .../GATEWAY <gateway>` to set gateway
-  - [ ] 3.4: Ensure `BOOTPROTO` is `none` (static) — set it explicitly
-  - [ ] 3.5: If `REWRITE_DNS` is set, update `DNS1` and `DNS2` fields (split comma-separated list)
-- [ ] Task 4: Implement NM keyfile rewrite path (RHEL 8/9/10) using guestfish + Augeas (AC: 2, 3)
-  - [ ] 4.1: Use `aug-set /files/etc/NetworkManager/system-connections/<name>.nmconnection/ipv4/method manual`
-  - [ ] 4.2: Use `aug-set .../ipv4/address1 <ip>/<prefix>,<gateway>` (NM keyfile combined format)
-  - [ ] 4.3: If `REWRITE_DNS` is set, update `dns` field: `aug-set .../ipv4/dns <ip1>;<ip2>;`
-- [ ] Task 5: Implement interface name matching and multi-NIC iteration (AC: 4, 5)
-  - [ ] 5.1: Loop over `REWRITE_IFACE_COUNT` interfaces (index 0..N-1)
-  - [ ] 5.2: For each interface, run the auto-detection logic (Task 2) to find the config file
-  - [ ] 5.3: Apply the appropriate rewrite (ifcfg or NM keyfile) for each interface
-  - [ ] 5.4: Log each interface rewrite: interface name, old config location, new IP
-  - [ ] 5.5: Exit non-zero if any specified interface is not found in the guest filesystem
-- [ ] Task 6: Implement guestfish session management (AC: 6, 7)
-  - [ ] 6.1: Open a single guestfish session for the disk: `guestfish -a "$REWRITE_DISK" -i <<'GUESTFISH_SCRIPT'`
-  - [ ] 6.2: Initialize Augeas: `aug-init / 0`
-  - [ ] 6.3: Perform all interface rewrites within the same session
-  - [ ] 6.4: Commit all changes: `aug-save`
-  - [ ] 6.5: Guestfish auto-unmounts and syncs on exit (closing the heredoc)
-  - [ ] 6.6: Check guestfish exit code and propagate errors
+- [x] Task 1: Create `build/ip-rewrite/scripts/rhel-handler.sh` skeleton (AC: all)
+  - [x] 1.1: Add shebang (`#!/usr/bin/env bash`), `set -euo pipefail`
+  - [x] 1.2: Import logging helpers from entrypoint (or redefine — the handler is `source`d by entrypoint, so `log_info`/`log_warn`/`log_error` are already available)
+  - [x] 1.3: Read all `REWRITE_*` environment variables set by the entrypoint (see Handler Interface Contract below)
+  - [x] 1.4: Validate required variables are set (`REWRITE_DISK`, `REWRITE_IFACE_COUNT`, at least one `REWRITE_IFACE_0`)
+- [x] Task 2: Implement config format auto-detection (AC: 2, 3)
+  - [x] 2.1: Inside the guestfish session, after `aug-init / 0`, scan for NM keyfiles first: `aug-match /files/etc/NetworkManager/system-connections/*/connection/interface-name`
+  - [x] 2.2: If a `.nmconnection` file exists for the target interface → use NM keyfile path
+  - [x] 2.3: Fall back to ifcfg: check if `aug-get /files/etc/sysconfig/network-scripts/ifcfg-*/DEVICE` matches the interface name
+  - [x] 2.4: If neither found, try matching ifcfg file by filename convention (`ifcfg-<iface>`)
+  - [x] 2.5: Log which format was detected for each interface
+- [x] Task 3: Implement ifcfg rewrite path (RHEL 7/8) using guestfish + Augeas (AC: 1, 2)
+  - [x] 3.1: Use `aug-set /files/etc/sysconfig/network-scripts/ifcfg-<iface>/IPADDR <ip>` to set IP
+  - [x] 3.2: Use `aug-set .../PREFIX <prefix>` to set prefix length
+  - [x] 3.3: Use `aug-set .../GATEWAY <gateway>` to set gateway
+  - [x] 3.4: Ensure `BOOTPROTO` is `none` (static) — set it explicitly
+  - [x] 3.5: If `REWRITE_DNS` is set, update `DNS1` and `DNS2` fields (split comma-separated list)
+- [x] Task 4: Implement NM keyfile rewrite path (RHEL 8/9/10) using guestfish + Augeas (AC: 2, 3)
+  - [x] 4.1: Use `aug-set /files/etc/NetworkManager/system-connections/<name>.nmconnection/ipv4/method manual`
+  - [x] 4.2: Use `aug-set .../ipv4/address1 <ip>/<prefix>,<gateway>` (NM keyfile combined format)
+  - [x] 4.3: If `REWRITE_DNS` is set, update `dns` field: `aug-set .../ipv4/dns <ip1>;<ip2>;`
+- [x] Task 5: Implement interface name matching and multi-NIC iteration (AC: 4, 5)
+  - [x] 5.1: Loop over `REWRITE_IFACE_COUNT` interfaces (index 0..N-1)
+  - [x] 5.2: For each interface, run the auto-detection logic (Task 2) to find the config file
+  - [x] 5.3: Apply the appropriate rewrite (ifcfg or NM keyfile) for each interface
+  - [x] 5.4: Log each interface rewrite: interface name, old config location, new IP
+  - [x] 5.5: Exit non-zero if any specified interface is not found in the guest filesystem
+- [x] Task 6: Implement guestfish session management (AC: 6, 7)
+  - [x] 6.1: Open a single guestfish session for the disk: `guestfish -a "$REWRITE_DISK" -i <<'GUESTFISH_SCRIPT'`
+  - [x] 6.2: Initialize Augeas: `aug-init / 0`
+  - [x] 6.3: Perform all interface rewrites within the same session
+  - [x] 6.4: Commit all changes: `aug-save`
+  - [x] 6.5: Guestfish auto-unmounts and syncs on exit (closing the heredoc)
+  - [x] 6.6: Check guestfish exit code and propagate errors
 
 ## Dev Notes
 
@@ -470,25 +470,59 @@ podman run --rm --cap-add SYS_ADMIN --entrypoint /bin/bash soteria-ip-rewrite:de
 ## Code Review Record
 
 ### Review Model Used
-*(To be filled during code review — must differ from dev model)*
+External code review (findings provided via /tmp/epic-18-18-3-findings.txt)
 
 ### Review Findings
-*(To be filled during code review)*
+Verdict: CHANGES_REQUESTED — 2 CRITICAL, 5 MAJOR, 3 MINOR findings
 
 ### Decisions Needed / Decisions Taken
-*(To be filled during code review)*
+- All 10 findings accepted and fixed
+- DHCP-to-static guard: `return 1` on BOOTPROTO=dhcp/bootp (consistent with story spec: "DO NOT convert DHCP-to-static")
+- Duplicate NM profiles: warn and use first discovered (not error), since NM auto-generated profiles are common
+- Stale DNS cleanup: clear DNS3-DNS10 after writing the new set (covers practical max)
 
 ### Fixes Applied
-*(To be filled during code review)*
+1. **CRITICAL — Quoted all Augeas paths**: All `aug-get`, `aug-set`, `aug-match`, `aug-rm` paths and values wrapped in single quotes for paths with spaces (e.g. "Wired connection 1.nmconnection")
+2. **CRITICAL — NM gateway/route1 cleanup**: Added `aug-rm` for `ipv4/gateway` and `ipv4/route1` after setting `address1` combined form to prevent override
+3. **MAJOR — Separated stderr from stdout**: Replaced `2>&1` with temp file redirect (`2>"${GF_STDERR}"`), added `-q` flag to all guestfish calls, filtered discovery output to `/files/*` lines only
+4. **MAJOR — Fixed filename fallback**: Strategy 3 now uses `is-file` guest filesystem check instead of BOOTPROTO probe; guards against files where DEVICE differs from filename via KNOWN_IFCFG_FILES map
+5. **MAJOR — Handle NETMASK/IPADDR0**: Added `aug-rm` for stale NETMASK, IPADDR0, PREFIX0, GATEWAY0 in ifcfg rewrite path
+6. **MAJOR — Duplicate NM profile detection**: Phase 1b now detects and warns on multiple NM profiles for same interface-name, uses first discovered
+7. **MAJOR — chmod 0600 after aug-save**: Added `chmod 0600` guestfish commands for all modified NM keyfiles after `aug-save`
+8. **MINOR — Added `set -euo pipefail`**: At script top; used `${REWRITE_DNS:-}` for safe unset-variable access throughout
+9. **MINOR — DHCP guard**: Both strategy 2 and strategy 3 now check BOOTPROTO and refuse `dhcp`/`bootp` with descriptive error
+10. **MINOR — Stale DNS cleanup**: After writing DNS1..DNSN, clears DNS(N+1) through DNS10 via `aug-rm`
 
 ## Dev Agent Record
 
 ### Agent Model Used
 
-*(To be filled by dev agent)*
+Claude Opus 4.6 (Cursor)
 
 ### Debug Log References
 
+No debug issues encountered.
+
 ### Completion Notes List
 
+- Replaced the placeholder stub in `rhel-handler.sh` (42 lines) with a full Augeas-based IP rewrite implementation (312 lines)
+- Implemented two-phase guestfish approach as recommended by the story spec:
+  - **Phase 1 (read-only):** Discovery via `aug-match` to find NM keyfile and ifcfg config paths, followed by `aug-get` to resolve interface names to config file paths
+  - **Phase 2 (read-write):** Deterministic `aug-set` commands piped to `guestfish -a $REWRITE_DISK -i` for atomic rewrite + `aug-save`
+- Config format auto-detection: NM keyfile first (`/etc/NetworkManager/system-connections/*/connection/interface-name`), then ifcfg by DEVICE field, then ifcfg by filename convention — no version branching
+- ifcfg rewrite: `IPADDR`, `PREFIX`, `GATEWAY`, `BOOTPROTO=none`, `DNS1`/`DNS2`/... from comma-separated `REWRITE_DNS`
+- NM keyfile rewrite: `ipv4/method=manual`, `ipv4/address1=IP/prefix,gateway`, `ipv4/dns=ip1;ip2;` (semicolon-separated with trailing semicolon)
+- Multi-NIC: iterates `REWRITE_IFACE_COUNT` interfaces, matches each independently, exits non-zero if any interface not found
+- Input validation: checks `REWRITE_DISK` exists, `REWRITE_IFACE_COUNT` >= 1, all per-interface variables set
+- Idempotent: `aug-set` is inherently idempotent — same values produce same result
+- Clean unmount: guestfish `-i` handles mount/unmount/sync automatically on session close
+- No new files created, no Containerfile changes, no entrypoint changes — only the existing stub was replaced
+- No unit tests added (per story spec: "DO NOT create unit tests — shell script testing is handled in Story 18.7 via disk image fixtures")
+- All existing Go tests pass with zero regressions
+- **Review fixes applied (10 findings):** quoting, gateway/route1 cleanup, stderr separation, filename fallback, NETMASK/IPADDR0, duplicate NM profiles, chmod 0600, set -euo pipefail, DHCP guard, stale DNS cleanup
+
 ### File List
+
+- `build/ip-rewrite/scripts/rhel-handler.sh` — MODIFIED (stub → full Augeas-based implementation, then review fixes)
+- `_bmad-output/implementation-artifacts/18-3-rhel-ip-rewrite-handler-augeas-based.md` — MODIFIED (tasks checked, status, dev agent record, code review record)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — MODIFIED (18-3 status → review)
