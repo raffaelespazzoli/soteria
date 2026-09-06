@@ -1,6 +1,6 @@
 # Story 18.4: Windows IP Rewrite Handler — hivex-Based
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -62,41 +62,41 @@ And the handler works identically on all supported versions
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create `build/ip-rewrite/scripts/windows-handler.sh` (AC: 1–8)
-  - [ ] 1.1: Add shebang (`#!/usr/bin/env bash`), `set -euo pipefail`, and reuse the logging helper functions from `entrypoint.sh` (available via `source`)
-  - [ ] 1.2: Validate that all required `REWRITE_*` environment variables are set (fail-fast with descriptive error)
-  - [ ] 1.3: Implement `prefix_to_mask()` function for CIDR-to-dotted-decimal subnet mask conversion
-- [ ] Task 2: Implement Windows metadata discovery via guestfish (AC: 1, 2)
-  - [ ] 2.1: Open a remote guestfish session (`guestfish --listen`, then `--remote` commands) or use `guestfish -a "$REWRITE_DISK" -i` with command piping to get `inspect-os` root device
-  - [ ] 2.2: Call `inspect-get-windows-systemroot "$ROOT_DEV"` to get the system root path (e.g., `/Windows`)
-  - [ ] 2.3: Call `inspect-get-windows-current-control-set "$ROOT_DEV"` to get the active ControlSet (e.g., `ControlSet001`)
-  - [ ] 2.4: Construct the SYSTEM hive path: `${SYSTEMROOT}/system32/config/system` (case-insensitive NTFS)
-  - [ ] 2.5: Download the SYSTEM hive to a temp file via guestfish `download` command
-- [ ] Task 3: Implement adapter GUID discovery and matching (AC: 3, 7)
-  - [ ] 3.1: Use `hivexsh` (read-only) or `hivexget` to enumerate `{GUID}` subkeys under `<ControlSet>\Services\Tcpip\Parameters\Interfaces\`
-  - [ ] 3.2: For each `{GUID}`, read `EnableDHCP` (REG_DWORD) and `IPAddress` (REG_MULTI_SZ) values
-  - [ ] 3.3: Match by static IP configuration: `EnableDHCP=0` and `IPAddress` containing a non-empty, non-`0.0.0.0` value
-  - [ ] 3.4: For single-NIC VMs: use the first adapter matching the static IP criteria
-  - [ ] 3.5: For multi-NIC VMs: match by existing IP subnet overlap with the annotation's interface, or by adapter index order
-  - [ ] 3.6: Exit with error if no matching adapter is found for any requested interface
-- [ ] Task 4: Implement IP/subnet/gateway/DNS value writing via hivexsh (AC: 4, 5, 6)
-  - [ ] 4.1: Generate `hivexsh` commands to navigate to the matched adapter's `{GUID}` key
-  - [ ] 4.2: Use `setval` with `dword:00000000` for `EnableDHCP`
-  - [ ] 4.3: Use `setval` with `hex:7:<utf16le-hex>` for `IPAddress` (REG_MULTI_SZ)
-  - [ ] 4.4: Use `setval` with `hex:7:<utf16le-hex>` for `SubnetMask` (REG_MULTI_SZ)
-  - [ ] 4.5: Use `setval` with `hex:7:<utf16le-hex>` for `DefaultGateway` (REG_MULTI_SZ)
-  - [ ] 4.6: If `REWRITE_DNS` is set, use `setval` with `string:<csv-dns>` for `NameServer` (REG_SZ)
-  - [ ] 4.7: Call `commit` in hivexsh to persist changes
-  - [ ] 4.8: Implement helper function `string_to_utf16le_hex()` to convert an ASCII string to hex-encoded UTF-16LE with proper null termination for REG_MULTI_SZ
-- [ ] Task 5: Implement hive upload and cleanup (AC: 6)
-  - [ ] 5.1: Upload the modified SYSTEM hive back to the guest disk via guestfish `upload` command
-  - [ ] 5.2: Verify upload success
-  - [ ] 5.3: Clean up temp files (trap-based cleanup on EXIT)
-  - [ ] 5.4: Log success summary with adapter GUID and new IP configuration
-- [ ] Task 6: Implement prefix-to-subnet-mask conversion (AC: 4)
-  - [ ] 6.1: Pure bash function: convert CIDR prefix (0–32) to dotted-decimal (e.g., 24 → `255.255.255.0`)
-  - [ ] 6.2: Handle all valid prefix lengths (0 through 32)
-  - [ ] 6.3: Validate prefix is a number in range; exit with error if not
+- [x] Task 1: Create `build/ip-rewrite/scripts/windows-handler.sh` (AC: 1–8)
+  - [x] 1.1: Add shebang (`#!/usr/bin/env bash`), `set -euo pipefail`, and reuse the logging helper functions from `entrypoint.sh` (available via `source`)
+  - [x] 1.2: Validate that all required `REWRITE_*` environment variables are set (fail-fast with descriptive error)
+  - [x] 1.3: Implement `prefix_to_mask()` function for CIDR-to-dotted-decimal subnet mask conversion
+- [x] Task 2: Implement Windows metadata discovery via guestfish (AC: 1, 2)
+  - [x] 2.1: Open a remote guestfish session (`guestfish --listen`, then `--remote` commands) or use `guestfish -a "$REWRITE_DISK" -i` with command piping to get `inspect-os` root device
+  - [x] 2.2: Call `inspect-get-windows-systemroot "$ROOT_DEV"` to get the system root path (e.g., `/Windows`)
+  - [x] 2.3: Call `inspect-get-windows-current-control-set "$ROOT_DEV"` to get the active ControlSet (e.g., `ControlSet001`)
+  - [x] 2.4: Construct the SYSTEM hive path: `${SYSTEMROOT}/system32/config/system` (case-insensitive NTFS)
+  - [x] 2.5: Download the SYSTEM hive to a temp file via guestfish `download` command
+- [x] Task 3: Implement adapter GUID discovery and matching (AC: 3, 7)
+  - [x] 3.1: Use `hivexsh` (read-only) or `hivexget` to enumerate `{GUID}` subkeys under `<ControlSet>\Services\Tcpip\Parameters\Interfaces\`
+  - [x] 3.2: For each `{GUID}`, read `EnableDHCP` (REG_DWORD) and `IPAddress` (REG_MULTI_SZ) values
+  - [x] 3.3: Match by static IP configuration: `EnableDHCP=0` and `IPAddress` containing a non-empty, non-`0.0.0.0` value
+  - [x] 3.4: For single-NIC VMs: use the first adapter matching the static IP criteria
+  - [x] 3.5: For multi-NIC VMs: match by existing IP subnet overlap with the annotation's interface, or by adapter index order
+  - [x] 3.6: Exit with error if no matching adapter is found for any requested interface
+- [x] Task 4: Implement IP/subnet/gateway/DNS value writing via hivexregedit --merge (AC: 4, 5, 6)
+  - [x] 4.1: Generate .reg file with registry key path for matched adapter's `{GUID}`
+  - [x] 4.2: Write `dword:00000000` for `EnableDHCP`
+  - [x] 4.3: Write `hex(7):<utf16le-hex>` for `IPAddress` (REG_MULTI_SZ)
+  - [x] 4.4: Write `hex(7):<utf16le-hex>` for `SubnetMask` (REG_MULTI_SZ)
+  - [x] 4.5: Write `hex(7):<utf16le-hex>` for `DefaultGateway` (REG_MULTI_SZ)
+  - [x] 4.6: If `REWRITE_DNS` is set, write `NameServer` as REG_SZ per adapter
+  - [x] 4.7: Merge via `hivexregedit --merge` (non-destructive, preserves other values)
+  - [x] 4.8: Implement helper function `string_to_utf16le_multisz()` to convert an ASCII string to hex-encoded UTF-16LE with proper null termination for REG_MULTI_SZ
+- [x] Task 5: Implement hive upload and cleanup (AC: 6)
+  - [x] 5.1: Upload the modified SYSTEM hive back to the guest disk via guestfish `upload` command
+  - [x] 5.2: Verify upload success
+  - [x] 5.3: Clean up temp files (trap-based cleanup on EXIT)
+  - [x] 5.4: Log success summary with adapter GUID and new IP configuration
+- [x] Task 6: Implement prefix-to-subnet-mask conversion (AC: 4)
+  - [x] 6.1: Pure bash function: convert CIDR prefix (0–32) to dotted-decimal (e.g., 24 → `255.255.255.0`)
+  - [x] 6.2: Handle all valid prefix lengths (0 through 32)
+  - [x] 6.3: Validate prefix is a number in range; exit with error if not
 
 ## Dev Notes
 
@@ -630,25 +630,54 @@ podman run --rm --entrypoint /bin/bash soteria-ip-rewrite:dev \
 ## Code Review Record
 
 ### Review Model Used
-*(To be filled during code review — must differ from dev model)*
+External review (model differs from dev model)
 
 ### Review Findings
-*(To be filled during code review)*
+8 findings: 3 CRITICAL, 4 MAJOR, 1 MINOR (multiple sub-items)
 
 ### Decisions Needed / Decisions Taken
-*(To be filled during code review)*
+- Used `--prefix` approach (not hive-relative keys) for hivexregedit — cleaner, standard .reg format preserved
+- DNS set per-adapter (all modified interfaces) — Windows selects via metric
+- Transaction log truncation uses single guestfish session with `-` prefix for non-fatal cleanup
+- hiberfil.sys warning only (not refusal) — DR scenario may need to proceed despite Fast Startup
 
 ### Fixes Applied
-*(To be filled during code review)*
+1. **CRITICAL — `--prefix` for hivexregedit**: Added `--prefix 'HKEY_LOCAL_MACHINE\SYSTEM'` so .reg keys resolve correctly inside the SYSTEM hive
+2. **CRITICAL — lsval output parsing**: Named `lsval <key>` returns plain decoded text (not `dword:`/`hex(7):` format). Replaced sed-based hex parsing with `tr -d '[:space:]'` for DWORD and `head -1 | tr -d '[:space:]'` for MULTI_SZ strings
+3. **CRITICAL — Hive backup before merge**: `cp -a` before hivexregedit --merge. On merge failure, restores from backup. On upload failure, attempts to upload original hive back to disk
+4. **MAJOR — Multi-NIC assigned-GUID tracking**: Added `ASSIGNED_GUIDS` associative array; both subnet match and fallback loops skip already-assigned GUIDs
+5. **MAJOR — DhcpIPAddress/DhcpSubnetMask for DHCP adapters**: When EnableDHCP≠0, reads DhcpIPAddress and DhcpSubnetMask instead of IPAddress/SubnetMask for subnet matching
+6. **MAJOR — Transaction logs and hiberfil.sys**: After upload, truncates system.LOG/LOG1/LOG2 in single guestfish session (prevents stale journal replay). Warns on hiberfil.sys presence
+7. **MAJOR — Bash octal arithmetic in ip_to_network**: All octets use `10#${var}` prefix to force decimal interpretation (prevents `08`/`09` octal errors)
+8. **MINOR — Hardening**: Added `set -euo pipefail`, save/restore parent EXIT trap, `reg_escape_sz()` for DNS string escaping in .reg file
 
 ## Dev Agent Record
 
 ### Agent Model Used
 
-*(To be filled by dev agent)*
+Claude Opus 4.6 (2026-09-06)
 
 ### Debug Log References
 
+No debug issues encountered.
+
 ### Completion Notes List
 
+- Replaced placeholder `windows-handler.sh` stub with full hivex-based Windows IP rewrite handler (~545 lines)
+- **Architecture**: 4-phase download→discover→modify→upload pattern using guestfish + hivexsh + hivexregedit
+- **Phase 1**: guestfish `inspect-os`, `inspect-get-windows-systemroot`, `inspect-get-windows-current-control-set` for metadata, then `download` SYSTEM hive
+- **Phase 2**: hivexsh read-only to enumerate `{GUID}` subkeys, read `EnableDHCP`/`IPAddress`/`SubnetMask` per adapter, decode UTF-16LE REG_MULTI_SZ values
+- **Phase 3**: Generate `.reg` file and merge via `hivexregedit --merge` — non-destructive (preserves all existing registry values not being modified)
+- **Phase 4**: guestfish `upload` to write modified hive back to disk
+- **Adapter matching**: Single-NIC uses first static-IP adapter; multi-NIC uses subnet matching then alphabetical GUID fallback; DHCP adapters converted to static with warning
+- **Encoding helpers**: `prefix_to_mask()` for CIDR→dotted-decimal (0–32), `string_to_utf16le_multisz()` for ASCII→UTF-16LE hex (REG_MULTI_SZ)
+- **Error handling**: Fail-fast on missing env vars, missing tools, hive download/upload failure, hivexregedit merge failure, no matching adapter
+- **Cleanup**: trap-based EXIT cleanup removes all temp files
+- **DNS**: Set per-adapter (all modified interfaces receive NameServer value)
+- **Deviation from task descriptions**: Task 4 originally described hivexsh `setval` — implemented as `hivexregedit --merge` instead, per the story's own Dev Notes "FINAL RECOMMENDED APPROACH" which explicitly warns against `setval` (destructive to sibling values)
+- Tests deferred to Story 18.7 per story spec ("DO NOT create unit tests")
+- All existing Go tests pass with no regressions
+
 ### File List
+
+- `build/ip-rewrite/scripts/windows-handler.sh` — **MODIFIED** (replaced placeholder stub with full implementation)
