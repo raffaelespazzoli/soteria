@@ -38,3 +38,5 @@ if [[ -n "${REWRITE_DNS}" ]]; then
 fi
 
 log_info "Windows handler stub completed — no disk modifications performed"
+
+return 0

@@ -103,8 +103,8 @@ while IFS= read -r var; do
         exit 1
     fi
 
-    # Validate prefix is an integer in 0-32
-    if ! [[ "${prefix}" =~ ^[0-9]+$ ]] || (( prefix < 0 || prefix > 32 )); then
+    # Validate prefix is an integer in 0-32 (10# forces decimal, avoiding octal on leading zeros)
+    if ! [[ "${prefix}" =~ ^[0-9]+$ ]] || (( 10#${prefix} < 0 || 10#${prefix} > 32 )); then
         log_error "Malformed value for ${varname}: prefix must be an integer 0-32 (got '${prefix}')"
         exit 1
     fi
@@ -329,14 +329,14 @@ if [[ "${OS_NAME}" == "linux" && "${OS_DISTRO}" == "rhel" ]]; then
         exit 1
     fi
 
-    # Handlers must use `return`, not `exit`, so set -e doesn't bypass our check.
-    if ! source "${HANDLER}"; then
+    # Handlers must use `return`, not `exit`, so the entrypoint can inspect the code.
+    if source "${HANDLER}"; then
+        log_info "RHEL handler completed successfully"
+    else
         handler_rc=$?
         log_error "RHEL handler failed with code ${handler_rc}"
         exit "${handler_rc}"
     fi
-
-    log_info "RHEL handler completed successfully"
 
 elif [[ "${OS_NAME}" == "windows" ]]; then
     HANDLER="${SCRIPT_DIR}/windows-handler.sh"
@@ -347,13 +347,13 @@ elif [[ "${OS_NAME}" == "windows" ]]; then
         exit 1
     fi
 
-    if ! source "${HANDLER}"; then
+    if source "${HANDLER}"; then
+        log_info "Windows handler completed successfully"
+    else
         handler_rc=$?
         log_error "Windows handler failed with code ${handler_rc}"
         exit "${handler_rc}"
     fi
-
-    log_info "Windows handler completed successfully"
 
 else
     log_error "Unsupported operating system: family=${OS_NAME} distro=${OS_DISTRO}"
