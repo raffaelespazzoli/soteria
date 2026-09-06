@@ -1,0 +1,88 @@
+# =============================================================================
+# Soteria IP Rewrite Helm Chart — values.yaml
+# Mutating webhook for offline VM IP reconfiguration (init container injection)
+# =============================================================================
+
+# -- Override the chart name used in resource names and labels.
+nameOverride: ""
+# -- Override the full release name used in resource names.
+fullnameOverride: ""
+
+# -----------------------------------------------------------------------------
+# Webhook server configuration
+# Deploys the Go admission webhook binary that injects IP rewrite init
+# containers into virt-launcher pods labeled soteria.io/ip-rewrite: "true".
+# -----------------------------------------------------------------------------
+webhook:
+  image:
+    # repository: Container image for the webhook server binary.
+    repository: quay.io/raffaelespazzoli/soteria-ip-rewrite-webhook
+    # tag: Image tag. Overrides appVersion from Chart.yaml when set.
+    tag: ""
+    # pullPolicy: Kubernetes image pull policy.
+    pullPolicy: IfNotPresent
+  # replicas: Number of webhook server pods.
+  replicas: 2
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# -----------------------------------------------------------------------------
+# Init container image configuration
+# The webhook injects this image as an init container into virt-launcher pods.
+# This is the guestfs-tools UBI9 image built by Story 18.1.
+# -----------------------------------------------------------------------------
+initContainer:
+  image:
+    # repository: Container image for the IP rewrite init container.
+    repository: quay.io/raffaelespazzoli/soteria-ip-rewrite
+    # tag: Image tag. Overrides appVersion from Chart.yaml when set.
+    tag: ""
+
+# -----------------------------------------------------------------------------
+# TLS configuration
+# References a cert-manager Issuer or ClusterIssuer for webhook TLS.
+# When standalone (not sub-chart), a self-signed Issuer is created.
+# When used as sub-chart, set issuerRef.name to the parent's issuer.
+# -----------------------------------------------------------------------------
+tls:
+  issuerRef:
+    # name: Name of the cert-manager Issuer. Empty → use self-signed issuer
+    # created by this chart.
+    name: ""
+    # kind: "Issuer" (namespace-scoped) or "ClusterIssuer" (cluster-scoped).
+    kind: Issuer
+  # createSelfSigned: When true AND issuerRef.name is empty, chart creates
+  # a self-signed Issuer. When false, issuerRef.name MUST be set.
+  createSelfSigned: true
+
+# -----------------------------------------------------------------------------
+# SecurityContextConstraints (OpenShift only)
+# The init container needs SYS_ADMIN capability for guestfish to operate.
+# Disable on vanilla Kubernetes clusters (no SCC API).
+# -----------------------------------------------------------------------------
+scc:
+  # enabled: Set to false on non-OpenShift clusters (vanilla K8s has no SCC API).
+  enabled: true
+  # additionalSubjects: Additional RBAC subjects granted SCC "use" permission.
+  # Each entry should be a valid RBAC subject (kind, name, namespace, apiGroup).
+  additionalSubjects: []
+  # namespaces: Namespaces whose ServiceAccounts can use the SCC.
+  # Must include namespaces where VMs run (virt-launcher pods need SYS_ADMIN).
+  # Empty list = release namespace only.
+  namespaces: []
+
+# -----------------------------------------------------------------------------
+# MutatingWebhookConfiguration settings
+# Controls how the webhook intercepts pod creation.
+# -----------------------------------------------------------------------------
+webhookConfig:
+  # failurePolicy: Ignore (fail-open) or Fail (fail-closed).
+  failurePolicy: Ignore
+  # namespaceSelector: Label selector for namespaces the webhook applies to.
+  # Empty = all namespaces.
+  namespaceSelector: {}

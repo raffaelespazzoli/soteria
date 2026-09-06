@@ -1,0 +1,7 @@
+apiVersion: v2
+name: soteria-ip-rewrite
+description: Mutating webhook for offline VM IP reconfiguration (init container injection)
+type: application
+version: 0.1.0
+appVersion: 0.1.0
+kubeVersion: ">=1.28.0"

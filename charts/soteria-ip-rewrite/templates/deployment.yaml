@@ -1,0 +1,71 @@
+{{- /*
+Webhook server Deployment — runs the IP rewrite admission webhook binary.
+Injects init containers into virt-launcher pods labeled soteria.io/ip-rewrite: "true".
+*/ -}}
+{{- include "soteria-ip-rewrite.validate" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ printf "%s-webhook" (include "soteria-ip-rewrite.fullname" .) | trunc 63 | trimSuffix "-" }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "soteria-ip-rewrite.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.webhook.replicas }}
+  selector:
+    matchLabels:
+      {{- include "soteria-ip-rewrite.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "soteria-ip-rewrite.selectorLabels" . | nindent 8 }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: webhook
+          command:
+            - /ip-rewrite-webhook
+          args:
+            - --port=9443
+            - --cert-dir=/tmp/k8s-webhook-server/serving-certs
+            - --init-container-image={{ printf "%s:%s" .Values.initContainer.image.repository (include "soteria-ip-rewrite.imageTag" (dict "tag" .Values.initContainer.image.tag "ctx" .)) }}
+          image: "{{ .Values.webhook.image.repository }}:{{ include "soteria-ip-rewrite.imageTag" (dict "tag" .Values.webhook.image.tag "ctx" .) }}"
+          imagePullPolicy: {{ .Values.webhook.image.pullPolicy }}
+          ports:
+            - containerPort: 9443
+              name: webhook
+              protocol: TCP
+          securityContext:
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: false
+            runAsNonRoot: true
+            capabilities:
+              drop:
+                - "ALL"
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            {{- toYaml .Values.webhook.resources | nindent 12 }}
+          volumeMounts:
+            - name: webhook-server-cert
+              mountPath: /tmp/k8s-webhook-server/serving-certs
+              readOnly: true
+      volumes:
+        - name: webhook-server-cert
+          secret:
+            secretName: {{ printf "%s-webhook-server-cert" (include "soteria-ip-rewrite.fullname" .) | trunc 63 | trimSuffix "-" }}
+      serviceAccountName: {{ include "soteria-ip-rewrite.serviceAccountName" . }}
+      terminationGracePeriodSeconds: 10

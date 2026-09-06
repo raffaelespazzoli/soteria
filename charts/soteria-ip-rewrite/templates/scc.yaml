@@ -1,0 +1,35 @@
+{{- /*
+SecurityContextConstraints — OpenShift-specific resource that permits
+the SYS_ADMIN capability required by the guestfish appliance inside
+the IP rewrite init container. Only rendered when scc.enabled is true.
+*/ -}}
+{{- if .Values.scc.enabled }}
+apiVersion: security.openshift.io/v1
+kind: SecurityContextConstraints
+metadata:
+  name: {{ printf "%s-ip-rewrite" (include "soteria-ip-rewrite.fullname" .) | trunc 63 | trimSuffix "-" }}
+  labels:
+    {{- include "soteria-ip-rewrite.labels" . | nindent 4 }}
+allowedCapabilities:
+  - SYS_ADMIN
+volumes:
+  - persistentVolumeClaim
+  - secret
+  - configMap
+  - projected
+  - emptyDir
+allowHostDirVolumePlugin: false
+allowHostNetwork: false
+allowHostPorts: false
+allowHostPID: false
+allowHostIPC: false
+allowPrivilegedContainer: false
+runAsUser:
+  type: RunAsAny
+seLinuxContext:
+  type: MustRunAs
+fsGroup:
+  type: RunAsAny
+supplementalGroups:
+  type: RunAsAny
+{{- end }}

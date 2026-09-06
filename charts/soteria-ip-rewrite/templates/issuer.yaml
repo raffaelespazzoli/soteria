@@ -1,0 +1,16 @@
+{{- /*
+Self-signed Issuer — created only for standalone deployments.
+When tls.issuerRef.name is set (e.g., by the parent Soteria chart),
+this resource is not rendered and the external issuer is used instead.
+*/ -}}
+{{- if and .Values.tls.createSelfSigned (not .Values.tls.issuerRef.name) }}
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: {{ printf "%s-selfsigned" (include "soteria-ip-rewrite.fullname" .) | trunc 63 | trimSuffix "-" }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "soteria-ip-rewrite.labels" . | nindent 4 }}
+spec:
+  selfSigned: {}
+{{- end }}

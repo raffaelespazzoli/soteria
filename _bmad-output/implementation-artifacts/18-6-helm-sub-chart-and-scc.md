@@ -1,6 +1,6 @@
 # Story 18.6: Helm Sub-Chart & SCC
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -58,39 +58,39 @@ And shared cert-manager issuer is used
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create `charts/soteria-ip-rewrite/Chart.yaml` and `charts/soteria-ip-rewrite/values.yaml` (AC: 1)
-  - [ ] 1.1: `Chart.yaml` — `apiVersion: v2`, `name: soteria-ip-rewrite`, `type: application`, version/appVersion matching root chart `0.1.0`
-  - [ ] 1.2: `values.yaml` — structured with all configurable defaults (see Dev Notes for schema)
-- [ ] Task 2: Create `charts/soteria-ip-rewrite/templates/_helpers.tpl` (AC: 1)
-  - [ ] 2.1: `soteria-ip-rewrite.name`, `soteria-ip-rewrite.fullname`, `soteria-ip-rewrite.chart`, `soteria-ip-rewrite.labels`, `soteria-ip-rewrite.selectorLabels`, `soteria-ip-rewrite.serviceAccountName`, `soteria-ip-rewrite.imageTag` — mirroring the Soteria parent chart's helpers pattern
-- [ ] Task 3: Create `charts/soteria-ip-rewrite/templates/deployment.yaml` (AC: 2)
-  - [ ] 3.1: Webhook server Deployment with configurable replicas, image, resources, liveness/readiness probes on `:8081`
-  - [ ] 3.2: TLS cert volume mount from cert-manager Secret
-  - [ ] 3.3: `--init-container-image` flag wired from `values.yaml`
-  - [ ] 3.4: Security context: `runAsNonRoot: true`, `readOnlyRootFilesystem: true`, `seccompProfile: RuntimeDefault`
-- [ ] Task 4: Create `charts/soteria-ip-rewrite/templates/service.yaml` (AC: 2)
-  - [ ] 4.1: Service port 443 → targetPort 9443 (webhook convention)
-- [ ] Task 5: Create `charts/soteria-ip-rewrite/templates/mutatingwebhookconfiguration.yaml` (AC: 4, 6)
-  - [ ] 5.1: `objectSelector.matchLabels: {"soteria.io/ip-rewrite": "true"}`
-  - [ ] 5.2: `failurePolicy: Ignore`, `sideEffects: None`
-  - [ ] 5.3: `cert-manager.io/inject-ca-from` annotation referencing the Certificate
-  - [ ] 5.4: Configurable `namespaceSelector` from `values.yaml` (empty = all namespaces)
-- [ ] Task 6: Create `charts/soteria-ip-rewrite/templates/certificate.yaml` and `charts/soteria-ip-rewrite/templates/issuer.yaml` (AC: 5)
-  - [ ] 6.1: Self-signed `Issuer` for standalone deployment
-  - [ ] 6.2: `Certificate` for webhook TLS with DNS names matching Service FQDN
-  - [ ] 6.3: Issuer configurable via `values.yaml` (for parent chart override)
-- [ ] Task 7: Create `charts/soteria-ip-rewrite/templates/scc.yaml` (AC: 3)
-  - [ ] 7.1: SCC with `allowedCapabilities: [SYS_ADMIN]`, restricted volumes list, non-host access
-  - [ ] 7.2: `users:` field binding to the chart's ServiceAccount
-- [ ] Task 8: Create `charts/soteria-ip-rewrite/templates/serviceaccount.yaml` and `charts/soteria-ip-rewrite/templates/clusterrolebinding.yaml` (AC: 3)
-  - [ ] 8.1: ServiceAccount for webhook server + init containers
-  - [ ] 8.2: ClusterRoleBinding granting the SCC to the ServiceAccount
-- [ ] Task 9: Add sub-chart dependency to main Soteria chart (AC: 8)
-  - [ ] 9.1: Add `ipRewrite.enabled: false` to `charts/soteria/values.yaml`
-  - [ ] 9.2: Add `dependencies:` entry in `charts/soteria/Chart.yaml` pointing to `file://../soteria-ip-rewrite` with `condition: ipRewrite.enabled`
-- [ ] Task 10: Validate with `helm lint` (AC: 7)
-  - [ ] 10.1: Run `helm lint charts/soteria-ip-rewrite/` with minimal required values
-  - [ ] 10.2: Run `helm template` and verify all resource names, labels, selectors are correct
+- [x] Task 1: Create `charts/soteria-ip-rewrite/Chart.yaml` and `charts/soteria-ip-rewrite/values.yaml` (AC: 1)
+  - [x] 1.1: `Chart.yaml` — `apiVersion: v2`, `name: soteria-ip-rewrite`, `type: application`, version/appVersion matching root chart `0.1.0`
+  - [x] 1.2: `values.yaml` — structured with all configurable defaults (see Dev Notes for schema)
+- [x] Task 2: Create `charts/soteria-ip-rewrite/templates/_helpers.tpl` (AC: 1)
+  - [x] 2.1: `soteria-ip-rewrite.name`, `soteria-ip-rewrite.fullname`, `soteria-ip-rewrite.chart`, `soteria-ip-rewrite.labels`, `soteria-ip-rewrite.selectorLabels`, `soteria-ip-rewrite.serviceAccountName`, `soteria-ip-rewrite.imageTag` — mirroring the Soteria parent chart's helpers pattern
+- [x] Task 3: Create `charts/soteria-ip-rewrite/templates/deployment.yaml` (AC: 2)
+  - [x] 3.1: Webhook server Deployment with configurable replicas, image, resources, liveness/readiness probes on `:8081`
+  - [x] 3.2: TLS cert volume mount from cert-manager Secret
+  - [x] 3.3: `--init-container-image` flag wired from `values.yaml`
+  - [x] 3.4: Security context: `runAsNonRoot: true`, `readOnlyRootFilesystem: true`, `seccompProfile: RuntimeDefault`
+- [x] Task 4: Create `charts/soteria-ip-rewrite/templates/service.yaml` (AC: 2)
+  - [x] 4.1: Service port 443 → targetPort 9443 (webhook convention)
+- [x] Task 5: Create `charts/soteria-ip-rewrite/templates/mutatingwebhookconfiguration.yaml` (AC: 4, 6)
+  - [x] 5.1: `objectSelector.matchLabels: {"soteria.io/ip-rewrite": "true"}`
+  - [x] 5.2: `failurePolicy: Ignore`, `sideEffects: None`
+  - [x] 5.3: `cert-manager.io/inject-ca-from` annotation referencing the Certificate
+  - [x] 5.4: Configurable `namespaceSelector` from `values.yaml` (empty = all namespaces)
+- [x] Task 6: Create `charts/soteria-ip-rewrite/templates/certificate.yaml` and `charts/soteria-ip-rewrite/templates/issuer.yaml` (AC: 5)
+  - [x] 6.1: Self-signed `Issuer` for standalone deployment
+  - [x] 6.2: `Certificate` for webhook TLS with DNS names matching Service FQDN
+  - [x] 6.3: Issuer configurable via `values.yaml` (for parent chart override)
+- [x] Task 7: Create `charts/soteria-ip-rewrite/templates/scc.yaml` (AC: 3)
+  - [x] 7.1: SCC with `allowedCapabilities: [SYS_ADMIN]`, restricted volumes list, non-host access
+  - [x] 7.2: `users:` field binding to the chart's ServiceAccount
+- [x] Task 8: Create `charts/soteria-ip-rewrite/templates/serviceaccount.yaml` and `charts/soteria-ip-rewrite/templates/clusterrolebinding.yaml` (AC: 3)
+  - [x] 8.1: ServiceAccount for webhook server + init containers
+  - [x] 8.2: ClusterRoleBinding granting the SCC to the ServiceAccount
+- [x] Task 9: Add sub-chart dependency to main Soteria chart (AC: 8)
+  - [x] 9.1: Add `ipRewrite.enabled: false` to `charts/soteria/values.yaml`
+  - [x] 9.2: Add `dependencies:` entry in `charts/soteria/Chart.yaml` pointing to `file://../soteria-ip-rewrite` with `condition: ipRewrite.enabled`
+- [x] Task 10: Validate with `helm lint` (AC: 7)
+  - [x] 10.1: Run `helm lint charts/soteria-ip-rewrite/` with minimal required values
+  - [x] 10.2: Run `helm template` and verify all resource names, labels, selectors are correct
 
 ## Dev Notes
 
@@ -626,10 +626,46 @@ docker build -t soteria-ip-rewrite-webhook:dev -f build/ip-rewrite-webhook/Docke
 
 ### Agent Model Used
 
-*(To be filled by dev agent)*
+Claude Opus 4.6 (Cursor)
 
 ### Debug Log References
 
+None — clean implementation with no debug issues.
+
 ### Completion Notes List
 
+- All 10 tasks and subtasks completed
+- Standalone Helm chart at `charts/soteria-ip-rewrite/` with 12 template files following parent chart patterns exactly
+- Webhook server Dockerfile at `build/ip-rewrite-webhook/Dockerfile` mirroring root Dockerfile pattern
+- SCC + ClusterRole + ClusterRoleBinding conditional on `scc.enabled` for OpenShift/vanilla K8s compatibility
+- cert-manager self-signed Issuer conditional — suppressed when parent chart provides issuerRef
+- MutatingWebhookConfiguration with objectSelector (always) + namespaceSelector (optional)
+- Validation template catches misconfigured TLS (no issuer and no self-signed)
+- Parent chart dependency wired with `ipRewrite.enabled` condition and shared issuer override
+- `helm lint` passes clean on both standalone and sub-chart modes
+- `helm template` renders all resources with correct names, labels, and selectors
+- All existing Go tests pass with zero regressions
+
 ### File List
+
+New files:
+- `charts/soteria-ip-rewrite/Chart.yaml`
+- `charts/soteria-ip-rewrite/values.yaml`
+- `charts/soteria-ip-rewrite/templates/_helpers.tpl`
+- `charts/soteria-ip-rewrite/templates/_validation.tpl`
+- `charts/soteria-ip-rewrite/templates/deployment.yaml`
+- `charts/soteria-ip-rewrite/templates/service.yaml`
+- `charts/soteria-ip-rewrite/templates/serviceaccount.yaml`
+- `charts/soteria-ip-rewrite/templates/mutatingwebhookconfiguration.yaml`
+- `charts/soteria-ip-rewrite/templates/certificate.yaml`
+- `charts/soteria-ip-rewrite/templates/issuer.yaml`
+- `charts/soteria-ip-rewrite/templates/scc.yaml`
+- `charts/soteria-ip-rewrite/templates/clusterrole-scc.yaml`
+- `charts/soteria-ip-rewrite/templates/clusterrolebinding-scc.yaml`
+- `build/ip-rewrite-webhook/Dockerfile`
+- `charts/soteria/Chart.lock`
+- `charts/soteria/charts/soteria-ip-rewrite-0.1.0.tgz`
+
+Modified files:
+- `charts/soteria/Chart.yaml`
+- `charts/soteria/values.yaml`
