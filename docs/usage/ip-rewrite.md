@@ -79,11 +79,19 @@ spec:
     virt-launcher pod. The webhook's `objectSelector` matches this label on
     the pod.
 
-**Step 2 — Add the IP annotation to the VM:**
+**Step 2 — Add the IP annotation to the VM's pod template:**
+
+Annotations must be placed on `spec.template.metadata.annotations` so that
+KubeVirt copies them to the virt-launcher pod. Use a JSON patch:
 
 ```bash
-kubectl annotate vm <vm-name> \
-  soteria.io/eth0-ip="10.0.2.100/24;10.0.2.1"
+kubectl patch vm <vm-name> --type merge -p '
+spec:
+  template:
+    metadata:
+      annotations:
+        soteria.io/eth0-ip: "10.0.2.100/24;10.0.2.1"
+'
 ```
 
 The annotation format is `<address>/<prefix>;<gateway>`:
@@ -112,12 +120,18 @@ See the [Verifying the Rewrite](#verifying-the-rewrite) section below.
 
 ### Multi-NIC Rewrite
 
-For VMs with multiple network interfaces, add one annotation per interface:
+For VMs with multiple network interfaces, add one annotation per interface
+on the pod template:
 
 ```bash
-kubectl annotate vm <vm-name> \
-  soteria.io/eth0-ip="10.0.2.100/24;10.0.2.1" \
-  soteria.io/eth1-ip="192.168.1.50/16;192.168.1.1"
+kubectl patch vm <vm-name> --type merge -p '
+spec:
+  template:
+    metadata:
+      annotations:
+        soteria.io/eth0-ip: "10.0.2.100/24;10.0.2.1"
+        soteria.io/eth1-ip: "192.168.1.50/16;192.168.1.1"
+'
 ```
 
 Each annotation follows the same `<address>/<prefix>;<gateway>` format. The
@@ -133,16 +147,16 @@ apiVersion: kubevirt.io/v1
 kind: VirtualMachine
 metadata:
   name: my-app-vm
-  annotations:
-    soteria.io/eth0-ip: "10.0.2.100/24;10.0.2.1"
-    soteria.io/eth1-ip: "192.168.1.50/16;192.168.1.1"
-    soteria.io/dns: "10.0.2.10,10.0.2.11"
 spec:
   running: true
   template:
     metadata:
       labels:
         soteria.io/ip-rewrite: "true"
+      annotations:
+        soteria.io/eth0-ip: "10.0.2.100/24;10.0.2.1"
+        soteria.io/eth1-ip: "192.168.1.50/16;192.168.1.1"
+        soteria.io/dns: "10.0.2.10,10.0.2.11"
     spec:
       domain:
         devices:
@@ -157,11 +171,11 @@ spec:
 ```
 
 !!! note "Annotation and label placement"
-    - **IP annotations** (`soteria.io/*-ip`, `soteria.io/dns`) go on the VM's
-      top-level `metadata.annotations`. KubeVirt propagates them to the pod.
-    - **Opt-in label** (`soteria.io/ip-rewrite`) goes on
-      `spec.template.metadata.labels` so it reaches the pod's labels where the
-      webhook's `objectSelector` matches it.
+    Both **IP annotations** (`soteria.io/*-ip`, `soteria.io/dns`) and the
+    **opt-in label** (`soteria.io/ip-rewrite`) go on
+    `spec.template.metadata`. KubeVirt copies `spec.template.metadata` onto
+    the VMI → virt-launcher pod. The webhook reads annotations and the
+    `objectSelector` matches labels on the pod.
 
 ### DNS Configuration
 
@@ -169,8 +183,13 @@ DNS server configuration is optional. When provided, DNS settings are applied
 to all interfaces on the guest:
 
 ```bash
-kubectl annotate vm <vm-name> \
-  soteria.io/dns="10.0.2.10,10.0.2.11"
+kubectl patch vm <vm-name> --type merge -p '
+spec:
+  template:
+    metadata:
+      annotations:
+        soteria.io/dns: "10.0.2.10,10.0.2.11"
+'
 ```
 
 Multiple DNS servers are separated by commas. If the `soteria.io/dns`
@@ -343,7 +362,8 @@ filesystem. Only pods created for initial VM boot receive the init container.
   static IP configuration.
 - **Hostname rewrite** — Not supported. Only IP, gateway, and DNS are
   modified.
-- **ARM64 guests** — Not supported. The init container image is x86_64 only.
+- **ARM64 guests** — Not supported. The init container image is
+  single-architecture `linux/amd64`.
 - **Non-RHEL Linux** — Only RHEL 7–10 is supported. Ubuntu, Fedora, SUSE,
   and other distributions are not handled.
 

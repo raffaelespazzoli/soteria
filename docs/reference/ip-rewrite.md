@@ -23,17 +23,20 @@ The opt-in label activates webhook interception for a VM's virt-launcher pod.
 
 ### IP Annotations
 
-One annotation per network interface, placed on the VM's top-level `metadata.annotations`.
+One annotation per network interface, placed on the VM's **pod template** at
+`spec.template.metadata.annotations`. KubeVirt copies
+`spec.template.metadata` onto the VMI → virt-launcher pod; the webhook reads
+these annotations from `pod.Annotations`.
 
 | Key | Type | Required | Format | Example | Description |
 |-----|------|----------|--------|---------|-------------|
-| `soteria.io/<interface>-ip` | Annotation | **Yes** (at least one) | `<address>/<prefix>;<gateway>` | `soteria.io/eth0-ip: "10.0.2.100/24;10.0.2.1"` | Per-interface IP configuration. `<interface>` is the guest OS NIC name (e.g., `eth0`, `eth1`). The webhook transforms this into the environment variable `SOTERIA_<INTERFACE>_IP` for the init container. |
+| `soteria.io/<interface>-ip` | Annotation | **Yes** (at least one) | `<address>/<prefix>;<gateway>` | `soteria.io/eth0-ip: "10.0.2.100/24;10.0.2.1"` | Per-interface IP configuration. `<interface>` is the guest OS NIC name (e.g., `eth0`, `eth1`). The webhook transforms this into the environment variable `SOTERIA_<INTERFACE>_IP` for the init container. Must be placed on `spec.template.metadata.annotations`. |
 
 ### DNS Annotation
 
 | Key | Type | Required | Format | Example | Description |
 |-----|------|----------|--------|---------|-------------|
-| `soteria.io/dns` | Annotation | No | Comma-separated IPs | `soteria.io/dns: "10.0.2.10,10.0.2.11"` | Global DNS servers applied to all interfaces. The webhook transforms this into `SOTERIA_DNS`. When absent, the guest's existing DNS configuration is left untouched. |
+| `soteria.io/dns` | Annotation | No | Comma-separated IPs | `soteria.io/dns: "10.0.2.10,10.0.2.11"` | Global DNS servers applied to all interfaces. The webhook transforms this into `SOTERIA_DNS`. When absent, the guest's existing DNS configuration is left untouched. Must be placed on `spec.template.metadata.annotations` alongside the IP annotations. |
 
 ### Migration Skip Label
 
@@ -48,16 +51,16 @@ One annotation per network interface, placed on the VM's top-level `metadata.ann
     kind: VirtualMachine
     metadata:
       name: my-app-vm
-      annotations:
-        soteria.io/eth0-ip: "10.0.2.100/24;10.0.2.1"
-        soteria.io/eth1-ip: "192.168.1.50/16;192.168.1.1"
-        soteria.io/dns: "10.0.2.10,10.0.2.11"
     spec:
       running: true
       template:
         metadata:
           labels:
             soteria.io/ip-rewrite: "true"
+          annotations:
+            soteria.io/eth0-ip: "10.0.2.100/24;10.0.2.1"
+            soteria.io/eth1-ip: "192.168.1.50/16;192.168.1.1"
+            soteria.io/dns: "10.0.2.10,10.0.2.11"
         spec:
           domain:
             devices:
@@ -90,10 +93,13 @@ One annotation per network interface, placed on the VM's top-level `metadata.ann
 
 !!! warning "Unsupported operating systems"
     Non-RHEL Linux distributions (Ubuntu, Fedora, SUSE, etc.) are not
-    supported. The init container exits with a non-zero code if it detects an
-    unsupported OS, which prevents the VM from booting. Remove the
-    `soteria.io/ip-rewrite` label to allow the VM to start without IP
-    rewriting.
+    supported. RHEL is version-gated to major versions 7–10; other RHEL
+    versions are rejected. Windows is dispatched by OS family with no
+    version gate — Server 2016–2025, Windows 10, and Windows 11 are the
+    tested and supported matrix. The init container exits with a non-zero
+    code if it detects an unsupported OS, which prevents the VM from
+    booting. Remove the `soteria.io/ip-rewrite` label to allow the VM to
+    start without IP rewriting.
 
 ---
 
@@ -107,6 +113,9 @@ elevated privileges for the libguestfs appliance.
 | Capability | Reason |
 |------------|--------|
 | `SYS_ADMIN` | Required for the guestfish appliance to launch its internal QEMU/KVM instance inside the init container. The libguestfs `direct` backend needs this capability to create and manage the appliance VM. |
+| `NET_BIND_SERVICE` | Inherited from the base virt-launcher SCC — allows binding to privileged ports. |
+| `SYS_NICE` | Inherited from the base virt-launcher SCC — allows adjusting process scheduling priority. |
+| `SYS_PTRACE` | Inherited from the base virt-launcher SCC — allows process tracing (used by QEMU debugging). |
 
 The init container also runs as root (`runAsUser: 0`, `runAsNonRoot: false`)
 with `allowPrivilegeEscalation: true`.
@@ -115,11 +124,23 @@ with `allowPrivilegeEscalation: true`.
 
 The chart-managed SCC permits the following volume types:
 
-- `persistentVolumeClaim` — VM disk images
-- `secret` — TLS certificates and other secrets
 - `configMap` — Configuration data
-- `projected` — Projected volumes (service account tokens)
+- `downwardAPI` — Pod metadata (labels, annotations)
 - `emptyDir` — Temporary scratch space
+- `hostPath` — Host filesystem paths (required by virt-launcher for device access)
+- `persistentVolumeClaim` — VM disk images
+- `projected` — Projected volumes (service account tokens)
+- `secret` — TLS certificates and other secrets
+
+### Host Access Flags
+
+| Flag | Value | Reason |
+|------|-------|--------|
+| `allowHostDirVolumePlugin` | `true` | Permits `hostPath` volumes required by virt-launcher for device and node-level access. |
+| `allowHostNetwork` | `true` | Permits host networking required by certain virt-launcher configurations. |
+| `allowHostPorts` | `false` | Not required. |
+| `allowHostPID` | `false` | Not required. |
+| `allowHostIPC` | `false` | Not required. |
 
 ### Binding Mechanism
 
@@ -136,10 +157,12 @@ namespace. Use `scc.namespaces` to extend coverage to all namespaces where
 VMs with `soteria.io/ip-rewrite: "true"` run, and `scc.serviceAccountNames`
 to specify the virt-launcher ServiceAccount names.
 
-!!! tip "Vanilla Kubernetes"
-    Set `scc.enabled: false` on non-OpenShift clusters. Kubernetes does not
-    have an SCC API — the init container's security context is sufficient
-    when Pod Security Standards allow privileged workloads.
+!!! tip "OpenShift vs. Vanilla Kubernetes"
+    OpenShift clusters require `scc.enabled: true` so the chart creates the
+    SCC resource and RBAC bindings. Vanilla Kubernetes can leave the default
+    (`scc.enabled: false`) — there is no SCC API, and the init container's
+    security context is sufficient when Pod Security Standards allow
+    privileged workloads.
 
 ---
 
@@ -154,7 +177,7 @@ For the main Soteria chart values, see
 !!! info "Sub-chart integration"
     The IP rewrite chart can be installed standalone or as a sub-chart of the
     main Soteria chart. When used as a sub-chart, enable it in the parent
-    chart with `ipRewrite.enabled: true` in `charts/soteria/values.yaml`.
+    chart with `soteria-ip-rewrite.enabled: true` in `charts/soteria/values.yaml`.
     The parent chart overrides `tls.issuerRef.name` with its own CA issuer.
 
 ### Global
@@ -231,8 +254,8 @@ This is the guestfs-tools image built on CentOS Stream 9.
   have a static IP configuration.
 - **Guest hostname rewrite** — Not supported. Only IP address, gateway, and
   DNS servers are modified.
-- **ARM64 guests** — Not supported. The init container image and webhook
-  server are single-architecture `linux/amd64`. ARM64 support is deferred
-  until OCP Virtualization certifies ARM Windows guests.
+- **ARM64 guests** — Not supported. The init container image is
+  single-architecture `linux/amd64`. ARM64 support is deferred until OCP
+  Virtualization certifies ARM Windows guests.
 - **Non-RHEL Linux** — Distributions such as Ubuntu, Fedora, or SUSE are not
   supported. Only RHEL 7–10 is handled on the Linux side.

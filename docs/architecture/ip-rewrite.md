@@ -48,14 +48,19 @@ This label serves two purposes:
 
 ### Annotations (IP Configuration)
 
-IP annotations go on the VM's top-level `metadata.annotations`. KubeVirt
-propagates VM-level annotations to the VMI and then to the virt-launcher pod.
+IP annotations go on the VM's **pod template** at
+`spec.template.metadata.annotations`. KubeVirt copies
+`spec.template.metadata` onto the VMI → virt-launcher pod; the webhook reads
+these annotations from `pod.Annotations`.
 
 Each annotation configures a single network interface:
 
 ```yaml
-annotations:
-  soteria.io/<interface>-ip: "<address>/<prefix>;<gateway>"
+spec:
+  template:
+    metadata:
+      annotations:
+        soteria.io/<interface>-ip: "<address>/<prefix>;<gateway>"
 ```
 
 - `<interface>` — the guest network interface name (e.g., `eth0`, `eth1`)
@@ -65,8 +70,11 @@ annotations:
 ### DNS Annotation (Optional)
 
 ```yaml
-annotations:
-  soteria.io/dns: "<server1>,<server2>"
+spec:
+  template:
+    metadata:
+      annotations:
+        soteria.io/dns: "<server1>,<server2>"
 ```
 
 When present, DNS servers are applied to all interfaces. When absent, DNS
@@ -81,13 +89,13 @@ configuration is left untouched on the guest.
     kind: VirtualMachine
     metadata:
       name: my-vm
-      annotations:
-        soteria.io/eth0-ip: "10.0.2.100/24;10.0.2.1"
     spec:
       template:
         metadata:
           labels:
             soteria.io/ip-rewrite: "true"
+          annotations:
+            soteria.io/eth0-ip: "10.0.2.100/24;10.0.2.1"
     ```
 
 === "Multi-NIC"
@@ -97,14 +105,14 @@ configuration is left untouched on the guest.
     kind: VirtualMachine
     metadata:
       name: my-vm
-      annotations:
-        soteria.io/eth0-ip: "10.0.2.100/24;10.0.2.1"
-        soteria.io/eth1-ip: "192.168.1.50/16;192.168.1.1"
     spec:
       template:
         metadata:
           labels:
             soteria.io/ip-rewrite: "true"
+          annotations:
+            soteria.io/eth0-ip: "10.0.2.100/24;10.0.2.1"
+            soteria.io/eth1-ip: "192.168.1.50/16;192.168.1.1"
     ```
 
 === "With DNS"
@@ -114,15 +122,15 @@ configuration is left untouched on the guest.
     kind: VirtualMachine
     metadata:
       name: my-vm
-      annotations:
-        soteria.io/eth0-ip: "10.0.2.100/24;10.0.2.1"
-        soteria.io/eth1-ip: "192.168.1.50/16;192.168.1.1"
-        soteria.io/dns: "10.0.2.10,10.0.2.11"
     spec:
       template:
         metadata:
           labels:
             soteria.io/ip-rewrite: "true"
+          annotations:
+            soteria.io/eth0-ip: "10.0.2.100/24;10.0.2.1"
+            soteria.io/eth1-ip: "192.168.1.50/16;192.168.1.1"
+            soteria.io/dns: "10.0.2.10,10.0.2.11"
     ```
 
 ## How It Works
@@ -249,9 +257,11 @@ After the init container starts, the entrypoint performs OS detection:
    major/minor version from the XML output using `xmllint --xpath`.
 
 5. **Dispatch** — Based on the detected OS:
-    - **RHEL** (any version 7–10) → dispatches to the RHEL handler
-    - **Windows** (Server 2016–2025, Windows 10/11) → dispatches to the
-      Windows handler
+    - **RHEL** — version-gated to major versions 7–10; other RHEL versions
+      are rejected
+    - **Windows** — dispatched by OS family (`windows`) with no version
+      gate. Server 2016–2025, Windows 10, and Windows 11 are the tested
+      and supported matrix
     - **Unsupported OS** → exits with a non-zero code listing supported
       operating systems
 
@@ -366,6 +376,7 @@ immediately — no init container is injected. This is critical because:
   static IP configuration.
 - **Hostname rewrite** — Not supported. Only IP, gateway, and DNS are
   modified.
-- **ARM64 guests** — Not supported. The init container image is x86_64 only.
+- **ARM64 guests** — Not supported. The init container image is
+  single-architecture `linux/amd64`.
 - **Non-RHEL Linux** — Distributions such as Ubuntu, Fedora, or SUSE are not
   supported. Only RHEL 7–10 is handled on the Linux side.
