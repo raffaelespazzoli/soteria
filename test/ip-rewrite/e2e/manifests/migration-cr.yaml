@@ -1,0 +1,11 @@
+# VirtualMachineInstanceMigration template for E2E migration skip test.
+#
+# The test script substitutes MIGRATION_NAME, NAMESPACE, and VMI_NAME
+# before applying this manifest.
+apiVersion: kubevirt.io/v1
+kind: VirtualMachineInstanceMigration
+metadata:
+  name: MIGRATION_NAME
+  namespace: NAMESPACE
+spec:
+  vmiName: VMI_NAME

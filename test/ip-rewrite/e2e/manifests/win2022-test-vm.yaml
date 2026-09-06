@@ -1,0 +1,64 @@
+# Windows Server 2022 test VM for IP rewrite E2E validation.
+#
+# Prerequisites:
+#   - A pre-created PVC containing a Windows Server 2022 image with:
+#       - VirtIO storage and network drivers installed
+#       - QEMU guest agent for Windows installed and running as a service
+#         (from https://github.com/virtio-win/virtio-win-pkg-scripts)
+#       - Static IP 10.0.1.60/24, gateway 10.0.1.1 pre-configured
+#   - The PVC name defaults to "${VM_NAME}-pvc" in the test namespace.
+#     Override via environment variables in test scripts.
+#   - Microsoft licensing precludes automated image provisioning — the PVC
+#     must be prepared manually from a licensed Windows Server 2022 ISO.
+#
+# Variables (substituted via envsubst):
+#   ${VM_NAME}  — VM name (default set in helpers.sh)
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: ${VM_NAME}
+spec:
+  running: false
+  template:
+    metadata:
+      labels: {}
+    spec:
+      domain:
+        devices:
+          disks:
+            - name: rootdisk
+              disk:
+                bus: virtio
+          interfaces:
+            - name: default
+              masquerade: {}
+          tpm: {}
+        clock:
+          utc: {}
+          timer:
+            hpet:
+              present: false
+            pit:
+              tickPolicy: delay
+            rtc:
+              tickPolicy: catchup
+            hyperv: {}
+        features:
+          acpi: {}
+          apic: {}
+          hyperv:
+            relaxed: {}
+            vapic: {}
+            spinlocks:
+              spinlocks: 8191
+        resources:
+          requests:
+            memory: 4Gi
+      networks:
+        - name: default
+          pod: {}
+      volumes:
+        - name: rootdisk
+          persistentVolumeClaim:
+            # Replace with your pre-created Windows Server 2022 PVC name.
+            claimName: ${VM_NAME}-pvc

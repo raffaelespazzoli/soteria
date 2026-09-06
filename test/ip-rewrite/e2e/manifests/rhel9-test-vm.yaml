@@ -1,0 +1,90 @@
+# RHEL 9 test VM for IP rewrite E2E validation.
+#
+# Prerequisites:
+#   - A RHEL 9 VM image available as a registry source or pre-created PVC.
+#   - The image must have QEMU guest agent (qemu-guest-agent) installed and
+#     enabled, or cloud-init must install it on first boot (see userData below).
+#   - Static IP 10.0.1.50/24 configured via cloud-init networkData.
+#
+# IMPORTANT — cloud-init may re-apply network configuration on subsequent boots,
+# overriding the handler's IP rewrite. The test script removes the cloudInitNoCloud
+# volume before applying the rewrite. For production validation, use a pre-baked
+# VM image with static IP configured directly in the guest OS (not via cloud-init)
+# and remove the cloudInitNoCloud volume. See README.md for details.
+#
+# Variables (substituted via envsubst):
+#   ${VM_NAME}          — VM and DataVolume name (default set in helpers.sh)
+#   ${DV_ACCESS_MODE}   — DataVolume access mode (default: ReadWriteMany)
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: ${VM_NAME}
+spec:
+  running: false
+  template:
+    metadata:
+      labels: {}
+    spec:
+      domain:
+        devices:
+          disks:
+            - name: rootdisk
+              disk:
+                bus: virtio
+            - name: cloudinitdisk
+              disk:
+                bus: virtio
+          interfaces:
+            - name: default
+              masquerade: {}
+        firmware:
+          kernelBoot:
+            kernelArgs: "net.ifnames=0 biosdevname=0"
+        resources:
+          requests:
+            memory: 2Gi
+      networks:
+        - name: default
+          pod: {}
+      volumes:
+        - name: rootdisk
+          dataVolume:
+            name: ${VM_NAME}-dv
+        - name: cloudinitdisk
+          cloudInitNoCloud:
+            networkData: |
+              version: 2
+              ethernets:
+                eth0:
+                  match:
+                    driver: virtio
+                  addresses:
+                    - 10.0.1.50/24
+                  gateway4: 10.0.1.1
+                  nameservers:
+                    addresses:
+                      - 8.8.8.8
+            userData: |
+              #cloud-config
+              packages:
+                - qemu-guest-agent
+              runcmd:
+                - systemctl enable --now qemu-guest-agent
+  dataVolumeTemplates:
+    - metadata:
+        name: ${VM_NAME}-dv
+      spec:
+        source:
+          registry:
+            # Replace with your cluster's RHEL 9 image source.
+            # Examples:
+            #   registry: { url: "docker://registry.redhat.io/rhel9/rhel-guest-image:latest" }
+            #   pvc:      { name: "rhel9-golden-pvc", namespace: "golden-images" }
+            #   http:     { url: "https://example.com/rhel9-guest.qcow2" }
+            url: "docker://registry.redhat.io/rhel9/rhel-guest-image:latest"
+        pvc:
+          accessModes:
+            - ${DV_ACCESS_MODE}
+          resources:
+            requests:
+              storage: 30Gi
