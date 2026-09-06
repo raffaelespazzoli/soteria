@@ -12,8 +12,9 @@
 # Build:
 #   podman build -t soteria-ip-rewrite:dev build/ip-rewrite/
 #
-# Run (requires SYS_ADMIN for the libguestfs appliance):
-#   podman run --rm --cap-add SYS_ADMIN soteria-ip-rewrite:dev guestfish --version
+# Run (no elevated capabilities needed — libguestfs direct backend runs
+# a user-mode QEMU appliance; filesystem ops happen inside the VM):
+#   podman run --rm soteria-ip-rewrite:dev guestfish --version
 
 FROM quay.io/centos/centos:stream9
 

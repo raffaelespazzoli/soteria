@@ -63,27 +63,31 @@ tls:
 # -----------------------------------------------------------------------------
 # SecurityContextConstraints (OpenShift only)
 #
-# The IP rewrite init container runs inside virt-launcher pods and needs
-# SYS_ADMIN for the guestfish appliance. OpenShift selects ONE SCC for the
-# entire pod, so the SCC must be a superset of what virt-launcher already
-# requires (NET_BIND_SERVICE, SYS_NICE, SYS_PTRACE, hostPath, etc.) PLUS
-# the additional SYS_ADMIN capability.
+# The IP rewrite init container runs inside virt-launcher pods as UID 107
+# (qemu) with all capabilities dropped. OpenShift selects ONE SCC for the
+# entire pod, so the SCC must cover what virt-launcher already requires
+# (NET_BIND_SERVICE, SYS_NICE, hostPath, etc.).
+#
+# No additional capabilities beyond the kubevirt-controller SCC are needed.
+# The libguestfs direct backend runs a user-mode QEMU appliance; filesystem
+# operations happen inside the VM. CRI-O's RuntimeDefault seccomp allows
+# the unshare/mount/pivot_root syscalls that the appliance needs.
 #
 # IMPORTANT: You MUST list every namespace where VMs run in scc.namespaces
 # (or use scc.serviceAccountNames to bind to specific virt-launcher SAs).
 # The MWC intercepts pods cluster-wide, but SCC grants must cover the
 # namespaces where the init container actually runs.
 #
-# Alternative: If you prefer to patch the existing kubevirt-controller SCC
-# to add SYS_ADMIN, set scc.create: false and skip the chart-managed SCC.
+# Alternative: If the virt-launcher SA already has access to the
+# kubevirt-controller SCC, set scc.create: false to skip the chart-managed SCC.
 # -----------------------------------------------------------------------------
 scc:
   # enabled: Set to false on non-OpenShift clusters (vanilla K8s has no SCC API).
   # Defaults to false for broad compatibility; set to true on OpenShift.
   enabled: false
-  # create: When true AND enabled, the chart creates a dedicated SCC that is
-  # a superset of the virt-launcher SCC plus SYS_ADMIN. Set to false if the
-  # existing kubevirt-controller SCC is already patched with SYS_ADMIN.
+  # create: When true AND enabled, the chart creates a dedicated SCC that
+  # mirrors kubevirt-controller. Set to false if the virt-launcher SA
+  # already has access to the kubevirt-controller SCC.
   create: true
   # serviceAccountNames: virt-launcher ServiceAccount names to bind the SCC to.
   # KubeVirt typically uses a per-namespace SA. These are bound as explicit

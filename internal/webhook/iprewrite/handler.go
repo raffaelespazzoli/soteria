@@ -128,11 +128,11 @@ func (h *Handler) Handle(ctx context.Context, req admission.Request) admission.R
 		VolumeMounts:  volumeMounts,
 		VolumeDevices: volumeDevices,
 		SecurityContext: &corev1.SecurityContext{
-			RunAsUser:                ptr.To(int64(0)),
-			RunAsNonRoot:             ptr.To(false),
-			AllowPrivilegeEscalation: ptr.To(true),
+			RunAsUser:                ptr.To(int64(107)),
+			RunAsNonRoot:             ptr.To(true),
+			AllowPrivilegeEscalation: ptr.To(false),
 			Capabilities: &corev1.Capabilities{
-				Add: []corev1.Capability{"SYS_ADMIN"},
+				Drop: []corev1.Capability{"ALL"},
 			},
 		},
 	}

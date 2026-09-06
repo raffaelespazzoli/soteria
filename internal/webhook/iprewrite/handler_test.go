@@ -166,13 +166,16 @@ func TestHandle_LabelAndAnnotations_InjectsInitContainer(t *testing.T) {
 		t.Errorf("SOTERIA_ETH0_IP = %q, want %q", ev.Value, "10.0.2.100/24;10.0.2.1")
 	}
 
-	// Verify SYS_ADMIN capability
+	// Verify hardened security context: no SYS_ADMIN, drop ALL caps
 	if ic.SecurityContext == nil || ic.SecurityContext.Capabilities == nil {
 		t.Fatal("expected security context with capabilities")
 	}
-	hasSysAdmin := slices.Contains(ic.SecurityContext.Capabilities.Add, "SYS_ADMIN")
-	if !hasSysAdmin {
-		t.Error("SYS_ADMIN capability not found")
+	hasDropAll := slices.Contains(ic.SecurityContext.Capabilities.Drop, "ALL")
+	if !hasDropAll {
+		t.Error("expected Drop=[ALL] in capabilities")
+	}
+	if len(ic.SecurityContext.Capabilities.Add) != 0 {
+		t.Errorf("expected no added capabilities, got %v", ic.SecurityContext.Capabilities.Add)
 	}
 
 	// Verify PVC volume mount
@@ -736,14 +739,23 @@ func TestHandle_SecurityContext(t *testing.T) {
 	if sc == nil {
 		t.Fatal("expected non-nil security context")
 	}
-	if sc.RunAsUser == nil || *sc.RunAsUser != 0 {
-		t.Errorf("RunAsUser = %v, want 0", sc.RunAsUser)
+	if sc.RunAsUser == nil || *sc.RunAsUser != 107 {
+		t.Errorf("RunAsUser = %v, want 107 (qemu)", sc.RunAsUser)
 	}
-	if sc.RunAsNonRoot == nil || *sc.RunAsNonRoot != false {
-		t.Errorf("RunAsNonRoot = %v, want false", sc.RunAsNonRoot)
+	if sc.RunAsNonRoot == nil || *sc.RunAsNonRoot != true {
+		t.Errorf("RunAsNonRoot = %v, want true", sc.RunAsNonRoot)
 	}
-	if sc.AllowPrivilegeEscalation == nil || *sc.AllowPrivilegeEscalation != true {
-		t.Errorf("AllowPrivilegeEscalation = %v, want true", sc.AllowPrivilegeEscalation)
+	if sc.AllowPrivilegeEscalation == nil || *sc.AllowPrivilegeEscalation != false {
+		t.Errorf("AllowPrivilegeEscalation = %v, want false", sc.AllowPrivilegeEscalation)
+	}
+	if sc.Capabilities == nil {
+		t.Fatal("expected non-nil capabilities")
+	}
+	if !slices.Contains(sc.Capabilities.Drop, "ALL") {
+		t.Error("expected Drop=[ALL] in capabilities")
+	}
+	if len(sc.Capabilities.Add) != 0 {
+		t.Errorf("expected no added capabilities, got %v", sc.Capabilities.Add)
 	}
 }
 

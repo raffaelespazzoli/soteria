@@ -164,7 +164,7 @@ test/ip-rewrite/e2e/
 
 - Check init container logs: `kubectl logs <virt-launcher-pod> -c ip-rewrite -n <namespace>`
 - Verify the init container image is accessible from the cluster
-- Check SCC/pod security: the init container requires `SYS_ADMIN` capability
+- Check SCC/pod security: the init container must run as UID 107 (qemu) with the chart-managed SCC
 
 ### Migration test fails
 

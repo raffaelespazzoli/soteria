@@ -39,14 +39,19 @@ docker build -t soteria-ip-rewrite:dev build/ip-rewrite/
 
 This environment variable is baked into the image. It tells libguestfs to use the kernel directly (not libvirt/QEMU) for the appliance, which is required when running inside a container where libvirtd is not available.
 
-### `SYS_ADMIN` Capability
+### Security Context
 
-The libguestfs appliance launches an internal QEMU/KVM instance to boot its kernel and initrd. This requires the `SYS_ADMIN` capability (or privileged mode). The mutating webhook (Story 18.5) and SCC (Story 18.6) handle granting this capability in OpenShift.
+The init container runs as the `qemu` user (UID 107) with all capabilities
+dropped. The libguestfs `direct` backend launches a user-mode QEMU appliance;
+filesystem operations happen inside the QEMU VM, not in the container. CRI-O's
+RuntimeDefault seccomp profile on OpenShift allows the syscalls
+(`unshare`, `mount`, `pivot_root`) that the appliance needs, so `CAP_SYS_ADMIN`
+is not required.
 
 For local testing:
 
 ```bash
-podman run --rm --cap-add SYS_ADMIN soteria-ip-rewrite:dev guestfish --version
+podman run --rm soteria-ip-rewrite:dev guestfish --version
 ```
 
 ### `/dev/kvm` Access
@@ -62,8 +67,8 @@ podman run --rm soteria-ip-rewrite:dev virt-inspector --version
 podman run --rm soteria-ip-rewrite:dev augtool --version
 podman run --rm soteria-ip-rewrite:dev command -v hivexregedit
 
-# Appliance launch (requires SYS_ADMIN and /dev/kvm)
-podman run --rm --cap-add SYS_ADMIN soteria-ip-rewrite:dev \
+# Appliance launch (may fall back to TCG without /dev/kvm)
+podman run --rm soteria-ip-rewrite:dev \
     guestfish --ro -a /dev/null run
 
 # Image size (should be under 800 MB)

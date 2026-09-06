@@ -105,20 +105,38 @@ these annotations from `pod.Annotations`.
 
 ## SecurityContextConstraints
 
-The IP rewrite init container runs inside virt-launcher pods and requires
-elevated privileges for the libguestfs appliance.
+The IP rewrite init container runs inside virt-launcher pods with a hardened
+security context — no elevated capabilities are required.
 
-### Required Capabilities
+### Security Context
+
+The init container runs as the `qemu` user (UID 107) with all capabilities
+dropped:
+
+```yaml
+securityContext:
+  runAsUser: 107
+  runAsNonRoot: true
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+```
+
+The libguestfs `direct` backend launches a user-mode QEMU appliance; all
+filesystem operations (mount, augeas, etc.) happen **inside the QEMU VM**,
+not in the container. CRI-O's RuntimeDefault seccomp profile on OpenShift
+allows the `unshare`/`mount`/`pivot_root` syscalls that the QEMU appliance
+needs, so `CAP_SYS_ADMIN` is not required.
+
+### SCC Allowed Capabilities
 
 | Capability | Reason |
 |------------|--------|
-| `SYS_ADMIN` | Required for the guestfish appliance to launch its internal QEMU/KVM instance inside the init container. The libguestfs `direct` backend needs this capability to create and manage the appliance VM. |
 | `NET_BIND_SERVICE` | Inherited from the base virt-launcher SCC — allows binding to privileged ports. |
 | `SYS_NICE` | Inherited from the base virt-launcher SCC — allows adjusting process scheduling priority. |
-| `SYS_PTRACE` | Inherited from the base virt-launcher SCC — allows process tracing (used by QEMU debugging). |
 
-The init container also runs as root (`runAsUser: 0`, `runAsNonRoot: false`)
-with `allowPrivilegeEscalation: true`.
+The chart-managed SCC mirrors the existing `kubevirt-controller` SCC. No
+additional capabilities beyond what virt-launcher already requires are needed.
 
 ### SCC Volume Types
 
@@ -146,8 +164,8 @@ The chart-managed SCC permits the following volume types:
 
 On OpenShift, the chart creates:
 
-1. A **SecurityContextConstraints** resource that is a superset of the
-   default `kubevirt-controller` SCC plus the `SYS_ADMIN` capability.
+1. A **SecurityContextConstraints** resource that mirrors the existing
+   `kubevirt-controller` SCC (no additional capabilities required).
 2. A **ClusterRole** granting the `use` verb on the SCC.
 3. A **ClusterRoleBinding** that binds the ClusterRole to ServiceAccount
    subjects in the configured namespaces.
@@ -243,7 +261,7 @@ This is the guestfs-tools image built on CentOS Stream 9.
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `scc.enabled` | boolean | `false` | Enable SCC resource creation. Set to `true` on OpenShift; set to `false` on vanilla Kubernetes (no SCC API). |
-| `scc.create` | boolean | `true` | When `true` and `scc.enabled` is `true`, the chart creates a dedicated SCC. Set to `false` if the existing `kubevirt-controller` SCC is already patched with `SYS_ADMIN`. |
+| `scc.create` | boolean | `true` | When `true` and `scc.enabled` is `true`, the chart creates a dedicated SCC. Set to `false` if the virt-launcher SA already has access to the `kubevirt-controller` SCC. |
 | `scc.serviceAccountNames` | list | `["default"]` | virt-launcher ServiceAccount names to bind the SCC to. Override with your actual virt-launcher SA names. |
 | `scc.namespaces` | list | `[]` | Namespaces where VMs run. The SCC ClusterRoleBinding grants `use` to the `serviceAccountNames` in each of these namespaces. Empty list = release namespace only. |
 | `scc.additionalSubjects` | list | `[]` | Extra RBAC subjects granted SCC `use` permission. Each entry is a complete RBAC subject object (`kind`, `name`, `namespace`, `apiGroup`). |

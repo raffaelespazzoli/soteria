@@ -23,9 +23,9 @@ on the target network.
     - **PVC-backed VM disks** — The init container modifies guest filesystems
       on PVC volumes. Container disks are not supported.
     - **SecurityContextConstraints (OpenShift)** — The init container runs as
-      root with `SYS_ADMIN` capability. On OpenShift, an appropriate SCC must
-      be bound to the virt-launcher service account. The Helm chart includes
-      the required SCC.
+      the `qemu` user (UID 107) with all capabilities dropped. On OpenShift,
+      the chart-managed SCC (which mirrors `kubevirt-controller`) must be
+      bound to the virt-launcher service account.
 
 ---
 
@@ -338,10 +338,10 @@ kubectl logs <virt-launcher-pod> -c ip-rewrite
 
 ### SCC Issues (OpenShift)
 
-!!! warning "Privileged security context required"
-    The init container runs as root (`runAsUser: 0`) with `SYS_ADMIN`
-    capability and `allowPrivilegeEscalation: true`. On OpenShift, this
-    requires an appropriate SecurityContextConstraints (SCC) binding.
+!!! note "SecurityContextConstraints required on OpenShift"
+    The init container runs as the `qemu` user (UID 107) with all capabilities
+    dropped (`runAsNonRoot: true`, `allowPrivilegeEscalation: false`). On
+    OpenShift, the chart-managed SCC must be bound to the virt-launcher SA.
 
 If the init container fails to start with a permission error:
 

@@ -213,9 +213,10 @@ controller-manager.
 
 - **Image:** Configurable via the `--init-container-image` flag on the webhook
   server (default: `quay.io/raffaelespazzoli/soteria-ip-rewrite:latest`)
-- **Security context:** Runs as root (`runAsUser: 0`, `runAsNonRoot: false`)
-  with `allowPrivilegeEscalation: true` and the `SYS_ADMIN` capability —
-  required for the guestfish appliance to function inside a container
+- **Security context:** Runs as the `qemu` user (`runAsUser: 107`,
+  `runAsNonRoot: true`) with `allowPrivilegeEscalation: false` and all
+  capabilities dropped — the libguestfs appliance runs inside a user-mode
+  QEMU VM, so no elevated container capabilities are needed
 - **Volume mounts:** Filesystem-mode PVC volumes are mounted under `/disks/`;
   block-mode PVC volumes are exposed as device nodes under `/disks/`
 
