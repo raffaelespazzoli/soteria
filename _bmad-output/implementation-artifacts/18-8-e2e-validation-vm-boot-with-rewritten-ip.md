@@ -1,6 +1,6 @@
 # Story 18.8: E2E Validation — VM Boot with Rewritten IP
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -46,49 +46,49 @@ And the IP is NOT rewritten (expected degraded behavior)
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create RHEL 9 test VM manifest with static IP and QEMU guest agent (AC: 1)
-  - [ ] 1.1: Create `test/ip-rewrite/e2e/manifests/rhel9-test-vm.yaml` — VirtualMachine resource with a RHEL 9 boot disk PVC, static IP `10.0.1.50/24`, gateway `10.0.1.1`, QEMU guest agent pre-installed
-  - [ ] 1.2: Document the prerequisite: a RHEL 9 VM template/image with QEMU guest agent and static networking must exist on the cluster (either as a DataVolume source URL or a pre-created PVC)
-  - [ ] 1.3: Add `cloud-init` or pre-baked image configuration for the initial static IP
-- [ ] Task 2: Create Windows Server 2022 test VM manifest with static IP and QEMU guest agent (AC: 2)
-  - [ ] 2.1: Create `test/ip-rewrite/e2e/manifests/win2022-test-vm.yaml` — VirtualMachine with Windows Server 2022 boot disk, static IP `10.0.1.60/24`, QEMU guest agent + VirtIO drivers pre-installed
-  - [ ] 2.2: Document the prerequisite: a Windows Server 2022 image with QEMU guest agent and VirtIO drivers must be pre-created (licensing precludes automated provisioning)
-- [ ] Task 3: Write E2E test script — RHEL IP rewrite and verify via guest agent (AC: 1)
-  - [ ] 3.1: Create `test/ip-rewrite/e2e/test-rhel-ip-rewrite.sh`
-  - [ ] 3.2: Apply RHEL 9 VM manifest, wait for VM running state
-  - [ ] 3.3: Verify initial IP via `virtctl guestosinfo`
-  - [ ] 3.4: Stop the VM (`virtctl stop`), wait for VMI deletion
-  - [ ] 3.5: Annotate the VM with `soteria.io/eth0-ip: "10.0.2.100/24;10.0.2.1"` and label `soteria.io/ip-rewrite: "true"`
-  - [ ] 3.6: Start the VM (`virtctl start`), wait for Running
-  - [ ] 3.7: Verify `ip-rewrite` init container completed (check virt-launcher pod init container statuses)
-  - [ ] 3.8: Wait for QEMU guest agent to report, verify IP `10.0.2.100` via `virtctl guestosinfo`
-  - [ ] 3.9: Clean up: remove annotations/labels, stop VM
-- [ ] Task 4: Write E2E test script — Windows IP rewrite and verify via guest agent (AC: 2)
-  - [ ] 4.1: Create `test/ip-rewrite/e2e/test-windows-ip-rewrite.sh`
-  - [ ] 4.2: Apply Windows VM manifest, wait for VM running state
-  - [ ] 4.3: Verify initial IP via `virtctl guestosinfo`
-  - [ ] 4.4: Stop the VM, wait for VMI deletion
-  - [ ] 4.5: Annotate and label the VM for IP rewrite
-  - [ ] 4.6: Start the VM, wait for Running (Windows boot timeout: 5 minutes)
-  - [ ] 4.7: Verify init container completed and IP `10.0.2.110` reported via guest agent
-  - [ ] 4.8: Clean up
-- [ ] Task 5: Write E2E test script — migration skip verification (AC: 3)
-  - [ ] 5.1: Create `test/ip-rewrite/e2e/test-migration-skip.sh`
-  - [ ] 5.2: Start a VM with IP rewrite label and annotations
-  - [ ] 5.3: Trigger live migration via `VirtualMachineInstanceMigration` CR
-  - [ ] 5.4: Verify the migration target virt-launcher pod has NO `ip-rewrite` init container
-  - [ ] 5.5: Verify migration completes successfully
-- [ ] Task 6: Write E2E test script — webhook fail-open (AC: 5)
-  - [ ] 6.1: Create `test/ip-rewrite/e2e/test-webhook-failopen.sh`
-  - [ ] 6.2: Scale the webhook Deployment to 0 replicas
-  - [ ] 6.3: Start a VM with `soteria.io/ip-rewrite: "true"` label
-  - [ ] 6.4: Verify the VM starts successfully (pod created without error)
-  - [ ] 6.5: Verify no `ip-rewrite` init container was injected
-  - [ ] 6.6: Scale webhook back to original replica count
-- [ ] Task 7: Create E2E test runner and README (AC: all)
-  - [ ] 7.1: Create `test/ip-rewrite/e2e/run-e2e.sh` — orchestrates all tests with pass/fail summary
-  - [ ] 7.2: Create `test/ip-rewrite/e2e/README.md` — documents prerequisites, cluster requirements, manual execution procedure
-  - [ ] 7.3: Create `test/ip-rewrite/e2e/lib/helpers.sh` — shared functions for wait loops, verification, logging
+- [x] Task 1: Create RHEL 9 test VM manifest with static IP and QEMU guest agent (AC: 1)
+  - [x] 1.1: Create `test/ip-rewrite/e2e/manifests/rhel9-test-vm.yaml` — VirtualMachine resource with a RHEL 9 boot disk PVC, static IP `10.0.1.50/24`, gateway `10.0.1.1`, QEMU guest agent pre-installed
+  - [x] 1.2: Document the prerequisite: a RHEL 9 VM template/image with QEMU guest agent and static networking must exist on the cluster (either as a DataVolume source URL or a pre-created PVC)
+  - [x] 1.3: Add `cloud-init` or pre-baked image configuration for the initial static IP
+- [x] Task 2: Create Windows Server 2022 test VM manifest with static IP and QEMU guest agent (AC: 2)
+  - [x] 2.1: Create `test/ip-rewrite/e2e/manifests/win2022-test-vm.yaml` — VirtualMachine with Windows Server 2022 boot disk, static IP `10.0.1.60/24`, QEMU guest agent + VirtIO drivers pre-installed
+  - [x] 2.2: Document the prerequisite: a Windows Server 2022 image with QEMU guest agent and VirtIO drivers must be pre-created (licensing precludes automated provisioning)
+- [x] Task 3: Write E2E test script — RHEL IP rewrite and verify via guest agent (AC: 1)
+  - [x] 3.1: Create `test/ip-rewrite/e2e/test-rhel-ip-rewrite.sh`
+  - [x] 3.2: Apply RHEL 9 VM manifest, wait for VM running state
+  - [x] 3.3: Verify initial IP via `virtctl guestosinfo`
+  - [x] 3.4: Stop the VM (`virtctl stop`), wait for VMI deletion
+  - [x] 3.5: Annotate the VM with `soteria.io/eth0-ip: "10.0.2.100/24;10.0.2.1"` and label `soteria.io/ip-rewrite: "true"`
+  - [x] 3.6: Start the VM (`virtctl start`), wait for Running
+  - [x] 3.7: Verify `ip-rewrite` init container completed (check virt-launcher pod init container statuses)
+  - [x] 3.8: Wait for QEMU guest agent to report, verify IP `10.0.2.100` via `virtctl guestosinfo`
+  - [x] 3.9: Clean up: remove annotations/labels, stop VM
+- [x] Task 4: Write E2E test script — Windows IP rewrite and verify via guest agent (AC: 2)
+  - [x] 4.1: Create `test/ip-rewrite/e2e/test-windows-ip-rewrite.sh`
+  - [x] 4.2: Apply Windows VM manifest, wait for VM running state
+  - [x] 4.3: Verify initial IP via `virtctl guestosinfo`
+  - [x] 4.4: Stop the VM, wait for VMI deletion
+  - [x] 4.5: Annotate and label the VM for IP rewrite
+  - [x] 4.6: Start the VM, wait for Running (Windows boot timeout: 5 minutes)
+  - [x] 4.7: Verify init container completed and IP `10.0.2.110` reported via guest agent
+  - [x] 4.8: Clean up
+- [x] Task 5: Write E2E test script — migration skip verification (AC: 3)
+  - [x] 5.1: Create `test/ip-rewrite/e2e/test-migration-skip.sh`
+  - [x] 5.2: Start a VM with IP rewrite label and annotations
+  - [x] 5.3: Trigger live migration via `VirtualMachineInstanceMigration` CR
+  - [x] 5.4: Verify the migration target virt-launcher pod has NO `ip-rewrite` init container
+  - [x] 5.5: Verify migration completes successfully
+- [x] Task 6: Write E2E test script — webhook fail-open (AC: 5)
+  - [x] 6.1: Create `test/ip-rewrite/e2e/test-webhook-failopen.sh`
+  - [x] 6.2: Scale the webhook Deployment to 0 replicas
+  - [x] 6.3: Start a VM with `soteria.io/ip-rewrite: "true"` label
+  - [x] 6.4: Verify the VM starts successfully (pod created without error)
+  - [x] 6.5: Verify no `ip-rewrite` init container was injected
+  - [x] 6.6: Scale webhook back to original replica count
+- [x] Task 7: Create E2E test runner and README (AC: all)
+  - [x] 7.1: Create `test/ip-rewrite/e2e/run-e2e.sh` — orchestrates all tests with pass/fail summary
+  - [x] 7.2: Create `test/ip-rewrite/e2e/README.md` — documents prerequisites, cluster requirements, manual execution procedure
+  - [x] 7.3: Create `test/ip-rewrite/e2e/lib/helpers.sh` — shared functions for wait loops, verification, logging
 
 ## Dev Notes
 
@@ -807,10 +807,38 @@ kubectl get vm -n ip-rewrite-e2e              # test VMs exist
 
 ### Agent Model Used
 
-*(To be filled by dev agent)*
+Claude Opus 4.6 (Cursor)
 
 ### Debug Log References
 
+No debug issues encountered. All scripts pass `bash -n` syntax validation. Unit test suite passes with no regressions.
+
 ### Completion Notes List
 
+- Created complete E2E test suite at `test/ip-rewrite/e2e/` with 4 test scripts, 1 runner, 1 helper library, 3 manifests, and 1 README
+- RHEL 9 test (AC1): stop-then-start lifecycle, init container verification, guest agent IP polling
+- Windows Server 2022 test (AC2): same pattern with Windows-appropriate timeouts (360s boot, 300s guest agent)
+- Migration skip test (AC3): VirtualMachineInstanceMigration CR, verifies no ip-rewrite init container on target pod
+- AC4 (VM without label) validated implicitly during initial boot phase of AC1/AC2
+- Webhook fail-open test (AC5): scales webhook to 0, verifies VM starts, restores replicas in cleanup trap
+- All scripts use `#!/usr/bin/env bash`, `set -euo pipefail`, environment variable configuration
+- Runner supports `--skip-windows` and `--test <name>` flags
+- README documents full prerequisites, configuration, troubleshooting, and cloud-init caveats
+
+### Change Log
+
+- 2026-09-06: Story 18.8 implemented — E2E validation test suite for IP rewrite with live VMs
+
 ### File List
+
+New files:
+- `test/ip-rewrite/e2e/run-e2e.sh` — top-level E2E test runner
+- `test/ip-rewrite/e2e/README.md` — prerequisites, configuration, troubleshooting guide
+- `test/ip-rewrite/e2e/lib/helpers.sh` — shared functions (wait loops, init container verification, guest agent polling, logging)
+- `test/ip-rewrite/e2e/manifests/rhel9-test-vm.yaml` — RHEL 9 VM resource with cloud-init static IP
+- `test/ip-rewrite/e2e/manifests/win2022-test-vm.yaml` — Windows Server 2022 VM resource with pre-created PVC
+- `test/ip-rewrite/e2e/manifests/migration-cr.yaml` — VirtualMachineInstanceMigration template
+- `test/ip-rewrite/e2e/test-rhel-ip-rewrite.sh` — AC1: RHEL 9 IP rewrite and guest agent verification
+- `test/ip-rewrite/e2e/test-windows-ip-rewrite.sh` — AC2: Windows Server 2022 IP rewrite and guest agent verification
+- `test/ip-rewrite/e2e/test-migration-skip.sh` — AC3: migration skip verification
+- `test/ip-rewrite/e2e/test-webhook-failopen.sh` — AC5: webhook fail-open verification

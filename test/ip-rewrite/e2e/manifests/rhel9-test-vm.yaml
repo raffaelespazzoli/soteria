@@ -1,0 +1,81 @@
+# RHEL 9 test VM for IP rewrite E2E validation.
+#
+# Prerequisites:
+#   - A RHEL 9 VM image available as a registry source or pre-created PVC.
+#   - The image must have QEMU guest agent (qemu-guest-agent) installed and
+#     enabled, or cloud-init must install it on first boot (see userData below).
+#   - Static IP 10.0.1.50/24 configured via cloud-init networkData.
+#
+# IMPORTANT — cloud-init may re-apply network configuration on subsequent boots,
+# overriding the handler's IP rewrite. For production validation, use a pre-baked
+# VM image with static IP configured directly in the guest OS (not via cloud-init)
+# and remove the cloudInitNoCloud volume. See README.md for details.
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: rhel9-ip-rewrite-test
+  namespace: ip-rewrite-e2e
+spec:
+  running: false
+  template:
+    metadata:
+      labels: {}
+    spec:
+      domain:
+        devices:
+          disks:
+            - name: rootdisk
+              disk:
+                bus: virtio
+            - name: cloudinitdisk
+              disk:
+                bus: virtio
+          interfaces:
+            - name: default
+              masquerade: {}
+        resources:
+          requests:
+            memory: 2Gi
+      networks:
+        - name: default
+          pod: {}
+      volumes:
+        - name: rootdisk
+          dataVolume:
+            name: rhel9-ip-rewrite-test-dv
+        - name: cloudinitdisk
+          cloudInitNoCloud:
+            networkData: |
+              version: 2
+              ethernets:
+                eth0:
+                  addresses:
+                    - 10.0.1.50/24
+                  gateway4: 10.0.1.1
+                  nameservers:
+                    addresses:
+                      - 8.8.8.8
+            userData: |
+              #cloud-config
+              packages:
+                - qemu-guest-agent
+              runcmd:
+                - systemctl enable --now qemu-guest-agent
+  dataVolumeTemplates:
+    - metadata:
+        name: rhel9-ip-rewrite-test-dv
+      spec:
+        source:
+          registry:
+            # Replace with your cluster's RHEL 9 image source.
+            # Examples:
+            #   registry: { url: "docker://registry.redhat.io/rhel9/rhel-guest-image:latest" }
+            #   pvc:      { name: "rhel9-golden-pvc", namespace: "golden-images" }
+            #   http:     { url: "https://example.com/rhel9-guest.qcow2" }
+            url: "docker://registry.redhat.io/rhel9/rhel-guest-image:latest"
+        pvc:
+          accessModes:
+            - ReadWriteOnce
+          resources:
+            requests:
+              storage: 30Gi
