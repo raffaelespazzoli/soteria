@@ -54,6 +54,14 @@ Soteria is an open-source, Kubernetes-native disaster recovery (DR) orchestrator
 
     A PatternFly 6 console plugin provides a DR dashboard, plan detail views, and a live execution monitor — all integrated into the OpenShift web console.
 
+-   :material-ip-network:{ .lg .middle } **Guest IP Rewrite**
+
+    ---
+
+    Standalone mutating webhook that rewrites VM network configuration offline before boot. Supports RHEL 7–10 and Windows Server 2016–2025 via guestfs-tools.
+
+    [:octicons-arrow-right-24: Architecture](architecture/ip-rewrite.md) · [:octicons-arrow-right-24: Usage](usage/ip-rewrite.md)
+
 </div>
 
 ---
@@ -113,6 +121,7 @@ Each cluster runs the same single binary: a **controller-manager** (DRPlan recon
 | **Admission Webhooks** | VM webhook (plan existence, wave consistency), DRPlan/DRExecution validation (immutability, concurrency gate) |
 | **Console Plugin** | PatternFly 6 OpenShift Console integration — dashboard, plan detail, execution monitor |
 | **Metrics** | Prometheus `soteria_*` metrics for plan counts, VM totals, failover durations |
+| **IP Rewrite Webhook** | Standalone mutating webhook that injects an init container into virt-launcher pods for offline guest filesystem IP reconfiguration. Supports RHEL (Augeas) and Windows (hivex). |
 
 ---
 
@@ -135,6 +144,7 @@ Each cluster runs the same single binary: a **controller-manager** (DRPlan recon
 | [**Usage**](usage/drplan.md) | DRPlan authoring, waves & throttling, volume grouping, executing failover, Console UI guides |
 | [**Reference**](reference/api/drplan.md) | CRD API reference for DRPlan and DRExecution, Helm values reference |
 | [**Contributing**](contributing/dev-setup.md) | Developer setup, writing storage drivers |
+| [**IP Rewrite**](architecture/ip-rewrite.md) | Standalone guest filesystem IP rewrite — architecture, usage guide, annotation & Helm reference |
 
 ---
 

@@ -81,11 +81,13 @@ nav:
       - Overview: architecture/overview.md
       - DR Lifecycle: architecture/dr-lifecycle.md
       - Storage Drivers: architecture/storage-drivers.md
+      - IP Rewrite: architecture/ip-rewrite.md
   - Usage:
       - Creating a DRPlan: usage/creating-a-drplan.md
       - Waves & Throttling: usage/waves.md
       - Volume Grouping: usage/volumes.md
       - Executing Failover: usage/failover.md
+      - IP Rewrite: usage/ip-rewrite.md
       - UI Guides:
           - Dashboard: usage/ui-guide/dashboard.md
           - Plan Detail: usage/ui-guide/plan-detail.md
@@ -95,6 +97,7 @@ nav:
           - DRPlan: reference/api/drplan.md
           - DRExecution: reference/api/drexecution.md
       - Helm Values: reference/helm-values.md
+      - IP Rewrite: reference/ip-rewrite.md
   - Contributing:
       - Developer Setup: contributing/dev-setup.md
       - Writing Storage Drivers: contributing/storage-drivers.md
