@@ -80,7 +80,7 @@ aug-match '/files/etc/sysconfig/network-scripts/ifcfg-*/BOOTPROTO'
 GF_STDERR=$(mktemp /tmp/gf-stderr-XXXXXX.txt)
 discovery_output=""
 discovery_rc=0
-discovery_output=$(echo -e "${discovery_commands}" | guestfish -q --ro -a "${REWRITE_DISK}" -i 2>"${GF_STDERR}") || discovery_rc=$?
+discovery_output=$(echo -e "${discovery_commands}" | guestfish --ro -a "${REWRITE_DISK}" -i 2>"${GF_STDERR}") || discovery_rc=$?
 
 if [[ -s "${GF_STDERR}" ]]; then
     log_warn "Phase 1 guestfish stderr: $(cat "${GF_STDERR}")"
@@ -139,7 +139,7 @@ if (( ${#nm_paths[@]} + ${#ifcfg_device_paths[@]} + ${#ifcfg_bootproto_paths[@]}
 
     resolve_output=""
     resolve_rc=0
-    resolve_output=$(echo -e "${resolve_commands}" | guestfish -q --ro -a "${REWRITE_DISK}" -i 2>"${GF_STDERR}") || resolve_rc=$?
+    resolve_output=$(echo -e "${resolve_commands}" | guestfish --ro -a "${REWRITE_DISK}" -i 2>"${GF_STDERR}") || resolve_rc=$?
 
     if [[ -s "${GF_STDERR}" ]]; then
         log_warn "Phase 1b guestfish stderr: $(cat "${GF_STDERR}")"
@@ -250,7 +250,7 @@ for ((i = 0; i < REWRITE_IFACE_COUNT; i++)); do
             fs_candidate="/etc/sysconfig/network-scripts/ifcfg-${target_iface}"
             verify_output=""
             verify_rc=0
-            verify_output=$(echo "is-file '${fs_candidate}'" | guestfish -q --ro -a "${REWRITE_DISK}" -i 2>"${GF_STDERR}") || verify_rc=$?
+            verify_output=$(echo "is-file '${fs_candidate}'" | guestfish --ro -a "${REWRITE_DISK}" -i 2>"${GF_STDERR}") || verify_rc=$?
             if [[ -s "${GF_STDERR}" ]]; then
                 log_warn "Strategy 3 guestfish stderr: $(cat "${GF_STDERR}")"
             fi
@@ -261,7 +261,7 @@ for ((i = 0; i < REWRITE_IFACE_COUNT; i++)); do
                 bp_cmd="aug-init / 0\naug-get '${candidate_path}/BOOTPROTO'"
                 bp_output=""
                 bp_rc=0
-                bp_output=$(echo -e "${bp_cmd}" | guestfish -q --ro -a "${REWRITE_DISK}" -i 2>"${GF_STDERR}") || bp_rc=$?
+                bp_output=$(echo -e "${bp_cmd}" | guestfish --ro -a "${REWRITE_DISK}" -i 2>"${GF_STDERR}") || bp_rc=$?
                 : > "${GF_STDERR}"
 
                 if (( bp_rc == 0 )); then
@@ -377,7 +377,7 @@ log_info "Phase 2: Executing rewrite commands..."
 
 rewrite_output=""
 rewrite_rc=0
-rewrite_output=$(echo -e "${gf_commands}" | guestfish -q -a "${REWRITE_DISK}" -i 2>"${GF_STDERR}") || rewrite_rc=$?
+rewrite_output=$(echo -e "${gf_commands}" | guestfish -a "${REWRITE_DISK}" -i 2>"${GF_STDERR}") || rewrite_rc=$?
 
 if [[ -s "${GF_STDERR}" ]]; then
     log_warn "Phase 2 guestfish stderr: $(cat "${GF_STDERR}")"

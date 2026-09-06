@@ -1,6 +1,7 @@
 # Image URL to use all building/pushing image targets
 IMG ?= quay.io/raffaelespazzoli/soteria:latest
 IP_REWRITE_IMG ?= quay.io/raffaelespazzoli/soteria-ip-rewrite:latest
+IP_REWRITE_WEBHOOK_IMG ?= quay.io/raffaelespazzoli/soteria-ip-rewrite-webhook:latest
 
 # Operator metadata
 VERSION ?= 0.0.1
@@ -202,6 +203,10 @@ docker-push: ## Push docker image with the manager.
 .PHONY: docker-build-ip-rewrite
 docker-build-ip-rewrite: ## Build ip-rewrite init container image.
 	$(CONTAINER_TOOL) build -f build/ip-rewrite/Containerfile -t $(IP_REWRITE_IMG) build/ip-rewrite/
+
+.PHONY: docker-build-ip-rewrite-webhook
+docker-build-ip-rewrite-webhook: ## Build ip-rewrite webhook image.
+	$(CONTAINER_TOOL) build -f build/ip-rewrite-webhook/Dockerfile -t $(IP_REWRITE_WEBHOOK_IMG) .
 
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
 # architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:

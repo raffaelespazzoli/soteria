@@ -195,7 +195,7 @@ for disk in "${DISK_CANDIDATES[@]}"; do
     STDERR_FILE=$(mktemp /tmp/inspector-stderr-XXXXXX.txt)
     INSPECT_OUTPUT=""
     inspector_rc=0
-    INSPECT_OUTPUT=$(virt-inspector --xml --no-applications --no-icon -a "${disk}" 2>"${STDERR_FILE}") || inspector_rc=$?
+    INSPECT_OUTPUT=$(virt-inspector --no-applications --no-icon -a "${disk}" 2>"${STDERR_FILE}") || inspector_rc=$?
 
     # Log any stderr regardless of exit code
     if [[ -s "${STDERR_FILE}" ]]; then
