@@ -1,0 +1,46 @@
+# Build the ip-rewrite init container image.
+#
+# This image provides guestfs-tools (guestfish, virt-inspector), Augeas,
+# hivex, and NTFS support for inspecting and modifying guest VM filesystems.
+# It is used as an init container injected into virt-launcher pods to rewrite
+# static IP configuration on guest disks before VM boot.
+#
+# CentOS Stream 9 is used instead of UBI9 because the required packages
+# (guestfs-tools, libguestfs-winsupport) are in full RHEL 9 AppStream repos,
+# which are not available in UBI repos without RHEL entitlements.
+#
+# Build:
+#   podman build -t soteria-ip-rewrite:dev build/ip-rewrite/
+#
+# Run (requires SYS_ADMIN for the libguestfs appliance):
+#   podman run --rm --cap-add SYS_ADMIN soteria-ip-rewrite:dev guestfish --version
+
+FROM quay.io/centos/centos:stream9
+
+# Install guestfs-tools and all required dependencies for guest filesystem
+# manipulation. libguestfs-winsupport provides NTFS support via the
+# libguestfs supermin appliance (replaces ntfs-3g which requires EPEL).
+#
+# Packages:
+#   guestfs-tools          - guestfish, virt-inspector, libguestfs appliance
+#   augeas                 - augtool CLI for structured config editing
+#   hivex                  - hivexget, hivexml, hivexsh for Windows registry
+#   perl-hivex             - hivexregedit CLI (not included in hivex package)
+#   libguestfs-winsupport  - NTFS driver for the libguestfs supermin appliance
+RUN dnf install -y --nodocs --setopt=install_weak_deps=False \
+        guestfs-tools \
+        augeas \
+        hivex \
+        perl-hivex \
+        libguestfs-winsupport \
+    && dnf clean all \
+    && rm -rf /var/cache/dnf /var/log/dnf*
+
+# Required for running libguestfs inside a container — uses the kernel
+# directly instead of connecting to libvirtd.
+ENV LIBGUESTFS_BACKEND=direct
+
+# Placeholder for scripts added by Story 18.2 (entrypoint, handlers).
+RUN mkdir -p /scripts
+
+# Entrypoint will be set by Story 18.2 when scripts are COPY'd in.
