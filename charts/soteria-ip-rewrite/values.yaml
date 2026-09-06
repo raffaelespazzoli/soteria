@@ -1,0 +1,114 @@
+# =============================================================================
+# Soteria IP Rewrite Helm Chart — values.yaml
+# Mutating webhook for offline VM IP reconfiguration (init container injection)
+# =============================================================================
+
+# -- Override the chart name used in resource names and labels.
+nameOverride: ""
+# -- Override the full release name used in resource names.
+fullnameOverride: ""
+
+# -----------------------------------------------------------------------------
+# Webhook server configuration
+# Deploys the Go admission webhook binary that injects IP rewrite init
+# containers into virt-launcher pods labeled soteria.io/ip-rewrite: "true".
+# -----------------------------------------------------------------------------
+webhook:
+  image:
+    # repository: Container image for the webhook server binary.
+    repository: quay.io/raffaelespazzoli/soteria-ip-rewrite-webhook
+    # tag: Image tag. Overrides appVersion from Chart.yaml when set.
+    tag: ""
+    # pullPolicy: Kubernetes image pull policy.
+    pullPolicy: IfNotPresent
+  # replicas: Number of webhook server pods.
+  replicas: 2
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+
+# -----------------------------------------------------------------------------
+# Init container image configuration
+# The webhook injects this image as an init container into virt-launcher pods.
+# This is the guestfs-tools UBI9 image built by Story 18.1.
+# -----------------------------------------------------------------------------
+initContainer:
+  image:
+    # repository: Container image for the IP rewrite init container.
+    repository: quay.io/raffaelespazzoli/soteria-ip-rewrite
+    # tag: Image tag. Overrides appVersion from Chart.yaml when set.
+    tag: ""
+
+# -----------------------------------------------------------------------------
+# TLS configuration
+# References a cert-manager Issuer or ClusterIssuer for webhook TLS.
+# When standalone (not sub-chart), a self-signed Issuer is created.
+# When used as sub-chart, set issuerRef.name to the parent's issuer.
+# -----------------------------------------------------------------------------
+tls:
+  issuerRef:
+    # name: Name of the cert-manager Issuer. Empty → use self-signed issuer
+    # created by this chart.
+    name: ""
+    # kind: "Issuer" (namespace-scoped) or "ClusterIssuer" (cluster-scoped).
+    kind: Issuer
+  # createSelfSigned: When true AND issuerRef.name is empty, chart creates
+  # a self-signed Issuer. When false, issuerRef.name MUST be set.
+  createSelfSigned: true
+
+# -----------------------------------------------------------------------------
+# SecurityContextConstraints (OpenShift only)
+#
+# The IP rewrite init container runs inside virt-launcher pods and needs
+# SYS_ADMIN for the guestfish appliance. OpenShift selects ONE SCC for the
+# entire pod, so the SCC must be a superset of what virt-launcher already
+# requires (NET_BIND_SERVICE, SYS_NICE, SYS_PTRACE, hostPath, etc.) PLUS
+# the additional SYS_ADMIN capability.
+#
+# IMPORTANT: You MUST list every namespace where VMs run in scc.namespaces
+# (or use scc.serviceAccountNames to bind to specific virt-launcher SAs).
+# The MWC intercepts pods cluster-wide, but SCC grants must cover the
+# namespaces where the init container actually runs.
+#
+# Alternative: If you prefer to patch the existing kubevirt-controller SCC
+# to add SYS_ADMIN, set scc.create: false and skip the chart-managed SCC.
+# -----------------------------------------------------------------------------
+scc:
+  # enabled: Set to false on non-OpenShift clusters (vanilla K8s has no SCC API).
+  # Defaults to false for broad compatibility; set to true on OpenShift.
+  enabled: false
+  # create: When true AND enabled, the chart creates a dedicated SCC that is
+  # a superset of the virt-launcher SCC plus SYS_ADMIN. Set to false if the
+  # existing kubevirt-controller SCC is already patched with SYS_ADMIN.
+  create: true
+  # serviceAccountNames: virt-launcher ServiceAccount names to bind the SCC to.
+  # KubeVirt typically uses a per-namespace SA. These are bound as explicit
+  # ServiceAccount subjects (kind: ServiceAccount) in the ClusterRoleBinding.
+  # Default: ["default"] — covers the common case where virt-launcher pods
+  # run under the "default" SA. Override with your actual virt-launcher SA names.
+  serviceAccountNames:
+    - default
+  # namespaces: Namespaces where VMs run (virt-launcher pods need the SCC).
+  # The SCC ClusterRoleBinding grants "use" to the serviceAccountNames in each
+  # of these namespaces. MUST include all namespaces where VMs with
+  # soteria.io/ip-rewrite: "true" are scheduled.
+  # Empty list = release namespace only.
+  namespaces: []
+  # additionalSubjects: Extra RBAC subjects granted SCC "use" permission.
+  # Each entry is a complete RBAC subject object (kind, name, namespace, apiGroup).
+  additionalSubjects: []
+
+# -----------------------------------------------------------------------------
+# MutatingWebhookConfiguration settings
+# Controls how the webhook intercepts pod creation.
+# -----------------------------------------------------------------------------
+webhookConfig:
+  # failurePolicy: Ignore (fail-open) or Fail (fail-closed).
+  failurePolicy: Ignore
+  # namespaceSelector: Label selector for namespaces the webhook applies to.
+  # Empty = all namespaces.
+  namespaceSelector: {}

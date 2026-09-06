@@ -1,0 +1,24 @@
+{{- /*
+Webhook serving Certificate — cert-manager issues a TLS cert for the
+admission webhook server. The CA is injected into the
+MutatingWebhookConfiguration via cert-manager.io/inject-ca-from.
+*/ -}}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ printf "%s-webhook-serving" (include "soteria-ip-rewrite.fullname" .) | trunc 63 | trimSuffix "-" }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "soteria-ip-rewrite.labels" . | nindent 4 }}
+spec:
+  secretName: {{ printf "%s-webhook-server-cert" (include "soteria-ip-rewrite.fullname" .) | trunc 63 | trimSuffix "-" }}
+  duration: 8760h
+  renewBefore: 720h
+  usages:
+    - server auth
+  issuerRef:
+    name: {{ default (printf "%s-selfsigned" (include "soteria-ip-rewrite.fullname" .)) .Values.tls.issuerRef.name }}
+    kind: {{ .Values.tls.issuerRef.kind }}
+  dnsNames:
+    - {{ printf "%s-webhook.%s.svc" (include "soteria-ip-rewrite.fullname" .) .Release.Namespace }}
+    - {{ printf "%s-webhook.%s.svc.cluster.local" (include "soteria-ip-rewrite.fullname" .) .Release.Namespace }}

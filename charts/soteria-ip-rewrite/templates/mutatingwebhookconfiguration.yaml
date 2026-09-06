@@ -1,0 +1,35 @@
+{{- /*
+MutatingWebhookConfiguration — intercepts pod CREATE operations for pods
+labeled soteria.io/ip-rewrite: "true" and injects an IP rewrite init container.
+cert-manager injects the CA bundle from the webhook serving Certificate.
+*/ -}}
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: {{ printf "%s-mutating-webhook" (include "soteria-ip-rewrite.fullname" .) | trunc 63 | trimSuffix "-" }}
+  labels:
+    {{- include "soteria-ip-rewrite.labels" . | nindent 4 }}
+  annotations:
+    cert-manager.io/inject-ca-from: {{ .Release.Namespace }}/{{ printf "%s-webhook-serving" (include "soteria-ip-rewrite.fullname" .) | trunc 63 | trimSuffix "-" }}
+webhooks:
+  - name: {{ printf "%s.soteria.io" (include "soteria-ip-rewrite.fullname" .) }}
+    admissionReviewVersions: ["v1"]
+    clientConfig:
+      service:
+        name: {{ printf "%s-webhook" (include "soteria-ip-rewrite.fullname" .) | trunc 63 | trimSuffix "-" }}
+        namespace: {{ .Release.Namespace }}
+        path: /mutate-v1-pod
+    failurePolicy: {{ .Values.webhookConfig.failurePolicy }}
+    sideEffects: None
+    objectSelector:
+      matchLabels:
+        soteria.io/ip-rewrite: "true"
+    {{- with .Values.webhookConfig.namespaceSelector }}
+    namespaceSelector:
+      {{- toYaml . | nindent 6 }}
+    {{- end }}
+    rules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE"]
+        resources: ["pods"]

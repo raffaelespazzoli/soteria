@@ -186,3 +186,22 @@ ui:
       # hostname: Optional hostname for the HTTPRoute. When set, adds a hostnames
       # filter to prevent catch-all routing on shared Gateways.
       hostname: ""
+
+# -----------------------------------------------------------------------------
+# IP Rewrite sub-chart (standalone VM IP reconfiguration webhook)
+# When enabled, deploys the ip-rewrite mutating webhook as a sub-chart.
+# Values under this key pass directly to the soteria-ip-rewrite chart.
+# Condition key: soteria-ip-rewrite.enabled
+# -----------------------------------------------------------------------------
+soteria-ip-rewrite:
+  enabled: false
+  # Override TLS to share the parent chart's cert-manager issuer:
+  tls:
+    issuerRef:
+      name: soteria-ca
+      kind: Issuer
+    createSelfSigned: false
+  # Disable SCC creation when the parent cluster's virt-launcher SCC is
+  # already patched with SYS_ADMIN:
+  # scc:
+  #   create: false

@@ -1,0 +1,15 @@
+{{- /* Webhook Service — port 443→9443, standard webhook convention */ -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ printf "%s-webhook" (include "soteria-ip-rewrite.fullname" .) | trunc 63 | trimSuffix "-" }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "soteria-ip-rewrite.labels" . | nindent 4 }}
+spec:
+  ports:
+    - port: 443
+      targetPort: 9443
+      protocol: TCP
+  selector:
+    {{- include "soteria-ip-rewrite.selectorLabels" . | nindent 4 }}

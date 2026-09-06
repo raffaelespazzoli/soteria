@@ -5,3 +5,9 @@ type: application
 version: 0.1.0
 appVersion: 0.1.0
 kubeVersion: ">=1.28.0"
+
+dependencies:
+  - name: soteria-ip-rewrite
+    version: "0.1.0"
+    repository: "file://../soteria-ip-rewrite"
+    condition: soteria-ip-rewrite.enabled

@@ -1,0 +1,17 @@
+{{- /*
+ClusterRole granting "use" of the IP rewrite SecurityContextConstraints.
+Only rendered when both scc.enabled and scc.create are true.
+*/ -}}
+{{- if and .Values.scc.enabled .Values.scc.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ printf "%s-scc-use" (include "soteria-ip-rewrite.fullname" .) | trunc 63 | trimSuffix "-" }}
+  labels:
+    {{- include "soteria-ip-rewrite.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["security.openshift.io"]
+    resources: ["securitycontextconstraints"]
+    resourceNames: ["{{ printf "%s-ip-rewrite" (include "soteria-ip-rewrite.fullname" .) | trunc 63 | trimSuffix "-" }}"]
+    verbs: ["use"]
+{{- end }}
