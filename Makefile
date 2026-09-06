@@ -47,7 +47,7 @@ all: build
 
 .PHONY: help
 help: ## Display this help.
-	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
+	@awk 'BEGIN {FS = ":.*##"; printf "\nUsage:\n  make \033[36m<target>\033[0m\n"} /^[a-zA-Z_0-9-]+:.*?##/ { printf "  \033[36m%-30s\033[0m %s\n", $$1, $$2 } /^##@/ { printf "\n\033[1m%s\033[0m\n", substr($$0, 5) } ' $(MAKEFILE_LIST)
 
 ##@ Development
 
@@ -191,7 +191,7 @@ docker-push: ## Push docker image with the manager.
 
 .PHONY: docker-build-ip-rewrite
 docker-build-ip-rewrite: ## Build ip-rewrite init container image.
-	$(CONTAINER_TOOL) build -t $(IP_REWRITE_IMG) build/ip-rewrite/
+	$(CONTAINER_TOOL) build --platform linux/amd64 -f build/ip-rewrite/Containerfile -t $(IP_REWRITE_IMG) build/ip-rewrite/
 
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
 # architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:

@@ -6,7 +6,7 @@
 #   • build-soteria     – build controller image (multi-arch on main, amd64 on PR)
 #   • build-console-plugin – build console-plugin image (same)
 #   • build-standalone-ui  – build standalone-ui image (same)
-#   • build-ip-rewrite  – build ip-rewrite init container (amd64 only)
+#   • build-ip-rewrite  – build ip-rewrite init container (amd64 only, path-filtered)
 #   • helmchart-test    – lint, template, deploy chart on Kind
 #
 # Docker layer caching via GHA backend (cache-from/to: type=gha) caches
@@ -149,9 +149,31 @@ jobs:
           cache-from: type=gha,scope=standalone-ui
           cache-to: type=gha,mode=max,scope=standalone-ui
 
+  # ── Detect path changes for conditional jobs ─────────────────────────────
+  changes:
+    name: Detect changed paths
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      ip-rewrite: ${{ steps.filter.outputs.ip-rewrite }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            ip-rewrite:
+              - 'build/ip-rewrite/**'
+              - 'internal/webhook/iprewrite/**'
+              - 'cmd/ip-rewrite-webhook/**'
+              - 'charts/soteria-ip-rewrite/**'
+
   # ── Build ip-rewrite init container image (single-arch) ──────────────
   build-ip-rewrite:
     name: Build ip-rewrite image
+    needs: changes
+    if: needs.changes.outputs.ip-rewrite == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7

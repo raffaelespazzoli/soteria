@@ -11,8 +11,7 @@
 #             └──────────────────────→ docs ────────┘
 #
 # Each build job produces a multi-arch image (amd64, arm64, ppc64le) in a
-# single Buildx call. Docker layer caching via GHA backend keeps subsequent
-# runs fast.
+# single Buildx call, except ip-rewrite which is amd64-only.
 # ---------------------------------------------------------------------------
 name: release
 
@@ -297,9 +296,6 @@ jobs:
             --set controller.image.tag="${{ needs.validate.outputs.version }}" \
             > /dev/null
 
-      - name: Package chart
-        run: helm package charts/soteria --destination /tmp/chart-package
-
       - name: Stamp ip-rewrite sub-chart version
         if: hashFiles('charts/soteria-ip-rewrite/Chart.yaml') != ''
         run: |
@@ -312,6 +308,9 @@ jobs:
       - name: Lint ip-rewrite sub-chart
         if: hashFiles('charts/soteria-ip-rewrite/Chart.yaml') != ''
         run: helm lint charts/soteria-ip-rewrite
+
+      - name: Package chart
+        run: helm package charts/soteria --destination /tmp/chart-package
 
       - name: Package ip-rewrite sub-chart
         if: hashFiles('charts/soteria-ip-rewrite/Chart.yaml') != ''
@@ -352,7 +351,7 @@ jobs:
   # ── 6. Publish documentation ────────────────────────────────────────────
   docs:
     name: Publish docs
-    needs: [validate, build-soteria, build-console-plugin, build-standalone-ui, helmchart-test]
+    needs: [validate, build-soteria, build-console-plugin, build-standalone-ui, build-ip-rewrite, helmchart-test]
     runs-on: ubuntu-latest
     permissions:
       contents: write
