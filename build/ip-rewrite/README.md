@@ -13,10 +13,13 @@ When VMs running on OpenShift Virtualization are failed over to a DR site, their
 | `guestfish` | `guestfs-tools` | Mount and modify guest VM disk images |
 | `virt-inspector` | `guestfs-tools` | Detect guest OS type and filesystem layout |
 | `augtool` | `augeas` | Structured editing of Linux config files (ifcfg, NM keyfiles) |
-| `hivexregedit` | `hivex` | Read/write Windows registry hives for network config |
+| `hivexget`, `hivexml`, `hivexsh` | `hivex` | Read/inspect Windows registry hives |
+| `hivexregedit` | `perl-hivex` | Merge/export Windows registry hive entries |
 | NTFS support | `libguestfs-winsupport` | Mount Windows NTFS filesystems via the libguestfs appliance |
 
-All packages are sourced from official UBI9 / RHEL 9 AppStream repositories. No third-party (EPEL) repositories are used.
+### Why CentOS Stream 9 (not UBI9)?
+
+The required packages (`guestfs-tools`, `libguestfs-winsupport`) are in the full RHEL 9 AppStream repository, which is **not** available in UBI9 repos (`ubi-9-baseos-rpms`, `ubi-9-appstream-rpms`) without RHEL entitlements. CentOS Stream 9 provides the same packages from its freely-available repos and works in CI (GitHub Actions) without entitlements.
 
 ## Build
 
@@ -57,7 +60,7 @@ For optimal performance, the container should have access to `/dev/kvm`. Without
 podman run --rm soteria-ip-rewrite:dev guestfish --version
 podman run --rm soteria-ip-rewrite:dev virt-inspector --version
 podman run --rm soteria-ip-rewrite:dev augtool --version
-podman run --rm soteria-ip-rewrite:dev hivexregedit --version
+podman run --rm soteria-ip-rewrite:dev command -v hivexregedit
 
 # Appliance launch (requires SYS_ADMIN and /dev/kvm)
 podman run --rm --cap-add SYS_ADMIN soteria-ip-rewrite:dev \
@@ -67,6 +70,8 @@ podman run --rm --cap-add SYS_ADMIN soteria-ip-rewrite:dev \
 podman image inspect soteria-ip-rewrite:dev --format '{{.Size}}' | \
     awk '{printf "%.0f MB\n", $1/1024/1024}'
 ```
+
+> **Note:** `hivexregedit` does not support `--version`. Use `command -v hivexregedit` or `hivexregedit --help` to verify presence.
 
 ## Image Registry
 
@@ -78,7 +83,7 @@ podman image inspect soteria-ip-rewrite:dev --format '{{.Size}}' | \
 ## Architecture
 
 - **x86_64 only** — all OCP Virtualization certified Windows guests are x86_64.
-- Based on `registry.access.redhat.com/ubi9/ubi` (full UBI, not `ubi-minimal`).
+- Based on `quay.io/centos/centos:stream9` (CentOS Stream 9).
 - Image size: ~500–800 MB (guestfs-tools + kernel + supermin appliance + QEMU are inherently large).
 
 ## Related Stories
