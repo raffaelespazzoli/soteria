@@ -15,6 +15,8 @@
 
 set -euo pipefail
 
+export LIBGUESTFS_BACKEND="${LIBGUESTFS_BACKEND:-direct}"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 FIXTURE_DIR="${SCRIPT_DIR}/fixtures"
@@ -42,19 +44,19 @@ else
 fi
 
 pass() {
-    ((PASSED++))
-    ((TOTAL++))
+    PASSED=$((PASSED + 1))
+    TOTAL=$((TOTAL + 1))
     echo -e "${GREEN}PASS${NC}: $1"
 }
 
 fail() {
-    ((FAILED++))
-    ((TOTAL++))
+    FAILED=$((FAILED + 1))
+    TOTAL=$((TOTAL + 1))
     echo -e "${RED}FAIL${NC}: $1: $2"
 }
 
 skip() {
-    ((TOTAL++))
+    TOTAL=$((TOTAL + 1))
     echo -e "${YELLOW}SKIP${NC}: $1: $2"
 }
 

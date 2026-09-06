@@ -27,6 +27,7 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/utils/ptr"
 	virtv1 "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
@@ -127,9 +128,9 @@ func (h *Handler) Handle(ctx context.Context, req admission.Request) admission.R
 		VolumeMounts:  volumeMounts,
 		VolumeDevices: volumeDevices,
 		SecurityContext: &corev1.SecurityContext{
-			RunAsUser:                new(int64(0)),
-			RunAsNonRoot:             new(false),
-			AllowPrivilegeEscalation: new(true),
+			RunAsUser:                ptr.To(int64(0)),
+			RunAsNonRoot:             ptr.To(false),
+			AllowPrivilegeEscalation: ptr.To(true),
 			Capabilities: &corev1.Capabilities{
 				Add: []corev1.Capability{"SYS_ADMIN"},
 			},

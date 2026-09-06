@@ -36,8 +36,12 @@ const (
 )
 
 // makePodRequest marshals a Pod and wraps it in a CREATE admission.Request.
-func makePodRequest(pod *corev1.Pod) admission.Request {
-	raw, _ := json.Marshal(pod)
+func makePodRequest(t *testing.T, pod *corev1.Pod) admission.Request {
+	t.Helper()
+	raw, err := json.Marshal(pod)
+	if err != nil {
+		t.Fatalf("marshal pod: %v", err)
+	}
 	return admission.Request{
 		AdmissionRequest: admissionv1.AdmissionRequest{
 			Operation: admissionv1.Create,
@@ -134,7 +138,7 @@ func TestHandle_LabelAndAnnotations_InjectsInitContainer(t *testing.T) {
 	}
 
 	handler := &Handler{InitContainerImage: "test-image:v1"}
-	resp := handler.Handle(context.Background(), makePodRequest(pod))
+	resp := handler.Handle(context.Background(), makePodRequest(t, pod))
 
 	if !resp.Allowed {
 		t.Fatalf("expected Allowed=true, got false: %v", resp.Result)
@@ -204,7 +208,7 @@ func TestHandle_MigrationPod_SkipsInjection(t *testing.T) {
 	}
 
 	handler := &Handler{InitContainerImage: "test-image:v1"}
-	resp := handler.Handle(context.Background(), makePodRequest(pod))
+	resp := handler.Handle(context.Background(), makePodRequest(t, pod))
 
 	if !resp.Allowed {
 		t.Fatalf("expected Allowed=true, got false: %v", resp.Result)
@@ -231,7 +235,7 @@ func TestHandle_NoIPAnnotations_SkipsInjection(t *testing.T) {
 	}
 
 	handler := &Handler{InitContainerImage: "test-image:v1"}
-	resp := handler.Handle(context.Background(), makePodRequest(pod))
+	resp := handler.Handle(context.Background(), makePodRequest(t, pod))
 
 	if !resp.Allowed {
 		t.Fatalf("expected Allowed=true, got false: %v", resp.Result)
@@ -263,7 +267,7 @@ func TestHandle_LabelOnly_NonIPAnnotations_NoInjection(t *testing.T) {
 	}
 
 	handler := &Handler{InitContainerImage: "test-image:v1"}
-	resp := handler.Handle(context.Background(), makePodRequest(pod))
+	resp := handler.Handle(context.Background(), makePodRequest(t, pod))
 
 	if !resp.Allowed {
 		t.Fatalf("expected Allowed=true, got false: %v", resp.Result)
@@ -304,7 +308,7 @@ func TestHandle_MultiNIC_TwoIPAnnotations(t *testing.T) {
 	}
 
 	handler := &Handler{InitContainerImage: "test-image:v1"}
-	resp := handler.Handle(context.Background(), makePodRequest(pod))
+	resp := handler.Handle(context.Background(), makePodRequest(t, pod))
 
 	if !resp.Allowed {
 		t.Fatalf("expected Allowed=true, got false: %v", resp.Result)
@@ -366,7 +370,7 @@ func TestHandle_DNSAnnotation_SetsEnvVar(t *testing.T) {
 	}
 
 	handler := &Handler{InitContainerImage: "test-image:v1"}
-	resp := handler.Handle(context.Background(), makePodRequest(pod))
+	resp := handler.Handle(context.Background(), makePodRequest(t, pod))
 
 	if !resp.Allowed {
 		t.Fatalf("expected Allowed=true, got false: %v", resp.Result)
@@ -423,7 +427,7 @@ func TestHandle_PVCVolumeMounts_InjectedIntoInitContainer(t *testing.T) {
 	}
 
 	handler := &Handler{InitContainerImage: "test-image:v1"}
-	resp := handler.Handle(context.Background(), makePodRequest(pod))
+	resp := handler.Handle(context.Background(), makePodRequest(t, pod))
 
 	mutated := mustApplyPatches(t, pod, resp)
 
@@ -489,7 +493,7 @@ func TestHandle_NonPVCVolumes_NotMountedInInitContainer(t *testing.T) {
 	}
 
 	handler := &Handler{InitContainerImage: "test-image:v1"}
-	resp := handler.Handle(context.Background(), makePodRequest(pod))
+	resp := handler.Handle(context.Background(), makePodRequest(t, pod))
 
 	mutated := mustApplyPatches(t, pod, resp)
 
@@ -536,7 +540,7 @@ func TestHandle_InitContainerPrepended(t *testing.T) {
 	}
 
 	handler := &Handler{InitContainerImage: "test-image:v1"}
-	resp := handler.Handle(context.Background(), makePodRequest(pod))
+	resp := handler.Handle(context.Background(), makePodRequest(t, pod))
 
 	mutated := mustApplyPatches(t, pod, resp)
 
@@ -571,7 +575,7 @@ func TestHandle_AlreadyInjected_SkipsDoubleInjection(t *testing.T) {
 	}
 
 	handler := &Handler{InitContainerImage: "test-image:v1"}
-	resp := handler.Handle(context.Background(), makePodRequest(pod))
+	resp := handler.Handle(context.Background(), makePodRequest(t, pod))
 
 	if !resp.Allowed {
 		t.Fatalf("expected Allowed=true, got false")
@@ -608,7 +612,7 @@ func TestHandle_DefaultImage_UsedWhenNotConfigured(t *testing.T) {
 	}
 
 	handler := &Handler{}
-	resp := handler.Handle(context.Background(), makePodRequest(pod))
+	resp := handler.Handle(context.Background(), makePodRequest(t, pod))
 
 	mutated := mustApplyPatches(t, pod, resp)
 	ic := findIPRewriteInitContainer(mutated)
@@ -653,7 +657,7 @@ func TestHandle_BlockModeVolume_VolumeDeviceInjected(t *testing.T) {
 	}
 
 	handler := &Handler{InitContainerImage: "test-image:v1"}
-	resp := handler.Handle(context.Background(), makePodRequest(pod))
+	resp := handler.Handle(context.Background(), makePodRequest(t, pod))
 
 	mutated := mustApplyPatches(t, pod, resp)
 	ic := findIPRewriteInitContainer(mutated)
@@ -720,7 +724,7 @@ func TestHandle_SecurityContext(t *testing.T) {
 	}
 
 	handler := &Handler{InitContainerImage: "test-image:v1"}
-	resp := handler.Handle(context.Background(), makePodRequest(pod))
+	resp := handler.Handle(context.Background(), makePodRequest(t, pod))
 
 	mutated := mustApplyPatches(t, pod, resp)
 	ic := findIPRewriteInitContainer(mutated)

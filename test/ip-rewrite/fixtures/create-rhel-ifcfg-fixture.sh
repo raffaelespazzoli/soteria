@@ -13,12 +13,18 @@
 
 set -euo pipefail
 
-OUTPUT="${1:-/tmp/rhel-ifcfg-fixture.img}"
 FORCE=false
+OUTPUT=""
 
 for arg in "$@"; do
-    [[ "${arg}" == "--force" ]] && FORCE=true
+    if [[ "${arg}" == "--force" ]]; then
+        FORCE=true
+    elif [[ -z "${OUTPUT}" ]]; then
+        OUTPUT="${arg}"
+    fi
 done
+
+OUTPUT="${OUTPUT:-/tmp/rhel-ifcfg-fixture.img}"
 
 if [[ -f "${OUTPUT}" && "${FORCE}" != "true" ]]; then
     echo "Fixture already exists: ${OUTPUT} (use --force to recreate)"
@@ -28,13 +34,18 @@ fi
 echo "Creating RHEL ifcfg fixture: ${OUTPUT}"
 
 guestfish -N "${OUTPUT}=fs:ext4:200M" <<'GFEOF'
+mkdir-p /bin
 mkdir-p /etc/sysconfig/network-scripts
 
+write /etc/fstab "# stub\n"
+write /etc/os-release "ID=rhel\nVERSION_ID=8\nNAME=\"Red Hat Enterprise Linux\"\n"
+write /etc/redhat-release "Red Hat Enterprise Linux release 8.9 (Ootpa)\n"
+
 write /etc/sysconfig/network-scripts/ifcfg-eth0 "TYPE=Ethernet
-BOOTPROTO=none
+BOOTPROTO=dhcp
 DEVICE=eth0
 IPADDR=10.0.1.50
-PREFIX=24
+PREFIX=16
 GATEWAY=10.0.1.1
 DNS1=8.8.8.8
 ONBOOT=yes

@@ -152,6 +152,8 @@ IP_REWRITE_TEST_DIR ?= test/ip-rewrite
 test-ip-rewrite: ## Run IP rewrite handler integration tests (requires guestfish + hivex).
 	@command -v guestfish >/dev/null 2>&1 || { echo "guestfish not found. Install guestfs-tools (libguestfs-tools on Debian/Ubuntu)."; exit 1; }
 	@command -v hivexregedit >/dev/null 2>&1 || { echo "hivexregedit not found. Install hivex."; exit 1; }
+	@command -v hivexsh >/dev/null 2>&1 || { echo "hivexsh not found. Install hivex."; exit 1; }
+	@command -v hivexget >/dev/null 2>&1 || { echo "hivexget not found. Install hivex."; exit 1; }
 	LIBGUESTFS_BACKEND=direct bash $(IP_REWRITE_TEST_DIR)/run-tests.sh
 
 .PHONY: helm-lint
