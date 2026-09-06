@@ -1,6 +1,6 @@
 # Story 18.5: Mutating Webhook — virt-launcher Init Container Injection
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -56,35 +56,35 @@ And serves a health check at `/healthz`
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create `cmd/ip-rewrite-webhook/main.go` with webhook server setup (AC: 6, 7)
-  - [ ] 1.1: Set up controller-runtime manager with webhook server on port 9443
-  - [ ] 1.2: Add TLS cert-dir flag for cert-manager mounted certificate
-  - [ ] 1.3: Add `--init-container-image` flag (default `quay.io/raffaelespazzoli/soteria-ip-rewrite:latest`)
-  - [ ] 1.4: Register webhook handler at `/mutate-v1-pod`
-  - [ ] 1.5: Add `/healthz` and `/readyz` health probes
-- [ ] Task 2: Create `internal/webhook/iprewrite/handler.go` with admission handler (AC: 1, 2, 3)
-  - [ ] 2.1: Implement `Handle(ctx, admission.Request) admission.Response` — the core mutating logic
-  - [ ] 2.2: Parse `soteria.io/*-ip` and `soteria.io/dns` annotations into init container env vars
-  - [ ] 2.3: Detect migration pods via `kubevirt.io/migrationJobLabel` and skip injection
-  - [ ] 2.4: Build init container spec with image, env vars, volume mounts, security context
-  - [ ] 2.5: Prepend init container to `pod.Spec.InitContainers`
-  - [ ] 2.6: Return JSON patch response
-- [ ] Task 3: Implement annotation parsing and env var generation (AC: 2)
-  - [ ] 3.1: `soteria.io/eth0-ip` → `SOTERIA_ETH0_IP` (strip `soteria.io/` prefix, remove trailing `-ip`, uppercase, replace `-` with `_`, re-add `_IP` suffix)
-  - [ ] 3.2: `soteria.io/dns` → `SOTERIA_DNS`
-  - [ ] 3.3: Ignore non-`soteria.io/` annotations and non-IP soteria annotations
-- [ ] Task 4: Implement PVC volume mount injection (AC: 2)
-  - [ ] 4.1: Iterate `pod.Spec.Volumes`, find volumes with `PersistentVolumeClaim` source
-  - [ ] 4.2: Create corresponding `VolumeMount` entries at `/disks/<volumeName>` in the init container
-- [ ] Task 5: Implement migration detection (AC: 3)
-  - [ ] 5.1: Check for `kubevirt.io/migrationJobLabel` label on the pod
-  - [ ] 5.2: If present, return `admission.Allowed("")` immediately — no patch
-- [ ] Task 6: Create `MutatingWebhookConfiguration` manifest (AC: 1, 4, 5, 6)
-  - [ ] 6.1: Create `config/ip-rewrite-webhook/mutatingwebhookconfiguration.yaml`
-  - [ ] 6.2: Set `objectSelector.matchLabels: {"soteria.io/ip-rewrite": "true"}`
-  - [ ] 6.3: Set `failurePolicy: Ignore`
-  - [ ] 6.4: Set `sideEffects: None`
-  - [ ] 6.5: Add `cert-manager.io/inject-ca-from` annotation for CA bundle injection
+- [x] Task 1: Create `cmd/ip-rewrite-webhook/main.go` with webhook server setup (AC: 6, 7)
+  - [x] 1.1: Set up controller-runtime manager with webhook server on port 9443
+  - [x] 1.2: Add TLS cert-dir flag for cert-manager mounted certificate
+  - [x] 1.3: Add `--init-container-image` flag (default `quay.io/raffaelespazzoli/soteria-ip-rewrite:latest`)
+  - [x] 1.4: Register webhook handler at `/mutate-v1-pod`
+  - [x] 1.5: Add `/healthz` and `/readyz` health probes
+- [x] Task 2: Create `internal/webhook/iprewrite/handler.go` with admission handler (AC: 1, 2, 3)
+  - [x] 2.1: Implement `Handle(ctx, admission.Request) admission.Response` — the core mutating logic
+  - [x] 2.2: Parse `soteria.io/*-ip` and `soteria.io/dns` annotations into init container env vars
+  - [x] 2.3: Detect migration pods via `kubevirt.io/migrationJobLabel` and skip injection
+  - [x] 2.4: Build init container spec with image, env vars, volume mounts, security context
+  - [x] 2.5: Prepend init container to `pod.Spec.InitContainers`
+  - [x] 2.6: Return JSON patch response
+- [x] Task 3: Implement annotation parsing and env var generation (AC: 2)
+  - [x] 3.1: `soteria.io/eth0-ip` → `SOTERIA_ETH0_IP` (strip `soteria.io/` prefix, remove trailing `-ip`, uppercase, replace `-` with `_`, re-add `_IP` suffix)
+  - [x] 3.2: `soteria.io/dns` → `SOTERIA_DNS`
+  - [x] 3.3: Ignore non-`soteria.io/` annotations and non-IP soteria annotations
+- [x] Task 4: Implement PVC volume mount injection (AC: 2)
+  - [x] 4.1: Iterate `pod.Spec.Volumes`, find volumes with `PersistentVolumeClaim` source
+  - [x] 4.2: Create corresponding `VolumeMount` entries at `/disks/<volumeName>` in the init container
+- [x] Task 5: Implement migration detection (AC: 3)
+  - [x] 5.1: Check for `kubevirt.io/migrationJobLabel` label on the pod
+  - [x] 5.2: If present, return `admission.Allowed("")` immediately — no patch
+- [x] Task 6: Create `MutatingWebhookConfiguration` manifest (AC: 1, 4, 5, 6)
+  - [x] 6.1: Create `config/ip-rewrite-webhook/mutatingwebhookconfiguration.yaml`
+  - [x] 6.2: Set `objectSelector.matchLabels: {"soteria.io/ip-rewrite": "true"}`
+  - [x] 6.3: Set `failurePolicy: Ignore`
+  - [x] 6.4: Set `sideEffects: None`
+  - [x] 6.5: Add `cert-manager.io/inject-ca-from` annotation for CA bundle injection
 
 ## Dev Notes
 
@@ -421,10 +421,29 @@ resp := handler.Handle(ctx, req)
 
 ### Agent Model Used
 
-*(To be filled by dev agent)*
+Claude Opus 4.6 (Cursor)
 
 ### Debug Log References
 
+No debug issues encountered. All code compiled cleanly on first pass; full test suite passed with zero regressions.
+
 ### Completion Notes List
 
+- Created standalone webhook binary at `cmd/ip-rewrite-webhook/main.go` — lightweight controller-runtime manager with webhook server only (no controllers, no ScyllaDB)
+- Implemented mutating admission handler at `internal/webhook/iprewrite/handler.go` with:
+  - Migration pod detection (skips injection for pods with `kubevirt.io/migrationJobLabel`)
+  - Annotation-to-env-var transformation (`soteria.io/eth0-ip` → `SOTERIA_ETH0_IP`, `soteria.io/dns` → `SOTERIA_DNS`)
+  - PVC volume mount injection at `/disks/<volumeName>`
+  - Init container prepending with `SYS_ADMIN` capability
+  - JSON patch response via `admission.PatchResponseFromRaw`
+- Created reference `MutatingWebhookConfiguration` manifest with `failurePolicy: Ignore`, `objectSelector`, and `cert-manager.io/inject-ca-from` annotation
+- Handler struct exposes `InitContainerImage` field for testability (Story 18.7)
+- All existing tests pass (zero regressions)
+- No new Go dependencies added — all imports from existing `go.mod`
+- Story does NOT include unit tests (deferred to Story 18.7 per spec)
+
 ### File List
+
+- `cmd/ip-rewrite-webhook/main.go` — NEW: standalone webhook server entry point
+- `internal/webhook/iprewrite/handler.go` — NEW: mutating admission handler
+- `config/ip-rewrite-webhook/mutatingwebhookconfiguration.yaml` — NEW: MWC manifest (reference for Helm chart in Story 18.6)
