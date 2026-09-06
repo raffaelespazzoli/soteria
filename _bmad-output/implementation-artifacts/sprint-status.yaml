@@ -474,12 +474,12 @@ development_status:
   epic-18: in-progress
   18-1-init-container-image-guestfs-tools-ubi9: done
   18-2-ip-rewrite-entrypoint-script-os-detection-dispatch: done
-  18-3-rhel-ip-rewrite-handler-augeas-based: ready-for-dev
-  18-4-windows-ip-rewrite-handler-hivex-based: ready-for-dev
+  18-3-rhel-ip-rewrite-handler-augeas-based: done
+  18-4-windows-ip-rewrite-handler-hivex-based: done
   18-5-mutating-webhook-virt-launcher-init-container-injection: done
-  18-6-helm-sub-chart-and-scc: review
+  18-6-helm-sub-chart-and-scc: done
   18-7-unit-and-integration-tests-disk-image-fixtures: ready-for-dev
   18-8-e2e-validation-vm-boot-with-rewritten-ip: ready-for-dev
   18-9-ci-and-release-pipeline-integration: done
-  18-10-documentation-architecture-and-usage: review
+  18-10-documentation-architecture-and-usage: done
   18-11-documentation-reference-and-nav-update: ready-for-dev
