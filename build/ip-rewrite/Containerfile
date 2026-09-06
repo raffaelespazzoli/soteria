@@ -40,7 +40,8 @@ RUN dnf install -y --nodocs --setopt=install_weak_deps=False \
 # directly instead of connecting to libvirtd.
 ENV LIBGUESTFS_BACKEND=direct
 
-# Placeholder for scripts added by Story 18.2 (entrypoint, handlers).
-RUN mkdir -p /scripts
+# Copy entrypoint and handler scripts
+COPY scripts/ /scripts/
+RUN chmod +x /scripts/*.sh
 
-# Entrypoint will be set by Story 18.2 when scripts are COPY'd in.
+ENTRYPOINT ["/scripts/entrypoint.sh"]
