@@ -175,10 +175,22 @@ For the main Soteria chart values, see
 [Soteria Helm Values](helm-values.md).
 
 !!! info "Sub-chart integration"
-    The IP rewrite chart can be installed standalone or as a sub-chart of the
-    main Soteria chart. When used as a sub-chart, enable it in the parent
-    chart with `soteria-ip-rewrite.enabled: true` in `charts/soteria/values.yaml`.
+    The IP rewrite chart can be installed **standalone** or as a sub-chart of the
+    main Soteria chart.
+
+    **Standalone** (for customers using a different DR orchestrator):
+    ```bash
+    helm install soteria-ip-rewrite soteria/soteria-ip-rewrite \
+      --namespace soteria-ip-rewrite --create-namespace \
+      --set scc.enabled=true  # OpenShift only
+    ```
+
+    **Sub-chart** (for Soteria users): enable in the parent chart with
+    `soteria-ip-rewrite.enabled: true` in `charts/soteria/values.yaml`.
     The parent chart overrides `tls.issuerRef.name` with its own CA issuer.
+
+    See the [Installation section](../usage/ip-rewrite.md#installation) in the
+    usage guide for full details.
 
 ### Global
 

@@ -31,11 +31,76 @@ on the target network.
 
 ## Installation
 
-Install the IP rewrite webhook using the standalone Helm chart:
+The IP rewrite webhook is distributed as a **standalone Helm chart** that can
+be installed independently of the main Soteria chart. This means you can use
+the IP rewrite feature with **any orchestrator or workflow** — you do not need
+the full Soteria DR orchestrator.
+
+### Standalone Installation (Without Soteria)
+
+If you use a different DR orchestrator (e.g., Red Hat DRM, Kasten, Zerto, or
+custom automation) and only need the VM IP rewrite capability:
+
+```bash
+# Add the Helm repository
+helm repo add soteria https://raffaelespazzoli.github.io/soteria
+helm repo update
+
+# Install standalone (vanilla Kubernetes)
+helm install soteria-ip-rewrite soteria/soteria-ip-rewrite \
+  --namespace soteria-ip-rewrite \
+  --create-namespace
+
+# Install standalone (OpenShift — with SCC)
+helm install soteria-ip-rewrite soteria/soteria-ip-rewrite \
+  --namespace soteria-ip-rewrite \
+  --create-namespace \
+  --set scc.enabled=true \
+  --set "scc.namespaces={vm-namespace-1,vm-namespace-2}"
+```
+
+!!! tip "What the standalone chart deploys"
+    - A Go-based mutating admission webhook (Deployment + Service)
+    - A `MutatingWebhookConfiguration` that intercepts virt-launcher pod
+      creation
+    - TLS certificates via cert-manager (self-signed by default)
+    - OpenShift SCC + RBAC (when `scc.enabled: true`)
+
+    It does **not** deploy the Soteria controller, ScyllaDB, the UI, or any
+    other Soteria component.
+
+### As a Sub-Chart of Soteria
+
+If you already use the Soteria DR orchestrator, enable the IP rewrite feature
+in the parent chart:
+
+```yaml
+# In your Soteria values.yaml
+soteria-ip-rewrite:
+  enabled: true
+  scc:
+    enabled: true        # OpenShift only
+    namespaces:
+      - my-vm-namespace
+```
+
+Or via the command line:
+
+```bash
+helm upgrade soteria charts/soteria \
+  --set soteria-ip-rewrite.enabled=true \
+  --set soteria-ip-rewrite.scc.enabled=true
+```
+
+The parent chart wires the TLS issuer so the sub-chart shares the same CA.
+
+### Local Installation (From Source)
+
+For development or air-gapped environments:
 
 ```bash
 helm install soteria-ip-rewrite charts/soteria-ip-rewrite/ \
-  --namespace soteria \
+  --namespace soteria-ip-rewrite \
   --create-namespace
 ```
 
@@ -43,14 +108,13 @@ helm install soteria-ip-rewrite charts/soteria-ip-rewrite/ \
     Override chart defaults with `--set` or a values file:
     ```bash
     helm install soteria-ip-rewrite charts/soteria-ip-rewrite/ \
-      --namespace soteria \
+      --namespace soteria-ip-rewrite \
       --create-namespace \
       -f my-values.yaml
     ```
 
-For general Helm installation guidance, see
-[Helm Installation](../installation/helm.md). The IP rewrite chart is
-independent of the main Soteria chart and can be installed standalone.
+For the complete list of configurable parameters, see the
+[IP Rewrite Reference](../reference/ip-rewrite.md#helm-values-reference).
 
 ---
 
