@@ -1,6 +1,6 @@
 # Story 18.2: IP Rewrite Entrypoint Script — OS Detection & Dispatch
 
-Status: ready-for-dev
+Status: review
 
 ## Story
 
@@ -54,43 +54,43 @@ And logs an informational message that no IP rewrite was requested
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create `build/ip-rewrite/scripts/entrypoint.sh` with annotation parsing logic (AC: 1, 7)
-  - [ ] 1.1: Add shebang, `set -euo pipefail`, and structured logging helper functions
-  - [ ] 1.2: Enumerate `SOTERIA_*_IP` env vars using `env | grep '^SOTERIA_.*_IP='` pattern
-  - [ ] 1.3: Parse each var: extract interface name (lowercase, between `SOTERIA_` and `_IP`), split value on `;` for address/prefix and gateway, split address on `/` for IP and prefix length
-  - [ ] 1.4: Parse optional `SOTERIA_DNS` into comma-separated list
-  - [ ] 1.5: Implement no-op exit (exit 0 with log) when no `SOTERIA_*_IP` vars found
-- [ ] Task 2: Implement boot disk scanning loop using `virt-inspector` (AC: 2)
-  - [ ] 2.1: Iterate disk image files under `/disks/*/` mount points
-  - [ ] 2.2: Run `virt-inspector --xml -a <disk>` on each disk
-  - [ ] 2.3: Check for `<operatingsystem>` element in output (indicates a boot disk)
-  - [ ] 2.4: Log and skip disks where virt-inspector finds no OS (data disks)
-  - [ ] 2.5: Exit non-zero with error if no disk contains an OS
-- [ ] Task 3: Implement OS detection and version extraction from `virt-inspector` output (AC: 3)
-  - [ ] 3.1: Extract `<name>` element value (`linux` or `windows`) using `xmllint --xpath`
-  - [ ] 3.2: Extract `<distro>` element value (e.g., `rhel`, `windows`)
-  - [ ] 3.3: Extract `<major_version>` and `<minor_version>` elements
-  - [ ] 3.4: Extract `<product_name>` for logging (e.g., `Red Hat Enterprise Linux release 9.4`, `Windows Server 2022 Standard`)
-  - [ ] 3.5: Log detected OS info: family, distro, version, product name
-- [ ] Task 4: Implement dispatch logic to RHEL and Windows handlers (AC: 4, 5, 6)
-  - [ ] 4.1: If `<name>` is `linux` AND `<distro>` is `rhel` → source/exec `rhel-handler.sh` with parsed config and disk path
-  - [ ] 4.2: If `<name>` is `windows` → source/exec `windows-handler.sh` with parsed config and disk path
-  - [ ] 4.3: Any other OS → exit 1 with error listing supported OSes (RHEL 7/8/9/10, Windows Server 2016/2019/2022/2025, Windows 10/11)
-  - [ ] 4.4: Pass parsed IP config to handlers via exported environment variables or function arguments
-- [ ] Task 5: Handle edge cases (AC: 6, 7)
-  - [ ] 5.1: No `SOTERIA_*_IP` vars set → exit 0 (no-op)
-  - [ ] 5.2: No OS found on any disk → exit 1 with descriptive error
-  - [ ] 5.3: Unsupported OS detected → exit 1 with list of supported OSes
-  - [ ] 5.4: `virt-inspector` command failure → exit 1 with error details
-  - [ ] 5.5: Malformed env var value (missing `;`, missing `/`) → exit 1 with parse error
-- [ ] Task 6: Create placeholder handler scripts (for dispatch testing before 18.3/18.4)
-  - [ ] 6.1: Create `build/ip-rewrite/scripts/rhel-handler.sh` stub that logs received args and exits 0
-  - [ ] 6.2: Create `build/ip-rewrite/scripts/windows-handler.sh` stub that logs received args and exits 0
-- [ ] Task 7: Update `build/ip-rewrite/Containerfile` to include scripts (AC: all)
-  - [ ] 7.1: Add `COPY scripts/ /scripts/` directive
-  - [ ] 7.2: Add `RUN chmod +x /scripts/*.sh`
-  - [ ] 7.3: Set `ENTRYPOINT ["/scripts/entrypoint.sh"]`
-  - [ ] 7.4: Install `libxml2` package for `xmllint` (if not already a dependency of `guestfs-tools`)
+- [x] Task 1: Create `build/ip-rewrite/scripts/entrypoint.sh` with annotation parsing logic (AC: 1, 7)
+  - [x] 1.1: Add shebang, `set -euo pipefail`, and structured logging helper functions
+  - [x] 1.2: Enumerate `SOTERIA_*_IP` env vars using `env | grep '^SOTERIA_.*_IP='` pattern
+  - [x] 1.3: Parse each var: extract interface name (lowercase, between `SOTERIA_` and `_IP`), split value on `;` for address/prefix and gateway, split address on `/` for IP and prefix length
+  - [x] 1.4: Parse optional `SOTERIA_DNS` into comma-separated list
+  - [x] 1.5: Implement no-op exit (exit 0 with log) when no `SOTERIA_*_IP` vars found
+- [x] Task 2: Implement boot disk scanning loop using `virt-inspector` (AC: 2)
+  - [x] 2.1: Iterate disk image files under `/disks/*/` mount points
+  - [x] 2.2: Run `virt-inspector --xml -a <disk>` on each disk
+  - [x] 2.3: Check for `<operatingsystem>` element in output (indicates a boot disk)
+  - [x] 2.4: Log and skip disks where virt-inspector finds no OS (data disks)
+  - [x] 2.5: Exit non-zero with error if no disk contains an OS
+- [x] Task 3: Implement OS detection and version extraction from `virt-inspector` output (AC: 3)
+  - [x] 3.1: Extract `<name>` element value (`linux` or `windows`) using `xmllint --xpath`
+  - [x] 3.2: Extract `<distro>` element value (e.g., `rhel`, `windows`)
+  - [x] 3.3: Extract `<major_version>` and `<minor_version>` elements
+  - [x] 3.4: Extract `<product_name>` for logging (e.g., `Red Hat Enterprise Linux release 9.4`, `Windows Server 2022 Standard`)
+  - [x] 3.5: Log detected OS info: family, distro, version, product name
+- [x] Task 4: Implement dispatch logic to RHEL and Windows handlers (AC: 4, 5, 6)
+  - [x] 4.1: If `<name>` is `linux` AND `<distro>` is `rhel` → source/exec `rhel-handler.sh` with parsed config and disk path
+  - [x] 4.2: If `<name>` is `windows` → source/exec `windows-handler.sh` with parsed config and disk path
+  - [x] 4.3: Any other OS → exit 1 with error listing supported OSes (RHEL 7/8/9/10, Windows Server 2016/2019/2022/2025, Windows 10/11)
+  - [x] 4.4: Pass parsed IP config to handlers via exported environment variables or function arguments
+- [x] Task 5: Handle edge cases (AC: 6, 7)
+  - [x] 5.1: No `SOTERIA_*_IP` vars set → exit 0 (no-op)
+  - [x] 5.2: No OS found on any disk → exit 1 with descriptive error
+  - [x] 5.3: Unsupported OS detected → exit 1 with list of supported OSes
+  - [x] 5.4: `virt-inspector` command failure → exit 1 with error details
+  - [x] 5.5: Malformed env var value (missing `;`, missing `/`) → exit 1 with parse error
+- [x] Task 6: Create placeholder handler scripts (for dispatch testing before 18.3/18.4)
+  - [x] 6.1: Create `build/ip-rewrite/scripts/rhel-handler.sh` stub that logs received args and exits 0
+  - [x] 6.2: Create `build/ip-rewrite/scripts/windows-handler.sh` stub that logs received args and exits 0
+- [x] Task 7: Update `build/ip-rewrite/Containerfile` to include scripts (AC: all)
+  - [x] 7.1: Add `COPY scripts/ /scripts/` directive
+  - [x] 7.2: Add `RUN chmod +x /scripts/*.sh`
+  - [x] 7.3: Set `ENTRYPOINT ["/scripts/entrypoint.sh"]`
+  - [x] 7.4: Install `libxml2` package for `xmllint` (if not already a dependency of `guestfs-tools`) — verified: `libxml2` is a transitive dependency of `guestfs-tools`; no explicit install needed
 
 ## Dev Notes
 
@@ -407,10 +407,32 @@ podman run --rm --entrypoint /bin/bash soteria-ip-rewrite:dev \
 
 ### Agent Model Used
 
-*(To be filled by dev agent)*
+Claude Opus 4.6 (via Cursor)
 
 ### Debug Log References
 
+No debug issues encountered.
+
 ### Completion Notes List
 
+- Created `entrypoint.sh` implementing full AC1-AC7: env var parsing, boot disk scanning, OS detection via `virt-inspector`/`xmllint`, and dispatch to OS-specific handlers
+- Env var parsing: enumerates `SOTERIA_*_IP` vars, extracts interface name (lowercase), IP, prefix, gateway; validates format (`;` and `/` separators required); parses optional `SOTERIA_DNS`
+- No-op path (AC7): exits 0 with info log when no `SOTERIA_*_IP` vars found
+- Boot disk scanning (AC2): iterates `/disks/*/` checking both `disk.img` files and block devices; uses `virt-inspector --xml` with `xmllint` to detect OS; handles multiple disks (warns on duplicates)
+- OS detection (AC3): extracts name, distro, major/minor version, product_name via `xmllint --xpath` with `string()` function
+- Dispatch (AC4/5): `source`s handler scripts to preserve env vars and capture return code; passes config via indexed `REWRITE_*` exported variables
+- Unsupported OS (AC6): exits 1 with error listing all supported OSes
+- Edge cases (AC5): malformed values exit 1 with descriptive parse errors; virt-inspector failures logged and handled
+- Created placeholder handler stubs that log received config and exit 0
+- Updated Containerfile: replaced `RUN mkdir -p /scripts` with `COPY scripts/ /scripts/`, added `RUN chmod +x`, set `ENTRYPOINT`
+- `libxml2` (for `xmllint`) confirmed as transitive dependency of `guestfs-tools` — no explicit install needed
+- All Go tests pass with no regressions; all scripts pass `bash -n` syntax check
+
 ### File List
+
+- `build/ip-rewrite/scripts/entrypoint.sh` — NEW: main entrypoint with env var parsing, disk scanning, OS detection, dispatch
+- `build/ip-rewrite/scripts/rhel-handler.sh` — NEW: RHEL handler placeholder stub (to be replaced by Story 18.3)
+- `build/ip-rewrite/scripts/windows-handler.sh` — NEW: Windows handler placeholder stub (to be replaced by Story 18.4)
+- `build/ip-rewrite/Containerfile` — MODIFIED: added COPY scripts, chmod, ENTRYPOINT; removed placeholder mkdir
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` — MODIFIED: story status updated
+- `_bmad-output/implementation-artifacts/18-2-ip-rewrite-entrypoint-script-os-detection-dispatch.md` — MODIFIED: tasks marked complete, dev record filled

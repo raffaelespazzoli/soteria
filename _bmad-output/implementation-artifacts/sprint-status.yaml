@@ -473,7 +473,7 @@ development_status:
   # Epic 18: Guest Filesystem IP Rewrite (Standalone)
   epic-18: in-progress
   18-1-init-container-image-guestfs-tools-ubi9: review
-  18-2-ip-rewrite-entrypoint-script-os-detection-dispatch: ready-for-dev
+  18-2-ip-rewrite-entrypoint-script-os-detection-dispatch: review
   18-3-rhel-ip-rewrite-handler-augeas-based: ready-for-dev
   18-4-windows-ip-rewrite-handler-hivex-based: ready-for-dev
   18-5-mutating-webhook-virt-launcher-init-container-injection: ready-for-dev
