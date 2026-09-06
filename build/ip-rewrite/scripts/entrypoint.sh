@@ -13,6 +13,9 @@
 # Exit codes:
 #   0 - Success (or no-op when no SOTERIA_*_IP vars set)
 #   1 - Error (unsupported OS, no boot disk, parse failure, etc.)
+#
+# Handler contract: handlers are sourced (not exec'd) and must use
+# `return` (not `exit`) so the entrypoint can inspect the return code.
 
 set -euo pipefail
 
@@ -23,12 +26,29 @@ log_info()  { echo "[INFO]  $(date -u '+%Y-%m-%dT%H:%M:%SZ') $*"; }
 log_warn()  { echo "[WARN]  $(date -u '+%Y-%m-%dT%H:%M:%SZ') $*" >&2; }
 log_error() { echo "[ERROR] $(date -u '+%Y-%m-%dT%H:%M:%SZ') $*" >&2; }
 
+# ---------------------------------------------------------------------------
+# If arguments are passed, exec them (allows: podman run image cmd ...)
+# ---------------------------------------------------------------------------
+if [[ $# -gt 0 ]]; then
+    exec "$@"
+fi
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 log_info "IP rewrite entrypoint starting"
 
 # ---------------------------------------------------------------------------
-# Task 1: Parse SOTERIA_*_IP environment variables (AC1, AC7)
+# Dependency check — fail fast if required tools are missing
+# ---------------------------------------------------------------------------
+for cmd in virt-inspector xmllint; do
+    if ! command -v "${cmd}" >/dev/null 2>&1; then
+        log_error "Required command not found: ${cmd}"
+        exit 1
+    fi
+done
+
+# ---------------------------------------------------------------------------
+# Parse SOTERIA_*_IP environment variables (AC1, AC7)
 # ---------------------------------------------------------------------------
 
 # Collect all SOTERIA_*_IP env vars
@@ -41,6 +61,9 @@ fi
 
 IP_VAR_COUNT=$(echo "${IP_VARS}" | wc -l)
 log_info "Found ${IP_VAR_COUNT} IP configuration variable(s)"
+
+# trim: strip leading/trailing whitespace from a value
+trim() { local v="$1"; v="${v#"${v%%[![:space:]]*}"}"; v="${v%"${v##*[![:space:]]}"}"; printf '%s' "$v"; }
 
 # Parse each SOTERIA_<IFACE>_IP variable
 REWRITE_IFACE_COUNT=0
@@ -61,8 +84,8 @@ while IFS= read -r var; do
     fi
 
     # Split on ';' for address/prefix and gateway
-    addr_part="${value%;*}"
-    gateway="${value#*;}"
+    addr_part=$(trim "${value%;*}")
+    gateway=$(trim "${value#*;}")
 
     # Validate address part: must contain '/' separator
     if [[ "${addr_part}" != *"/"* ]]; then
@@ -71,12 +94,18 @@ while IFS= read -r var; do
     fi
 
     # Split address on '/' for IP and prefix length
-    ip="${addr_part%/*}"
-    prefix="${addr_part#*/}"
+    ip=$(trim "${addr_part%/*}")
+    prefix=$(trim "${addr_part#*/}")
 
     # Validate extracted values are non-empty
     if [[ -z "${ip}" || -z "${prefix}" || -z "${gateway}" ]]; then
         log_error "Malformed value for ${varname}: empty IP, prefix, or gateway (ip='${ip}', prefix='${prefix}', gateway='${gateway}')"
+        exit 1
+    fi
+
+    # Validate prefix is an integer in 0-32
+    if ! [[ "${prefix}" =~ ^[0-9]+$ ]] || (( prefix < 0 || prefix > 32 )); then
+        log_error "Malformed value for ${varname}: prefix must be an integer 0-32 (got '${prefix}')"
         exit 1
     fi
 
@@ -95,7 +124,7 @@ export REWRITE_IFACE_COUNT
 
 # Parse optional SOTERIA_DNS
 if [[ -n "${SOTERIA_DNS:-}" ]]; then
-    export REWRITE_DNS="${SOTERIA_DNS}"
+    export REWRITE_DNS=$(trim "${SOTERIA_DNS}")
     log_info "Parsed DNS servers: ${REWRITE_DNS}"
 else
     export REWRITE_DNS=""
@@ -103,13 +132,10 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Task 2: Boot disk scanning (AC2)
+# Boot disk scanning (AC2)
 # ---------------------------------------------------------------------------
 
 log_info "Scanning disks for operating system..."
-
-BOOT_DISK=""
-INSPECT_XML=""
 
 # Iterate disk mount points under /disks/
 if [[ ! -d /disks ]]; then
@@ -118,6 +144,14 @@ if [[ ! -d /disks ]]; then
 fi
 
 DISK_CANDIDATES=()
+
+# Check for block devices mounted directly at /disks/<volumeName> (volumeDevices)
+for node in /disks/*; do
+    [[ -e "${node}" ]] || continue
+    if [[ -b "${node}" ]]; then
+        DISK_CANDIDATES+=("${node}")
+    fi
+done
 
 # Check for disk image files and block devices under /disks/*/
 for disk_dir in /disks/*/; do
@@ -137,46 +171,111 @@ for disk_dir in /disks/*/; do
 done
 
 if [[ ${#DISK_CANDIDATES[@]} -eq 0 ]]; then
-    log_error "No disk images or block devices found under /disks/*/"
+    log_error "No disk images or block devices found under /disks/"
     exit 1
 fi
 
 log_info "Found ${#DISK_CANDIDATES[@]} disk candidate(s)"
 
+# Scan ALL disks first, then select boot disk
+declare -A OS_DISKS=()        # disk_path -> inspect XML tmpfile
+INSPECTOR_ERRORS=()           # stderr from failed inspector runs
+INSPECTOR_ALL_FAILED=true     # track whether any inspector succeeded
+
 for disk in "${DISK_CANDIDATES[@]}"; do
-    volume_name=$(basename "$(dirname "${disk}")")
+    # Determine volume name for logging
+    parent_dir=$(dirname "${disk}")
+    if [[ "${parent_dir}" == "/disks" ]]; then
+        volume_name=$(basename "${disk}")
+    else
+        volume_name=$(basename "${parent_dir}")
+    fi
     log_info "Inspecting disk: ${disk} (volume: ${volume_name})"
 
-    # Run virt-inspector; capture output and exit code
+    STDERR_FILE=$(mktemp /tmp/inspector-stderr-XXXXXX.txt)
     INSPECT_OUTPUT=""
-    if INSPECT_OUTPUT=$(virt-inspector --xml -a "${disk}" 2>&1); then
-        # Check if virt-inspector found an OS
-        if echo "${INSPECT_OUTPUT}" | xmllint --xpath '//operatingsystem' - >/dev/null 2>&1; then
-            if [[ -n "${BOOT_DISK}" ]]; then
-                log_warn "Multiple boot disks detected — using first: ${BOOT_DISK} (skipping ${disk})"
-                continue
-            fi
-            BOOT_DISK="${disk}"
-            INSPECT_XML=$(mktemp /tmp/inspect-XXXXXX.xml)
-            echo "${INSPECT_OUTPUT}" > "${INSPECT_XML}"
-            log_info "Boot disk identified: ${disk}"
-        else
-            log_info "No operating system found on ${disk} (data disk) — skipping"
-        fi
+    inspector_rc=0
+    INSPECT_OUTPUT=$(virt-inspector --xml --no-applications --no-icon -a "${disk}" 2>"${STDERR_FILE}") || inspector_rc=$?
+
+    # Log any stderr regardless of exit code
+    if [[ -s "${STDERR_FILE}" ]]; then
+        log_warn "virt-inspector stderr for ${disk}: $(cat "${STDERR_FILE}")"
+    fi
+
+    if [[ ${inspector_rc} -ne 0 ]]; then
+        INSPECTOR_ERRORS+=("${disk}: exit ${inspector_rc} — $(cat "${STDERR_FILE}")")
+        rm -f "${STDERR_FILE}"
+        log_warn "virt-inspector failed on ${disk} (exit code ${inspector_rc})"
+        continue
+    fi
+
+    rm -f "${STDERR_FILE}"
+    INSPECTOR_ALL_FAILED=false
+
+    # Check if virt-inspector found an OS
+    if echo "${INSPECT_OUTPUT}" | xmllint --xpath '//operatingsystem' - >/dev/null 2>&1; then
+        TMPXML=$(mktemp /tmp/inspect-XXXXXX.xml)
+        echo "${INSPECT_OUTPUT}" > "${TMPXML}"
+        OS_DISKS["${disk}"]="${TMPXML}"
+        log_info "Operating system found on ${disk}"
     else
-        log_warn "virt-inspector failed on ${disk}: ${INSPECT_OUTPUT}"
+        log_info "No operating system found on ${disk} (data disk) — skipping"
     fi
 done
 
-if [[ -z "${BOOT_DISK}" ]]; then
+# If all disks failed the inspector command, report the real errors
+if [[ "${INSPECTOR_ALL_FAILED}" == "true" ]]; then
+    log_error "virt-inspector failed on all disk candidates"
+    for err in "${INSPECTOR_ERRORS[@]}"; do
+        log_error "  ${err}"
+    done
+    exit 1
+fi
+
+# Select boot disk from OS candidates
+OS_DISK_COUNT=${#OS_DISKS[@]}
+
+if [[ ${OS_DISK_COUNT} -eq 0 ]]; then
     log_error "No operating system detected on any disk — cannot proceed with IP rewrite"
     exit 1
+elif [[ ${OS_DISK_COUNT} -eq 1 ]]; then
+    BOOT_DISK="${!OS_DISKS[@]}"
+    INSPECT_XML="${OS_DISKS[${BOOT_DISK}]}"
+    log_info "Boot disk identified: ${BOOT_DISK}"
+else
+    # Multiple OS disks found — prefer volume named "rootdisk"
+    log_warn "Multiple disks with operating systems detected (${OS_DISK_COUNT})"
+    BOOT_DISK=""
+    for candidate in "${!OS_DISKS[@]}"; do
+        if [[ "${candidate}" == *"/rootdisk/"* || "${candidate}" == *"/rootdisk" ]]; then
+            BOOT_DISK="${candidate}"
+            INSPECT_XML="${OS_DISKS[${candidate}]}"
+            log_info "Preferring rootdisk volume: ${BOOT_DISK}"
+            break
+        fi
+    done
+    if [[ -z "${BOOT_DISK}" ]]; then
+        # No rootdisk — pick first alphabetically and warn
+        for candidate in $(echo "${!OS_DISKS[@]}" | tr ' ' '\n' | sort); do
+            BOOT_DISK="${candidate}"
+            INSPECT_XML="${OS_DISKS[${candidate}]}"
+            break
+        done
+        log_warn "No 'rootdisk' volume found — using ${BOOT_DISK}"
+    fi
+
+    # Clean up unused XML files
+    for candidate in "${!OS_DISKS[@]}"; do
+        if [[ "${candidate}" != "${BOOT_DISK}" ]]; then
+            rm -f "${OS_DISKS[${candidate}]}"
+        fi
+    done
 fi
 
 export REWRITE_DISK="${BOOT_DISK}"
 
 # ---------------------------------------------------------------------------
-# Task 3: OS detection and version extraction (AC3)
+# OS detection and version extraction (AC3)
 # ---------------------------------------------------------------------------
 
 log_info "Extracting OS information from virt-inspector output..."
@@ -206,12 +305,22 @@ log_info "Product name: ${OS_PRODUCT}"
 rm -f "${INSPECT_XML}"
 
 # ---------------------------------------------------------------------------
-# Task 4: Dispatch to OS-specific handler (AC4, AC5, AC6)
+# Dispatch to OS-specific handler (AC4, AC5, AC6)
 # ---------------------------------------------------------------------------
 
 SUPPORTED_OS_MSG="Supported operating systems: RHEL 7/8/9/10, Windows Server 2016/2019/2022/2025, Windows 10/11"
 
 if [[ "${OS_NAME}" == "linux" && "${OS_DISTRO}" == "rhel" ]]; then
+    # Gate on supported RHEL major versions
+    case "${OS_MAJOR}" in
+        7|8|9|10) ;;
+        *)
+            log_error "Unsupported RHEL version: ${OS_MAJOR} (product: ${OS_PRODUCT})"
+            log_error "${SUPPORTED_OS_MSG}"
+            exit 1
+            ;;
+    esac
+
     HANDLER="${SCRIPT_DIR}/rhel-handler.sh"
     log_info "Dispatching to RHEL handler: ${HANDLER}"
 
@@ -220,12 +329,11 @@ if [[ "${OS_NAME}" == "linux" && "${OS_DISTRO}" == "rhel" ]]; then
         exit 1
     fi
 
-    source "${HANDLER}"
-    handler_rc=$?
-
-    if [[ ${handler_rc} -ne 0 ]]; then
-        log_error "RHEL handler exited with code ${handler_rc}"
-        exit ${handler_rc}
+    # Handlers must use `return`, not `exit`, so set -e doesn't bypass our check.
+    if ! source "${HANDLER}"; then
+        handler_rc=$?
+        log_error "RHEL handler failed with code ${handler_rc}"
+        exit "${handler_rc}"
     fi
 
     log_info "RHEL handler completed successfully"
@@ -239,12 +347,10 @@ elif [[ "${OS_NAME}" == "windows" ]]; then
         exit 1
     fi
 
-    source "${HANDLER}"
-    handler_rc=$?
-
-    if [[ ${handler_rc} -ne 0 ]]; then
-        log_error "Windows handler exited with code ${handler_rc}"
-        exit ${handler_rc}
+    if ! source "${HANDLER}"; then
+        handler_rc=$?
+        log_error "Windows handler failed with code ${handler_rc}"
+        exit "${handler_rc}"
     fi
 
     log_info "Windows handler completed successfully"
