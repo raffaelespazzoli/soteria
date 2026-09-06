@@ -470,16 +470,28 @@ podman run --rm --cap-add SYS_ADMIN --entrypoint /bin/bash soteria-ip-rewrite:de
 ## Code Review Record
 
 ### Review Model Used
-*(To be filled during code review — must differ from dev model)*
+External code review (findings provided via /tmp/epic-18-18-3-findings.txt)
 
 ### Review Findings
-*(To be filled during code review)*
+Verdict: CHANGES_REQUESTED — 2 CRITICAL, 5 MAJOR, 3 MINOR findings
 
 ### Decisions Needed / Decisions Taken
-*(To be filled during code review)*
+- All 10 findings accepted and fixed
+- DHCP-to-static guard: `return 1` on BOOTPROTO=dhcp/bootp (consistent with story spec: "DO NOT convert DHCP-to-static")
+- Duplicate NM profiles: warn and use first discovered (not error), since NM auto-generated profiles are common
+- Stale DNS cleanup: clear DNS3-DNS10 after writing the new set (covers practical max)
 
 ### Fixes Applied
-*(To be filled during code review)*
+1. **CRITICAL — Quoted all Augeas paths**: All `aug-get`, `aug-set`, `aug-match`, `aug-rm` paths and values wrapped in single quotes for paths with spaces (e.g. "Wired connection 1.nmconnection")
+2. **CRITICAL — NM gateway/route1 cleanup**: Added `aug-rm` for `ipv4/gateway` and `ipv4/route1` after setting `address1` combined form to prevent override
+3. **MAJOR — Separated stderr from stdout**: Replaced `2>&1` with temp file redirect (`2>"${GF_STDERR}"`), added `-q` flag to all guestfish calls, filtered discovery output to `/files/*` lines only
+4. **MAJOR — Fixed filename fallback**: Strategy 3 now uses `is-file` guest filesystem check instead of BOOTPROTO probe; guards against files where DEVICE differs from filename via KNOWN_IFCFG_FILES map
+5. **MAJOR — Handle NETMASK/IPADDR0**: Added `aug-rm` for stale NETMASK, IPADDR0, PREFIX0, GATEWAY0 in ifcfg rewrite path
+6. **MAJOR — Duplicate NM profile detection**: Phase 1b now detects and warns on multiple NM profiles for same interface-name, uses first discovered
+7. **MAJOR — chmod 0600 after aug-save**: Added `chmod 0600` guestfish commands for all modified NM keyfiles after `aug-save`
+8. **MINOR — Added `set -euo pipefail`**: At script top; used `${REWRITE_DNS:-}` for safe unset-variable access throughout
+9. **MINOR — DHCP guard**: Both strategy 2 and strategy 3 now check BOOTPROTO and refuse `dhcp`/`bootp` with descriptive error
+10. **MINOR — Stale DNS cleanup**: After writing DNS1..DNSN, clears DNS(N+1) through DNS10 via `aug-rm`
 
 ## Dev Agent Record
 
@@ -507,9 +519,10 @@ No debug issues encountered.
 - No new files created, no Containerfile changes, no entrypoint changes — only the existing stub was replaced
 - No unit tests added (per story spec: "DO NOT create unit tests — shell script testing is handled in Story 18.7 via disk image fixtures")
 - All existing Go tests pass with zero regressions
+- **Review fixes applied (10 findings):** quoting, gateway/route1 cleanup, stderr separation, filename fallback, NETMASK/IPADDR0, duplicate NM profiles, chmod 0600, set -euo pipefail, DHCP guard, stale DNS cleanup
 
 ### File List
 
-- `build/ip-rewrite/scripts/rhel-handler.sh` — MODIFIED (stub → full Augeas-based implementation)
-- `_bmad-output/implementation-artifacts/18-3-rhel-ip-rewrite-handler-augeas-based.md` — MODIFIED (tasks checked, status, dev agent record)
+- `build/ip-rewrite/scripts/rhel-handler.sh` — MODIFIED (stub → full Augeas-based implementation, then review fixes)
+- `_bmad-output/implementation-artifacts/18-3-rhel-ip-rewrite-handler-augeas-based.md` — MODIFIED (tasks checked, status, dev agent record, code review record)
 - `_bmad-output/implementation-artifacts/sprint-status.yaml` — MODIFIED (18-3 status → review)
