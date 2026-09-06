@@ -4192,3 +4192,784 @@ Clone, prerequisites, Makefile targets, testing pyramid, CI, local dev.
 
 **Story 17.22 — Contributing: Writing a Storage Driver**
 Interface contract, step-by-step driver implementation, conformance suite walkthrough.
+
+---
+
+## Epic 18: Guest Filesystem IP Rewrite (Standalone)
+
+**Goal:** Enable VMs running on OpenShift Virtualization to boot with reconfigured static IPs by injecting an init container into virt-launcher pods that edits guest filesystem network configuration offline before the VM starts. This feature is standalone — it has no dependency on the Soteria DR orchestrator and can be used independently for any VM IP reconfiguration scenario.
+
+**Scope:** Mutating admission webhook for virt-launcher pod interception, init container image with guestfs-tools (Augeas for Linux, hivex for Windows), annotation-driven per-interface IP configuration, Helm sub-chart for independent deployment, CI/release pipeline integration, and documentation pages.
+
+**Supported Guest Operating Systems** (matching [OpenShift Virtualization certified guests](https://access.redhat.com/articles/4234591)):
+
+| OS | Versions | Architecture | Config Method |
+|----|----------|-------------|---------------|
+| RHEL 7 | 7.x | x86_64 | `ifcfg-*` via Augeas |
+| RHEL 8 | 8.x | x86_64 | `ifcfg-*` or NM keyfile via Augeas |
+| RHEL 9 | 9.x | x86_64 | NM keyfile via Augeas |
+| RHEL 10 | 10.x | x86_64 | NM keyfile via Augeas |
+| Windows Server 2016 | — | x86_64 | Registry hive via hivex |
+| Windows Server 2019 | — | x86_64 | Registry hive via hivex |
+| Windows Server 2022 | — | x86_64 | Registry hive via hivex |
+| Windows Server 2025 | — | x86_64 | Registry hive via hivex |
+| Windows 10 | — | x86_64 | Registry hive via hivex |
+| Windows 11 | — | x86_64 | Registry hive via hivex |
+
+**Annotation & Label Contract:**
+
+Label (webhook filter + opt-in):
+```yaml
+soteria.io/ip-rewrite: "true"
+```
+
+Annotations (per-interface IP configuration):
+```yaml
+soteria.io/<interface>-ip: "<address>/<prefix>;<gateway>"
+```
+
+Examples:
+```yaml
+labels:
+  soteria.io/ip-rewrite: "true"
+annotations:
+  soteria.io/eth0-ip: "10.0.2.100/24;10.0.2.1"
+  soteria.io/eth1-ip: "192.168.1.50/16;192.168.1.1"
+  soteria.io/dns: "10.0.2.10,10.0.2.11"               # optional, global
+```
+
+The `dns` annotation is optional. If absent, DNS configuration is left untouched in the guest OS. If present, it applies to all interfaces.
+
+**Key Design Decisions:**
+- **Standalone component**: No dependency on Soteria CRDs, controllers, or API server. Works with any tool that can set VM annotations (kubectl, ArgoCD, Ansible, Soteria DRExecution)
+- **IP mapping on VM directly**: Annotations are set on the VirtualMachine resource. KubeVirt propagates VM annotations to VMI and then to the virt-launcher pod
+- **Migration detection**: The webhook skips injection when the `kubevirt.io/migrationJobLabel` label is present on the pod (set only by KubeVirt's `RenderMigrationManifest`, never on regular VM starts)
+- **Multi-NIC from day 1**: Each interface is a separate annotation keyed by interface name
+- **Guest filesystem access via libguestfs**: Uses `guestfish` with `virt-inspector` for OS detection, Augeas for structured Linux config editing, and hivex for Windows registry hive editing. Learned from [virt-v2v](https://github.com/libguestfs/virt-v2v) patterns
+- **Init container privilege**: Requires `SYS_ADMIN` capability or privileged mode for guestfish appliance. Custom SecurityContextConstraints (SCC) provided via Helm chart
+
+**Dependencies:** None (standalone). For Soteria DR integration, the DRExecution workflow sets annotations on VMs before issuing StartVM — that integration is handled in the Soteria codebase, not in this epic.
+
+**Deferred to future:**
+- IPv6 support
+- DHCP-to-static conversion
+- Guest hostname rewrite
+- ARM64 guest support (when OCP Virt adds certified ARM Windows guests)
+
+### Stories
+
+| ID | Title | Depends On | Status |
+|----|-------|-----------|--------|
+| 18.1 | Init Container Image — guestfs-tools on UBI9 | — | draft |
+| 18.2 | IP Rewrite Entrypoint Script — OS Detection & Dispatch | 18.1 | draft |
+| 18.3 | RHEL IP Rewrite Handler — Augeas-Based | 18.2 | draft |
+| 18.4 | Windows IP Rewrite Handler — hivex-Based | 18.2 | draft |
+| 18.5 | Mutating Webhook — virt-launcher Init Container Injection | 18.1 | draft |
+| 18.6 | Helm Sub-Chart & SCC | 18.5 | draft |
+| 18.7 | Unit & Integration Tests — Disk Image Fixtures | 18.3, 18.4, 18.5 | draft |
+| 18.8 | E2E Validation — VM Boot with Rewritten IP | All | draft |
+| 18.9 | CI & Release Pipeline Integration | 18.1 | draft |
+| 18.10 | Documentation — Architecture & Usage | 18.5 | draft |
+| 18.11 | Documentation — Reference & Nav Update | 18.6 | draft |
+
+### Story Details
+
+**Story 18.1 — Init Container Image: guestfs-tools on UBI9**
+
+As a developer,
+I want a container image based on UBI9 that contains guestfs-tools (guestfish, virt-inspector), Augeas, hivex, and ntfs-3g,
+So that the init container has all the tooling needed to inspect and modify guest filesystems for both RHEL and Windows VMs.
+
+Acceptance Criteria:
+
+**AC1: Containerfile builds successfully**
+Given a `Containerfile` in `build/ip-rewrite/`
+When built with `podman build`
+Then the image builds without errors on x86_64
+And the image is based on `registry.access.redhat.com/ubi9/ubi`
+
+**AC2: Required tools are present**
+Given the built container image
+When I run `guestfish --version`, `virt-inspector --version`, `augtool --version`, `hivexregedit --version`, and `ntfs-3g --version`
+Then all commands succeed with version output
+
+**AC3: guestfish can launch its appliance**
+Given the built container image running with `SYS_ADMIN` capability
+When I run `guestfish --ro -a /dev/null run`
+Then the libguestfs appliance launches successfully (validates kernel + initrd are present)
+
+**AC4: Image builds via unified CI pipeline**
+Given the CI pipeline (`.github/workflows/ci.yml`) and release pipeline (`.github/workflows/release.yml`)
+When Story 18-9 integrates the `build-ip-rewrite` job
+Then the image is built on every PR/merge (CI) and pushed to `quay.io/raffaelespazzoli/soteria-ip-rewrite:$VERSION` on tag (release)
+And no standalone workflow is needed — the Containerfile is the deliverable of this story
+
+**AC5: Image size is reasonable**
+Given the built container image
+When I inspect its size
+Then it is under 800MB (guestfs-tools + kernel + appliance are heavy but bounded)
+
+Technical Notes:
+- The UBI9 base provides `dnf` access to RHEL 9 RPMs including `guestfs-tools`, `augeas`, `hivex`, `ntfs-3g`
+- The libguestfs appliance (supermin) needs a kernel and initrd — these are pulled in as dependencies of `guestfs-tools`
+- Multi-arch: x86_64 only for v1 (all OCP Virt certified Windows guests are x86_64)
+- The entrypoint script (Story 18.2) is `COPY`ed into the image
+
+Tasks:
+- [ ] Task 1: Create `build/ip-rewrite/Containerfile` with UBI9 base and guestfs-tools installation
+- [ ] Task 2: Verify all tools are functional inside the container (guestfish, virt-inspector, augtool, hivexregedit, ntfs-3g)
+- [ ] Task 3: Document the image in a README at `build/ip-rewrite/README.md`
+
+---
+
+**Story 18.2 — IP Rewrite Entrypoint Script: OS Detection & Dispatch**
+
+As a developer,
+I want an entrypoint script that parses IP configuration from environment variables, detects the guest OS on the VM disk, and dispatches to the correct OS-specific handler,
+So that the init container can automatically handle both RHEL and Windows VMs without manual configuration.
+
+Acceptance Criteria:
+
+**AC1: Annotation parsing from environment variables**
+Given environment variables set by the webhook (e.g., `SOTERIA_ETH0_IP="10.0.2.100/24;10.0.2.1"`, `SOTERIA_DNS="10.0.2.10,10.0.2.11"`)
+When the entrypoint script starts
+Then it parses each `SOTERIA_*_IP` variable into interface name, IP address, prefix length, and gateway
+And it parses the optional `SOTERIA_DNS` variable into a list of DNS server addresses
+
+**AC2: Boot disk identification**
+Given the init container has multiple PVC volumes mounted (e.g., `/disks/rootdisk`, `/disks/datadisk`)
+When the script scans each disk with `virt-inspector`
+Then it identifies the disk containing an operating system (the boot disk)
+And proceeds with that disk for IP rewriting
+And logs a warning if no OS is detected on any disk
+
+**AC3: OS detection and version identification**
+Given a boot disk is identified
+When `virt-inspector` returns guest OS metadata
+Then the script determines the OS family (`linux` or `windows`)
+And the specific distribution and version (e.g., `rhel` `9.4`, `windows` `Server 2022`)
+And logs the detected OS information
+
+**AC4: Dispatch to RHEL handler**
+Given the OS is detected as RHEL (any supported version 7/8/9/10)
+When dispatch occurs
+Then the RHEL handler script is invoked with the parsed IP configuration and disk path
+
+**AC5: Dispatch to Windows handler**
+Given the OS is detected as Windows (any supported version)
+When dispatch occurs
+Then the Windows handler script is invoked with the parsed IP configuration and disk path
+
+**AC6: Unsupported OS handling**
+Given the OS is not RHEL or a supported Windows version (e.g., Ubuntu, Fedora, or undetectable)
+When dispatch is attempted
+Then the script exits with a non-zero code and a clear error message listing supported OSes
+And the virt-launcher pod fails to start (init container failure)
+
+**AC7: No-op when no IP annotations present**
+Given the init container starts but no `SOTERIA_*_IP` environment variables are set
+When the entrypoint runs
+Then the script exits 0 immediately (no-op, virt-launcher proceeds)
+And logs an informational message that no IP rewrite was requested
+
+Technical Notes:
+- `virt-inspector` returns XML output. Parse with standard tools (`xmllint`, `xmlstarlet`) or use `virt-inspector --format=json` if available
+- `virt-inspector` key fields: `<operatingsystem><name>` (e.g., `linux`), `<distro>` (e.g., `rhel`), `<major_version>`, `<minor_version>`, `<product_name>` (e.g., `Windows Server 2022`)
+- Environment variable naming convention: annotations `soteria.io/<iface>-ip` → env var `SOTERIA_<IFACE>_IP` (uppercase, hyphens to underscores)
+- Scripts live in `build/ip-rewrite/scripts/`: `entrypoint.sh`, `rhel-handler.sh`, `windows-handler.sh`
+
+Tasks:
+- [ ] Task 1: Create `build/ip-rewrite/scripts/entrypoint.sh` with annotation parsing logic
+- [ ] Task 2: Implement boot disk scanning loop using `virt-inspector`
+- [ ] Task 3: Implement OS detection and version extraction from `virt-inspector` output
+- [ ] Task 4: Implement dispatch logic to RHEL and Windows handlers
+- [ ] Task 5: Handle edge cases: no IPs configured (no-op), no OS found, unsupported OS
+
+---
+
+**Story 18.3 — RHEL IP Rewrite Handler: Augeas-Based**
+
+As a developer,
+I want a handler script that uses guestfish and Augeas to rewrite static IP configuration on RHEL 7/8/9/10 guest filesystems,
+So that RHEL VMs boot with the correct network configuration after relocation to a new subnet.
+
+Acceptance Criteria:
+
+**AC1: RHEL 7 — ifcfg format**
+Given a RHEL 7 disk image with a static IP configured in `/etc/sysconfig/network-scripts/ifcfg-<interface>`
+When the handler is invoked with interface `eth0`, IP `10.0.2.100`, prefix `24`, gateway `10.0.2.1`
+Then the `IPADDR`, `PREFIX`, and `GATEWAY` fields are updated in the ifcfg file via Augeas
+And `BOOTPROTO` remains `none` (static)
+And if DNS is provided, `DNS1` and `DNS2` are updated
+
+**AC2: RHEL 8 — ifcfg or NM keyfile**
+Given a RHEL 8 disk image with static IP configured in either ifcfg format or NM keyfile format
+When the handler is invoked
+Then it detects which format is in use (check `/etc/NetworkManager/system-connections/` first, fall back to `/etc/sysconfig/network-scripts/`)
+And updates the correct file via Augeas
+
+**AC3: RHEL 9/10 — NM keyfile format**
+Given a RHEL 9 or 10 disk image with static IP in `/etc/NetworkManager/system-connections/<connection>.nmconnection`
+When the handler is invoked with interface `eth0`, IP `10.0.2.100`, prefix `24`, gateway `10.0.2.1`
+Then the `[ipv4]` section is updated: `address1=10.0.2.100/24,10.0.2.1`, `method=manual`
+And if DNS is provided, `dns=10.0.2.10;10.0.2.11;` is updated
+
+**AC4: Multi-NIC support**
+Given a RHEL disk image with two interfaces (eth0, eth1) each with static IPs
+When the handler is invoked with IP configuration for both interfaces
+Then both interface config files are updated independently
+And interfaces not listed in the annotation set are left untouched
+
+**AC5: Interface name matching**
+Given the annotation specifies interface name `eth0`
+When the handler searches for config files
+Then it matches against the interface name in the config file (`DEVICE=eth0` in ifcfg, or `[connection] interface-name=eth0` in NM keyfile)
+And reports an error if the specified interface is not found in any config file
+
+**AC6: Idempotency**
+Given the handler has already rewritten the IP on a previous run
+When the handler is run again with the same IP configuration
+Then the operation completes successfully without errors (idempotent)
+
+**AC7: Filesystem is cleanly unmounted**
+Given the handler completes (success or failure)
+When guestfish exits
+Then the guest filesystem is properly unmounted and synced
+And no corruption is introduced to the disk image
+
+Technical Notes:
+- Use `guestfish -a <disk> -i` to auto-mount all filesystems from the inspected OS
+- Augeas lenses for ifcfg: `Sysconfig.lns` or built-in ifcfg lens. Path: `/files/etc/sysconfig/network-scripts/ifcfg-<iface>/IPADDR`
+- Augeas lenses for NM keyfile: `Ini.lns` (INI file parser). Path: `/files/etc/NetworkManager/system-connections/<name>.nmconnection/ipv4/address1`
+- RHEL 7 only uses ifcfg. RHEL 8 can use either. RHEL 9+ defaults to NM keyfile. Detection: check if `*.nmconnection` exists for the interface first
+- LVM root filesystems are handled automatically by `guestfish -i` (it runs `vgscan` + `vgchange -ay` internally)
+
+Tasks:
+- [ ] Task 1: Create `build/ip-rewrite/scripts/rhel-handler.sh`
+- [ ] Task 2: Implement ifcfg rewrite path (RHEL 7/8) using guestfish + Augeas
+- [ ] Task 3: Implement NM keyfile rewrite path (RHEL 8/9/10) using guestfish + Augeas
+- [ ] Task 4: Implement config format auto-detection (NM keyfile preferred, ifcfg fallback)
+- [ ] Task 5: Implement optional DNS rewrite for both formats
+- [ ] Task 6: Implement interface name matching and multi-NIC iteration
+
+---
+
+**Story 18.4 — Windows IP Rewrite Handler: hivex-Based**
+
+As a developer,
+I want a handler script that uses guestfish and hivex to rewrite static IP configuration in the Windows registry hive offline,
+So that Windows VMs boot with the correct network configuration after relocation to a new subnet.
+
+Acceptance Criteria:
+
+**AC1: Locate and open the SYSTEM registry hive**
+Given a Windows disk image mounted via guestfish
+When the handler starts
+Then it locates the SYSTEM hive at `<systemroot>/system32/config/system` (path discovered via `virt-inspector` `windows_systemroot`)
+And opens it with hivex in write mode
+
+**AC2: Identify the active ControlSet**
+Given the SYSTEM hive is open
+When the handler reads `Select\Current` (REG_DWORD)
+Then it determines the active ControlSet (typically `ControlSet001`)
+And navigates to `<ControlSet>\Services\Tcpip\Parameters\Interfaces\`
+
+**AC3: Match network adapter by existing IP or description**
+Given the `Interfaces\` key contains multiple `{GUID}` subkeys (one per adapter)
+When the handler searches for the target interface
+Then it matches by: (a) checking the `IPAddress` value for an existing IP in the same subnet, or (b) iterating adapters and selecting the one with `EnableDHCP=0` (static IP configured), or (c) matching the interface name annotation against the adapter description in `<ControlSet>\Enum\` entries
+And reports an error if no matching adapter is found
+
+**AC4: Write IP configuration values**
+Given a matching adapter GUID is found
+When the handler writes the new IP configuration
+Then it sets `EnableDHCP` = `REG_DWORD 0`
+And `IPAddress` = `REG_MULTI_SZ` containing the new IP address
+And `SubnetMask` = `REG_MULTI_SZ` containing the subnet mask derived from prefix length (e.g., prefix 24 → `255.255.255.0`)
+And `DefaultGateway` = `REG_MULTI_SZ` containing the gateway address
+And if DNS is provided, `NameServer` = `REG_SZ` containing comma-separated DNS addresses
+
+**AC5: REG_MULTI_SZ encoding**
+Given the handler writes `IPAddress`, `SubnetMask`, and `DefaultGateway` values
+When encoding as `REG_MULTI_SZ`
+Then values are encoded as UTF-16LE with double null termination (per Windows registry specification)
+And hivex handles the encoding correctly via its API
+
+**AC6: Commit and close the hive**
+Given all values are written
+When the handler commits the hive changes
+Then the SYSTEM hive file on disk is updated atomically
+And no partial writes or corruption occur
+
+**AC7: Multi-NIC support**
+Given a Windows VM with two network adapters
+When IP configuration is provided for both interfaces
+Then both adapters are located and updated independently in the same hive session
+
+**AC8: All supported Windows versions**
+Given a Windows Server 2016, 2019, 2022, or 2025 disk image (or Windows 10/11)
+When the handler runs
+Then the registry path structure is consistent across all versions (`Services\Tcpip\Parameters\Interfaces\{GUID}` is stable)
+And the handler works identically on all supported versions
+
+Technical Notes:
+- hivex Python bindings (`python3-hivex`) provide the cleanest API for this: `hivex.Hivex(path, write=True)`, `h.node_get_child()`, `h.node_set_value()`, `h.commit()`
+- Alternative: `hivexregedit --merge` with a .reg file (shell-scriptable but requires manual REG_MULTI_SZ hex encoding)
+- Prefix-to-subnet-mask conversion: implement in-script (e.g., 24 → 255.255.255.0, 16 → 255.255.0.0)
+- The `ControlSet` alias (`CurrentControlSet`) is runtime-only. Must read `Select\Current` to find the real ControlSet number
+- `guestfish` exposes hivex via `hivex-open`, `hivex-node-get-child`, `hivex-node-set-value`, `hivex-commit` commands — can be done entirely in guestfish without Python
+- For interface matching, a pragmatic first approach: find the `{GUID}` key where `IPAddress` is non-empty and `EnableDHCP`=0. For multi-NIC, match by existing IP subnet or by adapter index order
+
+Tasks:
+- [ ] Task 1: Create `build/ip-rewrite/scripts/windows-handler.sh` (or `.py` if Python is cleaner for hivex)
+- [ ] Task 2: Implement SYSTEM hive location and opening via guestfish
+- [ ] Task 3: Implement active ControlSet discovery
+- [ ] Task 4: Implement adapter GUID matching logic
+- [ ] Task 5: Implement IP/subnet/gateway/DNS value writing with correct REG types
+- [ ] Task 6: Implement prefix-to-subnet-mask conversion
+- [ ] Task 7: Test against synthetic hive fixtures (see Story 18.7)
+
+---
+
+**Story 18.5 — Mutating Webhook: virt-launcher Init Container Injection**
+
+As a developer,
+I want a mutating admission webhook that intercepts virt-launcher pod creation and injects an IP rewrite init container when the appropriate label and annotations are present,
+So that VM disks are modified with the correct network configuration before the VM boots.
+
+Acceptance Criteria:
+
+**AC1: Webhook intercepts virt-launcher pod CREATE**
+Given a `MutatingWebhookConfiguration` targeting `pods` with `CREATE` operations
+When a pod with label `soteria.io/ip-rewrite: "true"` is created
+Then the webhook handler is invoked
+
+**AC2: Init container injection**
+Given the webhook receives a pod with `soteria.io/ip-rewrite: "true"` label and `soteria.io/<iface>-ip` annotations
+When the handler processes the admission request
+Then it injects an init container named `ip-rewrite` before all existing init containers
+And the init container image is configurable (defaulting to `quay.io/raffaelespazzoli/soteria-ip-rewrite:latest`)
+And the init container has environment variables derived from annotations (e.g., `SOTERIA_ETH0_IP`, `SOTERIA_DNS`)
+And the init container has volume mounts for all PVC-backed volumes from the pod spec
+And the init container has `securityContext.capabilities.add: [SYS_ADMIN]`
+
+**AC3: Migration skip**
+Given a pod with both `soteria.io/ip-rewrite: "true"` and `kubevirt.io/migrationJobLabel` labels
+When the webhook receives the admission request
+Then no init container is injected (migration pods must not have their disks modified)
+And the pod is admitted unmodified
+
+**AC4: Label-based filtering via objectSelector**
+Given the `MutatingWebhookConfiguration` has `objectSelector.matchLabels: {"soteria.io/ip-rewrite": "true"}`
+When a pod without the label is created
+Then the webhook is not invoked at all (Kubernetes API server filters it out)
+
+**AC5: Fail-open policy**
+Given the webhook deployment is unavailable (scaled to 0, crashed, etc.)
+When a pod with the IP rewrite label is created
+Then the pod is admitted unmodified (`failurePolicy: Ignore`)
+And no IP rewrite occurs (degraded behavior, not blocking)
+
+**AC6: TLS via cert-manager**
+Given the webhook server requires TLS
+When deployed with cert-manager
+Then a `Certificate` and `Issuer` are created
+And the `MutatingWebhookConfiguration` has `caBundle` injected via `cert-manager.io/inject-ca-from` annotation
+
+**AC7: Go webhook server structure**
+Given the webhook handler at `internal/webhook/iprewrite/handler.go`
+When the server starts
+Then it listens on port 9443 (configurable)
+And serves the mutating webhook at `/mutate-v1-pod`
+And serves a health check at `/healthz`
+
+Technical Notes:
+- Use `sigs.k8s.io/controller-runtime/pkg/webhook/admission` for the webhook handler
+- The webhook server can be standalone (`cmd/ip-rewrite-webhook/main.go`) or integrated into the Soteria manager (configurable)
+- Annotation-to-env-var transformation: `soteria.io/eth0-ip` → `SOTERIA_ETH0_IP` (strip prefix, uppercase, replace `-` with `_`)
+- PVC volume detection: iterate `pod.Spec.Volumes`, select those with `PersistentVolumeClaim` source, mount them into the init container at `/disks/<volumeName>`
+- The init container runs before KubeVirt's own containers, so the disk is available and not yet in use by QEMU
+
+Tasks:
+- [ ] Task 1: Create `cmd/ip-rewrite-webhook/main.go` with webhook server setup
+- [ ] Task 2: Create `internal/webhook/iprewrite/handler.go` with admission handler
+- [ ] Task 3: Implement annotation parsing and env var generation
+- [ ] Task 4: Implement PVC volume mount injection
+- [ ] Task 5: Implement migration detection (skip on `kubevirt.io/migrationJobLabel`)
+- [ ] Task 6: Create `MutatingWebhookConfiguration` manifest with objectSelector and failurePolicy
+
+---
+
+**Story 18.6 — Helm Sub-Chart & SCC**
+
+As a platform engineer,
+I want a standalone Helm chart for the IP rewrite webhook that includes the necessary SecurityContextConstraints,
+So that I can deploy the IP rewrite feature independently of the main Soteria chart.
+
+Acceptance Criteria:
+
+**AC1: Chart structure**
+Given the chart at `charts/soteria-ip-rewrite/`
+When I inspect the directory
+Then it contains `Chart.yaml`, `values.yaml`, `templates/_helpers.tpl`, and template files for all resources
+
+**AC2: Webhook deployment**
+Given the chart is installed with default values
+When the Deployment is rendered
+Then it creates a webhook server with configurable replicas (default 2), resources, and image reference
+
+**AC3: SecurityContextConstraints for init containers**
+Given the chart is installed on OpenShift
+When the SCC template is rendered
+Then it creates an SCC named `soteria-ip-rewrite` that allows `SYS_ADMIN` capability
+And binds to a dedicated ServiceAccount
+And the SCC is the minimum privilege needed for guestfish to operate
+
+**AC4: MutatingWebhookConfiguration**
+Given the chart is installed
+When the MWC template is rendered
+Then it targets pod `CREATE` operations with `objectSelector.matchLabels: {"soteria.io/ip-rewrite": "true"}`
+And `failurePolicy: Ignore` (fail-open)
+And `caBundle` is injected via cert-manager annotation
+
+**AC5: cert-manager integration**
+Given the chart is installed with cert-manager available
+When cert-manager templates are rendered
+Then it creates a self-signed `Issuer` and a `Certificate` for the webhook server
+And the certificate Secret is mounted into the webhook Deployment
+
+**AC6: Namespace isolation**
+Given the chart is installed into a namespace (e.g., `soteria-ip-rewrite`)
+When the webhook runs
+Then it only processes pods in namespaces with the label `soteria.io/ip-rewrite-enabled: "true"` (namespace selector on MWC) or cluster-wide (configurable via `values.yaml`)
+
+**AC7: helm lint passes**
+Given the chart directory
+When I run `helm lint charts/soteria-ip-rewrite/`
+Then no errors are reported
+
+**AC8: Optional integration with main Soteria chart**
+Given the main Soteria chart at `charts/soteria/`
+When `ipRewrite.enabled: true` is set in the main chart's `values.yaml`
+Then the main chart includes the IP rewrite sub-chart as a dependency
+And shared cert-manager issuer is used
+
+Technical Notes:
+- Chart structure: `charts/soteria-ip-rewrite/Chart.yaml`, `values.yaml`, `templates/` with `deployment.yaml`, `service.yaml`, `mwc.yaml`, `scc.yaml`, `certificate.yaml`, `_helpers.tpl`
+- The SCC needs: `allowedCapabilities: [SYS_ADMIN]`, `volumes: [persistentVolumeClaim, secret, configMap, projected, emptyDir]`, `allowHostDirVolumePlugin: false`
+- `values.yaml` defaults: `webhook.replicas: 2`, `webhook.resources: {cpu: 100m, mem: 128Mi}`, `initContainer.image.tag: latest`
+- Namespace selector on MWC: `namespaceSelector.matchLabels: {}` (all namespaces by default, configurable)
+
+Tasks:
+- [ ] Task 1: Create `charts/soteria-ip-rewrite/Chart.yaml` and `values.yaml`
+- [ ] Task 2: Create `templates/_helpers.tpl` with standard helpers
+- [ ] Task 3: Create `templates/deployment.yaml` for webhook server
+- [ ] Task 4: Create `templates/service.yaml` and `templates/mwc.yaml`
+- [ ] Task 5: Create `templates/certificate.yaml` (cert-manager) and `templates/issuer.yaml` (self-signed CA)
+- [ ] Task 6: Create `templates/scc.yaml` with minimum-privilege SCC for init containers
+- [ ] Task 7: Create `templates/serviceaccount.yaml` and `templates/clusterrolebinding.yaml`
+- [ ] Task 8: Add sub-chart dependency to main Soteria chart (conditional on `ipRewrite.enabled`)
+- [ ] Task 9: Run `helm lint` and fix any issues
+
+---
+
+**Story 18.7 — Unit & Integration Tests: Disk Image Fixtures**
+
+As a developer,
+I want unit tests for the webhook handler and integration tests that verify IP rewriting on synthetic RHEL and Windows disk images,
+So that I can confidently refactor and extend the IP rewrite feature.
+
+Acceptance Criteria:
+
+**AC1: Webhook handler unit tests**
+Given the webhook handler in `internal/webhook/iprewrite/handler.go`
+When unit tests run
+Then the following scenarios are covered:
+- Pod with `soteria.io/ip-rewrite: "true"` label + IP annotations → init container injected
+- Pod with `kubevirt.io/migrationJobLabel` → no injection (migration skip)
+- Pod without `soteria.io/ip-rewrite` label → no injection (not matched by webhook, but test the handler directly)
+- Pod with label but no `soteria.io/*-ip` annotations → no-op init container injected (graceful)
+- Multi-NIC: two `*-ip` annotations → two env vars in init container
+- DNS annotation present → `SOTERIA_DNS` env var set
+- PVC volumes correctly shared with init container
+
+**AC2: Annotation parsing unit tests**
+Given the annotation-to-env-var transformation logic
+When unit tests run
+Then `soteria.io/eth0-ip` → `SOTERIA_ETH0_IP` is correct
+And `soteria.io/ens3-ip` → `SOTERIA_ENS3_IP` is correct
+And `soteria.io/my-custom-nic-ip` → `SOTERIA_MY_CUSTOM_NIC_IP` is correct
+And malformed annotations (missing prefix, no `-ip` suffix) are ignored
+
+**AC3: RHEL integration test with synthetic disk image**
+Given a synthetic ext4/xfs disk image containing:
+- Partition table (GPT)
+- ext4 filesystem with `/etc/sysconfig/network-scripts/ifcfg-eth0` (RHEL 7/8 style) pre-populated with IP `10.0.1.50`
+- Or xfs filesystem with `/etc/NetworkManager/system-connections/eth0.nmconnection` (RHEL 9/10 style)
+When the RHEL handler script runs with target IP `10.0.2.100/24;10.0.2.1`
+Then re-reading the disk with guestfish shows the IP is changed to `10.0.2.100`
+And gateway is `10.0.2.1`
+And prefix is `24`
+
+**AC4: Windows integration test with synthetic NTFS disk image**
+Given a synthetic NTFS disk image containing:
+- Partition table (GPT)
+- NTFS filesystem with `Windows/System32/config/SYSTEM` containing a valid registry hive
+- The hive has one adapter GUID under `ControlSet001\Services\Tcpip\Parameters\Interfaces\{GUID}` with `IPAddress=10.0.1.50`, `EnableDHCP=0`
+When the Windows handler script runs with target IP `10.0.2.100/24;10.0.2.1`
+Then re-reading the SYSTEM hive shows `IPAddress` is `10.0.2.100`
+And `SubnetMask` is `255.255.255.0`
+And `DefaultGateway` is `10.0.2.1`
+
+**AC5: Test fixtures are reproducibly created in CI**
+Given the integration test suite
+When CI runs
+Then synthetic disk images are created programmatically (not committed to git as large binaries)
+And created using `guestfish` scripting (e.g., `guestfish -N fs:ext4:200M` for RHEL, `guestfish -N fs:ntfs:200M` for Windows)
+And the SYSTEM hive fixture is created using hivex Python bindings
+
+**AC6: All tests pass in CI without special hardware**
+Given the GitHub Actions CI environment
+When tests run
+Then no nested virtualization or special devices are required
+And guestfish uses the `LIBGUESTFS_BACKEND=direct` mode (no KVM appliance, uses user-mode QEMU)
+
+Technical Notes:
+- `LIBGUESTFS_BACKEND=direct` avoids KVM requirement in CI — uses TCG (software emulation). Slower but works everywhere
+- Synthetic RHEL disk: `guestfish -N fs:ext4:200M` → then write config files into it
+- Synthetic Windows disk: `guestfish -N fs:ntfs:200M` → create `Windows/System32/config/` directory → write a hivex-created SYSTEM hive
+- Test fixture creation scripts live in `test/ip-rewrite/fixtures/`
+- Go unit tests for webhook: standard `_test.go` using `admission.Request` objects (no envtest needed — webhook is pure logic)
+
+Tasks:
+- [ ] Task 1: Write Go unit tests for webhook handler (`internal/webhook/iprewrite/handler_test.go`)
+- [ ] Task 2: Write annotation parsing unit tests
+- [ ] Task 3: Create synthetic RHEL disk fixture creation script (`test/ip-rewrite/fixtures/create-rhel-fixture.sh`)
+- [ ] Task 4: Create synthetic Windows disk fixture creation script (`test/ip-rewrite/fixtures/create-windows-fixture.sh`)
+- [ ] Task 5: Write RHEL integration test (ifcfg format + NM keyfile format)
+- [ ] Task 6: Write Windows integration test (registry hive rewrite)
+- [ ] Task 7: Add integration test target to Makefile (`make test-ip-rewrite`)
+
+---
+
+**Story 18.8 — E2E Validation: VM Boot with Rewritten IP**
+
+As a platform engineer,
+I want end-to-end validation that a VM annotated with a new IP actually boots with that IP on a real OpenShift Virtualization cluster,
+So that I can trust the feature works in production conditions.
+
+Acceptance Criteria:
+
+**AC1: RHEL 9 VM boots with rewritten IP**
+Given an OCP Virt cluster with the IP rewrite webhook deployed
+And a RHEL 9 VM with static IP `10.0.1.50/24`
+When the VM is annotated with `soteria.io/eth0-ip: "10.0.2.100/24;10.0.2.1"` and labeled `soteria.io/ip-rewrite: "true"`
+And the VM is stopped and started (not restarted — ensures a new virt-launcher pod is created)
+Then the virt-launcher pod has an `ip-rewrite` init container that completed successfully
+And the VM boots and the QEMU guest agent reports IP `10.0.2.100`
+
+**AC2: Windows Server 2022 VM boots with rewritten IP**
+Given an OCP Virt cluster with the IP rewrite webhook deployed
+And a Windows Server 2022 VM with static IP `10.0.1.60/24`
+When the VM is annotated with `soteria.io/eth0-ip: "10.0.2.110/24;10.0.2.1"` and labeled `soteria.io/ip-rewrite: "true"`
+And the VM is stopped and started
+Then the init container completed successfully
+And the VM boots and the QEMU guest agent (or `ipconfig` via console) reports IP `10.0.2.110`
+
+**AC3: Live migration does not trigger IP rewrite**
+Given a running VM with the `soteria.io/ip-rewrite: "true"` label and IP annotations
+When a live migration is triggered (via `VirtualMachineInstanceMigration` CR)
+Then the migration target virt-launcher pod does NOT have an `ip-rewrite` init container
+And the migration completes successfully
+
+**AC4: VM without label is unaffected**
+Given a VM without the `soteria.io/ip-rewrite` label
+When the VM is started
+Then the virt-launcher pod has no `ip-rewrite` init container
+And startup time is unaffected (webhook not invoked due to objectSelector)
+
+**AC5: Webhook unavailability does not block VM starts**
+Given the IP rewrite webhook deployment is scaled to 0
+When a VM with `soteria.io/ip-rewrite: "true"` label is started
+Then the VM starts successfully (failurePolicy: Ignore)
+And the IP is NOT rewritten (expected degraded behavior)
+
+Technical Notes:
+- E2E tests require: OCP Virt cluster, pre-created RHEL 9 and Windows Server 2022 VM templates, QEMU guest agent installed
+- Verification via QEMU guest agent: `virtctl guestosinfo <vm>` returns network interfaces with IPs
+- Alternative verification: `virtctl ssh` (RHEL) or `virtctl console` (Windows) to run `ip addr` / `ipconfig`
+- Test timing: Windows boot is slow (~2-5 min), RHEL ~30-60s. Set appropriate timeouts
+- These tests are manual or run in a dedicated E2E environment (not CI — requires licensed Windows image and real OCP cluster)
+
+Tasks:
+- [ ] Task 1: Create RHEL 9 test VM template with static IP and QEMU guest agent
+- [ ] Task 2: Create Windows Server 2022 test VM template with static IP and QEMU guest agent + VirtIO drivers
+- [ ] Task 3: Write E2E test: RHEL IP rewrite and verify via guest agent
+- [ ] Task 4: Write E2E test: Windows IP rewrite and verify via guest agent
+- [ ] Task 5: Write E2E test: migration skip verification
+- [ ] Task 6: Write E2E test: webhook unavailability (failOpen)
+- [ ] Task 7: Document manual E2E test procedure in `test/ip-rewrite/e2e/README.md`
+
+---
+
+**Story 18.9 — CI & Release Pipeline Integration**
+
+As a developer,
+I want the IP rewrite container image built and tested in the unified CI pipeline and published in the release pipeline,
+So that the image follows the same build, test, and publish lifecycle as all other Soteria images.
+
+Acceptance Criteria:
+
+**AC1: CI pipeline builds the image**
+Given the CI pipeline at `.github/workflows/ci.yml`
+When a PR or merge to `main` occurs with changes in `build/ip-rewrite/`, `internal/webhook/iprewrite/`, or `cmd/ip-rewrite-webhook/`
+Then a `build-ip-rewrite` job builds the image using `build/ip-rewrite/Containerfile`
+And the build uses Docker Buildx with GHA cache (`scope=ip-rewrite`)
+And the image is built for `linux/amd64` only (single-arch — all OCP Virt certified guests are x86_64)
+And the image is not pushed (CI only validates the build)
+
+**AC2: Release pipeline builds and pushes the image**
+Given the release pipeline at `.github/workflows/release.yml`
+When a semver tag is pushed
+Then the `build-ip-rewrite` job builds and pushes to `quay.io/raffaelespazzoli/soteria-ip-rewrite:$VERSION`
+And a `latest` tag is pushed for non-prerelease tags
+And the image is single-arch `linux/amd64`
+
+**AC3: Helm sub-chart is packaged and published**
+Given the release pipeline's `helm` job
+When the chart is packaged
+Then `charts/soteria-ip-rewrite/` is also packaged via `helm package`
+And published to the GitHub Pages Helm repo alongside the main Soteria chart
+And the sub-chart version is stamped from the tag
+
+**AC4: CI path filtering**
+Given the CI pipeline
+When only documentation files or unrelated code changes are pushed
+Then the `build-ip-rewrite` job is skipped (path-based filtering)
+
+**AC5: Webhook unit tests run in CI**
+Given the `test` job in CI
+When tests run
+Then `internal/webhook/iprewrite/` tests are included in the standard `make test` target
+And no additional test targets are needed for the webhook Go code
+
+Technical Notes:
+- Follow the existing pattern from `build-soteria`, `build-console-plugin`, `build-standalone-ui` jobs
+- The IP rewrite image is single-arch (`linux/amd64`), unlike the other images which are multi-arch — set `platforms: linux/amd64` explicitly
+- Path filter for CI: `build/ip-rewrite/**`, `internal/webhook/iprewrite/**`, `cmd/ip-rewrite-webhook/**`, `charts/soteria-ip-rewrite/**`
+- The sub-chart needs its own `helm package` + `helm repo index` step in the release pipeline
+
+Tasks:
+- [ ] Task 1: Add `build-ip-rewrite` job to `.github/workflows/ci.yml`
+- [ ] Task 2: Add `build-ip-rewrite` job to `.github/workflows/release.yml` with push to quay.io
+- [ ] Task 3: Update release `helm` job to package and publish `charts/soteria-ip-rewrite/`
+- [ ] Task 4: Verify path filtering skips the job when unrelated files change
+- [ ] Task 5: Verify webhook unit tests are included in `make test`
+
+---
+
+**Story 18.10 — Documentation: Architecture & Usage**
+
+As a user,
+I want documentation pages explaining the IP rewrite feature's architecture and how to use it,
+So that I can understand how the feature works and configure it for my VMs.
+
+Acceptance Criteria:
+
+**AC1: Architecture page**
+Given a new page at `docs/architecture/ip-rewrite.md`
+When published
+Then it explains:
+- The mutating webhook interception mechanism (virt-launcher pod CREATE)
+- Annotation and label contract (with examples)
+- OS detection flow via virt-inspector
+- Linux rewrite path (Augeas for ifcfg and NM keyfile)
+- Windows rewrite path (hivex for registry hive)
+- Migration detection via `kubevirt.io/migrationJobLabel`
+- A Mermaid sequence diagram showing: VM annotation → pod CREATE → API server → webhook → init container injection → guestfish OS detection → handler dispatch → VM boot with new IP
+
+**AC2: Usage guide page**
+Given a new page at `docs/usage/ip-rewrite.md`
+When published
+Then it covers:
+- Prerequisites (cert-manager, OpenShift Virtualization or KubeVirt)
+- Installing the IP rewrite webhook via Helm (`helm install soteria-ip-rewrite charts/soteria-ip-rewrite/`)
+- Annotating a VM for single-NIC IP rewrite (step-by-step with kubectl commands)
+- Annotating a VM for multi-NIC IP rewrite
+- Optional DNS configuration
+- Verifying the rewrite (checking init container logs, QEMU guest agent output)
+- Troubleshooting section (SCC issues, guestfish errors, unsupported OS)
+
+**AC3: Pages follow existing style**
+Given the existing documentation pages in `docs/`
+When the new pages are compared
+Then they follow the same heading structure, admonition style (mkdocs-material), and cross-linking patterns
+And code examples use the same YAML/shell formatting
+
+**AC4: Mermaid diagram renders**
+Given the architecture page includes a Mermaid sequence diagram
+When the mkdocs site is built with `mkdocs build --strict`
+Then the diagram renders correctly in the documentation site
+
+Technical Notes:
+- Follow the code-driven documentation methodology from Epic 17: start from story specs, verify against implemented code
+- Cross-link to `docs/architecture/overview.md` (mention IP rewrite as a standalone add-on)
+- Cross-link to `docs/installation/helm.md` for general Helm setup instructions
+- Use mkdocs-material admonitions: `!!! tip`, `!!! warning`, `!!! note`
+- Mermaid is enabled via `pymdownx.superfences` with custom fence for mermaid in `mkdocs.yml`
+
+Tasks:
+- [ ] Task 1: Create `docs/architecture/ip-rewrite.md` with architecture explanation and Mermaid diagram
+- [ ] Task 2: Create `docs/usage/ip-rewrite.md` with installation, usage, and troubleshooting guide
+- [ ] Task 3: Add cross-links from existing architecture overview page
+- [ ] Task 4: Verify both pages build without errors (`mkdocs build --strict`)
+
+---
+
+**Story 18.11 — Documentation: Reference & Nav Update**
+
+As a user,
+I want a reference page for the IP rewrite annotation contract and Helm values, and the documentation navigation updated to include all IP rewrite pages,
+So that I can quickly look up annotation syntax, supported OSes, and chart configuration.
+
+Acceptance Criteria:
+
+**AC1: Reference page**
+Given a new page at `docs/reference/ip-rewrite.md`
+When published
+Then it contains:
+- Complete annotation and label reference table (name, type, required/optional, format, example)
+- Supported guest OS matrix (OS, versions, architecture, config method, config file paths)
+- SCC requirements and capabilities
+- Helm `values.yaml` reference for `charts/soteria-ip-rewrite/` (all configurable parameters with defaults and descriptions)
+- Known limitations and deferred features (IPv6, DHCP, hostname, ARM64)
+
+**AC2: mkdocs.yml navigation updated**
+Given the `mkdocs.yml` file
+When the `nav` section is updated
+Then the IP rewrite pages appear in the appropriate sections:
+- `Architecture` → `IP Rewrite` (after existing architecture pages)
+- `Usage` → `IP Rewrite` (after existing usage pages)
+- `Reference` → `IP Rewrite` (after existing reference pages)
+
+**AC3: Landing page updated**
+Given the landing page at `docs/index.md`
+When the feature list or link map is reviewed
+Then IP rewrite is mentioned as a standalone add-on feature
+And links to the architecture and usage pages are included
+
+**AC4: Docs build clean**
+Given all new and modified documentation files
+When `mkdocs build --strict` runs
+Then the build completes with zero warnings and zero errors
+
+Technical Notes:
+- Reference page values.yaml documentation: read `charts/soteria-ip-rewrite/values.yaml` and document each parameter
+- Use a table for the annotation reference, matching the style in `docs/reference/api/drplan.md`
+- The nav structure in `mkdocs.yml` follows the existing pattern: top-level sections → sub-pages
+
+Tasks:
+- [ ] Task 1: Create `docs/reference/ip-rewrite.md` with annotation reference, OS matrix, SCC, and Helm values
+- [ ] Task 2: Update `mkdocs.yml` nav to include all three IP rewrite pages
+- [ ] Task 3: Update `docs/index.md` to mention IP rewrite feature
+- [ ] Task 4: Verify `mkdocs build --strict` passes
