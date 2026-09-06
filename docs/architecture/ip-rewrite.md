@@ -20,15 +20,21 @@ Soteria's own DRExecution workflow.
 ## Annotation and Label Contract
 
 The IP rewrite feature is activated by a **label** and configured through
-**annotations** on VirtualMachine (or VirtualMachineInstance) resources.
-KubeVirt propagates labels and annotations to the virt-launcher pod, where the
-webhook intercepts them.
+**annotations** on VirtualMachine resources. KubeVirt propagates VM metadata
+labels and annotations down to the virt-launcher pod, where the webhook
+intercepts them.
 
 ### Label (Opt-In and Webhook Filter)
 
+The opt-in label must be placed on the VM's **pod template** so that KubeVirt
+stamps it onto the virt-launcher pod:
+
 ```yaml
-labels:
-  soteria.io/ip-rewrite: "true"
+spec:
+  template:
+    metadata:
+      labels:
+        soteria.io/ip-rewrite: "true"
 ```
 
 This label serves two purposes:
@@ -41,6 +47,9 @@ This label serves two purposes:
    rewriting.
 
 ### Annotations (IP Configuration)
+
+IP annotations go on the VM's top-level `metadata.annotations`. KubeVirt
+propagates VM-level annotations to the VMI and then to the virt-launcher pod.
 
 Each annotation configures a single network interface:
 
@@ -72,10 +81,13 @@ configuration is left untouched on the guest.
     kind: VirtualMachine
     metadata:
       name: my-vm
-      labels:
-        soteria.io/ip-rewrite: "true"
       annotations:
         soteria.io/eth0-ip: "10.0.2.100/24;10.0.2.1"
+    spec:
+      template:
+        metadata:
+          labels:
+            soteria.io/ip-rewrite: "true"
     ```
 
 === "Multi-NIC"
@@ -85,11 +97,14 @@ configuration is left untouched on the guest.
     kind: VirtualMachine
     metadata:
       name: my-vm
-      labels:
-        soteria.io/ip-rewrite: "true"
       annotations:
         soteria.io/eth0-ip: "10.0.2.100/24;10.0.2.1"
         soteria.io/eth1-ip: "192.168.1.50/16;192.168.1.1"
+    spec:
+      template:
+        metadata:
+          labels:
+            soteria.io/ip-rewrite: "true"
     ```
 
 === "With DNS"
@@ -99,12 +114,15 @@ configuration is left untouched on the guest.
     kind: VirtualMachine
     metadata:
       name: my-vm
-      labels:
-        soteria.io/ip-rewrite: "true"
       annotations:
         soteria.io/eth0-ip: "10.0.2.100/24;10.0.2.1"
         soteria.io/eth1-ip: "192.168.1.50/16;192.168.1.1"
         soteria.io/dns: "10.0.2.10,10.0.2.11"
+    spec:
+      template:
+        metadata:
+          labels:
+            soteria.io/ip-rewrite: "true"
     ```
 
 ## How It Works
@@ -132,9 +150,9 @@ sequenceDiagram
   KubeAPI->>KubeAPI: objectSelector matches<br/>soteria.io/ip-rewrite: "true"
   KubeAPI->>Webhook: Admission request (pod CREATE)
 
-  Webhook->>Webhook: Check for migrationJobLabel
+  Webhook->>Webhook: Check for kubevirt.io/migrationJobUID
   Webhook->>Webhook: Parse annotations → env vars
-  Webhook->>Webhook: Detect PVC volumes
+  Webhook->>Webhook: Detect PVC volumes (filesystem + block)
   Webhook->>Webhook: Build init container spec
 
   Webhook-->>KubeAPI: JSON patch (inject init container)
@@ -176,8 +194,8 @@ controller-manager.
    container: `soteria.io/eth0-ip` becomes `SOTERIA_ETH0_IP`,
    `soteria.io/dns` becomes `SOTERIA_DNS`.
 5. The handler identifies all PVC-backed volumes in the pod spec and creates
-   corresponding volume mounts at `/disks/<volumeName>` in the init
-   container.
+   corresponding volume mounts at `/disks/<volumeName>` for filesystem-mode
+   PVCs, and volume devices at `/disks/<volumeName>` for block-mode PVCs.
 6. The init container is prepended before all existing init containers so it
    runs first, before QEMU starts.
 7. The handler returns a JSON patch that adds the init container to the pod
@@ -187,10 +205,11 @@ controller-manager.
 
 - **Image:** Configurable via the `--init-container-image` flag on the webhook
   server (default: `quay.io/raffaelespazzoli/soteria-ip-rewrite:latest`)
-- **Security context:** `SYS_ADMIN` capability is required for the guestfish
-  appliance to function inside a container
-- **Volume mounts:** All PVC-backed volumes are mounted under `/disks/` so
-  the entrypoint script can scan them
+- **Security context:** Runs as root (`runAsUser: 0`, `runAsNonRoot: false`)
+  with `allowPrivilegeEscalation: true` and the `SYS_ADMIN` capability —
+  required for the guestfish appliance to function inside a container
+- **Volume mounts:** Filesystem-mode PVC volumes are mounted under `/disks/`;
+  block-mode PVC volumes are exposed as device nodes under `/disks/`
 
 ### Fail-Open Policy
 
@@ -207,25 +226,27 @@ rewriting.
 
 ### OS Detection
 
-After the init container starts, the entrypoint script
-(`/scripts/entrypoint.sh`) performs OS detection:
+After the init container starts, the entrypoint performs OS detection:
 
 1. **Environment variable check** — If no `SOTERIA_*_IP` variables are set,
    the script exits immediately with code 0 (no-op). The virt-launcher
    proceeds normally.
 
-2. **Disk scanning** — The script iterates over disk images under `/disks/*/`
-   mount points, running `virt-inspector --xml -a <disk>` on each one.
-   `virt-inspector` uses the libguestfs appliance to analyze the disk image
-   and returns XML metadata about the operating system.
+2. **Disk scanning** — The entrypoint iterates over disk images and block
+   devices under `/disks/`, running
+   `virt-inspector --xml --no-applications --no-icon -a <disk>` on each
+   candidate. `virt-inspector` uses the libguestfs appliance to analyze the
+   disk and returns XML metadata about the operating system.
 
 3. **Boot disk identification** — A disk with an `<operatingsystem>` element
-   in the virt-inspector output is the boot disk. Data disks (no OS) are
-   logged and skipped.
+   in the virt-inspector output is a boot disk candidate. Data disks (no OS)
+   are logged and skipped. When multiple disks contain an OS, the volume
+   named `rootdisk` is preferred; otherwise the first candidate
+   alphabetically is selected.
 
-4. **OS family and version extraction** — The script extracts the OS family
-   (`linux` or `windows`), distribution (`rhel`, `windows`), and version
-   from the XML output using `xmllint --xpath`.
+4. **OS family and version extraction** — The entrypoint extracts the OS
+   family (`linux` or `windows`), distribution (`rhel`, `windows`), and
+   major/minor version from the XML output using `xmllint --xpath`.
 
 5. **Dispatch** — Based on the detected OS:
     - **RHEL** (any version 7–10) → dispatches to the RHEL handler
@@ -301,9 +322,8 @@ HKLM\SYSTEM\<ControlSet>\Services\Tcpip\Parameters\Interfaces\<AdapterGUID>
 
 ### Migration Detection
 
-The webhook checks for the `kubevirt.io/migrationJobLabel` label on incoming
-pods. This label is set exclusively by KubeVirt's `RenderMigrationManifest`
-function on pods created during live migration.
+The webhook checks for the `kubevirt.io/migrationJobUID` label on incoming
+pods. This label is set by KubeVirt on pods created during live migration.
 
 When this label is detected, the webhook returns an `Allowed` response
 immediately — no init container is injected. This is critical because:
@@ -321,10 +341,7 @@ immediately — no init container is injected. This is critical because:
 |---|---|---|
 | **Webhook Server** | `cmd/ip-rewrite-webhook` | Standalone Go binary serving the mutating admission webhook on port 9443. Configured via flags (`--init-container-image`, `--cert-dir`). |
 | **Webhook Handler** | `internal/webhook/iprewrite` | Core admission logic: annotation parsing, migration detection, init container construction, JSON patch generation. |
-| **Init Container Image** | `build/ip-rewrite/Containerfile` | UBI9-based image (~500–800 MB) containing `guestfs-tools`, `augeas`, `hivex`, and `libguestfs-winsupport`. |
-| **Entrypoint Script** | `build/ip-rewrite/scripts/entrypoint.sh` | Shell script that parses environment variables, scans disks with `virt-inspector`, detects the OS, and dispatches to the appropriate handler. |
-| **RHEL Handler** | `build/ip-rewrite/scripts/rhel-handler.sh` | Augeas-based script for rewriting network configuration on RHEL 7/8/9/10 guests. |
-| **Windows Handler** | `build/ip-rewrite/scripts/windows-handler.sh` | hivex-based script for rewriting registry hive on Windows guests. |
+| **Init Container Image** | `build/ip-rewrite/Containerfile` | CentOS Stream 9-based image containing `guestfs-tools`, `augeas`, `hivex`, `perl-hivex`, and `libguestfs-winsupport`. |
 | **MWC Manifest** | `config/ip-rewrite-webhook` | Reference `MutatingWebhookConfiguration` with `objectSelector`, `failurePolicy: Ignore`, and cert-manager CA injection annotation. |
 
 ## Supported Guest Operating Systems

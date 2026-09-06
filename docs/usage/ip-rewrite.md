@@ -22,6 +22,10 @@ on the target network.
       targets virt-launcher pods created by KubeVirt.
     - **PVC-backed VM disks** — The init container modifies guest filesystems
       on PVC volumes. Container disks are not supported.
+    - **SecurityContextConstraints (OpenShift)** — The init container runs as
+      root with `SYS_ADMIN` capability. On OpenShift, an appropriate SCC must
+      be bound to the virt-launcher service account. The Helm chart includes
+      the required SCC.
 
 ---
 
@@ -35,13 +39,13 @@ helm install soteria-ip-rewrite charts/soteria-ip-rewrite/ \
   --create-namespace
 ```
 
-!!! tip "Custom image tag"
-    To specify a particular init container image version:
+!!! tip "Custom values"
+    Override chart defaults with `--set` or a values file:
     ```bash
     helm install soteria-ip-rewrite charts/soteria-ip-rewrite/ \
       --namespace soteria \
       --create-namespace \
-      --set webhook.initContainerImage=quay.io/raffaelespazzoli/soteria-ip-rewrite:v0.1.0
+      -f my-values.yaml
     ```
 
 For general Helm installation guidance, see
@@ -57,13 +61,25 @@ independent of the main Soteria chart and can be installed standalone.
 Follow these steps to rewrite the IP address on a VM with a single network
 interface.
 
-**Step 1 — Add the opt-in label:**
+**Step 1 — Add the opt-in label to the pod template:**
 
 ```bash
-kubectl label vm <vm-name> soteria.io/ip-rewrite=true
+kubectl patch vm <vm-name> --type merge -p '
+spec:
+  template:
+    metadata:
+      labels:
+        soteria.io/ip-rewrite: "true"
+'
 ```
 
-**Step 2 — Add the IP annotation:**
+!!! note "Label placement"
+    The `soteria.io/ip-rewrite` label must be on the VM's
+    `spec.template.metadata.labels` so that KubeVirt stamps it onto the
+    virt-launcher pod. The webhook's `objectSelector` matches this label on
+    the pod.
+
+**Step 2 — Add the IP annotation to the VM:**
 
 ```bash
 kubectl annotate vm <vm-name> \
@@ -99,8 +115,6 @@ See the [Verifying the Rewrite](#verifying-the-rewrite) section below.
 For VMs with multiple network interfaces, add one annotation per interface:
 
 ```bash
-kubectl label vm <vm-name> soteria.io/ip-rewrite=true
-
 kubectl annotate vm <vm-name> \
   soteria.io/eth0-ip="10.0.2.100/24;10.0.2.1" \
   soteria.io/eth1-ip="192.168.1.50/16;192.168.1.1"
@@ -119,8 +133,6 @@ apiVersion: kubevirt.io/v1
 kind: VirtualMachine
 metadata:
   name: my-app-vm
-  labels:
-    soteria.io/ip-rewrite: "true"
   annotations:
     soteria.io/eth0-ip: "10.0.2.100/24;10.0.2.1"
     soteria.io/eth1-ip: "192.168.1.50/16;192.168.1.1"
@@ -143,6 +155,13 @@ spec:
           persistentVolumeClaim:
             claimName: my-app-rootdisk
 ```
+
+!!! note "Annotation and label placement"
+    - **IP annotations** (`soteria.io/*-ip`, `soteria.io/dns`) go on the VM's
+      top-level `metadata.annotations`. KubeVirt propagates them to the pod.
+    - **Opt-in label** (`soteria.io/ip-rewrite`) goes on
+      `spec.template.metadata.labels` so it reaches the pod's labels where the
+      webhook's `objectSelector` matches it.
 
 ### DNS Configuration
 
@@ -178,43 +197,68 @@ kubectl logs <virt-launcher-pod> -c ip-rewrite
 A successful run produces output similar to:
 
 ```
-[INFO] Parsing IP configuration from environment variables
-[INFO] Found interface eth0: 10.0.2.100/24 gateway 10.0.2.1
-[INFO] Scanning disks for operating system...
-[INFO] Detected OS: Red Hat Enterprise Linux release 9.4 (rhel 9.4)
-[INFO] Dispatching to RHEL handler
-[INFO] Rewriting network configuration for eth0
-[INFO] IP rewrite completed successfully
+[INFO]  2026-09-06T12:00:00Z IP rewrite entrypoint starting
+[INFO]  2026-09-06T12:00:00Z Found 1 IP configuration variable(s)
+[INFO]  2026-09-06T12:00:00Z Parsed interface eth0: ip=10.0.2.100 prefix=24 gateway=10.0.2.1
+[INFO]  2026-09-06T12:00:00Z No DNS configuration provided
+[INFO]  2026-09-06T12:00:00Z Scanning disks for operating system...
+[INFO]  2026-09-06T12:00:01Z Found 1 disk candidate(s)
+[INFO]  2026-09-06T12:00:02Z Detected OS: family=linux distro=rhel version=9.4
+[INFO]  2026-09-06T12:00:02Z Product name: Red Hat Enterprise Linux release 9.4 (Plow)
+[INFO]  2026-09-06T12:00:02Z Dispatching to RHEL handler
+[INFO]  2026-09-06T12:00:03Z RHEL handler completed successfully
+[INFO]  2026-09-06T12:00:03Z IP rewrite entrypoint completed successfully
 ```
 
-### Checking Guest Agent Output
+### Checking VM Interface IPs
 
-If the QEMU guest agent is installed in the VM, verify the IP address from
-outside the VM:
-
-```bash
-virtctl guestosinfo <vm-name>
-```
-
-The output includes the guest's network interfaces and their configured IP
-addresses. Confirm the IP matches the value you set in the annotation.
-
-You can also check with `kubectl`:
+After the VM boots, verify the IP address from outside the VM using the
+VirtualMachineInstance status:
 
 ```bash
 kubectl get vmi <vm-name> -o jsonpath='{.status.interfaces}' | jq .
 ```
 
+The output lists the guest's network interfaces and their configured IP
+addresses. Confirm the IP matches the value you set in the annotation.
+
 ---
 
 ## Troubleshooting
 
+### IP Rewrite Failure Blocks VM Boot
+
+The init container runs with `set -euo pipefail`. Any error — unsupported OS,
+malformed annotation value, disk inspection failure — causes the init
+container to exit with a non-zero code. Since Kubernetes does not start
+subsequent containers (including the virt-launcher) until all init containers
+succeed, **a failed IP rewrite prevents the VM from booting**.
+
+To diagnose:
+
+```bash
+# Check init container status
+kubectl describe pod <virt-launcher-pod> | grep -A5 "ip-rewrite"
+
+# View init container logs for the error
+kubectl logs <virt-launcher-pod> -c ip-rewrite
+```
+
+!!! tip "Removing the rewrite to unblock a VM"
+    If the IP rewrite is failing and you need the VM to start immediately,
+    remove the opt-in label from the pod template:
+    ```bash
+    kubectl patch vm <vm-name> --type json \
+      -p '[{"op":"remove","path":"/spec/template/metadata/labels/soteria.io~1ip-rewrite"}]'
+    virtctl stop <vm-name> && virtctl start <vm-name>
+    ```
+
 ### SCC Issues (OpenShift)
 
-!!! warning "SYS_ADMIN capability required"
-    The init container requires the `SYS_ADMIN` Linux capability for the
-    guestfish appliance to function. On OpenShift, this requires an
-    appropriate SecurityContextConstraints (SCC) binding.
+!!! warning "Privileged security context required"
+    The init container runs as root (`runAsUser: 0`) with `SYS_ADMIN`
+    capability and `allowPrivilegeEscalation: true`. On OpenShift, this
+    requires an appropriate SecurityContextConstraints (SCC) binding.
 
 If the init container fails to start with a permission error:
 
@@ -240,15 +284,16 @@ Common guestfish issues:
 |---------|-------|----------|
 | `libguestfs: error: /dev/kvm not found` | KVM device not available in the init container | Verify the node supports KVM; some container runtimes restrict `/dev/kvm` access |
 | `libguestfs: error: supermin appliance failed` | Appliance build failure | Check disk space and memory limits on the init container |
-| `virt-inspector: no operating systems found` | Disk does not contain a recognizable OS | Verify the PVC contains a boot disk with a supported OS, not a data disk |
+| `No disk images or block devices found under /disks/` | No PVC volumes mounted | Verify the VM uses PVC-backed disks, not container disks |
+| `No operating system detected on any disk` | Disk does not contain a recognizable OS | Verify the PVC contains a boot disk with a supported OS, not a data disk |
 
 ### Unsupported Guest OS
 
 If the init container logs show:
 
 ```
-[ERROR] Unsupported operating system: <detected-os>
-[ERROR] Supported: RHEL 7/8/9/10, Windows Server 2016/2019/2022/2025, Windows 10/11
+[ERROR] 2026-09-06T12:00:02Z Unsupported operating system: family=<name> distro=<distro>
+[ERROR] 2026-09-06T12:00:02Z Supported operating systems: RHEL 7/8/9/10, Windows Server 2016/2019/2022/2025, Windows 10/11
 ```
 
 The VM's guest OS is not in the supported list. See the
@@ -282,9 +327,25 @@ kubectl get mutatingwebhookconfigurations soteria-ip-rewrite
 
 If you notice that IP rewrite does not run on a virt-launcher pod created
 during live migration, this is **expected behavior**. The webhook detects
-migration pods by the `kubevirt.io/migrationJobLabel` label and deliberately
+migration pods by the `kubevirt.io/migrationJobUID` label and deliberately
 skips init container injection.
 
 Migration pods run a target virt-launcher that takes over the running VM from
 the source — modifying the disk during migration would corrupt the VM's
 filesystem. Only pods created for initial VM boot receive the init container.
+
+---
+
+## Known Limitations
+
+- **IPv6** — Not supported. Only IPv4 addresses are handled.
+- **DHCP-to-static** — Not supported. The source VM must already have a
+  static IP configuration.
+- **Hostname rewrite** — Not supported. Only IP, gateway, and DNS are
+  modified.
+- **ARM64 guests** — Not supported. The init container image is x86_64 only.
+- **Non-RHEL Linux** — Only RHEL 7–10 is supported. Ubuntu, Fedora, SUSE,
+  and other distributions are not handled.
+
+For the full supported OS matrix, see the
+[architecture page](../architecture/ip-rewrite.md#supported-guest-operating-systems).
