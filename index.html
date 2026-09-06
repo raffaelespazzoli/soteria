@@ -810,6 +810,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="architecture/ip-rewrite/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IP Rewrite
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -989,6 +1017,34 @@
   
   
   
+    <li class="md-nav__item">
+      <a href="usage/ip-rewrite/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IP Rewrite
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
     
     
     
@@ -1002,10 +1058,10 @@
         
           
         
-        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_5" >
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_6" >
         
           
-          <label class="md-nav__link" for="__nav_4_5" id="__nav_4_5_label" tabindex="0">
+          <label class="md-nav__link" for="__nav_4_6" id="__nav_4_6_label" tabindex="0">
             
   
   
@@ -1023,8 +1079,8 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_5_label" aria-expanded="false">
-          <label class="md-nav__title" for="__nav_4_5">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_6">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1317,6 +1373,34 @@
     
   
     Helm Values
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="reference/ip-rewrite/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IP Rewrite
   
 
     
@@ -1628,6 +1712,12 @@
 <hr />
 <p>A PatternFly 6 console plugin provides a DR dashboard, plan detail views, and a live execution monitor — all integrated into the OpenShift web console.</p>
 </li>
+<li>
+<p><span class="twemoji lg middle"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M15 9h-2V7h2zm7 11v2h-7a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1H2v-2h7a1 1 0 0 1 1-1h1v-2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-4v2h1a1 1 0 0 1 1 1zM9 5H7v10h2zm2 10h2v-4h2a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-4z"/></svg></span> <strong>Guest IP Rewrite</strong></p>
+<hr />
+<p>Standalone mutating webhook that rewrites VM network configuration offline before boot. Supports RHEL 7–10 and Windows Server 2016–2025 via guestfs-tools.</p>
+<p><a href="architecture/ip-rewrite/"><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13.22 19.03a.75.75 0 0 1 0-1.06L18.19 13H3.75a.75.75 0 0 1 0-1.5h14.44l-4.97-4.97a.749.749 0 0 1 .326-1.275.75.75 0 0 1 .734.215l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0"/></svg></span> Architecture</a> · <a href="usage/ip-rewrite/"><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13.22 19.03a.75.75 0 0 1 0-1.06L18.19 13H3.75a.75.75 0 0 1 0-1.5h14.44l-4.97-4.97a.749.749 0 0 1 .326-1.275.75.75 0 0 1 .734.215l6.25 6.25a.75.75 0 0 1 0 1.06l-6.25 6.25a.75.75 0 0 1-1.06 0"/></svg></span> Usage</a></p>
+</li>
 </ul>
 </div>
 <hr />
@@ -1714,6 +1804,10 @@
 <td><strong>Metrics</strong></td>
 <td>Prometheus <code>soteria_*</code> metrics for plan counts, VM totals, failover durations</td>
 </tr>
+<tr>
+<td><strong>IP Rewrite Webhook</strong></td>
+<td>Standalone mutating webhook that injects an init container into virt-launcher pods for offline guest filesystem IP reconfiguration. Supports RHEL (Augeas) and Windows (hivex).</td>
+</tr>
 </tbody>
 </table>
 <hr />
@@ -1754,6 +1848,10 @@
 <tr>
 <td><a href="contributing/dev-setup/"><strong>Contributing</strong></a></td>
 <td>Developer setup, writing storage drivers</td>
+</tr>
+<tr>
+<td><a href="architecture/ip-rewrite/"><strong>IP Rewrite</strong></a></td>
+<td>Standalone guest filesystem IP rewrite — architecture, usage guide, annotation &amp; Helm reference</td>
 </tr>
 </tbody>
 </table>

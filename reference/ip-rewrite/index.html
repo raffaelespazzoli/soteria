@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://raffaelespazzoli.github.io/soteria/reference/helm-values/">
+        <link rel="canonical" href="https://raffaelespazzoli.github.io/soteria/reference/ip-rewrite/">
       
       
-        <link rel="prev" href="../api/drexecution/">
+        <link rel="prev" href="../helm-values/">
       
       
-        <link rel="next" href="../ip-rewrite/">
+        <link rel="next" href="../../contributing/dev-setup/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>Helm Values - Soteria</title>
+        <title>IP Rewrite - Soteria</title>
       
     
     
@@ -78,7 +78,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#helm-values-reference" class="md-skip">
+        <a href="#ip-rewrite-reference" class="md-skip">
           Skip to content
         </a>
       
@@ -114,7 +114,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Helm Values
+              IP Rewrite
             
           </span>
         </div>
@@ -1232,6 +1232,34 @@
                 
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../helm-values/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Helm Values
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
     
   
   
@@ -1251,7 +1279,7 @@
   <span class="md-ellipsis">
     
   
-    Helm Values
+    IP Rewrite
   
 
     
@@ -1269,7 +1297,7 @@
   <span class="md-ellipsis">
     
   
-    Helm Values
+    IP Rewrite
   
 
     
@@ -1295,6 +1323,151 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#annotations-and-labels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Annotations and Labels
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Annotations and Labels">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#label" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Label
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ip-annotations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        IP Annotations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dns-annotation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DNS Annotation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#migration-skip-label" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Migration Skip Label
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#supported-guest-operating-systems" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Supported Guest Operating Systems
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#securitycontextconstraints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SecurityContextConstraints
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SecurityContextConstraints">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#required-capabilities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Required Capabilities
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scc-volume-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SCC Volume Types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#host-access-flags" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Host Access Flags
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#binding-mechanism" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Binding Mechanism
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#helm-values-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Helm Values Reference
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Helm Values Reference">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
   <a href="#global" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1304,35 +1477,12 @@
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#site" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Site
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#controller" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Controller
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Controller">
-      <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#image" class="md-nav__link">
+  <a href="#webhook" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Image
+        Webhook
       
     </span>
   </a>
@@ -1340,10 +1490,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#replicas-resources" class="md-nav__link">
+  <a href="#init-container" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Replicas &amp; Resources
+        Init Container
       
     </span>
   </a>
@@ -1351,44 +1501,6 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#leader-election" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Leader Election
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#api-server" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        API Server
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#service-account" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Service Account
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#tls" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1398,24 +1510,12 @@
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#scylladb" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        ScyllaDB
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="ScyllaDB">
-      <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#mode" class="md-nav__link">
+  <a href="#securitycontextconstraints_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Mode
+        SecurityContextConstraints
       
     </span>
   </a>
@@ -1423,43 +1523,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#common-fields" class="md-nav__link">
+  <a href="#webhook-configuration" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Common Fields
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#managed-mode" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Managed Mode
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#external-mode" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        External Mode
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#scylladb-conditional-behavior" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        ScyllaDB Conditional Behavior
+        Webhook Configuration
       
     </span>
   </a>
@@ -1472,74 +1539,13 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#networking" class="md-nav__link">
+  <a href="#known-limitations" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Networking
+        Known Limitations
       
     </span>
   </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#ui" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        UI
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="UI">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#mode_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Mode
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#console-plugin" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Console Plugin
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#standalone-ui" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Standalone UI
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#ui-conditional-behavior" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        UI Conditional Behavior
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
@@ -1547,34 +1553,6 @@
   
 </nav>
       
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../ip-rewrite/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    IP Rewrite
-  
-
-    
-  </span>
-  
-  
-
-      </a>
     </li>
   
 
@@ -1731,6 +1709,151 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#annotations-and-labels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Annotations and Labels
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Annotations and Labels">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#label" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Label
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ip-annotations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        IP Annotations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dns-annotation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DNS Annotation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#migration-skip-label" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Migration Skip Label
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#supported-guest-operating-systems" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Supported Guest Operating Systems
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#securitycontextconstraints" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SecurityContextConstraints
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="SecurityContextConstraints">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#required-capabilities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Required Capabilities
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#scc-volume-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        SCC Volume Types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#host-access-flags" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Host Access Flags
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#binding-mechanism" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Binding Mechanism
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#helm-values-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Helm Values Reference
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Helm Values Reference">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
   <a href="#global" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1740,35 +1863,12 @@
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#site" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Site
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#controller" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Controller
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Controller">
-      <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#image" class="md-nav__link">
+  <a href="#webhook" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Image
+        Webhook
       
     </span>
   </a>
@@ -1776,10 +1876,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#replicas-resources" class="md-nav__link">
+  <a href="#init-container" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Replicas &amp; Resources
+        Init Container
       
     </span>
   </a>
@@ -1787,44 +1887,6 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#leader-election" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Leader Election
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#api-server" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        API Server
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#service-account" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Service Account
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#tls" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1834,24 +1896,12 @@
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
-  <a href="#scylladb" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        ScyllaDB
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="ScyllaDB">
-      <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#mode" class="md-nav__link">
+  <a href="#securitycontextconstraints_1" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Mode
+        SecurityContextConstraints
       
     </span>
   </a>
@@ -1859,43 +1909,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#common-fields" class="md-nav__link">
+  <a href="#webhook-configuration" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Common Fields
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#managed-mode" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Managed Mode
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#external-mode" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        External Mode
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#scylladb-conditional-behavior" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        ScyllaDB Conditional Behavior
+        Webhook Configuration
       
     </span>
   </a>
@@ -1908,74 +1925,13 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#networking" class="md-nav__link">
+  <a href="#known-limitations" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Networking
+        Known Limitations
       
     </span>
   </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#ui" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        UI
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="UI">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#mode_1" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Mode
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#console-plugin" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Console Plugin
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#standalone-ui" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Standalone UI
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#ui-conditional-behavior" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        UI Conditional Behavior
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
@@ -1999,14 +1955,352 @@
   
 
 
-<h1 id="helm-values-reference">Helm Values Reference<a class="headerlink" href="#helm-values-reference" title="Permanent link">&para;</a></h1>
-<p>Complete reference for every configurable parameter in the Soteria Helm chart
-(<code>charts/soteria/values.yaml</code>).</p>
-<p>For step-by-step installation instructions, see the
-<a href="../../installation/helm/">Helm Installation</a> guide.</p>
+<h1 id="ip-rewrite-reference">IP Rewrite Reference<a class="headerlink" href="#ip-rewrite-reference" title="Permanent link">&para;</a></h1>
+<p>Quick-lookup reference for the IP rewrite feature — annotations, labels,
+supported guest operating systems, SecurityContextConstraints, and Helm chart
+configuration.</p>
+<p>For architecture details, see the
+<a href="../../architecture/ip-rewrite/">IP Rewrite Architecture</a> page. For
+step-by-step usage instructions, see the
+<a href="../../usage/ip-rewrite/">IP Rewrite Usage Guide</a>.</p>
 <hr />
-<h2 id="global">Global<a class="headerlink" href="#global" title="Permanent link">&para;</a></h2>
-<p>Top-level overrides that control Kubernetes resource naming.</p>
+<h2 id="annotations-and-labels">Annotations and Labels<a class="headerlink" href="#annotations-and-labels" title="Permanent link">&para;</a></h2>
+<h3 id="label">Label<a class="headerlink" href="#label" title="Permanent link">&para;</a></h3>
+<p>The opt-in label activates webhook interception for a VM's virt-launcher pod.</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Value</th>
+<th>Applies To</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>soteria.io/ip-rewrite</code></td>
+<td><code>"true"</code></td>
+<td>VirtualMachine <code>spec.template.metadata.labels</code></td>
+<td>Opt-in label. Enables webhook interception via <code>objectSelector</code> on the <code>MutatingWebhookConfiguration</code>. KubeVirt propagates this label from the VM pod template to the virt-launcher pod.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="ip-annotations">IP Annotations<a class="headerlink" href="#ip-annotations" title="Permanent link">&para;</a></h3>
+<p>One annotation per network interface, placed on the VM's <strong>pod template</strong> at
+<code>spec.template.metadata.annotations</code>. KubeVirt copies
+<code>spec.template.metadata</code> onto the VMI → virt-launcher pod; the webhook reads
+these annotations from <code>pod.Annotations</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Required</th>
+<th>Format</th>
+<th>Example</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>soteria.io/&lt;interface&gt;-ip</code></td>
+<td>Annotation</td>
+<td><strong>Yes</strong> (at least one)</td>
+<td><code>&lt;address&gt;/&lt;prefix&gt;;&lt;gateway&gt;</code></td>
+<td><code>soteria.io/eth0-ip: "10.0.2.100/24;10.0.2.1"</code></td>
+<td>Per-interface IP configuration. <code>&lt;interface&gt;</code> is the guest OS NIC name (e.g., <code>eth0</code>, <code>eth1</code>). The webhook transforms this into the environment variable <code>SOTERIA_&lt;INTERFACE&gt;_IP</code> for the init container. Must be placed on <code>spec.template.metadata.annotations</code>.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="dns-annotation">DNS Annotation<a class="headerlink" href="#dns-annotation" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Required</th>
+<th>Format</th>
+<th>Example</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>soteria.io/dns</code></td>
+<td>Annotation</td>
+<td>No</td>
+<td>Comma-separated IPs</td>
+<td><code>soteria.io/dns: "10.0.2.10,10.0.2.11"</code></td>
+<td>Global DNS servers applied to all interfaces. The webhook transforms this into <code>SOTERIA_DNS</code>. When absent, the guest's existing DNS configuration is left untouched. Must be placed on <code>spec.template.metadata.annotations</code> alongside the IP annotations.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="migration-skip-label">Migration Skip Label<a class="headerlink" href="#migration-skip-label" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Value</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>kubevirt.io/migrationJobUID</code></td>
+<td><em>(set by KubeVirt)</em></td>
+<td>When this label is present on a pod, the webhook skips init container injection. Migration pods must not have their disks modified — the VM is already running with the correct IP.</td>
+</tr>
+</tbody>
+</table>
+<div class="admonition info">
+<p class="admonition-title">Full YAML Example</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">kubevirt.io/v1</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">VirtualMachine</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-app-vm</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="nt">spec</span><span class="p">:</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">  </span><span class="nt">running</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">  </span><span class="nt">template</span><span class="p">:</span>
+</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-0-9"><a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">      </span><span class="nt">labels</span><span class="p">:</span>
+</span><span id="__span-0-10"><a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">        </span><span class="nt">soteria.io/ip-rewrite</span><span class="p">:</span><span class="w"> </span><span class="s">"true"</span>
+</span><span id="__span-0-11"><a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">      </span><span class="nt">annotations</span><span class="p">:</span>
+</span><span id="__span-0-12"><a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">        </span><span class="nt">soteria.io/eth0-ip</span><span class="p">:</span><span class="w"> </span><span class="s">"10.0.2.100/24;10.0.2.1"</span>
+</span><span id="__span-0-13"><a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">        </span><span class="nt">soteria.io/eth1-ip</span><span class="p">:</span><span class="w"> </span><span class="s">"192.168.1.50/16;192.168.1.1"</span>
+</span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">        </span><span class="nt">soteria.io/dns</span><span class="p">:</span><span class="w"> </span><span class="s">"10.0.2.10,10.0.2.11"</span>
+</span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">    </span><span class="nt">spec</span><span class="p">:</span>
+</span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="w">      </span><span class="nt">domain</span><span class="p">:</span>
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="w">        </span><span class="nt">devices</span><span class="p">:</span>
+</span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="w">          </span><span class="nt">disks</span><span class="p">:</span>
+</span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="w">            </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rootdisk</span>
+</span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="w">              </span><span class="nt">disk</span><span class="p">:</span>
+</span><span id="__span-0-21"><a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="w">                </span><span class="nt">bus</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">virtio</span>
+</span><span id="__span-0-22"><a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="w">      </span><span class="nt">volumes</span><span class="p">:</span>
+</span><span id="__span-0-23"><a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">rootdisk</span>
+</span><span id="__span-0-24"><a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="w">          </span><span class="nt">persistentVolumeClaim</span><span class="p">:</span>
+</span><span id="__span-0-25"><a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a><span class="w">            </span><span class="nt">claimName</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-app-rootdisk</span>
+</span></code></pre></div>
+</div>
+<hr />
+<h2 id="supported-guest-operating-systems">Supported Guest Operating Systems<a class="headerlink" href="#supported-guest-operating-systems" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>OS</th>
+<th>Versions</th>
+<th>Architecture</th>
+<th>Config Method</th>
+<th>Config Path</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RHEL 7</td>
+<td>7.x</td>
+<td>x86_64</td>
+<td><code>ifcfg-*</code> via Augeas</td>
+<td><code>/etc/sysconfig/network-scripts/ifcfg-&lt;iface&gt;</code></td>
+</tr>
+<tr>
+<td>RHEL 8</td>
+<td>8.x</td>
+<td>x86_64</td>
+<td><code>ifcfg-*</code> or NM keyfile via Augeas</td>
+<td>Auto-detected: NM keyfile preferred, <code>ifcfg</code> fallback</td>
+</tr>
+<tr>
+<td>RHEL 9</td>
+<td>9.x</td>
+<td>x86_64</td>
+<td>NM keyfile via Augeas</td>
+<td><code>/etc/NetworkManager/system-connections/&lt;conn&gt;.nmconnection</code></td>
+</tr>
+<tr>
+<td>RHEL 10</td>
+<td>10.x</td>
+<td>x86_64</td>
+<td>NM keyfile via Augeas</td>
+<td><code>/etc/NetworkManager/system-connections/&lt;conn&gt;.nmconnection</code></td>
+</tr>
+<tr>
+<td>Windows Server 2016</td>
+<td>—</td>
+<td>x86_64</td>
+<td>Registry hive via hivex</td>
+<td><code>&lt;systemroot&gt;\system32\config\system</code></td>
+</tr>
+<tr>
+<td>Windows Server 2019</td>
+<td>—</td>
+<td>x86_64</td>
+<td>Registry hive via hivex</td>
+<td><code>&lt;systemroot&gt;\system32\config\system</code></td>
+</tr>
+<tr>
+<td>Windows Server 2022</td>
+<td>—</td>
+<td>x86_64</td>
+<td>Registry hive via hivex</td>
+<td><code>&lt;systemroot&gt;\system32\config\system</code></td>
+</tr>
+<tr>
+<td>Windows Server 2025</td>
+<td>—</td>
+<td>x86_64</td>
+<td>Registry hive via hivex</td>
+<td><code>&lt;systemroot&gt;\system32\config\system</code></td>
+</tr>
+<tr>
+<td>Windows 10</td>
+<td>—</td>
+<td>x86_64</td>
+<td>Registry hive via hivex</td>
+<td><code>&lt;systemroot&gt;\system32\config\system</code></td>
+</tr>
+<tr>
+<td>Windows 11</td>
+<td>—</td>
+<td>x86_64</td>
+<td>Registry hive via hivex</td>
+<td><code>&lt;systemroot&gt;\system32\config\system</code></td>
+</tr>
+</tbody>
+</table>
+<div class="admonition warning">
+<p class="admonition-title">Unsupported operating systems</p>
+<p>Non-RHEL Linux distributions (Ubuntu, Fedora, SUSE, etc.) are not
+supported. RHEL is version-gated to major versions 7–10; other RHEL
+versions are rejected. Windows is dispatched by OS family with no
+version gate — Server 2016–2025, Windows 10, and Windows 11 are the
+tested and supported matrix. The init container exits with a non-zero
+code if it detects an unsupported OS, which prevents the VM from
+booting. Remove the <code>soteria.io/ip-rewrite</code> label to allow the VM to
+start without IP rewriting.</p>
+</div>
+<hr />
+<h2 id="securitycontextconstraints">SecurityContextConstraints<a class="headerlink" href="#securitycontextconstraints" title="Permanent link">&para;</a></h2>
+<p>The IP rewrite init container runs inside virt-launcher pods and requires
+elevated privileges for the libguestfs appliance.</p>
+<h3 id="required-capabilities">Required Capabilities<a class="headerlink" href="#required-capabilities" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Capability</th>
+<th>Reason</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>SYS_ADMIN</code></td>
+<td>Required for the guestfish appliance to launch its internal QEMU/KVM instance inside the init container. The libguestfs <code>direct</code> backend needs this capability to create and manage the appliance VM.</td>
+</tr>
+<tr>
+<td><code>NET_BIND_SERVICE</code></td>
+<td>Inherited from the base virt-launcher SCC — allows binding to privileged ports.</td>
+</tr>
+<tr>
+<td><code>SYS_NICE</code></td>
+<td>Inherited from the base virt-launcher SCC — allows adjusting process scheduling priority.</td>
+</tr>
+<tr>
+<td><code>SYS_PTRACE</code></td>
+<td>Inherited from the base virt-launcher SCC — allows process tracing (used by QEMU debugging).</td>
+</tr>
+</tbody>
+</table>
+<p>The init container also runs as root (<code>runAsUser: 0</code>, <code>runAsNonRoot: false</code>)
+with <code>allowPrivilegeEscalation: true</code>.</p>
+<h3 id="scc-volume-types">SCC Volume Types<a class="headerlink" href="#scc-volume-types" title="Permanent link">&para;</a></h3>
+<p>The chart-managed SCC permits the following volume types:</p>
+<ul>
+<li><code>configMap</code> — Configuration data</li>
+<li><code>downwardAPI</code> — Pod metadata (labels, annotations)</li>
+<li><code>emptyDir</code> — Temporary scratch space</li>
+<li><code>hostPath</code> — Host filesystem paths (required by virt-launcher for device access)</li>
+<li><code>persistentVolumeClaim</code> — VM disk images</li>
+<li><code>projected</code> — Projected volumes (service account tokens)</li>
+<li><code>secret</code> — TLS certificates and other secrets</li>
+</ul>
+<h3 id="host-access-flags">Host Access Flags<a class="headerlink" href="#host-access-flags" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Flag</th>
+<th>Value</th>
+<th>Reason</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>allowHostDirVolumePlugin</code></td>
+<td><code>true</code></td>
+<td>Permits <code>hostPath</code> volumes required by virt-launcher for device and node-level access.</td>
+</tr>
+<tr>
+<td><code>allowHostNetwork</code></td>
+<td><code>true</code></td>
+<td>Permits host networking required by certain virt-launcher configurations.</td>
+</tr>
+<tr>
+<td><code>allowHostPorts</code></td>
+<td><code>false</code></td>
+<td>Not required.</td>
+</tr>
+<tr>
+<td><code>allowHostPID</code></td>
+<td><code>false</code></td>
+<td>Not required.</td>
+</tr>
+<tr>
+<td><code>allowHostIPC</code></td>
+<td><code>false</code></td>
+<td>Not required.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="binding-mechanism">Binding Mechanism<a class="headerlink" href="#binding-mechanism" title="Permanent link">&para;</a></h3>
+<p>On OpenShift, the chart creates:</p>
+<ol>
+<li>A <strong>SecurityContextConstraints</strong> resource that is a superset of the
+   default <code>kubevirt-controller</code> SCC plus the <code>SYS_ADMIN</code> capability.</li>
+<li>A <strong>ClusterRole</strong> granting the <code>use</code> verb on the SCC.</li>
+<li>A <strong>ClusterRoleBinding</strong> that binds the ClusterRole to ServiceAccount
+   subjects in the configured namespaces.</li>
+</ol>
+<p>By default, the binding covers the <code>default</code> ServiceAccount in the release
+namespace. Use <code>scc.namespaces</code> to extend coverage to all namespaces where
+VMs with <code>soteria.io/ip-rewrite: "true"</code> run, and <code>scc.serviceAccountNames</code>
+to specify the virt-launcher ServiceAccount names.</p>
+<div class="admonition tip">
+<p class="admonition-title">OpenShift vs. Vanilla Kubernetes</p>
+<p>OpenShift clusters require <code>scc.enabled: true</code> so the chart creates the
+SCC resource and RBAC bindings. Vanilla Kubernetes can leave the default
+(<code>scc.enabled: false</code>) — there is no SCC API, and the init container's
+security context is sufficient when Pod Security Standards allow
+privileged workloads.</p>
+</div>
+<hr />
+<h2 id="helm-values-reference">Helm Values Reference<a class="headerlink" href="#helm-values-reference" title="Permanent link">&para;</a></h2>
+<p>Complete reference for every configurable parameter in the IP rewrite Helm
+chart (<code>charts/soteria-ip-rewrite/values.yaml</code>).</p>
+<p>For the main Soteria chart values, see
+<a href="../helm-values/">Soteria Helm Values</a>.</p>
+<div class="admonition info">
+<p class="admonition-title">Sub-chart integration</p>
+<p>The IP rewrite chart can be installed <strong>standalone</strong> or as a sub-chart of the
+main Soteria chart.</p>
+<p><strong>Standalone</strong> (for customers using a different DR orchestrator):
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>helm<span class="w"> </span>install<span class="w"> </span>soteria-ip-rewrite<span class="w"> </span>soteria/soteria-ip-rewrite<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span>--namespace<span class="w"> </span>soteria-ip-rewrite<span class="w"> </span>--create-namespace<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span>--set<span class="w"> </span>scc.enabled<span class="o">=</span><span class="nb">true</span><span class="w">  </span><span class="c1"># OpenShift only</span>
+</span></code></pre></div></p>
+<p><strong>Sub-chart</strong> (for Soteria users): enable in the parent chart with
+<code>soteria-ip-rewrite.enabled: true</code> in <code>charts/soteria/values.yaml</code>.
+The parent chart overrides <code>tls.issuerRef.name</code> with its own CA issuer.</p>
+<p>See the <a href="../../usage/ip-rewrite/#installation">Installation section</a> in the
+usage guide for full details.</p>
+</div>
+<h3 id="global">Global<a class="headerlink" href="#global" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -2027,13 +2321,12 @@
 <td><code>fullnameOverride</code></td>
 <td>string</td>
 <td><code>""</code></td>
-<td>Override the full release name (<code>&lt;release&gt;-&lt;chart&gt;</code>) used in resource names. When set, replaces the computed name entirely. Truncated to 63 characters.</td>
+<td>Override the full release name used in resource names.</td>
 </tr>
 </tbody>
 </table>
 <hr />
-<h2 id="site">Site<a class="headerlink" href="#site" title="Permanent link">&para;</a></h2>
-<p>Each Soteria instance belongs to a named site with a role in the DR topology.</p>
+<h3 id="webhook">Webhook<a class="headerlink" href="#webhook" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -2045,164 +2338,85 @@
 </thead>
 <tbody>
 <tr>
-<td><code>site.name</code></td>
+<td><code>webhook.image.repository</code></td>
 <td>string</td>
-<td><code>""</code></td>
-<td><strong>Required.</strong> Unique identifier for this site. Passed as <code>--site-name</code> to the controller. Must be set per-cluster; the controller uses it to determine reconcile ownership.</td>
+<td><code>"quay.io/raffaelespazzoli/soteria-ip-rewrite-webhook"</code></td>
+<td>Container image for the IP rewrite webhook server (Go binary).</td>
 </tr>
 <tr>
-<td><code>site.role</code></td>
-<td>string</td>
-<td><code>"seed"</code></td>
-<td>This site's initial role in the ScyllaDB cluster. <code>"seed"</code> bootstraps a new ScyllaDB cluster; <code>"joining"</code> connects to an existing seed.</td>
-</tr>
-</tbody>
-</table>
-<div class="admonition info">
-<p class="admonition-title">Validation</p>
-<p><code>site.name</code> is required — the chart fails to render if it is empty.
-<code>site.role</code> must be <code>"seed"</code> or <code>"joining"</code>.</p>
-</div>
-<hr />
-<h2 id="controller">Controller<a class="headerlink" href="#controller" title="Permanent link">&para;</a></h2>
-<p>Governs the single-binary deployment that runs both the aggregated API server
-(serving DRPlan / DRExecution) and the workflow-engine controller.</p>
-<h3 id="image">Image<a class="headerlink" href="#image" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>Key</th>
-<th>Type</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>controller.image.repository</code></td>
-<td>string</td>
-<td><code>"quay.io/raffaelespazzoli/soteria"</code></td>
-<td>Container image for the Soteria controller.</td>
-</tr>
-<tr>
-<td><code>controller.image.tag</code></td>
+<td><code>webhook.image.tag</code></td>
 <td>string</td>
 <td><code>""</code></td>
 <td>Image tag. When empty, defaults to the chart's <code>appVersion</code>.</td>
 </tr>
 <tr>
-<td><code>controller.image.pullPolicy</code></td>
+<td><code>webhook.image.pullPolicy</code></td>
 <td>string</td>
 <td><code>"IfNotPresent"</code></td>
-<td>Kubernetes <a href="https://kubernetes.io/docs/concepts/containers/images/#image-pull-policy">image pull policy</a>.</td>
+<td>Kubernetes image pull policy.</td>
 </tr>
-</tbody>
-</table>
-<h3 id="replicas-resources">Replicas &amp; Resources<a class="headerlink" href="#replicas-resources" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
 <tr>
-<th>Key</th>
-<th>Type</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>controller.replicas</code></td>
+<td><code>webhook.replicas</code></td>
 <td>integer</td>
-<td><code>1</code></td>
-<td>Number of controller pods. All replicas serve the aggregated API; leader election controls which replica runs the workflow engine.</td>
+<td><code>2</code></td>
+<td>Number of webhook server pods.</td>
 </tr>
 <tr>
-<td><code>controller.resources.requests.cpu</code></td>
+<td><code>webhook.resources.requests.cpu</code></td>
 <td>string</td>
-<td><code>"10m"</code></td>
-<td>CPU request for the controller container.</td>
+<td><code>"100m"</code></td>
+<td>CPU request for each webhook pod.</td>
 </tr>
 <tr>
-<td><code>controller.resources.requests.memory</code></td>
-<td>string</td>
-<td><code>"64Mi"</code></td>
-<td>Memory request for the controller container.</td>
-</tr>
-<tr>
-<td><code>controller.resources.limits.cpu</code></td>
-<td>string</td>
-<td><code>"500m"</code></td>
-<td>CPU limit for the controller container.</td>
-</tr>
-<tr>
-<td><code>controller.resources.limits.memory</code></td>
+<td><code>webhook.resources.requests.memory</code></td>
 <td>string</td>
 <td><code>"128Mi"</code></td>
-<td>Memory limit for the controller container.</td>
+<td>Memory request for each webhook pod.</td>
 </tr>
-</tbody>
-</table>
-<h3 id="leader-election">Leader Election<a class="headerlink" href="#leader-election" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
 <tr>
-<th>Key</th>
-<th>Type</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>controller.leaderElection.enabled</code></td>
-<td>boolean</td>
-<td><code>true</code></td>
-<td>Enable leader election for the workflow engine. When <code>true</code>, only one replica runs reconciliation loops; all replicas serve the aggregated API.</td>
-</tr>
-</tbody>
-</table>
-<h3 id="api-server">API Server<a class="headerlink" href="#api-server" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>Key</th>
-<th>Type</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>controller.apiserver.port</code></td>
-<td>integer</td>
-<td><code>6443</code></td>
-<td>Port for the aggregated API server that serves <code>DRPlan</code> and <code>DRExecution</code> resources.</td>
-</tr>
-</tbody>
-</table>
-<h3 id="service-account">Service Account<a class="headerlink" href="#service-account" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>Key</th>
-<th>Type</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>controller.serviceAccount.name</code></td>
+<td><code>webhook.resources.limits.cpu</code></td>
 <td>string</td>
-<td><code>""</code></td>
-<td>Override the default service account name. When empty, the chart generates a name using the fullname template (<code>&lt;fullname&gt;</code>).</td>
+<td><code>"500m"</code></td>
+<td>CPU limit for each webhook pod.</td>
+</tr>
+<tr>
+<td><code>webhook.resources.limits.memory</code></td>
+<td>string</td>
+<td><code>"256Mi"</code></td>
+<td>Memory limit for each webhook pod.</td>
 </tr>
 </tbody>
 </table>
 <hr />
-<h2 id="tls">TLS<a class="headerlink" href="#tls" title="Permanent link">&para;</a></h2>
-<p>References a <a href="https://cert-manager.io/">cert-manager</a> Issuer or ClusterIssuer
-used for all TLS certificates: the aggregated API server serving cert, ScyllaDB
-client mTLS, metrics, and webhook certs.</p>
+<h3 id="init-container">Init Container<a class="headerlink" href="#init-container" title="Permanent link">&para;</a></h3>
+<p>The webhook injects this image as an init container into virt-launcher pods.
+This is the guestfs-tools image built on CentOS Stream 9.</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>initContainer.image.repository</code></td>
+<td>string</td>
+<td><code>"quay.io/raffaelespazzoli/soteria-ip-rewrite"</code></td>
+<td>Container image for the IP rewrite init container. Contains <code>guestfs-tools</code>, <code>augeas</code>, <code>hivex</code>, <code>perl-hivex</code>, and <code>libguestfs-winsupport</code>.</td>
+</tr>
+<tr>
+<td><code>initContainer.image.tag</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td>Image tag. When empty, defaults to the chart's <code>appVersion</code>.</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3 id="tls">TLS<a class="headerlink" href="#tls" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -2216,8 +2430,8 @@ client mTLS, metrics, and webhook certs.</p>
 <tr>
 <td><code>tls.issuerRef.name</code></td>
 <td>string</td>
-<td><code>"soteria-ca"</code></td>
-<td><strong>Required.</strong> Name of the cert-manager Issuer or ClusterIssuer.</td>
+<td><code>""</code></td>
+<td>cert-manager Issuer or ClusterIssuer name for webhook TLS. When empty, the chart creates a self-signed Issuer (if <code>tls.createSelfSigned</code> is <code>true</code>).</td>
 </tr>
 <tr>
 <td><code>tls.issuerRef.kind</code></td>
@@ -2225,152 +2439,16 @@ client mTLS, metrics, and webhook certs.</p>
 <td><code>"Issuer"</code></td>
 <td>Kind of the cert-manager issuer — <code>"Issuer"</code> (namespace-scoped) or <code>"ClusterIssuer"</code> (cluster-scoped).</td>
 </tr>
-</tbody>
-</table>
-<div class="admonition info">
-<p class="admonition-title">Validation</p>
-<p><code>tls.issuerRef.name</code> is required — the chart fails to render if it is empty.</p>
-</div>
-<hr />
-<h2 id="scylladb">ScyllaDB<a class="headerlink" href="#scylladb" title="Permanent link">&para;</a></h2>
-<p>Controls how the controller connects to its ScyllaDB backend. The <code>mode</code> field
-selects between a chart-managed <a href="https://operator.docs.scylladb.com/">ScyllaCluster</a>
-CR or an external (pre-existing) ScyllaDB cluster.</p>
-<h3 id="mode">Mode<a class="headerlink" href="#mode" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
 <tr>
-<th>Key</th>
-<th>Type</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>scylladb.mode</code></td>
-<td>string</td>
-<td><code>"managed"</code></td>
-<td><code>"managed"</code> deploys a ScyllaCluster CR via the scylla-operator. <code>"external"</code> connects to a pre-existing ScyllaDB cluster. <strong>Controls which template set is rendered</strong> — see <a href="#scylladb-conditional-behavior">Conditional behavior</a> below.</td>
-</tr>
-</tbody>
-</table>
-<h3 id="common-fields">Common Fields<a class="headerlink" href="#common-fields" title="Permanent link">&para;</a></h3>
-<p>These apply regardless of whether <code>scylladb.mode</code> is <code>"managed"</code> or <code>"external"</code>.</p>
-<table>
-<thead>
-<tr>
-<th>Key</th>
-<th>Type</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>scylladb.keyspace</code></td>
-<td>string</td>
-<td><code>"soteria"</code></td>
-<td>ScyllaDB keyspace for Soteria's KV store. Passed as <code>--scylladb-keyspace</code> to the controller.</td>
-</tr>
-<tr>
-<td><code>scylladb.localDC</code></td>
-<td>string</td>
-<td><code>""</code></td>
-<td>Local datacenter name for DC-aware routing (e.g. <code>"dc1"</code>). <strong>Required when <code>scylladb.mode=managed</code></strong> (validated by the ScyllaCluster template). When set, passed as <code>--scylladb-local-dc</code> to the controller.</td>
-</tr>
-<tr>
-<td><code>scylladb.dcReplication</code></td>
-<td>string</td>
-<td><code>""</code></td>
-<td>Auto-create the keyspace with <code>NetworkTopologyStrategy</code>. Comma-separated <code>dc:rf</code> pairs (e.g. <code>"etl6:2,etl7:2"</code>). When empty, the keyspace must already exist. Passed as <code>--scylladb-dc-replication</code> to the controller when set.</td>
-</tr>
-</tbody>
-</table>
-<h3 id="managed-mode">Managed Mode<a class="headerlink" href="#managed-mode" title="Permanent link">&para;</a></h3>
-<p>Active only when <code>scylladb.mode: managed</code>. These fields configure the
-ScyllaCluster CR deployed by the chart.</p>
-<table>
-<thead>
-<tr>
-<th>Key</th>
-<th>Type</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>scylladb.managed.version</code></td>
-<td>string</td>
-<td><code>"2026.1.3"</code></td>
-<td>ScyllaDB version for the managed cluster.</td>
-</tr>
-<tr>
-<td><code>scylladb.managed.rack.name</code></td>
-<td>string</td>
-<td><code>"rack1"</code></td>
-<td>Name of the default rack.</td>
-</tr>
-<tr>
-<td><code>scylladb.managed.members</code></td>
-<td>integer</td>
-<td><code>1</code></td>
-<td>Number of ScyllaDB nodes per rack.</td>
-</tr>
-<tr>
-<td><code>scylladb.managed.storage.capacity</code></td>
-<td>string</td>
-<td><code>"5Gi"</code></td>
-<td>Persistent volume size for each ScyllaDB node.</td>
-</tr>
-<tr>
-<td><code>scylladb.managed.storage.storageClassName</code></td>
-<td>string</td>
-<td><code>""</code></td>
-<td>StorageClass for ScyllaDB PVs. When empty, the cluster default StorageClass is used.</td>
-</tr>
-<tr>
-<td><code>scylladb.managed.developerMode</code></td>
+<td><code>tls.createSelfSigned</code></td>
 <td>boolean</td>
 <td><code>true</code></td>
-<td>Relax production constraints (single-node, lower resources). Suitable for development and CI environments only.</td>
-</tr>
-<tr>
-<td><code>scylladb.managed.resources.requests.cpu</code></td>
-<td>string</td>
-<td><code>"100m"</code></td>
-<td>CPU request for each ScyllaDB pod.</td>
-</tr>
-<tr>
-<td><code>scylladb.managed.resources.requests.memory</code></td>
-<td>string</td>
-<td><code>"512Mi"</code></td>
-<td>Memory request for each ScyllaDB pod.</td>
-</tr>
-<tr>
-<td><code>scylladb.managed.resources.limits.cpu</code></td>
-<td>string</td>
-<td><code>"1"</code></td>
-<td>CPU limit for each ScyllaDB pod.</td>
-</tr>
-<tr>
-<td><code>scylladb.managed.resources.limits.memory</code></td>
-<td>string</td>
-<td><code>"1Gi"</code></td>
-<td>Memory limit for each ScyllaDB pod.</td>
-</tr>
-<tr>
-<td><code>scylladb.managed.externalSeeds</code></td>
-<td>list</td>
-<td><code>[]</code></td>
-<td>Seed addresses for multi-DC cluster joining. Must not be empty when <code>site.role=joining</code> (validated at render time).</td>
+<td>When <code>true</code> and <code>tls.issuerRef.name</code> is empty, the chart creates a self-signed Issuer. When <code>false</code>, <code>tls.issuerRef.name</code> must be set.</td>
 </tr>
 </tbody>
 </table>
-<h3 id="external-mode">External Mode<a class="headerlink" href="#external-mode" title="Permanent link">&para;</a></h3>
-<p>Active only when <code>scylladb.mode: external</code>. These fields configure the
-connection to a pre-existing ScyllaDB cluster.</p>
+<hr />
+<h3 id="securitycontextconstraints_1">SecurityContextConstraints<a class="headerlink" href="#securitycontextconstraints_1" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -2382,66 +2460,39 @@ connection to a pre-existing ScyllaDB cluster.</p>
 </thead>
 <tbody>
 <tr>
-<td><code>scylladb.external.contactPoints</code></td>
-<td>string</td>
-<td><code>""</code></td>
-<td><strong>Required when <code>scylladb.mode=external</code>.</strong> Comma-separated <code>host:port</code> pairs for the external cluster. Passed as <code>--scylladb-contact-points</code> to the controller.</td>
-</tr>
-<tr>
-<td><code>scylladb.external.tls.enabled</code></td>
+<td><code>scc.enabled</code></td>
 <td>boolean</td>
 <td><code>false</code></td>
-<td>Enable TLS for connections to the external cluster. When <code>true</code>, mounts the TLS Secret as a volume and passes cert/key/CA flags to the controller.</td>
+<td>Enable SCC resource creation. Set to <code>true</code> on OpenShift; set to <code>false</code> on vanilla Kubernetes (no SCC API).</td>
 </tr>
 <tr>
-<td><code>scylladb.external.tls.secretName</code></td>
-<td>string</td>
-<td><code>""</code></td>
-<td><strong>Required when <code>scylladb.external.tls.enabled=true</code>.</strong> Name of the Kubernetes Secret containing <code>tls.crt</code>, <code>tls.key</code>, and <code>ca.crt</code>.</td>
+<td><code>scc.create</code></td>
+<td>boolean</td>
+<td><code>true</code></td>
+<td>When <code>true</code> and <code>scc.enabled</code> is <code>true</code>, the chart creates a dedicated SCC. Set to <code>false</code> if the existing <code>kubevirt-controller</code> SCC is already patched with <code>SYS_ADMIN</code>.</td>
 </tr>
 <tr>
-<td><code>scylladb.external.tls.serverName</code></td>
-<td>string</td>
-<td><code>""</code></td>
-<td>TLS server name for certificate verification. Overrides the hostname derived from <code>contactPoints</code>. Passed as <code>--scylladb-tls-server-name</code> when set.</td>
-</tr>
-</tbody>
-</table>
-<h3 id="scylladb-conditional-behavior">ScyllaDB Conditional Behavior<a class="headerlink" href="#scylladb-conditional-behavior" title="Permanent link">&para;</a></h3>
-<p>The <code>scylladb.mode</code> field controls which template set is rendered:</p>
-<table>
-<thead>
-<tr>
-<th>Condition</th>
-<th>Effect</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>scylladb.mode: managed</code></td>
-<td>Deploys a <code>ScyllaCluster</code> CR, ScyllaDB TLS <code>Certificate</code>, ScyllaDB config <code>ConfigMap</code>, and (when <code>networking.mode=submariner</code>) a <code>ServiceExport</code>. Mounts the managed ScyllaDB client-TLS volume in the controller.</td>
+<td><code>scc.serviceAccountNames</code></td>
+<td>list</td>
+<td><code>["default"]</code></td>
+<td>virt-launcher ServiceAccount names to bind the SCC to. Override with your actual virt-launcher SA names.</td>
 </tr>
 <tr>
-<td><code>scylladb.mode: external</code></td>
-<td>Skips all managed ScyllaDB resources. The controller connects using <code>scylladb.external.contactPoints</code>. When <code>scylladb.external.tls.enabled=true</code>, mounts the user-provided TLS Secret in the controller.</td>
+<td><code>scc.namespaces</code></td>
+<td>list</td>
+<td><code>[]</code></td>
+<td>Namespaces where VMs run. The SCC ClusterRoleBinding grants <code>use</code> to the <code>serviceAccountNames</code> in each of these namespaces. Empty list = release namespace only.</td>
 </tr>
 <tr>
-<td><code>scylladb.mode: managed</code> + <code>site.role: joining</code></td>
-<td>The chart <strong>fails</strong> if <code>scylladb.managed.externalSeeds</code> is empty — joining sites must know at least one seed address.</td>
-</tr>
-<tr>
-<td><code>scylladb.mode: external</code> + (empty <code>contactPoints</code>)</td>
-<td>The chart <strong>fails</strong> — <code>scylladb.external.contactPoints</code> is required.</td>
-</tr>
-<tr>
-<td><code>scylladb.mode: external</code> + <code>tls.enabled: true</code> + (empty <code>secretName</code>)</td>
-<td>The chart <strong>fails</strong> — <code>scylladb.external.tls.secretName</code> is required when TLS is enabled.</td>
+<td><code>scc.additionalSubjects</code></td>
+<td>list</td>
+<td><code>[]</code></td>
+<td>Extra RBAC subjects granted SCC <code>use</code> permission. Each entry is a complete RBAC subject object (<code>kind</code>, <code>name</code>, <code>namespace</code>, <code>apiGroup</code>).</td>
 </tr>
 </tbody>
 </table>
 <hr />
-<h2 id="networking">Networking<a class="headerlink" href="#networking" title="Permanent link">&para;</a></h2>
-<p>Selects the cross-cluster networking layer for multi-site DR.</p>
+<h3 id="webhook-configuration">Webhook Configuration<a class="headerlink" href="#webhook-configuration" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
 <tr>
@@ -2453,146 +2504,33 @@ connection to a pre-existing ScyllaDB cluster.</p>
 </thead>
 <tbody>
 <tr>
-<td><code>networking.mode</code></td>
+<td><code>webhookConfig.failurePolicy</code></td>
 <td>string</td>
-<td><code>"submariner"</code></td>
-<td>Cross-cluster networking backend. <code>"submariner"</code> uses Submariner <code>ServiceExport</code>/<code>Import</code> for service discovery. <code>"cilium"</code> uses Cilium ClusterMesh for direct pod-to-pod connectivity.</td>
+<td><code>"Ignore"</code></td>
+<td>MutatingWebhookConfiguration failure policy. <code>"Ignore"</code> (fail-open) means VMs start without IP rewriting if the webhook is unavailable. <code>"Fail"</code> (fail-closed) blocks pod creation when the webhook is down.</td>
+</tr>
+<tr>
+<td><code>webhookConfig.namespaceSelector</code></td>
+<td>object</td>
+<td><code>{}</code></td>
+<td>Label selector for namespaces the webhook applies to. When empty, the webhook intercepts pods in all namespaces (filtered by the <code>objectSelector</code> label).</td>
 </tr>
 </tbody>
 </table>
-<div class="admonition info">
-<p class="admonition-title">Template Effects</p>
-<p><code>networking.mode</code> influences the ScyllaCluster's <code>exposeOptions</code> (managed mode):</p>
+<hr />
+<h2 id="known-limitations">Known Limitations<a class="headerlink" href="#known-limitations" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong><code>submariner</code></strong> — node broadcast type <code>ServiceClusterIP</code>, node service type <code>ClusterIP</code>, and a <code>ServiceExport</code> is created for the ScyllaDB client service.</li>
-<li><strong><code>cilium</code></strong> — node broadcast type <code>PodIP</code>, node service type <code>Headless</code>. No <code>ServiceExport</code> is created.</li>
+<li><strong>IPv6</strong> — Not supported. Only IPv4 addresses are handled.</li>
+<li><strong>DHCP-to-static conversion</strong> — Not supported. The source VM must already
+  have a static IP configuration.</li>
+<li><strong>Guest hostname rewrite</strong> — Not supported. Only IP address, gateway, and
+  DNS servers are modified.</li>
+<li><strong>ARM64 guests</strong> — Not supported. The init container image is
+  single-architecture <code>linux/amd64</code>. ARM64 support is deferred until OCP
+  Virtualization certifies ARM Windows guests.</li>
+<li><strong>Non-RHEL Linux</strong> — Distributions such as Ubuntu, Fedora, or SUSE are not
+  supported. Only RHEL 7–10 is handled on the Linux side.</li>
 </ul>
-<p>Both Submariner and Cilium require their own operator installs but have no
-additional chart-level parameters today.</p>
-</div>
-<hr />
-<h2 id="ui">UI<a class="headerlink" href="#ui" title="Permanent link">&para;</a></h2>
-<p>Controls which UI frontend is deployed alongside the controller.</p>
-<h3 id="mode_1">Mode<a class="headerlink" href="#mode_1" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>Key</th>
-<th>Type</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>ui.mode</code></td>
-<td>string</td>
-<td><code>"console-plugin"</code></td>
-<td>UI deployment strategy. <code>"console-plugin"</code> registers as an OCP dynamic console plugin. <code>"standalone"</code> deploys a standalone web UI behind a Gateway API <code>HTTPRoute</code>. <code>"none"</code> disables the UI entirely.</td>
-</tr>
-</tbody>
-</table>
-<div class="admonition info">
-<p class="admonition-title">Validation</p>
-<p><code>ui.mode</code> must be <code>"console-plugin"</code>, <code>"standalone"</code>, or <code>"none"</code>.</p>
-</div>
-<h3 id="console-plugin">Console Plugin<a class="headerlink" href="#console-plugin" title="Permanent link">&para;</a></h3>
-<p>Rendered only when <code>ui.mode: console-plugin</code>.</p>
-<table>
-<thead>
-<tr>
-<th>Key</th>
-<th>Type</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>ui.consolePlugin.image.repository</code></td>
-<td>string</td>
-<td><code>"quay.io/raffaelespazzoli/soteria-console-plugin"</code></td>
-<td>Container image for the console plugin nginx proxy.</td>
-</tr>
-<tr>
-<td><code>ui.consolePlugin.image.tag</code></td>
-<td>string</td>
-<td><code>""</code></td>
-<td>Image tag for the console plugin. When empty, defaults to the chart's <code>appVersion</code>.</td>
-</tr>
-</tbody>
-</table>
-<h3 id="standalone-ui">Standalone UI<a class="headerlink" href="#standalone-ui" title="Permanent link">&para;</a></h3>
-<p>Rendered only when <code>ui.mode: standalone</code>.</p>
-<table>
-<thead>
-<tr>
-<th>Key</th>
-<th>Type</th>
-<th>Default</th>
-<th>Description</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>ui.standalone.image.repository</code></td>
-<td>string</td>
-<td><code>"quay.io/raffaelespazzoli/soteria-standalone-ui"</code></td>
-<td>Container image for the standalone UI.</td>
-</tr>
-<tr>
-<td><code>ui.standalone.image.tag</code></td>
-<td>string</td>
-<td><code>""</code></td>
-<td>Image tag for the standalone UI. When empty, defaults to the chart's <code>appVersion</code>.</td>
-</tr>
-<tr>
-<td><code>ui.standalone.gateway.name</code></td>
-<td>string</td>
-<td><code>""</code></td>
-<td>Name of the Gateway resource to attach the <code>HTTPRoute</code> to. <strong>When empty, no <code>HTTPRoute</code> is created.</strong></td>
-</tr>
-<tr>
-<td><code>ui.standalone.gateway.namespace</code></td>
-<td>string</td>
-<td><code>""</code></td>
-<td>Namespace of the Gateway resource. Defaults to the release namespace when empty. Set explicitly for cross-namespace Gateway references.</td>
-</tr>
-<tr>
-<td><code>ui.standalone.gateway.hostname</code></td>
-<td>string</td>
-<td><code>""</code></td>
-<td>Optional hostname for the <code>HTTPRoute</code>. When set, adds a <code>hostnames</code> filter to prevent catch-all routing on shared Gateways.</td>
-</tr>
-</tbody>
-</table>
-<h3 id="ui-conditional-behavior">UI Conditional Behavior<a class="headerlink" href="#ui-conditional-behavior" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>Condition</th>
-<th>Effect</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td><code>ui.mode: console-plugin</code></td>
-<td>Deploys the console plugin Deployment, Service, <code>ConsolePlugin</code> registration, TLS Certificate, and nginx ConfigMap.</td>
-</tr>
-<tr>
-<td><code>ui.mode: standalone</code></td>
-<td>Deploys the standalone UI Deployment, Service, ServiceAccount, ClusterRole, and ClusterRoleBinding.</td>
-</tr>
-<tr>
-<td><code>ui.mode: standalone</code> + <code>gateway.name</code> set</td>
-<td>Additionally creates an <code>HTTPRoute</code> attached to the named Gateway.</td>
-</tr>
-<tr>
-<td><code>ui.mode: none</code></td>
-<td>No UI resources are created.</td>
-</tr>
-</tbody>
-</table>
 
 
 

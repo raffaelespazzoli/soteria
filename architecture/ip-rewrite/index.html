@@ -1,0 +1,2443 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Open-source, Kubernetes-native disaster recovery orchestrator for OpenShift Virtualization.">
+      
+      
+      
+        <link rel="canonical" href="https://raffaelespazzoli.github.io/soteria/architecture/ip-rewrite/">
+      
+      
+        <link rel="prev" href="../storage-drivers/">
+      
+      
+        <link rel="next" href="../../usage/creating-a-drplan/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>IP Rewrite - Soteria</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#ip-rewrite-architecture" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Soteria" class="md-header__button md-logo" aria-label="Soteria" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Soteria
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              IP Rewrite
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/raffaelespazzoli/soteria" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    raffaelespazzoli/soteria
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Soteria" class="md-nav__button md-logo" aria-label="Soteria" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Soteria
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/raffaelespazzoli/soteria" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    raffaelespazzoli/soteria
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2" id="__nav_2_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Installation
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/prerequisites/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Prerequisites
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2_2" >
+        
+          
+          <label class="md-nav__link" for="__nav_2_2" id="__nav_2_2_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    ScyllaDB & Network
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_2_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    ScyllaDB & Network
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/scylladb/overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/scylladb/submariner/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Submariner
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/scylladb/cilium/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Cilium Cluster Mesh
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/helm/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Helm Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Architecture
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../overview/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dr-lifecycle/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DR Lifecycle
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../storage-drivers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage Drivers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IP Rewrite
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IP Rewrite
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#annotation-and-label-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Annotation and Label Contract
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Annotation and Label Contract">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#label-opt-in-and-webhook-filter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Label (Opt-In and Webhook Filter)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#annotations-ip-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Annotations (IP Configuration)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dns-annotation-optional" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DNS Annotation (Optional)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-it-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How It Works
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How It Works">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#sequence-diagram" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sequence Diagram
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#webhook-interception" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Webhook Interception
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fail-open-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fail-Open Policy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#os-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OS Detection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#linux-ip-rewrite-augeas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Linux IP Rewrite (Augeas)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#windows-ip-rewrite-hivex" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Windows IP Rewrite (hivex)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#migration-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Migration Detection
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#components" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Components
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#supported-guest-operating-systems" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Supported Guest Operating Systems
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known Limitations
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Usage
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/creating-a-drplan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Creating a DRPlan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/waves/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Waves & Throttling
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/volumes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Volume Grouping
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/failover/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Executing Failover
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/ip-rewrite/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IP Rewrite
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_4_6" id="__nav_4_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    UI Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    UI Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/ui-guide/dashboard/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Dashboard
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/ui-guide/plan-detail/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Plan Detail
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/ui-guide/execution-monitor/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Execution Monitor
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    
+    
+    
+    
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5_1" >
+        
+          
+          <label class="md-nav__link" for="__nav_5_1" id="__nav_5_1_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_5_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    API Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/api/drplan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DRPlan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/api/drexecution/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DRExecution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/helm-values/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Helm Values
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/ip-rewrite/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    IP Rewrite
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Contributing
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/dev-setup/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Developer Setup
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/storage-drivers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Writing Storage Drivers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#annotation-and-label-contract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Annotation and Label Contract
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Annotation and Label Contract">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#label-opt-in-and-webhook-filter" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Label (Opt-In and Webhook Filter)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#annotations-ip-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Annotations (IP Configuration)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dns-annotation-optional" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        DNS Annotation (Optional)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Examples
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-it-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How It Works
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How It Works">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#sequence-diagram" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Sequence Diagram
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#webhook-interception" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Webhook Interception
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#fail-open-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Fail-Open Policy
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#os-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OS Detection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#linux-ip-rewrite-augeas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Linux IP Rewrite (Augeas)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#windows-ip-rewrite-hivex" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Windows IP Rewrite (hivex)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#migration-detection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Migration Detection
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#components" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Components
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#supported-guest-operating-systems" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Supported Guest Operating Systems
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#known-limitations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Known Limitations
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="ip-rewrite-architecture">IP Rewrite Architecture<a class="headerlink" href="#ip-rewrite-architecture" title="Permanent link">&para;</a></h1>
+<p>The IP rewrite feature is a <strong>standalone add-on</strong> that reconfigures guest
+network settings on VM disks before the VM boots. It works by intercepting
+virt-launcher pod creation with a mutating admission webhook and injecting an
+init container that edits the guest filesystem offline using
+<a href="https://libguestfs.org/">libguestfs</a> tools.</p>
+<p>This feature has <strong>no dependency on Soteria CRDs</strong> (DRPlan, DRExecution). It
+operates entirely through Kubernetes labels and annotations on VM resources,
+making it usable with any orchestration tool — <code>kubectl</code>, ArgoCD, Ansible, or
+Soteria's own DRExecution workflow.</p>
+<p><strong>Use cases:</strong></p>
+<ul>
+<li>Disaster recovery IP reconfiguration after failover to a different subnet</li>
+<li>Planned migration to a new network segment</li>
+<li>Lab or staging environment cloning with different IPs</li>
+</ul>
+<h2 id="annotation-and-label-contract">Annotation and Label Contract<a class="headerlink" href="#annotation-and-label-contract" title="Permanent link">&para;</a></h2>
+<p>The IP rewrite feature is activated by a <strong>label</strong> and configured through
+<strong>annotations</strong> on VirtualMachine resources. KubeVirt propagates VM metadata
+labels and annotations down to the virt-launcher pod, where the webhook
+intercepts them.</p>
+<h3 id="label-opt-in-and-webhook-filter">Label (Opt-In and Webhook Filter)<a class="headerlink" href="#label-opt-in-and-webhook-filter" title="Permanent link">&para;</a></h3>
+<p>The opt-in label must be placed on the VM's <strong>pod template</strong> so that KubeVirt
+stamps it onto the virt-launcher pod:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">spec</span><span class="p">:</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">template</span><span class="p">:</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">    </span><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">      </span><span class="nt">labels</span><span class="p">:</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">        </span><span class="nt">soteria.io/ip-rewrite</span><span class="p">:</span><span class="w"> </span><span class="s">"true"</span>
+</span></code></pre></div>
+<p>This label serves two purposes:</p>
+<ol>
+<li><strong>Webhook filtering</strong> — The <code>MutatingWebhookConfiguration</code> uses an
+   <code>objectSelector</code> with this label. The Kubernetes API server only sends
+   admission requests for pods that carry this label, so the webhook is never
+   invoked for unlabeled pods.</li>
+<li><strong>Opt-in signal</strong> — Setting this label explicitly opts the VM into IP
+   rewriting.</li>
+</ol>
+<h3 id="annotations-ip-configuration">Annotations (IP Configuration)<a class="headerlink" href="#annotations-ip-configuration" title="Permanent link">&para;</a></h3>
+<p>IP annotations go on the VM's <strong>pod template</strong> at
+<code>spec.template.metadata.annotations</code>. KubeVirt copies
+<code>spec.template.metadata</code> onto the VMI → virt-launcher pod; the webhook reads
+these annotations from <code>pod.Annotations</code>.</p>
+<p>Each annotation configures a single network interface:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">spec</span><span class="p">:</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">template</span><span class="p">:</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">    </span><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">      </span><span class="nt">annotations</span><span class="p">:</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">        </span><span class="nt">soteria.io/&lt;interface&gt;-ip</span><span class="p">:</span><span class="w"> </span><span class="s">"&lt;address&gt;/&lt;prefix&gt;;&lt;gateway&gt;"</span>
+</span></code></pre></div>
+<ul>
+<li><code>&lt;interface&gt;</code> — the guest network interface name (e.g., <code>eth0</code>, <code>eth1</code>)</li>
+<li><code>&lt;address&gt;/&lt;prefix&gt;</code> — the desired static IP and CIDR prefix length</li>
+<li><code>&lt;gateway&gt;</code> — the default gateway for that interface</li>
+</ul>
+<h3 id="dns-annotation-optional">DNS Annotation (Optional)<a class="headerlink" href="#dns-annotation-optional" title="Permanent link">&para;</a></h3>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">spec</span><span class="p">:</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">template</span><span class="p">:</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">    </span><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">      </span><span class="nt">annotations</span><span class="p">:</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">        </span><span class="nt">soteria.io/dns</span><span class="p">:</span><span class="w"> </span><span class="s">"&lt;server1&gt;,&lt;server2&gt;"</span>
+</span></code></pre></div>
+<p>When present, DNS servers are applied to all interfaces. When absent, DNS
+configuration is left untouched on the guest.</p>
+<h3 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">&para;</a></h3>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:3"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><input id="__tabbed_1_3" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">Single-NIC</label><label for="__tabbed_1_2">Multi-NIC</label><label for="__tabbed_1_3">With DNS</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">kubevirt.io/v1</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">VirtualMachine</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-vm</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="nt">spec</span><span class="p">:</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">  </span><span class="nt">template</span><span class="p">:</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">    </span><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">      </span><span class="nt">labels</span><span class="p">:</span>
+</span><span id="__span-3-9"><a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="w">        </span><span class="nt">soteria.io/ip-rewrite</span><span class="p">:</span><span class="w"> </span><span class="s">"true"</span>
+</span><span id="__span-3-10"><a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="w">      </span><span class="nt">annotations</span><span class="p">:</span>
+</span><span id="__span-3-11"><a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="w">        </span><span class="nt">soteria.io/eth0-ip</span><span class="p">:</span><span class="w"> </span><span class="s">"10.0.2.100/24;10.0.2.1"</span>
+</span></code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">kubevirt.io/v1</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">VirtualMachine</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-vm</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="nt">spec</span><span class="p">:</span>
+</span><span id="__span-4-6"><a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="w">  </span><span class="nt">template</span><span class="p">:</span>
+</span><span id="__span-4-7"><a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="w">    </span><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-4-8"><a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="w">      </span><span class="nt">labels</span><span class="p">:</span>
+</span><span id="__span-4-9"><a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="w">        </span><span class="nt">soteria.io/ip-rewrite</span><span class="p">:</span><span class="w"> </span><span class="s">"true"</span>
+</span><span id="__span-4-10"><a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">      </span><span class="nt">annotations</span><span class="p">:</span>
+</span><span id="__span-4-11"><a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="w">        </span><span class="nt">soteria.io/eth0-ip</span><span class="p">:</span><span class="w"> </span><span class="s">"10.0.2.100/24;10.0.2.1"</span>
+</span><span id="__span-4-12"><a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="w">        </span><span class="nt">soteria.io/eth1-ip</span><span class="p">:</span><span class="w"> </span><span class="s">"192.168.1.50/16;192.168.1.1"</span>
+</span></code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">kubevirt.io/v1</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nt">kind</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">VirtualMachine</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">  </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-vm</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="nt">spec</span><span class="p">:</span>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">  </span><span class="nt">template</span><span class="p">:</span>
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">    </span><span class="nt">metadata</span><span class="p">:</span>
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="w">      </span><span class="nt">labels</span><span class="p">:</span>
+</span><span id="__span-5-9"><a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="w">        </span><span class="nt">soteria.io/ip-rewrite</span><span class="p">:</span><span class="w"> </span><span class="s">"true"</span>
+</span><span id="__span-5-10"><a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="w">      </span><span class="nt">annotations</span><span class="p">:</span>
+</span><span id="__span-5-11"><a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="w">        </span><span class="nt">soteria.io/eth0-ip</span><span class="p">:</span><span class="w"> </span><span class="s">"10.0.2.100/24;10.0.2.1"</span>
+</span><span id="__span-5-12"><a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a><span class="w">        </span><span class="nt">soteria.io/eth1-ip</span><span class="p">:</span><span class="w"> </span><span class="s">"192.168.1.50/16;192.168.1.1"</span>
+</span><span id="__span-5-13"><a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a><span class="w">        </span><span class="nt">soteria.io/dns</span><span class="p">:</span><span class="w"> </span><span class="s">"10.0.2.10,10.0.2.11"</span>
+</span></code></pre></div>
+</div>
+</div>
+</div>
+<h2 id="how-it-works">How It Works<a class="headerlink" href="#how-it-works" title="Permanent link">&para;</a></h2>
+<h3 id="sequence-diagram">Sequence Diagram<a class="headerlink" href="#sequence-diagram" title="Permanent link">&para;</a></h3>
+<p>The following diagram shows the full flow from VM annotation to VM boot with
+the new IP address:</p>
+<pre class="mermaid"><code>sequenceDiagram
+  participant User as User / Orchestrator
+  participant VM as VirtualMachine
+  participant KubeAPI as kube-apiserver
+  participant Webhook as IP Rewrite Webhook
+  participant Pod as virt-launcher Pod
+  participant Init as ip-rewrite Init Container
+  participant GuestFS as guestfish / virt-inspector
+
+  User-&gt;&gt;VM: Annotate with soteria.io/eth0-ip&lt;br/&gt;and label soteria.io/ip-rewrite: "true"
+  User-&gt;&gt;VM: Stop and start VM
+
+  Note over VM,KubeAPI: KubeVirt creates virt-launcher pod&lt;br/&gt;(inherits VM labels and annotations)
+
+  KubeAPI-&gt;&gt;KubeAPI: objectSelector matches&lt;br/&gt;soteria.io/ip-rewrite: "true"
+  KubeAPI-&gt;&gt;Webhook: Admission request (pod CREATE)
+
+  Webhook-&gt;&gt;Webhook: Check for kubevirt.io/migrationJobUID
+  Webhook-&gt;&gt;Webhook: Parse annotations → env vars
+  Webhook-&gt;&gt;Webhook: Detect PVC volumes (filesystem + block)
+  Webhook-&gt;&gt;Webhook: Build init container spec
+
+  Webhook--&gt;&gt;KubeAPI: JSON patch (inject init container)
+  KubeAPI-&gt;&gt;Pod: Create mutated pod
+
+  Note over Pod,Init: Init container runs before QEMU starts
+
+  Init-&gt;&gt;Init: Check for SOTERIA_*_IP env vars
+  Init-&gt;&gt;GuestFS: Scan disks with virt-inspector
+
+  GuestFS--&gt;&gt;Init: OS metadata (family, distro, version)
+
+  alt Linux (RHEL)
+    Init-&gt;&gt;GuestFS: Rewrite IP config via Augeas
+  else Windows
+    Init-&gt;&gt;GuestFS: Rewrite registry hive via hivex
+  end
+
+  Init-&gt;&gt;Init: Exit 0 (success)
+  Pod-&gt;&gt;Pod: virt-launcher starts QEMU
+  Note over Pod: VM boots with new IP</code></pre>
+<h3 id="webhook-interception">Webhook Interception<a class="headerlink" href="#webhook-interception" title="Permanent link">&para;</a></h3>
+<p>The IP rewrite webhook is a standalone Go binary (<code>cmd/ip-rewrite-webhook</code>)
+that runs as a Deployment in the cluster, separate from the main Soteria
+controller-manager.</p>
+<p><strong>Admission flow:</strong></p>
+<ol>
+<li>The <code>MutatingWebhookConfiguration</code> registers for <code>pods</code> <code>CREATE</code>
+   operations with an <code>objectSelector</code> matching
+   <code>soteria.io/ip-rewrite: "true"</code>.</li>
+<li>The Kubernetes API server evaluates the label selector <em>before</em> sending
+   the admission request — pods without the label never reach the webhook.</li>
+<li>The webhook handler at <code>/mutate-v1-pod</code> (port 9443) processes the request.</li>
+<li>The handler transforms annotations into environment variables for the init
+   container: <code>soteria.io/eth0-ip</code> becomes <code>SOTERIA_ETH0_IP</code>,
+   <code>soteria.io/dns</code> becomes <code>SOTERIA_DNS</code>.</li>
+<li>The handler identifies all PVC-backed volumes in the pod spec and creates
+   corresponding volume mounts at <code>/disks/&lt;volumeName&gt;</code> for filesystem-mode
+   PVCs, and volume devices at <code>/disks/&lt;volumeName&gt;</code> for block-mode PVCs.</li>
+<li>The init container is prepended before all existing init containers so it
+   runs first, before QEMU starts.</li>
+<li>The handler returns a JSON patch that adds the init container to the pod
+   spec.</li>
+</ol>
+<p><strong>Init container spec highlights:</strong></p>
+<ul>
+<li><strong>Image:</strong> Configurable via the <code>--init-container-image</code> flag on the webhook
+  server (default: <code>quay.io/raffaelespazzoli/soteria-ip-rewrite:latest</code>)</li>
+<li><strong>Security context:</strong> Runs as root (<code>runAsUser: 0</code>, <code>runAsNonRoot: false</code>)
+  with <code>allowPrivilegeEscalation: true</code> and the <code>SYS_ADMIN</code> capability —
+  required for the guestfish appliance to function inside a container</li>
+<li><strong>Volume mounts:</strong> Filesystem-mode PVC volumes are mounted under <code>/disks/</code>;
+  block-mode PVC volumes are exposed as device nodes under <code>/disks/</code></li>
+</ul>
+<h3 id="fail-open-policy">Fail-Open Policy<a class="headerlink" href="#fail-open-policy" title="Permanent link">&para;</a></h3>
+<p>The webhook is configured with <code>failurePolicy: Ignore</code>. If the webhook server
+is unavailable (scaled to zero, crashed, network partition), the Kubernetes
+API server admits the pod <strong>unmodified</strong> — the VM starts without IP
+rewriting.</p>
+<div class="admonition warning">
+<p class="admonition-title">Fail-open means no IP rewrite on webhook failure</p>
+<p>When the webhook is down, VMs start with their existing IP
+configuration. This is a deliberate design choice: VM availability is
+prioritized over IP correctness. Monitor webhook health to detect
+this condition.</p>
+</div>
+<h3 id="os-detection">OS Detection<a class="headerlink" href="#os-detection" title="Permanent link">&para;</a></h3>
+<p>After the init container starts, the entrypoint performs OS detection:</p>
+<ol>
+<li>
+<p><strong>Environment variable check</strong> — If no <code>SOTERIA_*_IP</code> variables are set,
+   the script exits immediately with code 0 (no-op). The virt-launcher
+   proceeds normally.</p>
+</li>
+<li>
+<p><strong>Disk scanning</strong> — The entrypoint iterates over disk images and block
+   devices under <code>/disks/</code>, running
+   <code>virt-inspector --xml --no-applications --no-icon -a &lt;disk&gt;</code> on each
+   candidate. <code>virt-inspector</code> uses the libguestfs appliance to analyze the
+   disk and returns XML metadata about the operating system.</p>
+</li>
+<li>
+<p><strong>Boot disk identification</strong> — A disk with an <code>&lt;operatingsystem&gt;</code> element
+   in the virt-inspector output is a boot disk candidate. Data disks (no OS)
+   are logged and skipped. When multiple disks contain an OS, the volume
+   named <code>rootdisk</code> is preferred; otherwise the first candidate
+   alphabetically is selected.</p>
+</li>
+<li>
+<p><strong>OS family and version extraction</strong> — The entrypoint extracts the OS
+   family (<code>linux</code> or <code>windows</code>), distribution (<code>rhel</code>, <code>windows</code>), and
+   major/minor version from the XML output using <code>xmllint --xpath</code>.</p>
+</li>
+<li>
+<p><strong>Dispatch</strong> — Based on the detected OS:</p>
+<ul>
+<li><strong>RHEL</strong> — version-gated to major versions 7–10; other RHEL versions
+  are rejected</li>
+<li><strong>Windows</strong> — dispatched by OS family (<code>windows</code>) with no version
+  gate. Server 2016–2025, Windows 10, and Windows 11 are the tested
+  and supported matrix</li>
+<li><strong>Unsupported OS</strong> → exits with a non-zero code listing supported
+  operating systems</li>
+</ul>
+</li>
+</ol>
+<div class="admonition note">
+<p class="admonition-title">LIBGUESTFS_BACKEND=direct</p>
+<p>The init container image sets <code>LIBGUESTFS_BACKEND=direct</code> as a baked-in
+environment variable. This tells libguestfs to use the direct backend
+(no libvirtd) — necessary because there is no libvirtd daemon inside the
+container.</p>
+</div>
+<h3 id="linux-ip-rewrite-augeas">Linux IP Rewrite (Augeas)<a class="headerlink" href="#linux-ip-rewrite-augeas" title="Permanent link">&para;</a></h3>
+<p>For RHEL guests, the handler uses <a href="https://augeas.net/">Augeas</a> via
+<code>guestfish</code> to edit network configuration files on the guest filesystem. The
+specific file format depends on the RHEL version:</p>
+<table>
+<thead>
+<tr>
+<th>RHEL Version</th>
+<th>Config Format</th>
+<th>Config Path</th>
+<th>Augeas Lens</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RHEL 7</td>
+<td><code>ifcfg-*</code></td>
+<td><code>/etc/sysconfig/network-scripts/ifcfg-&lt;iface&gt;</code></td>
+<td><code>Shellvars.lns</code></td>
+</tr>
+<tr>
+<td>RHEL 8</td>
+<td><code>ifcfg-*</code> or NM keyfile</td>
+<td>Auto-detected: NM keyfile preferred, <code>ifcfg</code> fallback</td>
+<td><code>Shellvars.lns</code> or <code>NetworkManager.lns</code></td>
+</tr>
+<tr>
+<td>RHEL 9</td>
+<td>NM keyfile</td>
+<td><code>/etc/NetworkManager/system-connections/&lt;conn&gt;.nmconnection</code></td>
+<td><code>NetworkManager.lns</code></td>
+</tr>
+<tr>
+<td>RHEL 10</td>
+<td>NM keyfile</td>
+<td><code>/etc/NetworkManager/system-connections/&lt;conn&gt;.nmconnection</code></td>
+<td><code>NetworkManager.lns</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>How it works:</strong></p>
+<ol>
+<li>The handler mounts the guest filesystem read-only to detect which network
+   configuration format is in use.</li>
+<li>It remounts read-write and uses <code>guestfish aug-set</code> commands (via the
+   appropriate Augeas lens) to update IP address, prefix length, gateway, and
+   optionally DNS servers.</li>
+<li>The handler supports multiple interfaces — each <code>SOTERIA_*_IP</code> variable
+   maps to a guest interface configuration file.</li>
+</ol>
+<h3 id="windows-ip-rewrite-hivex">Windows IP Rewrite (hivex)<a class="headerlink" href="#windows-ip-rewrite-hivex" title="Permanent link">&para;</a></h3>
+<p>For Windows guests, the handler uses
+<a href="https://libguestfs.org/hivex.3.html">hivex</a> to edit the Windows registry
+hive offline. Network configuration in Windows is stored in the SYSTEM
+registry hive.</p>
+<p><strong>Registry path:</strong></p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>HKLM\SYSTEM\&lt;ControlSet&gt;\Services\Tcpip\Parameters\Interfaces\&lt;AdapterGUID&gt;
+</span></code></pre></div>
+<p><strong>How it works:</strong></p>
+<ol>
+<li>The handler locates the SYSTEM hive at
+   <code>&lt;systemroot&gt;\system32\config\system</code> on the guest filesystem.</li>
+<li>It determines the active <code>ControlSet</code> by reading the <code>Select\Current</code>
+   value in the SYSTEM hive.</li>
+<li>It enumerates adapter GUIDs under
+   <code>ControlSet&lt;N&gt;\Services\Tcpip\Parameters\Interfaces\</code>.</li>
+<li>It matches the target adapter by interface index or existing IP
+   configuration.</li>
+<li>It writes the new IP address, subnet mask (converted from CIDR prefix),
+   gateway, and DNS servers as registry values using <code>hivexregedit --merge</code>.</li>
+</ol>
+<p><strong>Registry value types used:</strong></p>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>IPAddress</code></td>
+<td><code>REG_MULTI_SZ</code></td>
+<td>Static IP address(es)</td>
+</tr>
+<tr>
+<td><code>SubnetMask</code></td>
+<td><code>REG_MULTI_SZ</code></td>
+<td>Subnet mask(s) corresponding to IP addresses</td>
+</tr>
+<tr>
+<td><code>DefaultGateway</code></td>
+<td><code>REG_MULTI_SZ</code></td>
+<td>Default gateway address(es)</td>
+</tr>
+<tr>
+<td><code>NameServer</code></td>
+<td><code>REG_SZ</code></td>
+<td>Comma-separated DNS server addresses</td>
+</tr>
+<tr>
+<td><code>EnableDHCP</code></td>
+<td><code>REG_DWORD</code></td>
+<td>Set to <code>0</code> to disable DHCP (static config)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="migration-detection">Migration Detection<a class="headerlink" href="#migration-detection" title="Permanent link">&para;</a></h3>
+<p>The webhook checks for the <code>kubevirt.io/migrationJobUID</code> label on incoming
+pods. This label is set by KubeVirt on pods created during live migration.</p>
+<p>When this label is detected, the webhook returns an <code>Allowed</code> response
+immediately — no init container is injected. This is critical because:</p>
+<ul>
+<li>Migration pods run a <em>target</em> virt-launcher that takes over the running VM
+  from the source virt-launcher</li>
+<li>Modifying the disk during migration would corrupt the running VM's
+  filesystem</li>
+<li>The IP is already correct on the running VM — only the initial boot needs
+  rewriting</li>
+</ul>
+<h2 id="components">Components<a class="headerlink" href="#components" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Component</th>
+<th>Location</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Webhook Server</strong></td>
+<td><code>cmd/ip-rewrite-webhook</code></td>
+<td>Standalone Go binary serving the mutating admission webhook on port 9443. Configured via flags (<code>--init-container-image</code>, <code>--cert-dir</code>).</td>
+</tr>
+<tr>
+<td><strong>Webhook Handler</strong></td>
+<td><code>internal/webhook/iprewrite</code></td>
+<td>Core admission logic: annotation parsing, migration detection, init container construction, JSON patch generation.</td>
+</tr>
+<tr>
+<td><strong>Init Container Image</strong></td>
+<td><code>build/ip-rewrite/Containerfile</code></td>
+<td>CentOS Stream 9-based image containing <code>guestfs-tools</code>, <code>augeas</code>, <code>hivex</code>, <code>perl-hivex</code>, and <code>libguestfs-winsupport</code>.</td>
+</tr>
+<tr>
+<td><strong>MWC Manifest</strong></td>
+<td><code>config/ip-rewrite-webhook</code></td>
+<td>Reference <code>MutatingWebhookConfiguration</code> with <code>objectSelector</code>, <code>failurePolicy: Ignore</code>, and cert-manager CA injection annotation.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="supported-guest-operating-systems">Supported Guest Operating Systems<a class="headerlink" href="#supported-guest-operating-systems" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>OS</th>
+<th>Versions</th>
+<th>Architecture</th>
+<th>Config Method</th>
+<th>Config Path</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>RHEL 7</td>
+<td>7.x</td>
+<td>x86_64</td>
+<td><code>ifcfg-*</code> via Augeas</td>
+<td><code>/etc/sysconfig/network-scripts/ifcfg-&lt;iface&gt;</code></td>
+</tr>
+<tr>
+<td>RHEL 8</td>
+<td>8.x</td>
+<td>x86_64</td>
+<td><code>ifcfg-*</code> or NM keyfile via Augeas</td>
+<td>Auto-detected: NM keyfile preferred, <code>ifcfg</code> fallback</td>
+</tr>
+<tr>
+<td>RHEL 9</td>
+<td>9.x</td>
+<td>x86_64</td>
+<td>NM keyfile via Augeas</td>
+<td><code>/etc/NetworkManager/system-connections/&lt;conn&gt;.nmconnection</code></td>
+</tr>
+<tr>
+<td>RHEL 10</td>
+<td>10.x</td>
+<td>x86_64</td>
+<td>NM keyfile via Augeas</td>
+<td><code>/etc/NetworkManager/system-connections/&lt;conn&gt;.nmconnection</code></td>
+</tr>
+<tr>
+<td>Windows Server 2016</td>
+<td>—</td>
+<td>x86_64</td>
+<td>Registry hive via hivex</td>
+<td><code>&lt;systemroot&gt;\system32\config\system</code></td>
+</tr>
+<tr>
+<td>Windows Server 2019</td>
+<td>—</td>
+<td>x86_64</td>
+<td>Registry hive via hivex</td>
+<td><code>&lt;systemroot&gt;\system32\config\system</code></td>
+</tr>
+<tr>
+<td>Windows Server 2022</td>
+<td>—</td>
+<td>x86_64</td>
+<td>Registry hive via hivex</td>
+<td><code>&lt;systemroot&gt;\system32\config\system</code></td>
+</tr>
+<tr>
+<td>Windows Server 2025</td>
+<td>—</td>
+<td>x86_64</td>
+<td>Registry hive via hivex</td>
+<td><code>&lt;systemroot&gt;\system32\config\system</code></td>
+</tr>
+<tr>
+<td>Windows 10</td>
+<td>—</td>
+<td>x86_64</td>
+<td>Registry hive via hivex</td>
+<td><code>&lt;systemroot&gt;\system32\config\system</code></td>
+</tr>
+<tr>
+<td>Windows 11</td>
+<td>—</td>
+<td>x86_64</td>
+<td>Registry hive via hivex</td>
+<td><code>&lt;systemroot&gt;\system32\config\system</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="known-limitations">Known Limitations<a class="headerlink" href="#known-limitations" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>IPv6</strong> — Not supported. Only IPv4 addresses are handled.</li>
+<li><strong>DHCP-to-static</strong> — Not supported. The source VM must already have a
+  static IP configuration.</li>
+<li><strong>Hostname rewrite</strong> — Not supported. Only IP, gateway, and DNS are
+  modified.</li>
+<li><strong>ARM64 guests</strong> — Not supported. The init container image is
+  single-architecture <code>linux/amd64</code>.</li>
+<li><strong>Non-RHEL Linux</strong> — Distributions such as Ubuntu, Fedora, or SUSE are not
+  supported. Only RHEL 7–10 is handled on the Linux side.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["content.code.copy", "content.code.annotate", "navigation.instant", "navigation.tracking", "navigation.sections", "navigation.expand", "navigation.top", "search.highlight", "search.suggest", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
