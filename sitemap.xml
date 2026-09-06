@@ -2,94 +2,94 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://raffaelespazzoli.github.io/soteria/</loc>
-         <lastmod>2026-09-05</lastmod>
+         <lastmod>2026-09-06</lastmod>
     </url>
     <url>
          <loc>https://raffaelespazzoli.github.io/soteria/gh-pages-setup/</loc>
-         <lastmod>2026-09-05</lastmod>
+         <lastmod>2026-09-06</lastmod>
     </url>
     <url>
          <loc>https://raffaelespazzoli.github.io/soteria/architecture/dr-lifecycle/</loc>
-         <lastmod>2026-09-05</lastmod>
+         <lastmod>2026-09-06</lastmod>
     </url>
     <url>
          <loc>https://raffaelespazzoli.github.io/soteria/architecture/overview/</loc>
-         <lastmod>2026-09-05</lastmod>
+         <lastmod>2026-09-06</lastmod>
     </url>
     <url>
          <loc>https://raffaelespazzoli.github.io/soteria/architecture/storage-drivers/</loc>
-         <lastmod>2026-09-05</lastmod>
+         <lastmod>2026-09-06</lastmod>
     </url>
     <url>
          <loc>https://raffaelespazzoli.github.io/soteria/contributing/dev-setup/</loc>
-         <lastmod>2026-09-05</lastmod>
+         <lastmod>2026-09-06</lastmod>
     </url>
     <url>
          <loc>https://raffaelespazzoli.github.io/soteria/contributing/storage-drivers/</loc>
-         <lastmod>2026-09-05</lastmod>
+         <lastmod>2026-09-06</lastmod>
     </url>
     <url>
          <loc>https://raffaelespazzoli.github.io/soteria/installation/helm/</loc>
-         <lastmod>2026-09-05</lastmod>
+         <lastmod>2026-09-06</lastmod>
     </url>
     <url>
          <loc>https://raffaelespazzoli.github.io/soteria/installation/prerequisites/</loc>
-         <lastmod>2026-09-05</lastmod>
+         <lastmod>2026-09-06</lastmod>
     </url>
     <url>
          <loc>https://raffaelespazzoli.github.io/soteria/installation/scylladb/cilium/</loc>
-         <lastmod>2026-09-05</lastmod>
+         <lastmod>2026-09-06</lastmod>
     </url>
     <url>
          <loc>https://raffaelespazzoli.github.io/soteria/installation/scylladb/overview/</loc>
-         <lastmod>2026-09-05</lastmod>
+         <lastmod>2026-09-06</lastmod>
     </url>
     <url>
          <loc>https://raffaelespazzoli.github.io/soteria/installation/scylladb/submariner/</loc>
-         <lastmod>2026-09-05</lastmod>
+         <lastmod>2026-09-06</lastmod>
     </url>
     <url>
          <loc>https://raffaelespazzoli.github.io/soteria/reference/helm-values/</loc>
-         <lastmod>2026-09-05</lastmod>
+         <lastmod>2026-09-06</lastmod>
     </url>
     <url>
          <loc>https://raffaelespazzoli.github.io/soteria/reference/api/drexecution/</loc>
-         <lastmod>2026-09-05</lastmod>
+         <lastmod>2026-09-06</lastmod>
     </url>
     <url>
          <loc>https://raffaelespazzoli.github.io/soteria/reference/api/drplan/</loc>
-         <lastmod>2026-09-05</lastmod>
+         <lastmod>2026-09-06</lastmod>
     </url>
     <url>
          <loc>https://raffaelespazzoli.github.io/soteria/usage/creating-a-drplan/</loc>
-         <lastmod>2026-09-05</lastmod>
+         <lastmod>2026-09-06</lastmod>
     </url>
     <url>
          <loc>https://raffaelespazzoli.github.io/soteria/usage/drplan/</loc>
-         <lastmod>2026-09-05</lastmod>
+         <lastmod>2026-09-06</lastmod>
     </url>
     <url>
          <loc>https://raffaelespazzoli.github.io/soteria/usage/failover/</loc>
-         <lastmod>2026-09-05</lastmod>
+         <lastmod>2026-09-06</lastmod>
     </url>
     <url>
          <loc>https://raffaelespazzoli.github.io/soteria/usage/volumes/</loc>
-         <lastmod>2026-09-05</lastmod>
+         <lastmod>2026-09-06</lastmod>
     </url>
     <url>
          <loc>https://raffaelespazzoli.github.io/soteria/usage/waves/</loc>
-         <lastmod>2026-09-05</lastmod>
+         <lastmod>2026-09-06</lastmod>
     </url>
     <url>
          <loc>https://raffaelespazzoli.github.io/soteria/usage/ui-guide/dashboard/</loc>
-         <lastmod>2026-09-05</lastmod>
+         <lastmod>2026-09-06</lastmod>
     </url>
     <url>
          <loc>https://raffaelespazzoli.github.io/soteria/usage/ui-guide/execution-monitor/</loc>
-         <lastmod>2026-09-05</lastmod>
+         <lastmod>2026-09-06</lastmod>
     </url>
     <url>
          <loc>https://raffaelespazzoli.github.io/soteria/usage/ui-guide/plan-detail/</loc>
-         <lastmod>2026-09-05</lastmod>
+         <lastmod>2026-09-06</lastmod>
     </url>
 </urlset>
