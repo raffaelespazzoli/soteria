@@ -1,6 +1,6 @@
 # Story 18.11: Documentation — Reference & Nav Update
 
-Status: ready-for-dev
+Status: review
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -43,22 +43,22 @@ Then the build completes with zero warnings and zero errors
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create `docs/reference/ip-rewrite.md` — Reference page (AC: 1, 4)
-  - [ ] 1.1: Write annotation and label reference table — name, type, required/optional, format, example for each annotation
-  - [ ] 1.2: Write supported guest OS matrix table — OS, versions, architecture, config method, config file paths
-  - [ ] 1.3: Write SCC requirements section — capability, volume types, binding mechanism
-  - [ ] 1.4: Write Helm `values.yaml` reference tables — all parameters from `charts/soteria-ip-rewrite/values.yaml` with defaults and descriptions, organized by section (Global, Webhook, Init Container, TLS, SCC, Webhook Config)
-  - [ ] 1.5: Write known limitations and deferred features section
-- [ ] Task 2: Update `mkdocs.yml` nav to include all three IP rewrite pages (AC: 2, 4)
-  - [ ] 2.1: Add `IP Rewrite: architecture/ip-rewrite.md` under `Architecture` section after `Storage Drivers`
-  - [ ] 2.2: Add `IP Rewrite: usage/ip-rewrite.md` under `Usage` section after `Executing Failover` (before UI Guides)
-  - [ ] 2.3: Add `IP Rewrite: reference/ip-rewrite.md` under `Reference` section after `Helm Values`
-- [ ] Task 3: Update `docs/index.md` landing page (AC: 3, 4)
-  - [ ] 3.1: Add an IP Rewrite card to the "Key Capabilities" grid (standalone add-on feature)
-  - [ ] 3.2: Add IP Rewrite row to the "Architecture at a Glance" component table
-  - [ ] 3.3: Add IP Rewrite entry to the "Documentation Guide" table with links
-- [ ] Task 4: Verify docs build without errors (AC: 4)
-  - [ ] 4.1: Run `mkdocs build --strict` and confirm zero warnings and zero errors
+- [x] Task 1: Create `docs/reference/ip-rewrite.md` — Reference page (AC: 1, 4)
+  - [x] 1.1: Write annotation and label reference table — name, type, required/optional, format, example for each annotation
+  - [x] 1.2: Write supported guest OS matrix table — OS, versions, architecture, config method, config file paths
+  - [x] 1.3: Write SCC requirements section — capability, volume types, binding mechanism
+  - [x] 1.4: Write Helm `values.yaml` reference tables — all parameters from `charts/soteria-ip-rewrite/values.yaml` with defaults and descriptions, organized by section (Global, Webhook, Init Container, TLS, SCC, Webhook Config)
+  - [x] 1.5: Write known limitations and deferred features section
+- [x] Task 2: Update `mkdocs.yml` nav to include all three IP rewrite pages (AC: 2, 4)
+  - [x] 2.1: Add `IP Rewrite: architecture/ip-rewrite.md` under `Architecture` section after `Storage Drivers`
+  - [x] 2.2: Add `IP Rewrite: usage/ip-rewrite.md` under `Usage` section after `Executing Failover` (before UI Guides)
+  - [x] 2.3: Add `IP Rewrite: reference/ip-rewrite.md` under `Reference` section after `Helm Values`
+- [x] Task 3: Update `docs/index.md` landing page (AC: 3, 4)
+  - [x] 3.1: Add an IP Rewrite card to the "Key Capabilities" grid (standalone add-on feature)
+  - [x] 3.2: Add IP Rewrite row to the "Architecture at a Glance" component table
+  - [x] 3.3: Add IP Rewrite entry to the "Documentation Guide" table with links
+- [x] Task 4: Verify docs build without errors (AC: 4)
+  - [x] 4.1: Run `mkdocs build --strict` and confirm zero warnings and zero errors
 
 ## Dev Notes
 
@@ -509,10 +509,25 @@ docs/usage/ip-rewrite.md          ← STUB if missing (for nav to resolve)
 
 ### Agent Model Used
 
-*(To be filled by dev agent)*
+Claude Opus 4.6 (Cursor)
 
 ### Debug Log References
 
+No debug issues encountered — documentation-only story.
+
 ### Completion Notes List
 
+- Created `docs/reference/ip-rewrite.md` with complete annotation/label reference tables, supported guest OS matrix, SCC requirements, full Helm values reference (all parameters from actual `charts/soteria-ip-rewrite/values.yaml`), and known limitations section.
+- Helm values documented from actual `values.yaml` — includes `scc.create`, `scc.serviceAccountNames` fields present in implementation but not in original spec. `scc.enabled` defaults to `false` (actual) not `true` (spec).
+- Updated `mkdocs.yml` nav with three entries: Architecture → IP Rewrite (after Storage Drivers), Usage → IP Rewrite (after Executing Failover, before UI Guides), Reference → IP Rewrite (after Helm Values, top-level not nested under API Reference).
+- Updated `docs/index.md`: added Guest IP Rewrite grid card to Key Capabilities, added IP Rewrite Webhook row to Architecture at a Glance table, added IP Rewrite entry to Documentation Guide table.
+- `mkdocs build --strict` passes with zero warnings and zero errors.
+- Migration skip label is `kubevirt.io/migrationJobUID` (from `virtv1.MigrationJobLabel` constant in handler.go).
+- Init container base image is CentOS Stream 9 (confirmed from `build/ip-rewrite/Containerfile`).
+- Architecture and usage pages from Story 18.10 already exist — no stubs needed.
+
 ### File List
+
+- `docs/reference/ip-rewrite.md` — NEW — Complete reference page
+- `mkdocs.yml` — MODIFIED — Added 3 nav entries for IP rewrite pages
+- `docs/index.md` — MODIFIED — Added grid card, component table row, documentation guide entry
