@@ -2,6 +2,22 @@ apiVersion: v1
 entries:
   soteria:
   - apiVersion: v2
+    appVersion: v0.2.0-rc1
+    created: "2026-09-10T18:49:56.242511223Z"
+    dependencies:
+    - condition: soteria-ip-rewrite.enabled
+      name: soteria-ip-rewrite
+      repository: file://../soteria-ip-rewrite
+      version: 0.1.0
+    description: Storage-agnostic disaster recovery orchestrator for OpenShift Virtualization
+    digest: dd9f52d51cf399bbb7831175bcf3cebe3913d4f1dac9371aa832911c3e215bd8
+    kubeVersion: '>=1.28.0'
+    name: soteria
+    type: application
+    urls:
+    - https://raffaelespazzoli.github.io/soteria/soteria-0.2.0-rc1.tgz
+    version: 0.2.0-rc1
+  - apiVersion: v2
     appVersion: v0.1.0
     created: "2026-09-06T05:57:29.593052302Z"
     description: Storage-agnostic disaster recovery orchestrator for OpenShift Virtualization
@@ -34,4 +50,17 @@ entries:
     urls:
     - https://raffaelespazzoli.github.io/soteria/soteria-0.1.0-rc1.tgz
     version: 0.1.0-rc1
-generated: "2026-09-06T05:57:29.592202934Z"
+  soteria-ip-rewrite:
+  - apiVersion: v2
+    appVersion: v0.2.0-rc1
+    created: "2026-09-10T18:49:56.242924616Z"
+    description: Mutating webhook for offline VM IP reconfiguration (init container
+      injection)
+    digest: ff835126f61c9ad8f141fbfa44e652e774cc2aed5310def9b12099029e4d85a1
+    kubeVersion: '>=1.28.0'
+    name: soteria-ip-rewrite
+    type: application
+    urls:
+    - https://raffaelespazzoli.github.io/soteria/soteria-ip-rewrite-0.2.0-rc1.tgz
+    version: 0.2.0-rc1
+generated: "2026-09-10T18:49:56.241084815Z"
