@@ -33,15 +33,19 @@ fi
 
 echo "Creating RHEL NM keyfile fixture: ${OUTPUT}"
 
-guestfish -N "${OUTPUT}=fs:ext4:200M" <<'GFEOF'
-mkdir-p /bin
-mkdir-p /etc/NetworkManager/system-connections
+WORKDIR=$(mktemp -d)
+trap 'rm -rf "${WORKDIR}"' EXIT
 
-write /etc/fstab "# stub\n"
-write /etc/os-release "ID=rhel\nVERSION_ID=9\nNAME=\"Red Hat Enterprise Linux\"\n"
-write /etc/redhat-release "Red Hat Enterprise Linux release 9.4 (Plow)\n"
-
-write /etc/NetworkManager/system-connections/eth0.nmconnection "[connection]
+cat > "${WORKDIR}/os-release" <<'EOF'
+ID=rhel
+VERSION_ID=9
+NAME=Red Hat Enterprise Linux
+EOF
+cat > "${WORKDIR}/redhat-release" <<'EOF'
+Red Hat Enterprise Linux release 9.4 (Plow)
+EOF
+cat > "${WORKDIR}/eth0.nmconnection" <<'EOF'
+[connection]
 id=eth0
 uuid=12345678-1234-1234-1234-123456789abc
 type=802-3-ethernet
@@ -54,8 +58,17 @@ dns=8.8.8.8;
 
 [ipv6]
 method=disabled
-"
+EOF
+printf '%s\n' '# stub' > "${WORKDIR}/fstab"
 
+guestfish -N "${OUTPUT}=fs:ext4:200M" <<GFEOF
+mount /dev/sda1 /
+mkdir-p /bin
+mkdir-p /etc/NetworkManager/system-connections
+upload ${WORKDIR}/fstab /etc/fstab
+upload ${WORKDIR}/os-release /etc/os-release
+upload ${WORKDIR}/redhat-release /etc/redhat-release
+upload ${WORKDIR}/eth0.nmconnection /etc/NetworkManager/system-connections/eth0.nmconnection
 chmod 0600 /etc/NetworkManager/system-connections/eth0.nmconnection
 GFEOF
 

@@ -150,12 +150,16 @@ integration-scylladb: setup-envtest ## Run ScyllaDB integration tests (Docker/Po
 IP_REWRITE_TEST_DIR ?= test/ip-rewrite
 
 .PHONY: test-ip-rewrite
-test-ip-rewrite: ## Run IP rewrite handler integration tests (requires guestfish + hivex).
+test-ip-rewrite: ## Run IP rewrite handler integration tests (requires guestfish and python3-libguestfs).
 	@command -v guestfish >/dev/null 2>&1 || { echo "guestfish not found. Install guestfs-tools (libguestfs-tools on Debian/Ubuntu)."; exit 1; }
-	@command -v hivexregedit >/dev/null 2>&1 || { echo "hivexregedit not found. Install hivex."; exit 1; }
-	@command -v hivexsh >/dev/null 2>&1 || { echo "hivexsh not found. Install hivex."; exit 1; }
-	@command -v hivexget >/dev/null 2>&1 || { echo "hivexget not found. Install hivex."; exit 1; }
-	LIBGUESTFS_BACKEND=direct bash $(IP_REWRITE_TEST_DIR)/run-tests.sh
+	@python3 -c "import guestfs" >/dev/null 2>&1 || { \
+		extracted=$$(find /tmp/pyguestfs-extract -name guestfs.py 2>/dev/null | head -1); \
+		if [ -z "$$extracted" ]; then \
+			echo "python3-libguestfs not found (import guestfs). Install with: sudo dnf install python3-libguestfs"; \
+			exit 1; \
+		fi; \
+	}
+	LIBGUESTFS_BACKEND=direct HOME=/tmp TMPDIR=/tmp XDG_RUNTIME_DIR=/tmp bash $(IP_REWRITE_TEST_DIR)/run-tests.sh
 
 .PHONY: helm-lint
 helm-lint: ## Lint the Helm chart (quick, no cluster needed).
@@ -204,9 +208,17 @@ docker-push: ## Push docker image with the manager.
 docker-build-ip-rewrite: ## Build ip-rewrite init container image.
 	$(CONTAINER_TOOL) build -f build/ip-rewrite/Containerfile -t $(IP_REWRITE_IMG) build/ip-rewrite/
 
+.PHONY: docker-push-ip-rewrite
+docker-push-ip-rewrite: ## Push ip-rewrite init container image.
+	$(CONTAINER_TOOL) push $(IP_REWRITE_IMG)
+
 .PHONY: docker-build-ip-rewrite-webhook
 docker-build-ip-rewrite-webhook: ## Build ip-rewrite webhook image.
 	$(CONTAINER_TOOL) build -f build/ip-rewrite-webhook/Dockerfile -t $(IP_REWRITE_WEBHOOK_IMG) .
+
+.PHONY: docker-push-ip-rewrite-webhook
+docker-push-ip-rewrite-webhook: ## Push ip-rewrite webhook image.
+	$(CONTAINER_TOOL) push $(IP_REWRITE_WEBHOOK_IMG)
 
 # PLATFORMS defines the target platforms for the manager image be built to provide support to multiple
 # architectures. (i.e. make docker-buildx IMG=myregistry/mypoperator:0.0.1). To use this option you need to:

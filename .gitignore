@@ -38,6 +38,11 @@ hack/multisite/.data/
 # Local Martin AWS ODF test-bed scripts (not for upstream)
 hack/martin/
 
+# Windows ISOs and golden images for ip-rewrite testing
+hack/ip-rewriter/windows-images/
+hack/ip-rewriter/golden-images/
+hack/ip-rewriter/screenshots/
+
 # Local graphify codebase graph output
 graphify-out/
 

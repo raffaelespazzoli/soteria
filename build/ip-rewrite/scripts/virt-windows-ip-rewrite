@@ -1,0 +1,508 @@
+#!/usr/bin/env python3
+"""In-place Windows SYSTEM hive IP rewrite in one libguestfs session.
+
+Named virt-* so RHEL/CentOS libguestfs-winsupport will mount NTFS
+(RHBZ#1240276). The hive is never copied out of the appliance.
+
+guestfish cannot pass NUL bytes in BufferIn arguments (\"\\x00\" is
+rejected in quoted strings, and Unix argv cannot contain NUL). Python
+guestfs sends length-prefixed binary, which is required for REG_DWORD
+and UTF-16LE REG_MULTI_SZ / REG_SZ values.
+
+Required environment (set by windows-handler.sh / entrypoint):
+  REWRITE_DISK, REWRITE_IFACE_COUNT, REWRITE_IFACE_N, REWRITE_IP_N,
+  REWRITE_PREFIX_N, REWRITE_GATEWAY_N, REWRITE_DNS (optional)
+Optional (from virt-inspector):
+  REWRITE_WIN_ROOT, REWRITE_WIN_SYSTEMROOT, REWRITE_WIN_CONTROLSET,
+  REWRITE_WIN_SYSTEM_HIVE
+"""
+
+from __future__ import annotations
+
+import os
+import struct
+import sys
+from datetime import datetime, timezone
+from typing import Optional
+
+PROGRAM_NAME = "virt-windows-ip-rewrite"
+
+HIVEX_SZ = 1
+HIVEX_DWORD = 4
+HIVEX_MULTI_SZ = 7
+
+ADAPTER_GUID = "{12345678-1234-1234-1234-123456789abc}"
+
+
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def log_info(msg: str) -> None:
+    print(f"[INFO]  {_utc_now()} {msg}")
+
+
+def log_warn(msg: str) -> None:
+    print(f"[WARN]  {_utc_now()} {msg}", file=sys.stderr)
+
+
+def log_error(msg: str) -> None:
+    print(f"[ERROR] {_utc_now()} {msg}", file=sys.stderr)
+
+
+def prepare_env() -> None:
+    os.environ.setdefault("LIBGUESTFS_BACKEND", "direct")
+    for key in ("HOME", "TMPDIR", "XDG_RUNTIME_DIR"):
+        val = os.environ.get(key, "/tmp")
+        if not val or not os.access(val, os.W_OK):
+            val = "/tmp"
+        os.environ[key] = val
+        os.makedirs(val, exist_ok=True)
+
+
+def import_guestfs():
+    try:
+        import guestfs  # type: ignore
+        return guestfs
+    except ImportError:
+        log_error(
+            "Python libguestfs bindings are not available (import guestfs). "
+            "Install python3-libguestfs in the init image / on the test host."
+        )
+        sys.exit(1)
+
+
+def utf16le_sz(text: str) -> bytes:
+    return text.encode("utf-16le") + b"\x00\x00"
+
+
+def utf16le_multisz(text: str) -> bytes:
+    return text.encode("utf-16le") + b"\x00\x00\x00\x00"
+
+
+def dword_le(value: int) -> bytes:
+    return struct.pack("<I", value)
+
+
+def prefix_to_mask(prefix: int) -> str:
+    if prefix < 0 or prefix > 32:
+        raise ValueError(f"Invalid prefix length: {prefix}")
+    mask = (0xFFFFFFFF << (32 - prefix)) & 0xFFFFFFFF
+    return ".".join(str((mask >> shift) & 0xFF) for shift in (24, 16, 8, 0))
+
+
+def ip_to_network(ip: str, mask: str) -> str:
+    a = [int(x) for x in ip.split(".")]
+    m = [int(x) for x in mask.split(".")]
+    return ".".join(str(a[i] & m[i]) for i in range(4))
+
+
+def node_handles(children) -> list[int]:
+    handles: list[int] = []
+    for child in children or []:
+        if isinstance(child, dict):
+            handles.append(int(child.get("hivex_node_h") or 0))
+        else:
+            handles.append(int(child))
+    return [h for h in handles if h]
+
+
+def node_child(g, parent: int, name: str) -> int:
+    child = g.hivex_node_get_child(parent, name)
+    if not child:
+        raise RuntimeError(f"Hive path missing child '{name}'")
+    return child
+
+
+def dword_from_value(g, valueh: int) -> int:
+    raw = g.hivex_value_value(valueh) or b""
+    if len(raw) >= 4:
+        return struct.unpack("<I", raw[:4])[0]
+    if raw:
+        return raw[0]
+    return 0
+
+
+def utf8_from_value(g, valueh: int) -> str:
+    """Decode REG_SZ / REG_MULTI_SZ from raw UTF-16LE bytes.
+
+    guestfs hivex_value_string/utf8 reject MULTI_SZ (extra list NUL) and DWORD.
+    """
+    raw = g.hivex_value_value(valueh) or b""
+    if len(raw) < 2:
+        return ""
+    if len(raw) % 2 == 1:
+        raw = raw + b"\x00"
+    try:
+        text = raw.decode("utf-16le")
+    except UnicodeDecodeError:
+        return ""
+    return text.split("\x00", 1)[0].replace("\r", "").split("\n", 1)[0]
+
+
+def new_guestfs(guestfs_mod):
+    g = guestfs_mod.GuestFS(python_return_dict=True)
+    g.set_program(PROGRAM_NAME)
+    return g
+
+
+def close_guestfs(g) -> None:
+    if g is None:
+        return
+    try:
+        g.umount_all()
+    except Exception:
+        pass
+    try:
+        g.shutdown()
+    except Exception:
+        pass
+    try:
+        g.close()
+    except Exception:
+        pass
+
+
+def locate_hive(g, systemroot: str, hive_hint: str) -> str:
+    candidates = [
+        hive_hint,
+        f"{systemroot}/System32/config/SYSTEM",
+        f"{systemroot}/System32/config/system",
+        "/Windows/System32/config/SYSTEM",
+        "/Windows/System32/config/system",
+    ]
+    for candidate in candidates:
+        if not candidate:
+            continue
+        try:
+            resolved = g.case_sensitive_path(candidate)
+        except RuntimeError:
+            continue
+        if resolved and g.is_file(resolved):
+            return resolved
+    raise RuntimeError(f"Could not locate SYSTEM hive under {systemroot}/System32/config")
+
+
+def control_set_name(g, hive_root: int, preferred: str) -> str:
+    if preferred:
+        child = g.hivex_node_get_child(hive_root, preferred)
+        if child:
+            return preferred
+        log_warn(f"Control set {preferred} not found — resolving from Select\\Current")
+    try:
+        select = g.hivex_node_get_child(hive_root, "Select")
+        if select:
+            vh = g.hivex_node_get_value(select, "Current")
+            if vh:
+                current = dword_from_value(g, vh)
+                name = f"ControlSet{current:03d}"
+                if g.hivex_node_get_child(hive_root, name):
+                    return name
+    except RuntimeError:
+        pass
+    if g.hivex_node_get_child(hive_root, "ControlSet001"):
+        return "ControlSet001"
+    raise RuntimeError("No usable Windows control set found in SYSTEM hive")
+
+
+def mount_ntfs(g, root_dev: str) -> None:
+    log_info(f"NTFS device: {root_dev}")
+    try:
+        g.ntfsfix(root_dev)
+        log_info(f"ntfsfix completed on {root_dev}")
+    except RuntimeError as err:
+        log_warn(f"ntfsfix failed on {root_dev} — attempting mount anyway ({err})")
+
+    mount_attempts = (
+        ("remove_hiberfile", root_dev, "/"),
+        (None, root_dev, "/"),
+        ("force,remove_hiberfile", root_dev, "/"),
+    )
+    last_err: Optional[Exception] = None
+    for options, device, mp in mount_attempts:
+        try:
+            if options is None:
+                g.mount(device, mp)
+            else:
+                g.mount_options(options, device, mp)
+            log_info(f"Mounted {root_dev} at /")
+            return
+        except RuntimeError as err:
+            last_err = err
+    raise RuntimeError(f"Failed to mount {root_dev} read-write (dirty NTFS?): {last_err}")
+
+
+def discover_root_dev(g) -> str:
+    fs_map = g.list_filesystems() or {}
+    log_info(f"Filesystems: {fs_map}")
+    for dev, fstype in fs_map.items():
+        if str(fstype).lower() == "ntfs":
+            return dev
+    raise RuntimeError("No NTFS filesystem found on disk")
+
+
+def rewrite_windows_disk() -> None:
+    disk = os.environ.get("REWRITE_DISK", "")
+    if not disk:
+        raise RuntimeError("REWRITE_DISK is not set")
+    if not os.path.exists(disk):
+        raise RuntimeError(f"REWRITE_DISK does not exist: {disk}")
+
+    iface_count = int(os.environ.get("REWRITE_IFACE_COUNT", "0"))
+    if iface_count < 1:
+        raise RuntimeError(f"REWRITE_IFACE_COUNT must be >= 1, got: {iface_count}")
+
+    guestfs_mod = import_guestfs()
+    log_info(f"Starting libguestfs session ({PROGRAM_NAME}) for {disk}")
+    g = new_guestfs(guestfs_mod)
+    try:
+        g.add_drive(disk, readonly=False)
+        g.launch()
+        g.set_program(PROGRAM_NAME)
+
+        if not g.feature_available(["hivex"]):
+            raise RuntimeError("libguestfs appliance is missing the hivex feature")
+
+        root_dev = os.environ.get("REWRITE_WIN_ROOT") or ""
+        if not root_dev:
+            log_info("REWRITE_WIN_ROOT unset — discovering NTFS filesystems")
+            root_dev = discover_root_dev(g)
+
+        mount_ntfs(g, root_dev)
+
+        systemroot = os.environ.get("REWRITE_WIN_SYSTEMROOT") or "/Windows"
+        hive_path = locate_hive(g, systemroot, os.environ.get("REWRITE_WIN_SYSTEM_HIVE") or "")
+        log_info(f"SYSTEM hive: {hive_path}")
+
+        g.hivex_open(hive_path, write=True)
+        hive_root = g.hivex_root()
+        controlset = control_set_name(g, hive_root, os.environ.get("REWRITE_WIN_CONTROLSET") or "")
+        cs_node = node_child(g, hive_root, controlset)
+        ifaces_node = node_child(
+            g,
+            node_child(g, node_child(g, node_child(g, cs_node, "Services"), "Tcpip"), "Parameters"),
+            "Interfaces",
+        )
+        log_info(f"Active control set: {controlset}")
+
+        guid_list: list[str] = []
+        adapter_node: dict[str, int] = {}
+        adapter_dhcp: dict[str, str] = {}
+        adapter_ip: dict[str, str] = {}
+        adapter_mask: dict[str, str] = {}
+
+        for handle in node_handles(g.hivex_node_children(ifaces_node)):
+            name = (g.hivex_node_name(handle) or "").strip()
+            if not (name.startswith("{") and name.endswith("}")):
+                continue
+            guid_list.append(name)
+            adapter_node[name] = handle
+
+            dhcp = ""
+            vh = g.hivex_node_get_value(handle, "EnableDHCP")
+            if vh:
+                dhcp = str(dword_from_value(g, vh))
+            adapter_dhcp[name] = dhcp
+
+            ip = ""
+            mask = ""
+            if dhcp == "0":
+                ip_key, mask_key = "IPAddress", "SubnetMask"
+            else:
+                ip_key, mask_key = "DhcpIPAddress", "DhcpSubnetMask"
+            vh = g.hivex_node_get_value(handle, ip_key)
+            if vh:
+                ip = utf8_from_value(g, vh)
+            vh = g.hivex_node_get_value(handle, mask_key)
+            if vh:
+                mask = utf8_from_value(g, vh)
+            adapter_ip[name] = ip
+            adapter_mask[name] = mask
+            log_info(f"  Adapter {name}: EnableDHCP={dhcp or 'N/A'} IP={ip or 'N/A'} Mask={mask or 'N/A'}")
+
+        if not guid_list:
+            raise RuntimeError(
+                f"No network adapter GUIDs found under {controlset}\\Services\\Tcpip\\Parameters\\Interfaces"
+            )
+
+        all_guids = sorted(guid_list)
+        static_guids = [
+            guid for guid in all_guids
+            if adapter_dhcp.get(guid) == "0"
+            and adapter_ip.get(guid)
+            and adapter_ip.get(guid) != "0.0.0.0"
+        ]
+        log_info(f"Static-IP adapters: {len(static_guids)}, Total adapters: {len(all_guids)}")
+
+        assigned: set[str] = set()
+        iface_to_guid: dict[int, str] = {}
+        for i in range(iface_count):
+            iface = os.environ[f"REWRITE_IFACE_{i}"]
+            target_ip = os.environ[f"REWRITE_IP_{i}"]
+            target_prefix = int(os.environ[f"REWRITE_PREFIX_{i}"])
+            target_gw = os.environ[f"REWRITE_GATEWAY_{i}"]
+            target_mask = prefix_to_mask(target_prefix)
+            target_network = ip_to_network(target_ip, target_mask)
+            log_info(
+                f"Matching interface {i} ({iface}): "
+                f"target={target_ip}/{target_prefix} gw={target_gw} network={target_network}"
+            )
+
+            matched = ""
+            if iface_count == 1:
+                if static_guids:
+                    matched = static_guids[0]
+                    log_info(f"  Single-NIC match: static-IP adapter {matched}")
+                elif all_guids:
+                    matched = all_guids[0]
+                    log_warn(f"  No static-IP adapter — selecting {matched} (will convert to static)")
+            else:
+                for guid in all_guids:
+                    if guid in assigned:
+                        continue
+                    existing_ip = adapter_ip.get(guid) or ""
+                    existing_mask = adapter_mask.get(guid) or ""
+                    if not existing_ip or existing_ip == "0.0.0.0" or not existing_mask:
+                        continue
+                    if ip_to_network(existing_ip, existing_mask) == target_network:
+                        matched = guid
+                        log_info(f"  Subnet match: {guid} (existing {existing_ip}/{existing_mask})")
+                        break
+                if not matched:
+                    for guid in all_guids:
+                        if guid not in assigned:
+                            matched = guid
+                            log_info(f"  Fallback adapter {guid}")
+                            break
+
+            if not matched:
+                raise RuntimeError(f"No matching adapter for interface {i} ({iface})")
+            iface_to_guid[i] = matched
+            assigned.add(matched)
+
+        dns = os.environ.get("REWRITE_DNS") or ""
+        for i in range(iface_count):
+            target_ip = os.environ[f"REWRITE_IP_{i}"]
+            target_prefix = int(os.environ[f"REWRITE_PREFIX_{i}"])
+            target_gw = os.environ[f"REWRITE_GATEWAY_{i}"]
+            target_iface = os.environ[f"REWRITE_IFACE_{i}"]
+            guid = iface_to_guid[i]
+            node = adapter_node[guid]
+            target_mask = prefix_to_mask(target_prefix)
+            log_info(f"Writing {target_iface} → {guid}: ip={target_ip} mask={target_mask} gw={target_gw}")
+            g.hivex_node_set_value(node, "EnableDHCP", HIVEX_DWORD, dword_le(0))
+            g.hivex_node_set_value(node, "IPAddress", HIVEX_MULTI_SZ, utf16le_multisz(target_ip))
+            g.hivex_node_set_value(node, "SubnetMask", HIVEX_MULTI_SZ, utf16le_multisz(target_mask))
+            g.hivex_node_set_value(node, "DefaultGateway", HIVEX_MULTI_SZ, utf16le_multisz(target_gw))
+            if dns:
+                log_info(f"Writing DNS on {target_iface}: {dns}")
+                g.hivex_node_set_value(node, "NameServer", HIVEX_SZ, utf16le_sz(dns))
+
+        hive_new = f"{hive_path}.soteria-new"
+        log_info(f"Committing hive in place via {hive_new}")
+        g.hivex_commit(hive_new)
+        g.hivex_close()
+        if not g.is_file(hive_new):
+            raise RuntimeError(f"hivex-commit did not produce {hive_new}")
+        g.rm(hive_path)
+        g.mv(hive_new, hive_path)
+        log_info("SYSTEM hive replaced on guest filesystem")
+
+        hive_dir = hive_path.rsplit("/", 1)[0]
+        for logname in (
+            "SYSTEM.LOG", "SYSTEM.LOG1", "SYSTEM.LOG2",
+            "system.LOG", "system.LOG1", "system.LOG2",
+        ):
+            candidate = f"{hive_dir}/{logname}"
+            try:
+                resolved = g.case_sensitive_path(candidate)
+            except RuntimeError:
+                continue
+            if resolved and g.is_file(resolved):
+                g.truncate(resolved)
+                log_info(f"Truncated {resolved}")
+
+        g.umount_all()
+        g.sync()
+        log_info("Windows IP rewrite committed on disk (no hive download/upload)")
+        for i in range(iface_count):
+            log_info(
+                f"  {os.environ[f'REWRITE_IFACE_{i}']} → {iface_to_guid[i]}: "
+                f"{os.environ[f'REWRITE_IP_{i}']}/{os.environ[f'REWRITE_PREFIX_{i}']} "
+                f"gw={os.environ[f'REWRITE_GATEWAY_{i}']}"
+            )
+        if dns:
+            log_info(f"  DNS: {dns}")
+    finally:
+        close_guestfs(g)
+
+
+def populate_fixture(image: str) -> None:
+    """Add a static Tcpip adapter to a fixture disk that already has a SYSTEM hive."""
+    if not os.path.exists(image):
+        raise RuntimeError(f"Fixture image does not exist: {image}")
+    guestfs_mod = import_guestfs()
+    g = new_guestfs(guestfs_mod)
+    try:
+        g.add_drive(image, readonly=False)
+        g.launch()
+        g.set_program(PROGRAM_NAME)
+        try:
+            g.mount("/dev/sda1", "/")
+        except RuntimeError:
+            g.mount("/dev/sda", "/")
+        g.hivex_open("/Windows/System32/config/system", write=True)
+        root = g.hivex_root()
+
+        def add_child(parent: int, name: str) -> int:
+            existing = g.hivex_node_get_child(parent, name)
+            if existing:
+                return existing
+            return g.hivex_node_add_child(parent, name)
+
+        cs = add_child(root, "ControlSet001")
+        svc = add_child(cs, "Services")
+        tcp = add_child(svc, "Tcpip")
+        params = add_child(tcp, "Parameters")
+        ifaces = add_child(params, "Interfaces")
+        guid = add_child(ifaces, ADAPTER_GUID)
+
+        g.hivex_node_set_value(guid, "EnableDHCP", HIVEX_DWORD, dword_le(0))
+        g.hivex_node_set_value(guid, "IPAddress", HIVEX_MULTI_SZ, utf16le_multisz("10.0.1.50"))
+        g.hivex_node_set_value(guid, "SubnetMask", HIVEX_MULTI_SZ, utf16le_multisz("255.255.255.0"))
+        g.hivex_node_set_value(guid, "DefaultGateway", HIVEX_MULTI_SZ, utf16le_multisz("10.0.1.1"))
+
+        newhive = "/Windows/System32/config/system.soteria-new"
+        g.hivex_commit(newhive)
+        g.hivex_close()
+        g.rm("/Windows/System32/config/system")
+        g.mv(newhive, "/Windows/System32/config/system")
+        g.umount_all()
+        g.sync()
+        log_info(f"Populated Windows fixture hive on {image}")
+    finally:
+        close_guestfs(g)
+
+
+def main() -> int:
+    prepare_env()
+    if len(sys.argv) == 3 and sys.argv[1] == "--populate-fixture":
+        try:
+            populate_fixture(sys.argv[2])
+            return 0
+        except Exception as err:
+            log_error(str(err))
+            return 1
+    if len(sys.argv) > 1:
+        log_error(f"Unexpected arguments: {' '.join(sys.argv[1:])}")
+        return 1
+    try:
+        rewrite_windows_disk()
+        return 0
+    except Exception as err:
+        log_error(str(err))
+        return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

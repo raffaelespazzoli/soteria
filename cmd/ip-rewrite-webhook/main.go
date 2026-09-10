@@ -28,6 +28,7 @@ import (
 	"flag"
 	"os"
 
+	corev1 "k8s.io/api/core/v1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -40,7 +41,9 @@ func main() {
 	var certDir string
 	var port int
 	var initContainerImage string
+	var initContainerPullPolicy string
 	var enableHTTP2 bool
+	var requestKVMDevice bool
 
 	flag.StringVar(&certDir, "cert-dir", "/tmp/k8s-webhook-server/serving-certs",
 		"Directory containing the TLS certificate and key (tls.crt, tls.key)")
@@ -48,6 +51,10 @@ func main() {
 	flag.StringVar(&initContainerImage, "init-container-image",
 		iprewrite.DefaultInitContainerImage,
 		"Image for the IP rewrite init container")
+	flag.StringVar(&initContainerPullPolicy, "init-container-pull-policy", "IfNotPresent",
+		"imagePullPolicy for the injected IP rewrite init container")
+	flag.BoolVar(&requestKVMDevice, "request-kvm-device", true,
+		"Request devices.kubevirt.io/kvm for the init container (hardware-accelerated libguestfs)")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the webhook server")
 
@@ -82,7 +89,9 @@ func main() {
 	}
 
 	handler := &iprewrite.Handler{
-		InitContainerImage: initContainerImage,
+		InitContainerImage:      initContainerImage,
+		InitContainerPullPolicy: corev1.PullPolicy(initContainerPullPolicy),
+		RequestKVMDevice:        requestKVMDevice,
 	}
 
 	mgr.GetWebhookServer().Register(iprewrite.MutatePodPath,
@@ -100,7 +109,9 @@ func main() {
 	setupLog.Info("Starting IP rewrite webhook server",
 		"port", port,
 		"certDir", certDir,
-		"initContainerImage", initContainerImage)
+		"initContainerImage", initContainerImage,
+		"initContainerPullPolicy", initContainerPullPolicy,
+		"requestKVMDevice", requestKVMDevice)
 
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		setupLog.Error(err, "Failed to run webhook server")

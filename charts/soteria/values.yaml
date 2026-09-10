@@ -195,6 +195,12 @@ ui:
 # -----------------------------------------------------------------------------
 soteria-ip-rewrite:
   enabled: false
+  # Init image injected into virt-launcher pods:
+  # initContainer:
+  #   image:
+  #     repository: quay.io/raffaelespazzoli/soteria-ip-rewrite
+  #     tag: latest
+  #     pullPolicy: IfNotPresent
   # Override TLS to share the parent chart's cert-manager issuer:
   tls:
     issuerRef:

@@ -15,6 +15,10 @@ need the full Soteria platform.
   virt-launcher pods created by KubeVirt.
 - **PVC-backed VM disks** — The init container modifies guest filesystems on
   PVC volumes. Container disks are not supported.
+- **OpenShift SCC** — On OpenShift, set `scc.enabled=true` and list every
+  namespace where labeled VMs run (`scc.namespaces`).
+- **KVM (optional)** — Hardware KVM speeds up libguestfs. On nodes without
+  `/dev/kvm`, install with `--set initContainer.requestKVMDevice=false`.
 
 ---
 

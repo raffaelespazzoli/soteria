@@ -63,7 +63,9 @@ spec:
         soteria.io/<interface>-ip: "<address>/<prefix>;<gateway>"
 ```
 
-- `<interface>` — the guest network interface name (e.g., `eth0`, `eth1`)
+- `<interface>` — the guest network interface name (e.g., `eth0`, `eth1`).
+  On Windows this is a label only; adapters are matched by existing static
+  IP or subnet, not by this name.
 - `<address>/<prefix>` — the desired static IP and CIDR prefix length
 - `<gateway>` — the default gateway for that interface
 
@@ -148,7 +150,7 @@ sequenceDiagram
   participant Webhook as IP Rewrite Webhook
   participant Pod as virt-launcher Pod
   participant Init as ip-rewrite Init Container
-  participant GuestFS as guestfish / virt-inspector
+  participant GuestFS as virt-inspector / guestfish / virt-windows-ip-rewrite
 
   User->>VM: Annotate with soteria.io/eth0-ip<br/>and label soteria.io/ip-rewrite: "true"
   User->>VM: Stop and start VM
@@ -174,9 +176,9 @@ sequenceDiagram
   GuestFS-->>Init: OS metadata (family, distro, version)
 
   alt Linux (RHEL)
-    Init->>GuestFS: Rewrite IP config via Augeas
+    Init->>GuestFS: Rewrite IP config via Augeas (guestfish)
   else Windows
-    Init->>GuestFS: Rewrite registry hive via hivex
+    Init->>GuestFS: Rewrite SYSTEM hive in place via virt-windows-ip-rewrite
   end
 
   Init->>Init: Exit 0 (success)
@@ -211,8 +213,16 @@ controller-manager.
 
 **Init container spec highlights:**
 
-- **Image:** Configurable via the `--init-container-image` flag on the webhook
-  server (default: `quay.io/raffaelespazzoli/soteria-ip-rewrite:latest`)
+- **Image:** Helm `initContainer.image.repository` + `initContainer.image.tag`
+  (default: `quay.io/raffaelespazzoli/soteria-ip-rewrite:<appVersion>`). The
+  chart passes `--init-container-image` and `--init-container-pull-policy`
+  to the webhook, which injects that image into virt-launcher pods with
+  `imagePullPolicy` from `initContainer.image.pullPolicy` (default
+  `IfNotPresent`).
+- **KVM:** When `initContainer.requestKVMDevice` is `true` (default), the
+  webhook requests `devices.kubevirt.io/kvm: 1` so libguestfs can use
+  hardware virtualization. Set it to `false` on nodes without `/dev/kvm`
+  (nested virt unavailable); libguestfs then uses TCG software emulation.
 - **Security context:** Runs as the `qemu` user (`runAsUser: 107`,
   `runAsNonRoot: true`) with `allowPrivilegeEscalation: false` and all
   capabilities dropped — the libguestfs appliance runs inside a user-mode
@@ -261,16 +271,17 @@ After the init container starts, the entrypoint performs OS detection:
     - **RHEL** — version-gated to major versions 7–10; other RHEL versions
       are rejected
     - **Windows** — dispatched by OS family (`windows`) with no version
-      gate. Server 2016–2025, Windows 10, and Windows 11 are the tested
+      gate. Server 2016–2025 and Windows 11 are the tested
       and supported matrix
     - **Unsupported OS** → exits with a non-zero code listing supported
       operating systems
 
 !!! note "LIBGUESTFS_BACKEND=direct"
-    The init container image sets `LIBGUESTFS_BACKEND=direct` as a baked-in
-    environment variable. This tells libguestfs to use the direct backend
-    (no libvirtd) — necessary because there is no libvirtd daemon inside the
-    container.
+    The image bakes in `LIBGUESTFS_BACKEND=direct` and
+    `LIBGUESTFS_PATH=/guestfs-appliance`. The webhook injects the same
+    variables on the init container. Direct backend means user-mode QEMU
+    without libvirtd; the pre-built appliance avoids running supermin at
+    pod start.
 
 ### Linux IP Rewrite (Augeas)
 
@@ -288,11 +299,17 @@ specific file format depends on the RHEL version:
 **How it works:**
 
 1. The handler mounts the guest filesystem read-only to detect which network
-   configuration format is in use.
-2. It remounts read-write and uses `guestfish aug-set` commands (via the
+   configuration format is in use (NM keyfile, then `ifcfg` by `DEVICE`,
+   then `ifcfg-<iface>` filename).
+2. Existing `ifcfg` interfaces with `BOOTPROTO=dhcp` (or `bootp`) are
+   refused — DHCP-to-static conversion is not supported on RHEL.
+3. It remounts read-write and uses `guestfish aug-set` commands (via the
    appropriate Augeas lens) to update IP address, prefix length, gateway, and
    optionally DNS servers.
-3. The handler supports multiple interfaces — each `SOTERIA_*_IP` variable
+4. If RHEL 8+ has **no** on-disk network config for the interface (typical
+   of cloud-init guests that only generate connections under `/run`), the
+   handler writes a new NetworkManager keyfile.
+5. The handler supports multiple interfaces — each `SOTERIA_*_IP` variable
    maps to a guest interface configuration file.
 
 ### Windows IP Rewrite (hivex)
@@ -310,16 +327,28 @@ HKLM\SYSTEM\<ControlSet>\Services\Tcpip\Parameters\Interfaces\<AdapterGUID>
 
 **How it works:**
 
-1. The handler locates the SYSTEM hive at
-   `<systemroot>\system32\config\system` on the guest filesystem.
-2. It determines the active `ControlSet` by reading the `Select\Current`
-   value in the SYSTEM hive.
-3. It enumerates adapter GUIDs under
+Windows NTFS is often dirty after a crash or force-stop, and RHEL libguestfs
+refuses to mount NTFS unless the program name starts with `virt-`
+(RHBZ#1240276). The handler therefore runs as `virt-windows-ip-rewrite` and
+edits the hive **in the appliance** — the SYSTEM hive is never downloaded
+or uploaded:
+
+1. `ntfsfix` the Windows root device, then mount it read-write
+   (`remove_hiberfile`).
+2. Resolve the SYSTEM hive path with `case_sensitive_path` (virt-inspector
+   often leaves `windows_system_hive` empty).
+3. Open the hive writable (`hivex_open(..., write=True)`), determine the
+   active `ControlSet` from inspector metadata or `Select\Current`, and
+   enumerate adapter GUIDs under
    `ControlSet<N>\Services\Tcpip\Parameters\Interfaces\`.
-4. It matches the target adapter by interface index or existing IP
-   configuration.
-5. It writes the new IP address, subnet mask (converted from CIDR prefix),
-   gateway, and DNS servers as registry values using `hivexregedit --merge`.
+4. Match the target adapter: a single-NIC guest prefers the existing static
+   adapter, or converts the first DHCP adapter to static if none is static;
+   multi-NIC guests match by subnet, then the first unused GUID.
+5. Write `EnableDHCP`, `IPAddress`, `SubnetMask`, `DefaultGateway`, and
+   optional `NameServer` with `hivex_node_set_value` (Python guestfs, so
+   REG_DWORD / UTF-16LE REG_MULTI_SZ payloads can contain NUL bytes that
+   guestfish cannot pass on its command line).
+6. Commit to a sibling file, replace the hive, and truncate `SYSTEM.LOG*`.
 
 **Registry value types used:**
 
@@ -350,9 +379,9 @@ immediately — no init container is injected. This is critical because:
 
 | Component | Location | Description |
 |---|---|---|
-| **Webhook Server** | `cmd/ip-rewrite-webhook` | Standalone Go binary serving the mutating admission webhook on port 9443. Configured via flags (`--init-container-image`, `--cert-dir`). |
+| **Webhook Server** | `cmd/ip-rewrite-webhook` | Standalone Go binary serving the mutating admission webhook on port 9443. Configured via flags (`--init-container-image`, `--init-container-pull-policy`, `--request-kvm-device`, `--cert-dir`). |
 | **Webhook Handler** | `internal/webhook/iprewrite` | Core admission logic: annotation parsing, migration detection, init container construction, JSON patch generation. |
-| **Init Container Image** | `build/ip-rewrite/Containerfile` | CentOS Stream 9-based image containing `guestfs-tools`, `augeas`, `hivex`, `perl-hivex`, and `libguestfs-winsupport`. |
+| **Init Container Image** | `build/ip-rewrite/Containerfile` | CentOS Stream 9-based image containing `guestfs-tools`, `augeas`, `hivex`, `python3-libguestfs`, `perl-hivex`, and `libguestfs-winsupport`. |
 | **MWC Manifest** | `config/ip-rewrite-webhook` | Reference `MutatingWebhookConfiguration` with `objectSelector`, `failurePolicy: Ignore`, and cert-manager CA injection annotation. |
 
 ## Supported Guest Operating Systems
@@ -367,17 +396,25 @@ immediately — no init container is injected. This is critical because:
 | Windows Server 2019 | — | x86_64 | Registry hive via hivex | `<systemroot>\system32\config\system` |
 | Windows Server 2022 | — | x86_64 | Registry hive via hivex | `<systemroot>\system32\config\system` |
 | Windows Server 2025 | — | x86_64 | Registry hive via hivex | `<systemroot>\system32\config\system` |
-| Windows 10 | — | x86_64 | Registry hive via hivex | `<systemroot>\system32\config\system` |
 | Windows 11 | — | x86_64 | Registry hive via hivex | `<systemroot>\system32\config\system` |
 
 ## Known Limitations
 
 - **IPv6** — Not supported. Only IPv4 addresses are handled.
-- **DHCP-to-static** — Not supported. The source VM must already have a
-  static IP configuration.
+- **DHCP-to-static (RHEL)** — Not supported when an `ifcfg` interface is
+  already DHCP. RHEL 8+ guests with no on-disk network config get a new
+  NetworkManager keyfile instead.
+- **DHCP-to-static (Windows)** — A single-NIC guest with only a DHCP adapter
+  is converted to static. Multi-NIC matching prefers an existing static
+  adapter or a subnet match.
 - **Hostname rewrite** — Not supported. Only IP, gateway, and DNS are
   modified.
-- **ARM64 guests** — Not supported. The init container image is
-  single-architecture `linux/amd64`.
+- **BitLocker / encrypted disks** — Encrypted Windows volumes cannot be
+  inspected or rewritten. Decrypt the OS disk in the guest before failover.
+- **Guest architecture** — The supported guest OS matrix is x86_64. The
+  init-container and webhook images are multi-architecture (`linux/amd64`,
+  `linux/arm64`, `linux/ppc64le`) so they can run on those node
+  architectures. ARM Windows guests are not certified by OpenShift
+  Virtualization and are untested.
 - **Non-RHEL Linux** — Distributions such as Ubuntu, Fedora, or SUSE are not
   supported. Only RHEL 7–10 is handled on the Linux side.

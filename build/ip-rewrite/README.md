@@ -14,7 +14,8 @@ When VMs running on OpenShift Virtualization are failed over to a DR site, their
 | `virt-inspector` | `guestfs-tools` | Detect guest OS type and filesystem layout |
 | `augtool` | `augeas` | Structured editing of Linux config files (ifcfg, NM keyfiles) |
 | `hivexget`, `hivexml`, `hivexsh` | `hivex` | Read/inspect Windows registry hives |
-| `hivexregedit` | `perl-hivex` | Merge/export Windows registry hive entries |
+| `hivexregedit` | `perl-hivex` | Merge/export Windows registry hive entries (debug tooling) |
+| `guestfs` Python module | `python3-libguestfs` | In-place SYSTEM hive writes (`hivex_node_set_value` with binary REG_* values) |
 | NTFS support | `libguestfs-winsupport` | Mount Windows NTFS filesystems via the libguestfs appliance |
 
 ### Why CentOS Stream 9 (not UBI9)?
@@ -37,7 +38,13 @@ docker build -t soteria-ip-rewrite:dev build/ip-rewrite/
 
 ### `LIBGUESTFS_BACKEND=direct`
 
-This environment variable is baked into the image. It tells libguestfs to use the kernel directly (not libvirt/QEMU) for the appliance, which is required when running inside a container where libvirtd is not available.
+This environment variable is baked into the image (and also injected by the
+webhook). It tells libguestfs to use its **direct** backend: a user-mode QEMU
+appliance **without libvirt**. That is required inside the container, where
+there is no libvirtd.
+
+A pre-built appliance is stored at `LIBGUESTFS_PATH=/guestfs-appliance` so
+supermin does not run at pod start.
 
 ### Security Context
 
@@ -87,9 +94,10 @@ podman image inspect soteria-ip-rewrite:dev --format '{{.Size}}' | \
 
 ## Architecture
 
-- **x86_64 only** — all OCP Virtualization certified Windows guests are x86_64.
+- Multi-arch image (`linux/amd64`, `linux/arm64`, `linux/ppc64le`). Supported
+  **guest** operating systems are still x86_64.
 - Based on `quay.io/centos/centos:stream9` (CentOS Stream 9).
-- Image size: ~500–800 MB (guestfs-tools + kernel + supermin appliance + QEMU are inherently large).
+- Image size: ~500–800 MB (guestfs-tools + kernel + fixed appliance + QEMU are inherently large).
 
 ## Related Stories
 

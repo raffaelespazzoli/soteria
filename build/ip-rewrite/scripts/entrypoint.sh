@@ -19,6 +19,12 @@
 
 set -euo pipefail
 
+# UID 107 has no writable home; guestfish writes ~/.guestfish and needs TMPDIR.
+export HOME=/tmp
+export TMPDIR=/tmp
+export XDG_RUNTIME_DIR=/tmp
+mkdir -p /tmp
+
 # ---------------------------------------------------------------------------
 # Logging helpers
 # ---------------------------------------------------------------------------
@@ -301,6 +307,26 @@ export REWRITE_OS_PRODUCT="${OS_PRODUCT}"
 log_info "Detected OS: family=${OS_NAME} distro=${OS_DISTRO} version=${OS_MAJOR}.${OS_MINOR}"
 log_info "Product name: ${OS_PRODUCT}"
 
+# For Windows guests, extract additional metadata from the inspector XML
+# so the handler can skip redundant guestfish inspect calls (critical for
+# TCG mode where each guestfish session boots a QEMU appliance from scratch).
+if [[ "${OS_NAME}" == "windows" ]]; then
+    WIN_ROOT=$(xmllint --xpath 'string(//operatingsystem/root)' "${INSPECT_XML}" 2>/dev/null || true)
+    WIN_SYSTEMROOT=$(xmllint --xpath 'string(//operatingsystem/windows_systemroot)' "${INSPECT_XML}" 2>/dev/null || true)
+    WIN_CONTROLSET=$(xmllint --xpath 'string(//operatingsystem/windows_current_control_set)' "${INSPECT_XML}" 2>/dev/null || true)
+    WIN_SYSTEM_HIVE=$(xmllint --xpath 'string(//operatingsystem/windows_system_hive)' "${INSPECT_XML}" 2>/dev/null || true)
+
+    export REWRITE_WIN_ROOT="${WIN_ROOT}"
+    export REWRITE_WIN_SYSTEMROOT="${WIN_SYSTEMROOT}"
+    export REWRITE_WIN_CONTROLSET="${WIN_CONTROLSET}"
+    export REWRITE_WIN_SYSTEM_HIVE="${WIN_SYSTEM_HIVE}"
+
+    log_info "Windows root device: ${WIN_ROOT}"
+    log_info "Windows system root: ${WIN_SYSTEMROOT}"
+    log_info "Windows control set: ${WIN_CONTROLSET}"
+    log_info "Windows system hive: ${WIN_SYSTEM_HIVE}"
+fi
+
 # Clean up temp file
 rm -f "${INSPECT_XML}"
 
@@ -308,7 +334,7 @@ rm -f "${INSPECT_XML}"
 # Dispatch to OS-specific handler (AC4, AC5, AC6)
 # ---------------------------------------------------------------------------
 
-SUPPORTED_OS_MSG="Supported operating systems: RHEL 7/8/9/10, Windows Server 2016/2019/2022/2025, Windows 10/11"
+SUPPORTED_OS_MSG="Supported operating systems: RHEL 7/8/9/10, Windows Server 2016/2019/2022/2025, Windows 11"
 
 if [[ "${OS_NAME}" == "linux" && "${OS_DISTRO}" == "rhel" ]]; then
     # Gate on supported RHEL major versions

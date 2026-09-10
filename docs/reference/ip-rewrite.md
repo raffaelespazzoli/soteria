@@ -30,7 +30,7 @@ these annotations from `pod.Annotations`.
 
 | Key | Type | Required | Format | Example | Description |
 |-----|------|----------|--------|---------|-------------|
-| `soteria.io/<interface>-ip` | Annotation | **Yes** (at least one) | `<address>/<prefix>;<gateway>` | `soteria.io/eth0-ip: "10.0.2.100/24;10.0.2.1"` | Per-interface IP configuration. `<interface>` is the guest OS NIC name (e.g., `eth0`, `eth1`). The webhook transforms this into the environment variable `SOTERIA_<INTERFACE>_IP` for the init container. Must be placed on `spec.template.metadata.annotations`. |
+| `soteria.io/<interface>-ip` | Annotation | **Yes** (at least one) | `<address>/<prefix>;<gateway>` | `soteria.io/eth0-ip: "10.0.2.100/24;10.0.2.1"` | Per-interface IP configuration. On RHEL, `<interface>` is the guest NIC name (e.g., `eth0`, `eth1`). On Windows the name is a label only; adapters are matched by existing static IP or subnet. The webhook transforms this into `SOTERIA_<INTERFACE>_IP`. Must be placed on `spec.template.metadata.annotations`. |
 
 ### DNS Annotation
 
@@ -88,15 +88,14 @@ these annotations from `pod.Annotations`.
 | Windows Server 2019 | — | x86_64 | Registry hive via hivex | `<systemroot>\system32\config\system` |
 | Windows Server 2022 | — | x86_64 | Registry hive via hivex | `<systemroot>\system32\config\system` |
 | Windows Server 2025 | — | x86_64 | Registry hive via hivex | `<systemroot>\system32\config\system` |
-| Windows 10 | — | x86_64 | Registry hive via hivex | `<systemroot>\system32\config\system` |
 | Windows 11 | — | x86_64 | Registry hive via hivex | `<systemroot>\system32\config\system` |
 
 !!! warning "Unsupported operating systems"
     Non-RHEL Linux distributions (Ubuntu, Fedora, SUSE, etc.) are not
     supported. RHEL is version-gated to major versions 7–10; other RHEL
     versions are rejected. Windows is dispatched by OS family with no
-    version gate — Server 2016–2025, Windows 10, and Windows 11 are the
-    tested and supported matrix. The init container exits with a non-zero
+    version gate — Server 2016–2025 and Windows 11 are the tested and
+    supported matrix. The init container exits with a non-zero
     code if it detects an unsupported OS, which prevents the VM from
     booting. Remove the `soteria.io/ip-rewrite` label to allow the VM to
     start without IP rewriting.
@@ -135,27 +134,21 @@ needs, so `CAP_SYS_ADMIN` is not required.
 | `NET_BIND_SERVICE` | Inherited from the base virt-launcher SCC — allows binding to privileged ports. |
 | `SYS_NICE` | Inherited from the base virt-launcher SCC — allows adjusting process scheduling priority. |
 
-The chart-managed SCC mirrors the existing `kubevirt-controller` SCC. No
-additional capabilities beyond what virt-launcher already requires are needed.
+The chart-managed SCC grants the same capabilities virt-launcher already
+needs (`NET_BIND_SERVICE`, `SYS_NICE`). It does not enable host networking.
 
 ### SCC Volume Types
 
-The chart-managed SCC permits the following volume types:
-
-- `configMap` — Configuration data
-- `downwardAPI` — Pod metadata (labels, annotations)
-- `emptyDir` — Temporary scratch space
-- `hostPath` — Host filesystem paths (required by virt-launcher for device access)
-- `persistentVolumeClaim` — VM disk images
-- `projected` — Projected volumes (service account tokens)
-- `secret` — TLS certificates and other secrets
+The chart-managed SCC sets `volumes: ['*']` so virt-launcher can keep using
+every volume type it already needs (PVC disks, `hostPath`, secrets, projected
+tokens, and so on).
 
 ### Host Access Flags
 
 | Flag | Value | Reason |
 |------|-------|--------|
 | `allowHostDirVolumePlugin` | `true` | Permits `hostPath` volumes required by virt-launcher for device and node-level access. |
-| `allowHostNetwork` | `true` | Permits host networking required by certain virt-launcher configurations. |
+| `allowHostNetwork` | `false` | Host networking is not required for the IP rewrite init container. |
 | `allowHostPorts` | `false` | Not required. |
 | `allowHostPID` | `false` | Not required. |
 | `allowHostIPC` | `false` | Not required. |
@@ -164,11 +157,11 @@ The chart-managed SCC permits the following volume types:
 
 On OpenShift, the chart creates:
 
-1. A **SecurityContextConstraints** resource that mirrors the existing
-   `kubevirt-controller` SCC (no additional capabilities required).
+1. A **SecurityContextConstraints** resource that lists those virt-launcher
+   ServiceAccounts in its `users` field.
 2. A **ClusterRole** granting the `use` verb on the SCC.
-3. A **ClusterRoleBinding** that binds the ClusterRole to ServiceAccount
-   subjects in the configured namespaces.
+3. A **ClusterRoleBinding** that binds the ClusterRole to the same
+   ServiceAccount subjects in the configured namespaces.
 
 By default, the binding covers the `default` ServiceAccount in the release
 namespace. Use `scc.namespaces` to extend coverage to all namespaces where
@@ -178,9 +171,9 @@ to specify the virt-launcher ServiceAccount names.
 !!! tip "OpenShift vs. Vanilla Kubernetes"
     OpenShift clusters require `scc.enabled: true` so the chart creates the
     SCC resource and RBAC bindings. Vanilla Kubernetes can leave the default
-    (`scc.enabled: false`) — there is no SCC API, and the init container's
-    security context is sufficient when Pod Security Standards allow
-    privileged workloads.
+    (`scc.enabled: false`) — there is no SCC API. Virt-launcher pods already
+    use the same host access KubeVirt requires; the injected init container
+    does not add privileged capabilities.
 
 ---
 
@@ -241,8 +234,10 @@ This is the guestfs-tools image built on CentOS Stream 9.
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `initContainer.image.repository` | string | `"quay.io/raffaelespazzoli/soteria-ip-rewrite"` | Container image for the IP rewrite init container. Contains `guestfs-tools`, `augeas`, `hivex`, `perl-hivex`, and `libguestfs-winsupport`. |
+| `initContainer.image.repository` | string | `"quay.io/raffaelespazzoli/soteria-ip-rewrite"` | Container image for the IP rewrite init container. Contains `guestfs-tools`, `augeas`, `hivex`, `python3-libguestfs`, `perl-hivex`, and `libguestfs-winsupport`. |
 | `initContainer.image.tag` | string | `""` | Image tag. When empty, defaults to the chart's `appVersion`. |
+| `initContainer.image.pullPolicy` | string | `"IfNotPresent"` | Image pull policy for the injected init container. |
+| `initContainer.requestKVMDevice` | boolean | `true` | When `true`, the injected init container requests `devices.kubevirt.io/kvm: 1` for hardware-accelerated libguestfs. Set to `false` on nodes without `/dev/kvm` (TCG fallback). |
 
 ---
 
@@ -280,12 +275,19 @@ This is the guestfs-tools image built on CentOS Stream 9.
 ## Known Limitations
 
 - **IPv6** — Not supported. Only IPv4 addresses are handled.
-- **DHCP-to-static conversion** — Not supported. The source VM must already
-  have a static IP configuration.
+- **DHCP-to-static conversion (RHEL)** — Not supported when an `ifcfg`
+  interface is already DHCP. RHEL 8+ guests with no on-disk network config
+  get a new NetworkManager keyfile instead.
+- **DHCP-to-static conversion (Windows)** — A single-NIC guest with only a
+  DHCP adapter is converted to static. Multi-NIC matching prefers an
+  existing static adapter or a subnet match.
 - **Guest hostname rewrite** — Not supported. Only IP address, gateway, and
   DNS servers are modified.
-- **ARM64 guests** — ARM64 support is available (the init container image is
-  multi-architecture), but ARM Windows guests are not yet certified by OCP
-  Virtualization.
+- **BitLocker / encrypted disks** — Encrypted Windows volumes cannot be
+  inspected or rewritten. Decrypt the OS disk in the guest before failover.
+- **Guest architecture** — The supported guest OS matrix is x86_64. The
+  init-container and webhook images are multi-architecture so they can run
+  on `linux/amd64`, `linux/arm64`, and `linux/ppc64le` nodes. ARM Windows
+  guests are not certified by OpenShift Virtualization and are untested.
 - **Non-RHEL Linux** — Distributions such as Ubuntu, Fedora, or SUSE are not
   supported. Only RHEL 7–10 is handled on the Linux side.

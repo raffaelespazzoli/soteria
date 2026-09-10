@@ -27,6 +27,7 @@ import (
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/utils/ptr"
 	virtv1 "kubevirt.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -55,6 +56,11 @@ const (
 	// diskDevicePrefix is the base path where block-mode PVC volumes are exposed.
 	diskDevicePrefix = "/disks/"
 
+	// kvmDeviceResource is the Kubernetes extended resource for /dev/kvm access
+	// via the KubeVirt device plugin. Requesting this gives the init container
+	// access to hardware virtualisation without needing SYS_ADMIN.
+	kvmDeviceResource = "devices.kubevirt.io/kvm"
+
 	// DefaultInitContainerImage is the default image for the IP rewrite init container.
 	DefaultInitContainerImage = "quay.io/raffaelespazzoli/soteria-ip-rewrite:latest"
 
@@ -71,6 +77,16 @@ type Handler struct {
 	// InitContainerImage is the container image for the IP rewrite init
 	// container. Configurable via --init-container-image flag.
 	InitContainerImage string
+
+	// RequestKVMDevice controls whether the init container requests a
+	// devices.kubevirt.io/kvm device. When true (default), the init container
+	// gets /dev/kvm for hardware-accelerated libguestfs. When false, libguestfs
+	// falls back to TCG software emulation (slower but works without KVM).
+	RequestKVMDevice bool
+
+	// InitContainerPullPolicy is the imagePullPolicy for the injected init
+	// container. Empty defaults to IfNotPresent.
+	InitContainerPullPolicy corev1.PullPolicy
 }
 
 // Handle processes a pod admission request. It injects an IP rewrite init
@@ -116,17 +132,31 @@ func (h *Handler) Handle(ctx context.Context, req admission.Request) admission.R
 		image = DefaultInitContainerImage
 	}
 
+	pullPolicy := h.InitContainerPullPolicy
+	if pullPolicy == "" {
+		pullPolicy = corev1.PullIfNotPresent
+	}
+
 	// Determine which PVC volumes use block mode vs filesystem mode by
 	// inspecting existing containers' volumeDevices declarations.
 	blockVolumes := blockModeVolumes(pod)
 	volumeMounts, volumeDevices := pvcVolumeAccess(pod.Spec.Volumes, blockVolumes)
 
+	// Prepend libguestfs env vars so the pre-built appliance is used
+	// (avoids supermin at runtime, which would need elevated privileges).
+	guestfsEnv := []corev1.EnvVar{
+		{Name: "LIBGUESTFS_BACKEND", Value: "direct"},
+		{Name: "LIBGUESTFS_PATH", Value: "/guestfs-appliance"},
+	}
+	envVars = append(guestfsEnv, envVars...)
+
 	initContainer := corev1.Container{
-		Name:          initContainerName,
-		Image:         image,
-		Env:           envVars,
-		VolumeMounts:  volumeMounts,
-		VolumeDevices: volumeDevices,
+		Name:            initContainerName,
+		Image:           image,
+		ImagePullPolicy: pullPolicy,
+		Env:             envVars,
+		VolumeMounts:    volumeMounts,
+		VolumeDevices:   volumeDevices,
 		SecurityContext: &corev1.SecurityContext{
 			RunAsUser:                ptr.To(int64(107)),
 			RunAsNonRoot:             ptr.To(true),
@@ -135,6 +165,16 @@ func (h *Handler) Handle(ctx context.Context, req admission.Request) admission.R
 				Drop: []corev1.Capability{"ALL"},
 			},
 		},
+	}
+
+	// Request /dev/kvm via the KubeVirt device plugin for hardware-accelerated
+	// libguestfs. Without KVM, QEMU falls back to TCG (software emulation).
+	if h.RequestKVMDevice {
+		initContainer.Resources = corev1.ResourceRequirements{
+			Limits: corev1.ResourceList{
+				corev1.ResourceName(kvmDeviceResource): resource.MustParse("1"),
+			},
+		}
 	}
 
 	// Prepend — the IP rewrite init container must run before all others.

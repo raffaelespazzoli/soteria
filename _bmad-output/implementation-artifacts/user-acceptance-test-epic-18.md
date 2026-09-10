@@ -346,7 +346,7 @@ After fixing all bugs, a systematic test was run across all RHEL versions with a
 | RHEL 8 | 8.10 (Ootpa) | `eth0` | ifcfg (`/etc/sysconfig/network-scripts/ifcfg-eth0`) | 192.168.100.10 | 192.168.100.52 | 192.168.100.52 | ✅ PASS |
 | RHEL 9 | 9.8 (Plow) | `eth0` | ifcfg (`/etc/sysconfig/network-scripts/ifcfg-eth0`) | 192.168.100.11 | 192.168.100.51 | 192.168.100.51 | ✅ PASS |
 | RHEL 10 | 10.2 (Coughlan) | `enp1s0` | NM keyfile (`cloud-init-enp1s0.nmconnection`) | 192.168.100.12 | 192.168.100.50 | 192.168.100.50 | ✅ PASS |
-| RHEL 7 | — | — | — | — | — | — | ⏭️ NOT TESTED (image not available) |
+| RHEL 7 | 7.x | `eth0` | ifcfg (`/etc/sysconfig/network-scripts/ifcfg-eth0`) | 192.168.100.55 | 192.168.100.70 | 192.168.100.70 | ✅ PASS |
 | Windows 10 | — | — | — | — | — | — | ⏭️ NOT TESTED (image not available) |
 | Windows 11 | — | — | — | — | — | — | ⏭️ NOT TESTED (image not available) |
 | Windows Server 2016 | — | — | — | — | — | — | ⏭️ NOT TESTED (image not available) |
@@ -371,7 +371,7 @@ After fixing all bugs, a systematic test was run across all RHEL versions with a
 
 4. **RHEL 10 needs longer cloud-init time:** ~150s is insufficient for cloud-init to complete on RHEL 10; ~180s is needed. This doesn't affect ip-rewrite functionality.
 
-5. **RHEL 7 and all Windows variants** have DataSources configured on the cluster but no PVCs (images not imported). Testing these requires importing the golden images first.
+5. **RHEL 7 now tested and passing.** Uses `eth0` with ifcfg format, same as RHEL 8/9. Cloud-init creates the ifcfg config file on first boot; ip-rewrite modifies it on subsequent boots.
 
 ### Init Container Logs — RHEL 8
 
@@ -422,11 +422,73 @@ During UAT, it was discovered that the CI/CD pipeline only built the init contai
 
 ---
 
+## Retest — SYS_ADMIN Removal Attempt (2026-09-06 evening)
+
+### Context
+
+An attempt was made to drop the `SYS_ADMIN` capability from the ip-rewrite init container's security context, aligning with how MTV (Forklift) runs its virt-v2v conversion pods. The new webhook injected:
+- `RunAsUser: 107` (qemu) instead of `0` (root)
+- `Drop: ALL` capabilities instead of `Add: SYS_ADMIN`
+- `AllowPrivilegeEscalation: false`
+
+### Outcome: Failed — Reverted to SYS_ADMIN version
+
+The VMs entered `CrashLoopBackOff` with the new security context. Multiple issues surfaced:
+
+1. **SCC violations**: The new webhook image was not being pulled due to `imagePullPolicy: IfNotPresent` with reused `:latest` tag — the deployed webhook was still injecting the OLD security context (root + SYS_ADMIN), which conflicted with the updated SCC (which had SYS_ADMIN removed).
+2. **OVN-Kubernetes `addLogicalPort` failures**: Even after fixing the image pull, pods failed with `addLogicalPort failed` networking errors.
+3. **Rapid pod cycling**: Pods terminated so quickly that init container logs were nearly impossible to capture.
+
+### Resolution
+
+- The old working webhook image was found in the local podman cache (`78f6ca0131b1`, built at 14:02 UTC)
+- Tagged as `v0.1.0-sysadmin` and pushed to Quay: `quay.io/raffaelespazzoli/soteria-ip-rewrite-webhook:v0.1.0-sysadmin`
+- Deployed to the cluster; SCC restored with `SYS_ADMIN` in `allowedCapabilities`
+
+### Bug Found: Annotation Format
+
+During retest, the init container rejected the annotation value `192.168.100.71/24` with:
+```
+Malformed value for SOTERIA_ETH0_IP: missing ';' separator (expected 'IP/PREFIX;GATEWAY', got '192.168.100.71/24')
+```
+The correct format requires a gateway: `192.168.100.71/24;192.168.100.1`. This was not caught in the original test (annotations were correct there) but tripped us up during the retest when annotations were recreated without the gateway.
+
+### Retest Results (with SYS_ADMIN webhook, v0.1.0-sysadmin)
+
+Two-phase test:
+1. Boot VMs without ip-rewrite → cloud-init establishes baseline
+2. Stop, add ip-rewrite labels/annotations (with `IP/PREFIX;GATEWAY` format), restart
+
+| OS | Cloud-Init IP | Rewritten IP | Verified via Guest Agent | Result |
+|---|---|---|---|---|
+| RHEL 7 | 192.168.100.55 | 192.168.100.70 | 192.168.100.70 ✅ | **PASS** |
+| RHEL 8 | 192.168.100.10 | 192.168.100.71 | 192.168.100.71 ✅ | **PASS** |
+| RHEL 9 | 192.168.100.11 | 192.168.100.72 | 192.168.100.72 ✅ | **PASS** |
+| RHEL 10 | 192.168.100.12 | 192.168.100.73 | 192.168.100.73 ✅ | **PASS** |
+
+### Init Container Logs — RHEL 7
+
+```
+Detected OS: family=linux distro=rhel version=7.x
+Interface 'eth0': matched ifcfg (filename convention) at /files/etc/sysconfig/network-scripts/ifcfg-eth0
+Phase 2: Rewriting interface 'eth0' (ifcfg): 192.168.100.70/24 gw 192.168.100.1
+Phase 2: Rewrite completed successfully
+Updated: eth0 → 192.168.100.70/24 gw 192.168.100.1 (ifcfg)
+DNS: 8.8.8.8
+RHEL handler completed — 1 interface(s) rewritten
+```
+
+### Key Takeaway
+
+The `SYS_ADMIN` capability is still required for the current init container implementation. Future investigation needed to determine if the `addLogicalPort` failures were caused by the security context change or an unrelated OVN-Kubernetes issue. The annotation format `IP/PREFIX;GATEWAY` is mandatory.
+
+---
+
 ## Conclusion
 
-**The IP rewrite component works end-to-end on RHEL 8, 9, and 10.** The mutating webhook correctly injects the init container, the init container detects the OS and config format (ifcfg or NM keyfile), and rewrites the IP address before the VM boots. The guest boots with the rewritten IP.
+**The IP rewrite component works end-to-end on RHEL 7, 8, 9, and 10.** The mutating webhook correctly injects the init container, the init container detects the OS and config format (ifcfg or NM keyfile), and rewrites the IP address before the VM boots. The guest boots with the rewritten IP.
 
-### Bugs found and fixed: 4 total (3 blockers)
+### Bugs found and fixed: 5 total (3 blockers, 1 medium, 1 test-specific)
 
 | # | Severity | File | Issue | Fix |
 |---|---|---|---|---|
@@ -434,9 +496,24 @@ During UAT, it was discovered that the CI/CD pipeline only built the init contai
 | 2 | Blocker | `rhel-handler.sh` | `guestfish -q` unsupported | Removed `-q` from 5 calls |
 | 3 | Blocker | `scc.yaml` | SCC missing seccompProfiles, volumes, users | Added required fields |
 | 4 | Medium | `ci.yml`, `release.yml` | Webhook image not built in CI/CD | Added `build-ip-rewrite-webhook` job |
+| 5 | Test-specific | — | Annotations must use `IP/PREFIX;GATEWAY` format, not `IP/PREFIX` | Documentation updated |
 
-### OSes not tested (images not available on cluster)
+### OSes tested and passing
 
-- RHEL 7, Windows 10/11, Windows Server 2016/2019/2022/2025
+- **RHEL 7** ✅ (ifcfg format, `eth0`)
+- **RHEL 8** ✅ (ifcfg format, `eth0`)
+- **RHEL 9** ✅ (ifcfg format, `eth0`)
+- **RHEL 10** ✅ (NM keyfile format, `enp1s0`)
+
+### OSes not tested (images not available or blocked)
+
+- Windows 10/11, Windows Server 2016/2019/2022/2025 — blocked by lack of KVM on EC2 cluster (no nested virt), VirtIO driver installation issues
+
+### Deployed Images
+
+| Component | Image | Tag |
+|---|---|---|
+| Webhook | `quay.io/raffaelespazzoli/soteria-ip-rewrite-webhook` | `v0.1.0-sysadmin` |
+| Init container | `quay.io/raffaelespazzoli/soteria-ip-rewrite` | `dev-1788706863` / `latest` |
 
 All fixes have been applied to the source code, Helm chart, and CI/CD pipelines in the local repository.

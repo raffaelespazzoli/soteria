@@ -22,9 +22,15 @@ set -euo pipefail
 #   REWRITE_PREFIX_<N>    - Prefix length (e.g., 24)
 #   REWRITE_GATEWAY_<N>   - Gateway address
 #
+# Interface detection strategies (tried in order):
+#   1. NM keyfile — Augeas match on /etc/NetworkManager/system-connections/
+#   2. ifcfg by DEVICE — Augeas match on /etc/sysconfig/network-scripts/ifcfg-*/DEVICE
+#   3. ifcfg by filename — file check for /etc/sysconfig/network-scripts/ifcfg-<iface>
+#   4. nm_create — create a new NM keyfile from scratch (RHEL 8+ cloud-init VMs)
+#
 # Two-phase approach:
 #   Phase 1 (read-only):  Detect config format for each interface
-#   Phase 2 (read-write): Apply aug-set commands to rewrite IP config
+#   Phase 2 (read-write): Apply aug-set commands or create new keyfiles
 
 # ---------------------------------------------------------------------------
 # Validate required environment variables
@@ -61,6 +67,14 @@ log_info "RHEL handler invoked"
 log_info "  Disk: ${REWRITE_DISK}"
 log_info "  OS: ${REWRITE_OS_PRODUCT:-unknown} (${REWRITE_OS_DISTRO:-unknown} ${REWRITE_OS_MAJOR:-?}.${REWRITE_OS_MINOR:-?})"
 log_info "  Interfaces: ${REWRITE_IFACE_COUNT}"
+
+# Temp directory for RHEL handler scratch files (cleaned up on EXIT)
+RHEL_HANDLER_TMPDIR=$(mktemp -d /tmp/rhel-handler-XXXXXX)
+_RHEL_PREV_TRAP=$(trap -p EXIT 2>/dev/null || true)
+rhel_handler_cleanup() {
+    rm -rf "${RHEL_HANDLER_TMPDIR}" 2>/dev/null || true
+}
+trap rhel_handler_cleanup EXIT
 
 # ---------------------------------------------------------------------------
 # Phase 1: Discovery (read-only guestfish session)
@@ -281,6 +295,16 @@ for ((i = 0; i < REWRITE_IFACE_COUNT; i++)); do
         fi
     fi
 
+    # Strategy 4: Create a new NM keyfile from scratch (RHEL 8+)
+    # Cloud-init VMs typically have no persistent network config on disk;
+    # cloud-init generates connections at runtime in /run/. We create a
+    # persistent keyfile so the IP rewrite takes effect before cloud-init.
+    if [[ -z "${format}" && "${REWRITE_OS_MAJOR:-0}" -ge 8 ]]; then
+        log_info "  No existing config found for '${target_iface}' — will create NM keyfile (Strategy 4)"
+        format="nm_create"
+        aug_path=""   # not applicable — we write the file directly via guestfish
+    fi
+
     if [[ -z "${format}" ]]; then
         log_error "Interface '${target_iface}' not found in any config file on the guest filesystem"
         log_error "Searched: NM keyfiles in /etc/NetworkManager/system-connections/, ifcfg files in /etc/sysconfig/network-scripts/"
@@ -297,9 +321,104 @@ done
 # Phase 2: Rewrite (read-write guestfish session)
 # ---------------------------------------------------------------------------
 
-log_info "Phase 2: Building rewrite commands..."
+log_info "Phase 2: Applying IP configuration..."
+
+# ---------------------------------------------------------------------------
+# Phase 2a: Handle nm_create interfaces (write new NM keyfiles to disk)
+# ---------------------------------------------------------------------------
+NM_CREATE_FILES=()   # local temp files to upload
+
+for ((i = 0; i < REWRITE_IFACE_COUNT; i++)); do
+    if [[ "${IFACE_FORMATS[${i}]}" != "nm_create" ]]; then
+        continue
+    fi
+
+    iface_var="REWRITE_IFACE_${i}"
+    ip_var="REWRITE_IP_${i}"
+    prefix_var="REWRITE_PREFIX_${i}"
+    gw_var="REWRITE_GATEWAY_${i}"
+
+    target_iface="${!iface_var}"
+    target_ip="${!ip_var}"
+    target_prefix="${!prefix_var}"
+    target_gw="${!gw_var}"
+
+    log_info "  Creating NM keyfile for '${target_iface}': ${target_ip}/${target_prefix} gw ${target_gw}"
+
+    # Build NM keyfile content
+    nm_keyfile_content="[connection]
+id=${target_iface}
+type=ethernet
+interface-name=${target_iface}
+autoconnect=true
+autoconnect-priority=1
+
+[ipv4]
+method=manual
+address1=${target_ip}/${target_prefix},${target_gw}"
+
+    # DNS (optional) — semicolon-separated with trailing semicolon
+    if [[ -n "${REWRITE_DNS:-}" ]]; then
+        dns_value="${REWRITE_DNS//,/;}"
+        dns_value="${dns_value};"
+        nm_keyfile_content+="
+dns=${dns_value}"
+    fi
+
+    nm_keyfile_content+="
+
+[ipv6]
+method=disabled
+"
+
+    # Write keyfile to a local temp file
+    NM_KEYFILE_LOCAL=$(mktemp "${RHEL_HANDLER_TMPDIR}/nm-keyfile-${target_iface}-XXXXXX.nmconnection")
+    echo "${nm_keyfile_content}" > "${NM_KEYFILE_LOCAL}"
+
+    # Record the guest path and local file for upload
+    NM_GUEST_PATH="/etc/NetworkManager/system-connections/${target_iface}.nmconnection"
+    NM_CREATE_FILES+=("${NM_KEYFILE_LOCAL}:${NM_GUEST_PATH}")
+
+    log_info "  NM keyfile prepared: ${NM_GUEST_PATH}"
+done
+
+# Upload any new NM keyfiles via guestfish (ext4/xfs mounts are not blocked)
+if [[ ${#NM_CREATE_FILES[@]} -gt 0 ]]; then
+    log_info "Phase 2a: Uploading ${#NM_CREATE_FILES[@]} new NM keyfile(s) to disk..."
+
+    upload_cmds=""
+    for entry in "${NM_CREATE_FILES[@]}"; do
+        local_file="${entry%%:*}"
+        guest_path="${entry#*:}"
+        upload_cmds+="upload '${local_file}' '${guest_path}'\n"
+        upload_cmds+="chmod 0600 '${guest_path}'\n"
+    done
+
+    upload_output=""
+    upload_rc=0
+    upload_output=$(echo -e "${upload_cmds}" | guestfish -a "${REWRITE_DISK}" -i 2>"${GF_STDERR}") || upload_rc=$?
+
+    if [[ -s "${GF_STDERR}" ]]; then
+        log_warn "Phase 2a guestfish stderr: $(cat "${GF_STDERR}")"
+    fi
+    : > "${GF_STDERR}"
+
+    if (( upload_rc != 0 )); then
+        log_error "Phase 2a guestfish upload failed (exit code ${upload_rc})"
+        log_error "Output: ${upload_output}"
+        rm -f "${GF_STDERR}"
+        return 1
+    fi
+
+    log_info "Phase 2a: NM keyfiles uploaded successfully"
+fi
+
+# ---------------------------------------------------------------------------
+# Phase 2b: Augeas-based rewrite for existing configs (nm / ifcfg formats)
+# ---------------------------------------------------------------------------
 
 gf_commands="aug-init / 0\n"
+has_augeas_changes=false
 
 for ((i = 0; i < REWRITE_IFACE_COUNT; i++)); do
     iface_var="REWRITE_IFACE_${i}"
@@ -314,6 +433,12 @@ for ((i = 0; i < REWRITE_IFACE_COUNT; i++)); do
     aug_path="${IFACE_AUG_PATHS[${i}]}"
     format="${IFACE_FORMATS[${i}]}"
 
+    # nm_create is already handled above
+    if [[ "${format}" == "nm_create" ]]; then
+        continue
+    fi
+
+    has_augeas_changes=true
     log_info "  Rewriting interface '${target_iface}' (${format}): ${target_ip}/${target_prefix} gw ${target_gw}"
 
     if [[ "${format}" == "ifcfg" ]]; then
@@ -363,34 +488,79 @@ for ((i = 0; i < REWRITE_IFACE_COUNT; i++)); do
     fi
 done
 
-gf_commands+="aug-save\n"
+if [[ "${has_augeas_changes}" == "true" ]]; then
+    gf_commands+="aug-save\n"
 
-# chmod 0600 on modified NM keyfiles (NetworkManager ignores files without 0600)
-for ((i = 0; i < REWRITE_IFACE_COUNT; i++)); do
-    if [[ "${IFACE_FORMATS[${i}]}" == "nm" ]]; then
-        fs_path="${IFACE_AUG_PATHS[${i}]#/files}"
-        gf_commands+="chmod 0600 '${fs_path}'\n"
+    # chmod 0600 on modified NM keyfiles (NetworkManager ignores files without 0600)
+    for ((i = 0; i < REWRITE_IFACE_COUNT; i++)); do
+        if [[ "${IFACE_FORMATS[${i}]}" == "nm" ]]; then
+            fs_path="${IFACE_AUG_PATHS[${i}]#/files}"
+            gf_commands+="chmod 0600 '${fs_path}'\n"
+        fi
+    done
+
+    log_info "Phase 2b: Executing Augeas rewrite commands..."
+
+    rewrite_output=""
+    rewrite_rc=0
+    rewrite_output=$(echo -e "${gf_commands}" | guestfish -a "${REWRITE_DISK}" -i 2>"${GF_STDERR}") || rewrite_rc=$?
+
+    if [[ -s "${GF_STDERR}" ]]; then
+        log_warn "Phase 2b guestfish stderr: $(cat "${GF_STDERR}")"
     fi
-done
+    rm -f "${GF_STDERR}"
 
-log_info "Phase 2: Executing rewrite commands..."
+    if (( rewrite_rc != 0 )); then
+        log_error "Phase 2b guestfish rewrite failed (exit code ${rewrite_rc})"
+        log_error "Output: ${rewrite_output}"
+        return 1
+    fi
 
-rewrite_output=""
-rewrite_rc=0
-rewrite_output=$(echo -e "${gf_commands}" | guestfish -a "${REWRITE_DISK}" -i 2>"${GF_STDERR}") || rewrite_rc=$?
-
-if [[ -s "${GF_STDERR}" ]]; then
-    log_warn "Phase 2 guestfish stderr: $(cat "${GF_STDERR}")"
-fi
-rm -f "${GF_STDERR}"
-
-if (( rewrite_rc != 0 )); then
-    log_error "Phase 2 guestfish rewrite failed (exit code ${rewrite_rc})"
-    log_error "Output: ${rewrite_output}"
-    return 1
+    log_info "Phase 2b: Rewrite completed successfully"
+else
+    rm -f "${GF_STDERR}"
+    log_info "Phase 2b: No Augeas changes needed (all interfaces used nm_create)"
 fi
 
-log_info "Phase 2: Rewrite completed successfully"
+# ---------------------------------------------------------------------------
+# Phase 3: Disable cloud-init network management (RHEL 8+)
+# ---------------------------------------------------------------------------
+# Cloud-init caches network configuration on the root disk and can override
+# our changes at boot time — even if networkData is removed from the VM spec.
+# Writing this drop-in tells cloud-init to leave networking alone.
+
+if (( ${REWRITE_OS_MAJOR:-0} >= 8 )); then
+    CLOUD_DISABLE_FILE="${RHEL_HANDLER_TMPDIR}/99-disable-network-config.cfg"
+    echo "network: {config: disabled}" > "${CLOUD_DISABLE_FILE}"
+
+    CLOUD_GUEST_PATH="/etc/cloud/cloud.cfg.d/99-disable-network-config.cfg"
+    log_info "Phase 3: Disabling cloud-init network management (${CLOUD_GUEST_PATH})"
+
+    cloud_cmds=""
+    cloud_cmds+="mkdir-p /etc/cloud/cloud.cfg.d\n"
+    cloud_cmds+="upload '${CLOUD_DISABLE_FILE}' '${CLOUD_GUEST_PATH}'\n"
+    cloud_cmds+="chmod 0644 '${CLOUD_GUEST_PATH}'\n"
+
+    # Wipe all cloud-init state so it starts fresh and honors the disable file.
+    # Without this, cloud-init replays cached network config from /var/lib/cloud/seed/
+    # or /var/lib/cloud/instances/ that was saved during a previous boot.
+    cloud_cmds+="-rm-rf /var/lib/cloud\n"
+
+    cloud_output=""
+    cloud_rc=0
+    cloud_output=$(echo -e "${cloud_cmds}" | guestfish -a "${REWRITE_DISK}" -i 2>"${GF_STDERR}") || cloud_rc=$?
+
+    if [[ -s "${GF_STDERR}" ]]; then
+        log_warn "Phase 3 guestfish stderr: $(cat "${GF_STDERR}")"
+    fi
+    rm -f "${GF_STDERR}"
+
+    if (( cloud_rc != 0 )); then
+        log_warn "Phase 3 failed (non-fatal, exit code ${cloud_rc}): ${cloud_output}"
+    else
+        log_info "Phase 3: Cloud-init network disabled successfully"
+    fi
+fi
 
 # ---------------------------------------------------------------------------
 # Summary
@@ -401,7 +571,11 @@ for ((i = 0; i < REWRITE_IFACE_COUNT; i++)); do
     ip_var="REWRITE_IP_${i}"
     prefix_var="REWRITE_PREFIX_${i}"
     gw_var="REWRITE_GATEWAY_${i}"
-    log_info "  Updated: ${!iface_var} → ${!ip_var}/${!prefix_var} gw ${!gw_var} (${IFACE_FORMATS[${i}]})"
+    fmt="${IFACE_FORMATS[${i}]}"
+    if [[ "${fmt}" == "nm_create" ]]; then
+        fmt="nm (created)"
+    fi
+    log_info "  Updated: ${!iface_var} → ${!ip_var}/${!prefix_var} gw ${!gw_var} (${fmt})"
 done
 
 if [[ -n "${REWRITE_DNS:-}" ]]; then
@@ -409,5 +583,9 @@ if [[ -n "${REWRITE_DNS:-}" ]]; then
 fi
 
 log_info "RHEL handler completed — ${REWRITE_IFACE_COUNT} interface(s) rewritten"
+
+# Restore previous EXIT trap
+rhel_handler_cleanup
+eval "${_RHEL_PREV_TRAP:-trap - EXIT}"
 
 return 0

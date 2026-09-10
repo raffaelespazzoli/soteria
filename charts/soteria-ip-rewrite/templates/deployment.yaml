@@ -31,7 +31,9 @@ spec:
           args:
             - --port=9443
             - --cert-dir=/tmp/k8s-webhook-server/serving-certs
-            - --init-container-image={{ printf "%s:%s" .Values.initContainer.image.repository (include "soteria-ip-rewrite.imageTag" (dict "tag" .Values.initContainer.image.tag "ctx" .)) }}
+            - --init-container-image={{ include "soteria-ip-rewrite.initContainerImage" . }}
+            - --init-container-pull-policy={{ .Values.initContainer.image.pullPolicy }}
+            - --request-kvm-device={{ .Values.initContainer.requestKVMDevice }}
           image: "{{ .Values.webhook.image.repository }}:{{ include "soteria-ip-rewrite.imageTag" (dict "tag" .Values.webhook.image.tag "ctx" .) }}"
           imagePullPolicy: {{ .Values.webhook.image.pullPolicy }}
           ports:

@@ -137,7 +137,7 @@ func TestHandle_LabelAndAnnotations_InjectsInitContainer(t *testing.T) {
 		},
 	}
 
-	handler := &Handler{InitContainerImage: "test-image:v1"}
+	handler := &Handler{InitContainerImage: "test-image:v1", RequestKVMDevice: true}
 	resp := handler.Handle(context.Background(), makePodRequest(t, pod))
 
 	if !resp.Allowed {
@@ -156,6 +156,19 @@ func TestHandle_LabelAndAnnotations_InjectsInitContainer(t *testing.T) {
 
 	if ic.Image != "test-image:v1" {
 		t.Errorf("init container image = %q, want %q", ic.Image, "test-image:v1")
+	}
+	if ic.ImagePullPolicy != corev1.PullIfNotPresent {
+		t.Errorf("init container imagePullPolicy = %q, want IfNotPresent", ic.ImagePullPolicy)
+	}
+
+	// Verify libguestfs env vars are injected
+	backend := findEnvVar(ic.Env, "LIBGUESTFS_BACKEND")
+	if backend == nil || backend.Value != "direct" {
+		t.Errorf("LIBGUESTFS_BACKEND = %v, want 'direct'", backend)
+	}
+	gfPath := findEnvVar(ic.Env, "LIBGUESTFS_PATH")
+	if gfPath == nil || gfPath.Value != "/guestfs-appliance" {
+		t.Errorf("LIBGUESTFS_PATH = %v, want '/guestfs-appliance'", gfPath)
 	}
 
 	ev := findEnvVar(ic.Env, "SOTERIA_ETH0_IP")
@@ -176,6 +189,15 @@ func TestHandle_LabelAndAnnotations_InjectsInitContainer(t *testing.T) {
 	}
 	if len(ic.SecurityContext.Capabilities.Add) != 0 {
 		t.Errorf("expected no added capabilities, got %v", ic.SecurityContext.Capabilities.Add)
+	}
+
+	// Verify KVM device resource
+	kvmQty, hasKVM := ic.Resources.Limits["devices.kubevirt.io/kvm"]
+	if !hasKVM {
+		t.Fatal("expected devices.kubevirt.io/kvm resource limit")
+	}
+	if kvmQty.String() != "1" {
+		t.Errorf("KVM device limit = %q, want '1'", kvmQty.String())
 	}
 
 	// Verify PVC volume mount
@@ -324,8 +346,8 @@ func TestHandle_MultiNIC_TwoIPAnnotations(t *testing.T) {
 		t.Fatal("init container not found")
 	}
 
-	if len(ic.Env) != 2 {
-		t.Fatalf("expected 2 env vars, got %d: %+v", len(ic.Env), ic.Env)
+	if len(ic.Env) != 4 {
+		t.Fatalf("expected 4 env vars (2 libguestfs + 2 IP), got %d: %+v", len(ic.Env), ic.Env)
 	}
 
 	ens3 := findEnvVar(ic.Env, "SOTERIA_ENS3_IP")
@@ -625,6 +647,9 @@ func TestHandle_DefaultImage_UsedWhenNotConfigured(t *testing.T) {
 	if ic.Image != DefaultInitContainerImage {
 		t.Errorf("init container image = %q, want default %q", ic.Image, DefaultInitContainerImage)
 	}
+	if ic.ImagePullPolicy != corev1.PullIfNotPresent {
+		t.Errorf("init container imagePullPolicy = %q, want IfNotPresent", ic.ImagePullPolicy)
+	}
 }
 
 func TestHandle_BlockModeVolume_VolumeDeviceInjected(t *testing.T) {
@@ -726,7 +751,7 @@ func TestHandle_SecurityContext(t *testing.T) {
 		},
 	}
 
-	handler := &Handler{InitContainerImage: "test-image:v1"}
+	handler := &Handler{InitContainerImage: "test-image:v1", RequestKVMDevice: true}
 	resp := handler.Handle(context.Background(), makePodRequest(t, pod))
 
 	mutated := mustApplyPatches(t, pod, resp)
@@ -756,6 +781,46 @@ func TestHandle_SecurityContext(t *testing.T) {
 	}
 	if len(sc.Capabilities.Add) != 0 {
 		t.Errorf("expected no added capabilities, got %v", sc.Capabilities.Add)
+	}
+}
+
+func TestHandle_KVMDeviceDisabled_NoResourceLimit(t *testing.T) {
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "virt-launcher-no-kvm",
+			Namespace: "default",
+			Annotations: map[string]string{
+				"soteria.io/eth0-ip": "10.0.2.100/24;10.0.2.1",
+			},
+		},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{
+				{Name: "compute", Image: "registry.kubevirt.io/virt-launcher:v1.0.0"},
+			},
+			Volumes: []corev1.Volume{
+				{
+					Name: "rootdisk",
+					VolumeSource: corev1.VolumeSource{
+						PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+							ClaimName: "vm1-rootdisk",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	handler := &Handler{InitContainerImage: "test-image:v1", RequestKVMDevice: false}
+	resp := handler.Handle(context.Background(), makePodRequest(t, pod))
+
+	mutated := mustApplyPatches(t, pod, resp)
+	ic := findIPRewriteInitContainer(mutated)
+	if ic == nil {
+		t.Fatal("init container not found")
+	}
+
+	if len(ic.Resources.Limits) != 0 {
+		t.Errorf("expected no resource limits when KVM disabled, got %v", ic.Resources.Limits)
 	}
 }
 

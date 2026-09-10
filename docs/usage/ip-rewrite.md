@@ -112,6 +112,8 @@ helm install soteria-ip-rewrite charts/soteria-ip-rewrite/ \
       --create-namespace \
       -f my-values.yaml
     ```
+    On nodes without nested KVM (typical cloud VMs), add
+    `--set initContainer.requestKVMDevice=false` so libguestfs uses TCG.
 
 For the complete list of configurable parameters, see the
 [IP Rewrite Reference](../reference/ip-rewrite.md#helm-values-reference).
@@ -200,7 +202,9 @@ spec:
 
 Each annotation follows the same `<address>/<prefix>;<gateway>` format. The
 interface name in the annotation (e.g., `eth0`, `eth1`) maps to the
-corresponding guest network interface.
+corresponding guest network interface on RHEL. On Windows the name is only a
+label — adapters are matched by existing static IP or subnet, not by the
+annotation interface name.
 
 ### Full YAML Example
 
@@ -345,9 +349,11 @@ kubectl logs <virt-launcher-pod> -c ip-rewrite
 
 If the init container fails to start with a permission error:
 
-1. Verify the SCC is deployed (the Helm chart includes one):
+1. Verify the SCC is deployed (the Helm chart includes one). The resource
+   name is `<fullname>-ip-rewrite` (for a release named
+   `soteria-ip-rewrite`, that is `soteria-ip-rewrite-ip-rewrite`):
    ```bash
-   kubectl get scc soteria-ip-rewrite
+   kubectl get scc -l app.kubernetes.io/name=soteria-ip-rewrite
    ```
 2. Verify the service account is bound to the SCC:
    ```bash
@@ -365,8 +371,8 @@ Common guestfish issues:
 
 | Symptom | Cause | Solution |
 |---------|-------|----------|
-| `libguestfs: error: /dev/kvm not found` | KVM device not available in the init container | Verify the node supports KVM; some container runtimes restrict `/dev/kvm` access |
-| `libguestfs: error: supermin appliance failed` | Appliance build failure | Check disk space and memory limits on the init container |
+| `libguestfs: error: /dev/kvm not found` or the init container is unschedulable on `devices.kubevirt.io/kvm` | KVM requested but not available on the node | Set `initContainer.requestKVMDevice=false` so libguestfs uses TCG, or schedule the VM on a KVM-capable node |
+| `virt-inspector: could not read key from user` (or mount fails on NTFS) | BitLocker or another disk encryption layer is active | Decrypt the OS volume in the guest (`manage-bde -off C:` from an elevated prompt), then stop/start the VM so rewrite can run |
 | `No disk images or block devices found under /disks/` | No PVC volumes mounted | Verify the VM uses PVC-backed disks, not container disks |
 | `No operating system detected on any disk` | Disk does not contain a recognizable OS | Verify the PVC contains a boot disk with a supported OS, not a data disk |
 
@@ -376,7 +382,7 @@ If the init container logs show:
 
 ```
 [ERROR] 2026-09-06T12:00:02Z Unsupported operating system: family=<name> distro=<distro>
-[ERROR] 2026-09-06T12:00:02Z Supported operating systems: RHEL 7/8/9/10, Windows Server 2016/2019/2022/2025, Windows 10/11
+[ERROR] 2026-09-06T12:00:02Z Supported operating systems: RHEL 7/8/9/10, Windows Server 2016/2019/2022/2025, Windows 11
 ```
 
 The VM's guest OS is not in the supported list. See the
@@ -396,14 +402,11 @@ down:
 To check webhook health:
 
 ```bash
-# Verify the webhook deployment is running
-kubectl get deployment -n soteria soteria-ip-rewrite-webhook
+# Webhook deployment and Service (any install namespace)
+kubectl get deploy,svc,endpoints -l app.kubernetes.io/name=soteria-ip-rewrite -A
 
-# Check the webhook endpoint
-kubectl get endpoints -n soteria soteria-ip-rewrite-webhook
-
-# Verify the MutatingWebhookConfiguration
-kubectl get mutatingwebhookconfigurations soteria-ip-rewrite
+# MutatingWebhookConfiguration (name is <fullname>-mutating-webhook)
+kubectl get mutatingwebhookconfigurations -l app.kubernetes.io/name=soteria-ip-rewrite
 ```
 
 ### Migration Pods Skip IP Rewrite
@@ -422,13 +425,20 @@ filesystem. Only pods created for initial VM boot receive the init container.
 ## Known Limitations
 
 - **IPv6** — Not supported. Only IPv4 addresses are handled.
-- **DHCP-to-static** — Not supported. The source VM must already have a
-  static IP configuration.
+- **DHCP-to-static (RHEL)** — Not supported when an `ifcfg` interface is
+  already DHCP. RHEL 8+ guests with no on-disk network config get a new
+  NetworkManager keyfile instead.
+- **DHCP-to-static (Windows)** — A single-NIC guest with only a DHCP adapter
+  is converted to static. Multi-NIC matching prefers an existing static
+  adapter or a subnet match.
 - **Hostname rewrite** — Not supported. Only IP, gateway, and DNS are
   modified.
-- **ARM64 guests** — ARM64 support is available (the init container image is
-  multi-architecture), but ARM Windows guests are not yet certified by OCP
-  Virtualization.
+- **BitLocker / encrypted disks** — Encrypted Windows volumes cannot be
+  inspected or rewritten. Decrypt the OS disk in the guest before failover.
+- **Guest architecture** — The supported guest OS matrix is x86_64. The
+  init-container and webhook images are multi-architecture so they can run
+  on `linux/amd64`, `linux/arm64`, and `linux/ppc64le` nodes. ARM Windows
+  guests are not certified by OpenShift Virtualization and are untested.
 - **Non-RHEL Linux** — Only RHEL 7–10 is supported. Ubuntu, Fedora, SUSE,
   and other distributions are not handled.
 

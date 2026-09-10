@@ -6,8 +6,8 @@
 #   • build-soteria     – build controller image (multi-arch on main, amd64 on PR)
 #   • build-console-plugin – build console-plugin image (same)
 #   • build-standalone-ui  – build standalone-ui image (same)
-#   • build-ip-rewrite  – build ip-rewrite init container (path-filtered)
-#   • build-ip-rewrite-webhook – build ip-rewrite webhook binary (path-filtered)
+#   • build-ip-rewrite  – build ip-rewrite init container (path-filtered, same platforms)
+#   • build-ip-rewrite-webhook – build ip-rewrite webhook (path-filtered, same platforms)
 #   • helmchart-test    – lint, template, deploy chart on Kind
 #
 # Docker layer caching via GHA backend (cache-from/to: type=gha) caches
@@ -169,6 +169,7 @@ jobs:
           filters: |
             ip-rewrite:
               - 'build/ip-rewrite/**'
+              - 'build/ip-rewrite-webhook/**'
               - 'internal/webhook/iprewrite/**'
               - 'cmd/ip-rewrite-webhook/**'
               - 'charts/soteria-ip-rewrite/**'
@@ -209,6 +210,10 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Set up QEMU
+        if: github.event_name != 'pull_request'
+        uses: docker/setup-qemu-action@v4
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
@@ -217,7 +222,7 @@ jobs:
         with:
           context: .
           file: build/ip-rewrite-webhook/Dockerfile
-          platforms: linux/amd64
+          platforms: ${{ env.BUILD_PLATFORMS }}
           push: false
           tags: soteria-ip-rewrite-webhook:ci
           cache-from: type=gha,scope=ip-rewrite-webhook

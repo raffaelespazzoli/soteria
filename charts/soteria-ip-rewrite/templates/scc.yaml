@@ -8,11 +8,13 @@ kubevirt-controller SCC (SYS_NICE, NET_BIND_SERVICE) are required:
 
   - libguestfs direct backend launches a user-mode QEMU appliance;
     filesystem operations happen inside the QEMU VM, not in the container.
+  - A pre-built fixed appliance (LIBGUESTFS_PATH) avoids supermin at
+    runtime, eliminating the need for root or SYS_ADMIN.
+  - /dev/kvm is provided via the KubeVirt device plugin (resource limit),
+    not via SYS_ADMIN or privileged mode.
   - CRI-O's RuntimeDefault seccomp on OpenShift already allows the
     unshare/mount/pivot_root syscalls that passt (libguestfs networking)
     needs, without requiring CAP_SYS_ADMIN.
-  - The KubeVirt seccomp profile (localhost/kubevirt/kubevirt.json)
-    also allows these syscalls unconditionally.
 
 Only rendered when both scc.enabled and scc.create are true.
 */ -}}

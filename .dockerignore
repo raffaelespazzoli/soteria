@@ -8,6 +8,11 @@
 !pkg/
 !api/
 !hack/
+hack/ip-rewriter/golden-images/
+hack/ip-rewriter/windows-images/
+hack/**/*.iso
+hack/**/*.qcow2
+hack/**/*.img
 
 # Re-include Go source files (but not *_test.go)
 !**/*.go

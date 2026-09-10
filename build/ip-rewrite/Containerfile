@@ -15,34 +15,68 @@
 # Run (no elevated capabilities needed — libguestfs direct backend runs
 # a user-mode QEMU appliance; filesystem ops happen inside the VM):
 #   podman run --rm soteria-ip-rewrite:dev guestfish --version
+#
+# Security model:
+#   The init container runs unprivileged (UID 107/qemu, all caps dropped).
+#   Three settings make this possible:
+#     1. LIBGUESTFS_BACKEND=direct — bypasses libvirt (no SYS_ADMIN needed)
+#     2. LIBGUESTFS_PATH=/guestfs-appliance — pre-built appliance avoids
+#        supermin running at runtime (which would need root)
+#     3. /dev/kvm via device plugin — the QEMU appliance uses KVM for
+#        performance; requested via devices.kubevirt.io/kvm resource limit
+#
+#   This mirrors the approach used by CDI (containerized-data-importer)
+#   and Forklift (MTV), which run virt-customize in unprivileged pods.
 
 FROM quay.io/centos/centos:stream9
 
 # Install guestfs-tools and all required dependencies for guest filesystem
 # manipulation. libguestfs-winsupport provides NTFS support via the
 # libguestfs supermin appliance (replaces ntfs-3g which requires EPEL).
+# qemu-img is needed to convert the appliance root to qcow2 format.
 #
 # Packages:
 #   guestfs-tools          - guestfish, virt-inspector, libguestfs appliance
 #   augeas                 - augtool CLI for structured config editing
 #   hivex                  - hivexget, hivexml, hivexsh for Windows registry
-#   perl-hivex             - hivexregedit CLI (not included in hivex package)
+#   perl-hivex             - hivexregedit CLI (debug / fallback tooling)
+#   python3-libguestfs     - in-place hive writes (binary REG_* values with NULs)
 #   libguestfs-winsupport  - NTFS driver for the libguestfs supermin appliance
+#   qemu-img               - convert appliance root to qcow2
 RUN dnf install -y --nodocs --setopt=install_weak_deps=False \
         guestfs-tools \
         augeas \
         hivex \
         perl-hivex \
+        python3-libguestfs \
         libguestfs-winsupport \
+        qemu-img \
+        fuse \
+        fuse-libs \
+        kernel-modules \
     && dnf clean all \
     && rm -rf /var/cache/dnf /var/log/dnf*
 
-# Required for running libguestfs inside a container — uses the kernel
-# directly instead of connecting to libvirtd.
+# Pre-build a fixed libguestfs appliance so supermin does NOT need to run
+# at runtime.  This eliminates the need for root/SYS_ADMIN capabilities.
+# The root filesystem is converted to qcow2 to avoid sparse-file issues
+# across container storage drivers (same approach as kubevirt/libguestfs-appliance).
+RUN mkdir -p /guestfs-appliance \
+    && LIBGUESTFS_BACKEND=direct libguestfs-make-fixed-appliance /guestfs-appliance \
+    && qemu-img convert -c -O qcow2 /guestfs-appliance/root /guestfs-appliance/root.qcow2 \
+    && mv /guestfs-appliance/root.qcow2 /guestfs-appliance/root
+
+# Use the direct backend (no libvirt) and point to the pre-built appliance.
 ENV LIBGUESTFS_BACKEND=direct
+ENV LIBGUESTFS_PATH=/guestfs-appliance
+ENV HOME=/tmp
+ENV TMPDIR=/tmp
 
 # Copy entrypoint and handler scripts
 COPY scripts/ /scripts/
-RUN chmod +x /scripts/*.sh
+RUN chmod +x /scripts/*.sh /scripts/virt-windows-ip-rewrite
+
+# Run as qemu user (UID 107) — same as MTV/Forklift virt-v2v pods.
+USER 107
 
 ENTRYPOINT ["/scripts/entrypoint.sh"]

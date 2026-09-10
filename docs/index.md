@@ -58,7 +58,7 @@ Soteria is an open-source, Kubernetes-native disaster recovery (DR) orchestrator
 
     ---
 
-    Standalone mutating webhook that rewrites VM network configuration offline before boot. Supports RHEL 7–10 and Windows Server 2016–2025 via guestfs-tools.
+    Standalone mutating webhook that rewrites VM network configuration offline before boot. Supports RHEL 7–10, Windows Server 2016–2025, and Windows 11 via guestfs-tools.
 
     [:octicons-arrow-right-24: Architecture](architecture/ip-rewrite.md) · [:octicons-arrow-right-24: Usage](usage/ip-rewrite.md)
 

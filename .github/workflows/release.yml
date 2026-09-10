@@ -241,7 +241,7 @@ jobs:
           cache-from: type=gha,scope=ip-rewrite
           cache-to: type=gha,mode=max,scope=ip-rewrite
 
-  # ── 3e. Build & push ip-rewrite webhook binary (amd64 only) ──────────────
+  # ── 3e. Build & push ip-rewrite webhook binary (multi-arch) ─────────────
   build-ip-rewrite-webhook:
     name: Build ip-rewrite webhook image
     needs: validate
@@ -250,6 +250,9 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v7
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -266,7 +269,7 @@ jobs:
         with:
           context: .
           file: build/ip-rewrite-webhook/Dockerfile
-          platforms: linux/amd64
+          platforms: ${{ env.BUILD_PLATFORMS }}
           push: true
           provenance: false
           tags: |

@@ -8,7 +8,7 @@
 #
 # Prerequisites:
 #   - guestfish, guestfs-tools (libguestfs)
-#   - hivexsh, hivexregedit, hivexget (hivex)
+#   - python3 + python3-libguestfs (Windows in-place hive writes)
 #   - LIBGUESTFS_BACKEND=direct (set by Makefile target)
 #
 # Usage: run-tests.sh
@@ -16,6 +16,21 @@
 set -euo pipefail
 
 export LIBGUESTFS_BACKEND="${LIBGUESTFS_BACKEND:-direct}"
+export HOME="${HOME:-/tmp}"
+export TMPDIR="${TMPDIR:-/tmp}"
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp}"
+
+# python3-libguestfs may be present system-wide, or unpacked for local tests.
+if ! python3 -c "import guestfs" >/dev/null 2>&1; then
+    extracted=$(find /tmp/pyguestfs-extract -name guestfs.py 2>/dev/null | head -1 || true)
+    if [[ -n "${extracted}" ]]; then
+        export PYTHONPATH="$(dirname "${extracted}")${PYTHONPATH:+:${PYTHONPATH}}"
+    fi
+fi
+if ! python3 -c "import guestfs" >/dev/null 2>&1; then
+    echo "python3-libguestfs is required (import guestfs). Install with: sudo dnf install python3-libguestfs" >&2
+    exit 1
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
@@ -68,6 +83,60 @@ log_warn()  { echo "[WARN]  $(date -u '+%Y-%m-%dT%H:%M:%SZ') $*" >&2; }
 log_error() { echo "[ERROR] $(date -u '+%Y-%m-%dT%H:%M:%SZ') $*" >&2; }
 export -f log_info log_warn log_error
 
+# Read a guest file from a single-partition fixture (no inspect / -i).
+fixture_cat() {
+    guestfish --ro -a "$1" -m /dev/sda1:/ -- cat "$2"
+}
+
+# Read a UTF-8 registry value from the fixture hive via guestfish (no hivexget).
+_win_hive_prep() {
+    local disk="$1"
+    guestfish --remote -- add-drive "${disk}" readonly:true
+    guestfish --remote -- run
+    if ! guestfish --remote -- mount /dev/sda1 /; then
+        guestfish --remote -- mount /dev/sda /
+    fi
+    guestfish --remote -- hivex-open /Windows/System32/config/system
+}
+
+_win_hive_adapter_node() {
+    local guid='{12345678-1234-1234-1234-123456789abc}'
+    local root cs svc tcp par ifs
+    root=$(guestfish --remote -- hivex-root)
+    cs=$(guestfish --remote -- hivex-node-get-child "${root}" ControlSet001)
+    svc=$(guestfish --remote -- hivex-node-get-child "${cs}" Services)
+    tcp=$(guestfish --remote -- hivex-node-get-child "${svc}" Tcpip)
+    par=$(guestfish --remote -- hivex-node-get-child "${tcp}" Parameters)
+    ifs=$(guestfish --remote -- hivex-node-get-child "${par}" Interfaces)
+    guestfish --remote -- hivex-node-get-child "${ifs}" "${guid}"
+}
+
+win_hive_utf8() {
+    local disk="$1" value_name="$2" node vh
+    export HOME=/tmp XDG_RUNTIME_DIR=/tmp
+    eval "$(guestfish --listen)"
+    _win_hive_prep "${disk}"
+    node=$(_win_hive_adapter_node)
+    vh=$(guestfish --remote -- hivex-node-get-value "${node}" "${value_name}")
+    # hivex-value-utf8 rejects REG_MULTI_SZ; strip UTF-16LE NULs from the raw blob.
+    guestfish --remote -- hivex-value-value "${vh}" | tr -d '\0'
+    guestfish --remote -- exit >/dev/null || true
+    unset GUESTFISH_PID
+}
+
+win_hive_dword() {
+    local disk="$1" value_name="$2" node vh first
+    export HOME=/tmp XDG_RUNTIME_DIR=/tmp
+    eval "$(guestfish --listen)"
+    _win_hive_prep "${disk}"
+    node=$(_win_hive_adapter_node)
+    vh=$(guestfish --remote -- hivex-node-get-value "${node}" "${value_name}")
+    first=$(guestfish --remote -- hivex-value-value "${vh}" 2>/dev/null | od -An -tu1 | awk '{print $1; exit}')
+    echo "${first:-0}"
+    guestfish --remote -- exit >/dev/null || true
+    unset GUESTFISH_PID
+}
+
 # =========================================================================
 # Phase 1: Create test fixtures
 # =========================================================================
@@ -95,6 +164,7 @@ echo "================================================================"
 run_rhel_handler() {
     local disk="$1"
     (
+        trap - EXIT
         export REWRITE_DISK="${disk}"
         export REWRITE_OS_NAME="linux"
         export REWRITE_OS_DISTRO="rhel"
@@ -117,7 +187,7 @@ echo "--- Test 2.1: ifcfg IP/prefix/gateway rewrite ---"
 cp "${RHEL_IFCFG_IMG}" "${TEST_TMPDIR}/ifcfg-test.img"
 
 if run_rhel_handler "${TEST_TMPDIR}/ifcfg-test.img"; then
-    RESULT=$(guestfish --ro -a "${TEST_TMPDIR}/ifcfg-test.img" -i -- cat /etc/sysconfig/network-scripts/ifcfg-eth0 2>/dev/null)
+    RESULT=$(fixture_cat "${TEST_TMPDIR}/ifcfg-test.img" /etc/sysconfig/network-scripts/ifcfg-eth0)
 
     ifcfg_ok=true
     echo "${RESULT}" | grep -q 'IPADDR=10.0.2.100' || { fail "ifcfg IPADDR rewrite" "IPADDR not rewritten"; ifcfg_ok=false; }
@@ -138,7 +208,7 @@ echo "--- Test 2.2: ifcfg DNS rewrite ---"
 cp "${RHEL_IFCFG_IMG}" "${TEST_TMPDIR}/ifcfg-dns-test.img"
 
 if run_rhel_handler "${TEST_TMPDIR}/ifcfg-dns-test.img" 1 "10.0.2.10,10.0.2.11"; then
-    RESULT=$(guestfish --ro -a "${TEST_TMPDIR}/ifcfg-dns-test.img" -i -- cat /etc/sysconfig/network-scripts/ifcfg-eth0 2>/dev/null)
+    RESULT=$(fixture_cat "${TEST_TMPDIR}/ifcfg-dns-test.img" /etc/sysconfig/network-scripts/ifcfg-eth0)
 
     dns_ok=true
     echo "${RESULT}" | grep -q 'DNS1=10.0.2.10' || { fail "ifcfg DNS1 rewrite" "DNS1 not rewritten"; dns_ok=false; }
@@ -156,7 +226,7 @@ echo ""
 echo "--- Test 2.3: ifcfg idempotency (second run) ---"
 
 if run_rhel_handler "${TEST_TMPDIR}/ifcfg-test.img"; then
-    RESULT=$(guestfish --ro -a "${TEST_TMPDIR}/ifcfg-test.img" -i -- cat /etc/sysconfig/network-scripts/ifcfg-eth0 2>/dev/null)
+    RESULT=$(fixture_cat "${TEST_TMPDIR}/ifcfg-test.img" /etc/sysconfig/network-scripts/ifcfg-eth0)
     echo "${RESULT}" | grep -q 'IPADDR=10.0.2.100' && pass "ifcfg idempotency" || fail "ifcfg idempotency" "IPADDR changed on second run"
 else
     fail "ifcfg idempotency" "handler failed on second run"
@@ -173,6 +243,7 @@ echo "================================================================"
 run_rhel_nm_handler() {
     local disk="$1"
     (
+        trap - EXIT
         export REWRITE_DISK="${disk}"
         export REWRITE_OS_NAME="linux"
         export REWRITE_OS_DISTRO="rhel"
@@ -195,7 +266,7 @@ echo "--- Test 3.1: NM keyfile address/method rewrite ---"
 cp "${RHEL_NM_IMG}" "${TEST_TMPDIR}/nm-test.img"
 
 if run_rhel_nm_handler "${TEST_TMPDIR}/nm-test.img"; then
-    RESULT=$(guestfish --ro -a "${TEST_TMPDIR}/nm-test.img" -i -- cat /etc/NetworkManager/system-connections/eth0.nmconnection 2>/dev/null)
+    RESULT=$(fixture_cat "${TEST_TMPDIR}/nm-test.img" /etc/NetworkManager/system-connections/eth0.nmconnection)
 
     nm_ok=true
     echo "${RESULT}" | grep -q 'address1=10.0.2.100/24,10.0.2.1' || { fail "NM address1 rewrite" "address1 not rewritten"; nm_ok=false; }
@@ -214,7 +285,7 @@ echo "--- Test 3.2: NM keyfile DNS rewrite ---"
 cp "${RHEL_NM_IMG}" "${TEST_TMPDIR}/nm-dns-test.img"
 
 if run_rhel_nm_handler "${TEST_TMPDIR}/nm-dns-test.img" "10.0.2.10,10.0.2.11"; then
-    RESULT=$(guestfish --ro -a "${TEST_TMPDIR}/nm-dns-test.img" -i -- cat /etc/NetworkManager/system-connections/eth0.nmconnection 2>/dev/null)
+    RESULT=$(fixture_cat "${TEST_TMPDIR}/nm-dns-test.img" /etc/NetworkManager/system-connections/eth0.nmconnection)
 
     echo "${RESULT}" | grep -q 'dns=10.0.2.10;10.0.2.11;' && pass "NM keyfile DNS rewrite" || fail "NM keyfile DNS rewrite" "dns not rewritten"
 else
@@ -226,7 +297,7 @@ echo ""
 echo "--- Test 3.3: NM keyfile idempotency ---"
 
 if run_rhel_nm_handler "${TEST_TMPDIR}/nm-test.img"; then
-    RESULT=$(guestfish --ro -a "${TEST_TMPDIR}/nm-test.img" -i -- cat /etc/NetworkManager/system-connections/eth0.nmconnection 2>/dev/null)
+    RESULT=$(fixture_cat "${TEST_TMPDIR}/nm-test.img" /etc/NetworkManager/system-connections/eth0.nmconnection)
     echo "${RESULT}" | grep -q 'address1=10.0.2.100/24,10.0.2.1' && pass "NM keyfile idempotency" || fail "NM keyfile idempotency" "address1 changed on second run"
 else
     fail "NM keyfile idempotency" "handler failed on second run"
@@ -243,6 +314,7 @@ echo "================================================================"
 run_windows_handler() {
     local disk="$1"
     (
+        trap - EXIT
         export REWRITE_DISK="${disk}"
         export REWRITE_OS_NAME="windows"
         export REWRITE_OS_DISTRO="windows"
@@ -265,48 +337,27 @@ echo "--- Test 4.1: Windows registry IP/mask/gateway rewrite ---"
 cp "${WINDOWS_IMG}" "${TEST_TMPDIR}/win-test.img"
 
 if run_windows_handler "${TEST_TMPDIR}/win-test.img"; then
-    # Download the modified hive and verify
-    VERIFY_HIVE="${TEST_TMPDIR}/verify.hive"
-    guestfish --ro -a "${TEST_TMPDIR}/win-test.img" -i -- \
-        download /Windows/System32/config/system "${VERIFY_HIVE}" 2>/dev/null
-
     win_ok=true
 
-    # Read EnableDHCP
-    DHCP_VAL=$(hivexget "${VERIFY_HIVE}" \
-        'ControlSet001\Services\Tcpip\Parameters\Interfaces\{12345678-1234-1234-1234-123456789abc}' \
-        EnableDHCP 2>/dev/null || echo "MISSING")
-
-    if [[ "${DHCP_VAL}" != *"00000000"* && "${DHCP_VAL}" != "0" ]]; then
+    DHCP_VAL=$(win_hive_dword "${TEST_TMPDIR}/win-test.img" EnableDHCP)
+    if [[ "${DHCP_VAL}" != "0" ]]; then
         fail "Windows EnableDHCP" "EnableDHCP not 0 (got: ${DHCP_VAL})"
         win_ok=false
     fi
 
-    # Read IP values — hivexget outputs hex for REG_MULTI_SZ.
-    # We verify the decoded strings contain the expected values.
-    IP_RAW=$(hivexget "${VERIFY_HIVE}" \
-        'ControlSet001\Services\Tcpip\Parameters\Interfaces\{12345678-1234-1234-1234-123456789abc}' \
-        IPAddress 2>/dev/null || echo "MISSING")
-
-    # hivexget prints REG_MULTI_SZ as lines of text
+    IP_RAW=$(win_hive_utf8 "${TEST_TMPDIR}/win-test.img" IPAddress)
     if ! echo "${IP_RAW}" | grep -q '10.0.2.100'; then
         fail "Windows IPAddress rewrite" "IPAddress not rewritten to 10.0.2.100 (got: ${IP_RAW})"
         win_ok=false
     fi
 
-    MASK_RAW=$(hivexget "${VERIFY_HIVE}" \
-        'ControlSet001\Services\Tcpip\Parameters\Interfaces\{12345678-1234-1234-1234-123456789abc}' \
-        SubnetMask 2>/dev/null || echo "MISSING")
-
+    MASK_RAW=$(win_hive_utf8 "${TEST_TMPDIR}/win-test.img" SubnetMask)
     if ! echo "${MASK_RAW}" | grep -q '255.255.255.0'; then
         fail "Windows SubnetMask rewrite" "SubnetMask not 255.255.255.0 (got: ${MASK_RAW})"
         win_ok=false
     fi
 
-    GW_RAW=$(hivexget "${VERIFY_HIVE}" \
-        'ControlSet001\Services\Tcpip\Parameters\Interfaces\{12345678-1234-1234-1234-123456789abc}' \
-        DefaultGateway 2>/dev/null || echo "MISSING")
-
+    GW_RAW=$(win_hive_utf8 "${TEST_TMPDIR}/win-test.img" DefaultGateway)
     if ! echo "${GW_RAW}" | grep -q '10.0.2.1'; then
         fail "Windows DefaultGateway rewrite" "DefaultGateway not 10.0.2.1 (got: ${GW_RAW})"
         win_ok=false
@@ -325,14 +376,7 @@ echo "--- Test 4.2: Windows DNS rewrite ---"
 cp "${WINDOWS_IMG}" "${TEST_TMPDIR}/win-dns-test.img"
 
 if run_windows_handler "${TEST_TMPDIR}/win-dns-test.img" "10.0.2.10,10.0.2.11"; then
-    VERIFY_HIVE="${TEST_TMPDIR}/verify-dns.hive"
-    guestfish --ro -a "${TEST_TMPDIR}/win-dns-test.img" -i -- \
-        download /Windows/System32/config/system "${VERIFY_HIVE}" 2>/dev/null
-
-    DNS_RAW=$(hivexget "${VERIFY_HIVE}" \
-        'ControlSet001\Services\Tcpip\Parameters\Interfaces\{12345678-1234-1234-1234-123456789abc}' \
-        NameServer 2>/dev/null || echo "MISSING")
-
+    DNS_RAW=$(win_hive_utf8 "${TEST_TMPDIR}/win-dns-test.img" NameServer)
     if echo "${DNS_RAW}" | grep -q '10.0.2.10,10.0.2.11'; then
         pass "Windows DNS rewrite"
     else
@@ -347,14 +391,7 @@ echo ""
 echo "--- Test 4.3: Windows idempotency ---"
 
 if run_windows_handler "${TEST_TMPDIR}/win-test.img"; then
-    VERIFY_HIVE="${TEST_TMPDIR}/verify-idem.hive"
-    guestfish --ro -a "${TEST_TMPDIR}/win-test.img" -i -- \
-        download /Windows/System32/config/system "${VERIFY_HIVE}" 2>/dev/null
-
-    IP_RAW=$(hivexget "${VERIFY_HIVE}" \
-        'ControlSet001\Services\Tcpip\Parameters\Interfaces\{12345678-1234-1234-1234-123456789abc}' \
-        IPAddress 2>/dev/null || echo "MISSING")
-
+    IP_RAW=$(win_hive_utf8 "${TEST_TMPDIR}/win-test.img" IPAddress)
     if echo "${IP_RAW}" | grep -q '10.0.2.100'; then
         pass "Windows idempotency"
     else

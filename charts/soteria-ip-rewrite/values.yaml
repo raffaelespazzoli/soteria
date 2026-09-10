@@ -33,15 +33,24 @@ webhook:
 
 # -----------------------------------------------------------------------------
 # Init container image configuration
-# The webhook injects this image as an init container into virt-launcher pods.
-# This is the guestfs-tools UBI9 image built by Story 18.1.
+# The webhook injects this image into virt-launcher pods. Set repository and
+# tag here; the chart passes them to the webhook as --init-container-image.
+# Example: --set initContainer.image.tag=dev-1788999715
 # -----------------------------------------------------------------------------
 initContainer:
   image:
-    # repository: Container image for the IP rewrite init container.
+    # repository: Registry/repo for the IP rewrite init container.
     repository: quay.io/raffaelespazzoli/soteria-ip-rewrite
-    # tag: Image tag. Overrides appVersion from Chart.yaml when set.
+    # tag: Image tag. When empty, defaults to the chart appVersion.
     tag: ""
+    # pullPolicy: Image pull policy for the injected init container.
+    pullPolicy: IfNotPresent
+  # requestKVMDevice: Request devices.kubevirt.io/kvm for the init container.
+  # When true, the init container gets /dev/kvm for hardware-accelerated
+  # libguestfs (recommended on bare-metal or KVM-enabled nodes).
+  # When false, libguestfs falls back to TCG software emulation (slower
+  # but works on any node, including cloud VMs without nested virt).
+  requestKVMDevice: true
 
 # -----------------------------------------------------------------------------
 # TLS configuration

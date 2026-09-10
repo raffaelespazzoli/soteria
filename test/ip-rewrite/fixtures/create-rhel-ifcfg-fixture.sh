@@ -33,23 +33,37 @@ fi
 
 echo "Creating RHEL ifcfg fixture: ${OUTPUT}"
 
-guestfish -N "${OUTPUT}=fs:ext4:200M" <<'GFEOF'
-mkdir-p /bin
-mkdir-p /etc/sysconfig/network-scripts
+WORKDIR=$(mktemp -d)
+trap 'rm -rf "${WORKDIR}"' EXIT
 
-write /etc/fstab "# stub\n"
-write /etc/os-release "ID=rhel\nVERSION_ID=8\nNAME=\"Red Hat Enterprise Linux\"\n"
-write /etc/redhat-release "Red Hat Enterprise Linux release 8.9 (Ootpa)\n"
-
-write /etc/sysconfig/network-scripts/ifcfg-eth0 "TYPE=Ethernet
-BOOTPROTO=dhcp
+cat > "${WORKDIR}/os-release" <<'EOF'
+ID=rhel
+VERSION_ID=8
+NAME=Red Hat Enterprise Linux
+EOF
+cat > "${WORKDIR}/redhat-release" <<'EOF'
+Red Hat Enterprise Linux release 8.9 (Ootpa)
+EOF
+cat > "${WORKDIR}/ifcfg-eth0" <<'EOF'
+TYPE=Ethernet
+BOOTPROTO=none
 DEVICE=eth0
 IPADDR=10.0.1.50
 PREFIX=16
 GATEWAY=10.0.1.1
 DNS1=8.8.8.8
 ONBOOT=yes
-"
+EOF
+printf '%s\n' '# stub' > "${WORKDIR}/fstab"
+
+guestfish -N "${OUTPUT}=fs:ext4:200M" <<GFEOF
+mount /dev/sda1 /
+mkdir-p /bin
+mkdir-p /etc/sysconfig/network-scripts
+upload ${WORKDIR}/fstab /etc/fstab
+upload ${WORKDIR}/os-release /etc/os-release
+upload ${WORKDIR}/redhat-release /etc/redhat-release
+upload ${WORKDIR}/ifcfg-eth0 /etc/sysconfig/network-scripts/ifcfg-eth0
 GFEOF
 
 echo "RHEL ifcfg fixture created: ${OUTPUT}"

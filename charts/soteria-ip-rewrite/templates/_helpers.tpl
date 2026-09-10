@@ -66,3 +66,11 @@ Usage: {{ include "soteria-ip-rewrite.imageTag" (dict "tag" .Values.webhook.imag
 {{- define "soteria-ip-rewrite.imageTag" -}}
 {{- .tag | default .ctx.Chart.AppVersion }}
 {{- end }}
+
+{{/*
+Full init-container image (repository:tag) passed to the webhook as
+--init-container-image and injected into virt-launcher pods.
+*/}}
+{{- define "soteria-ip-rewrite.initContainerImage" -}}
+{{- printf "%s:%s" .Values.initContainer.image.repository (include "soteria-ip-rewrite.imageTag" (dict "tag" .Values.initContainer.image.tag "ctx" .)) }}
+{{- end }}
