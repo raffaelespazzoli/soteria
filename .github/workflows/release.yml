@@ -31,6 +31,8 @@ env:
   REGISTRY: quay.io
   REGISTRY_ORG: raffaelespazzoli
   BUILD_PLATFORMS: linux/amd64,linux/arm64,linux/ppc64le
+  # guestfs RPMs are not in CentOS Stream 9 for ppc64le (see IP_REWRITE_PLATFORMS in ci.yml).
+  IP_REWRITE_PLATFORMS: linux/amd64,linux/arm64
 
 jobs:
   # ── 1. Validate the semver tag ──────────────────────────────────────────
@@ -204,7 +206,7 @@ jobs:
           cache-from: type=gha,scope=standalone-ui
           cache-to: type=gha,mode=max,scope=standalone-ui
 
-  # ── 3d. Build & push ip-rewrite init container (multi-arch) ──────────────
+  # ── 3d. Build & push ip-rewrite init container (amd64 + arm64) ──────────
   build-ip-rewrite:
     name: Build ip-rewrite image
     needs: validate
@@ -232,7 +234,7 @@ jobs:
         with:
           context: build/ip-rewrite/
           file: build/ip-rewrite/Containerfile
-          platforms: ${{ env.BUILD_PLATFORMS }}
+          platforms: ${{ env.IP_REWRITE_PLATFORMS }}
           push: true
           provenance: false
           tags: |

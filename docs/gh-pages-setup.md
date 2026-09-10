@@ -126,4 +126,7 @@ The release pipeline publishes three container images:
 | `quay.io/raffaelespazzoli/soteria-console-plugin`       | `console-plugin/Dockerfile`        | `console-plugin/`|
 | `quay.io/raffaelespazzoli/soteria-standalone-ui`        | `console-plugin/Dockerfile.standalone` | repo root    |
 
-All images are built for `linux/amd64`, `linux/arm64`, and `linux/ppc64le`.
+All images are built for `linux/amd64`, `linux/arm64`, and `linux/ppc64le`,
+except the IP rewrite **init** image (`soteria-ip-rewrite`), which is
+`linux/amd64` and `linux/arm64` only (CentOS Stream 9 has no guestfs-tools
+for ppc64le).

@@ -8,6 +8,8 @@
 # CentOS Stream 9 is used instead of UBI9 because the required packages
 # (guestfs-tools, libguestfs-winsupport) are in full RHEL 9 AppStream repos,
 # which are not available in UBI repos without RHEL entitlements.
+# Those packages are not published for ppc64le, so CI/release build
+# linux/amd64 and linux/arm64 only.
 #
 # Build:
 #   podman build -t soteria-ip-rewrite:dev build/ip-rewrite/

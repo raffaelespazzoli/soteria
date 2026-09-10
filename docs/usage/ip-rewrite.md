@@ -436,9 +436,10 @@ filesystem. Only pods created for initial VM boot receive the init container.
 - **BitLocker / encrypted disks** — Encrypted Windows volumes cannot be
   inspected or rewritten. Decrypt the OS disk in the guest before failover.
 - **Guest architecture** — The supported guest OS matrix is x86_64. The
-  init-container and webhook images are multi-architecture so they can run
-  on `linux/amd64`, `linux/arm64`, and `linux/ppc64le` nodes. ARM Windows
-  guests are not certified by OpenShift Virtualization and are untested.
+  webhook image is `linux/amd64`, `linux/arm64`, and `linux/ppc64le`. The
+  init container is `linux/amd64` and `linux/arm64` (no guestfs-tools for
+  ppc64le). ARM Windows guests are not certified by OpenShift
+  Virtualization and are untested.
 - **Non-RHEL Linux** — Only RHEL 7–10 is supported. Ubuntu, Fedora, SUSE,
   and other distributions are not handled.
 

@@ -94,8 +94,9 @@ podman image inspect soteria-ip-rewrite:dev --format '{{.Size}}' | \
 
 ## Architecture
 
-- Multi-arch image (`linux/amd64`, `linux/arm64`, `linux/ppc64le`). Supported
-  **guest** operating systems are still x86_64.
+- Multi-arch image (`linux/amd64`, `linux/arm64`). CentOS Stream 9 does not
+  ship guestfs-tools for ppc64le. Supported **guest** operating systems are
+  still x86_64.
 - Based on `quay.io/centos/centos:stream9` (CentOS Stream 9).
 - Image size: ~500–800 MB (guestfs-tools + kernel + fixed appliance + QEMU are inherently large).
 

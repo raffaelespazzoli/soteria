@@ -41,6 +41,9 @@ permissions:
 env:
   # PRs build amd64 only (fast feedback); merges to main build all arches
   BUILD_PLATFORMS: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/amd64,linux/arm64,linux/ppc64le' }}
+  # Init image uses guestfs RPMs that CentOS Stream 9 does not publish for ppc64le
+  # (guestfs-tools, python3-libguestfs, libguestfs-winsupport).
+  IP_REWRITE_PLATFORMS: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
 
 jobs:
   # ── Lint + unit + integration tests ─────────────────────────────────────
@@ -195,7 +198,7 @@ jobs:
         with:
           context: build/ip-rewrite/
           file: build/ip-rewrite/Containerfile
-          platforms: ${{ env.BUILD_PLATFORMS }}
+          platforms: ${{ env.IP_REWRITE_PLATFORMS }}
           push: false
           tags: soteria-ip-rewrite:ci
           cache-from: type=gha,scope=ip-rewrite
