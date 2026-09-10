@@ -1705,7 +1705,10 @@ secret is required for chart-releaser.</p>
 </tr>
 </tbody>
 </table>
-<p>All images are built for <code>linux/amd64</code>, <code>linux/arm64</code>, and <code>linux/ppc64le</code>.</p>
+<p>All images are built for <code>linux/amd64</code>, <code>linux/arm64</code>, and <code>linux/ppc64le</code>,
+except the IP rewrite <strong>init</strong> image (<code>soteria-ip-rewrite</code>), which is
+<code>linux/amd64</code> and <code>linux/arm64</code> only (CentOS Stream 9 has no guestfs-tools
+for ppc64le).</p>
 
 
 
