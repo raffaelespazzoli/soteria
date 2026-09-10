@@ -2060,9 +2060,9 @@ on the target network.</p>
 <li><strong>PVC-backed VM disks</strong> — The init container modifies guest filesystems
   on PVC volumes. Container disks are not supported.</li>
 <li><strong>SecurityContextConstraints (OpenShift)</strong> — The init container runs as
-  root with <code>SYS_ADMIN</code> capability. On OpenShift, an appropriate SCC must
-  be bound to the virt-launcher service account. The Helm chart includes
-  the required SCC.</li>
+  the <code>qemu</code> user (UID 107) with all capabilities dropped. On OpenShift,
+  the chart-managed SCC (which mirrors <code>kubevirt-controller</code>) must be
+  bound to the virt-launcher service account.</li>
 </ul>
 </div>
 <hr />
@@ -2132,7 +2132,9 @@ in the parent chart:</p>
 </span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span>--namespace<span class="w"> </span>soteria-ip-rewrite<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">  </span>--create-namespace<span class="w"> </span><span class="se">\</span>
 </span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">  </span>-f<span class="w"> </span>my-values.yaml
-</span></code></pre></div></p>
+</span></code></pre></div>
+On nodes without nested KVM (typical cloud VMs), add
+<code>--set initContainer.requestKVMDevice=false</code> so libguestfs uses TCG.</p>
 </div>
 <p>For the complete list of configurable parameters, see the
 <a href="../../reference/ip-rewrite/#helm-values-reference">IP Rewrite Reference</a>.</p>
@@ -2221,7 +2223,9 @@ on the pod template:</p>
 </span></code></pre></div>
 <p>Each annotation follows the same <code>&lt;address&gt;/&lt;prefix&gt;;&lt;gateway&gt;</code> format. The
 interface name in the annotation (e.g., <code>eth0</code>, <code>eth1</code>) maps to the
-corresponding guest network interface.</p>
+corresponding guest network interface on RHEL. On Windows the name is only a
+label — adapters are matched by existing static IP or subnet, not by the
+annotation interface name.</p>
 <h3 id="full-yaml-example">Full YAML Example<a class="headerlink" href="#full-yaml-example" title="Permanent link">&para;</a></h3>
 <p>You can also set labels and annotations directly in the VM manifest:</p>
 <div class="language-yaml highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nt">apiVersion</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">kubevirt.io/v1</span>
@@ -2328,16 +2332,18 @@ remove the opt-in label from the pod template:
 </span></code></pre></div></p>
 </div>
 <h3 id="scc-issues-openshift">SCC Issues (OpenShift)<a class="headerlink" href="#scc-issues-openshift" title="Permanent link">&para;</a></h3>
-<div class="admonition warning">
-<p class="admonition-title">Privileged security context required</p>
-<p>The init container runs as root (<code>runAsUser: 0</code>) with <code>SYS_ADMIN</code>
-capability and <code>allowPrivilegeEscalation: true</code>. On OpenShift, this
-requires an appropriate SecurityContextConstraints (SCC) binding.</p>
+<div class="admonition note">
+<p class="admonition-title">SecurityContextConstraints required on OpenShift</p>
+<p>The init container runs as the <code>qemu</code> user (UID 107) with all capabilities
+dropped (<code>runAsNonRoot: true</code>, <code>allowPrivilegeEscalation: false</code>). On
+OpenShift, the chart-managed SCC must be bound to the virt-launcher SA.</p>
 </div>
 <p>If the init container fails to start with a permission error:</p>
 <ol>
-<li>Verify the SCC is deployed (the Helm chart includes one):
-   <div class="language-bash highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>scc<span class="w"> </span>soteria-ip-rewrite
+<li>Verify the SCC is deployed (the Helm chart includes one). The resource
+   name is <code>&lt;fullname&gt;-ip-rewrite</code> (for a release named
+   <code>soteria-ip-rewrite</code>, that is <code>soteria-ip-rewrite-ip-rewrite</code>):
+   <div class="language-bash highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>scc<span class="w"> </span>-l<span class="w"> </span>app.kubernetes.io/name<span class="o">=</span>soteria-ip-rewrite
 </span></code></pre></div></li>
 <li>Verify the service account is bound to the SCC:
    <div class="language-bash highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>kubectl<span class="w"> </span>get<span class="w"> </span>clusterrolebinding<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>soteria-ip-rewrite
@@ -2359,14 +2365,14 @@ Common guestfish issues:</p>
 </thead>
 <tbody>
 <tr>
-<td><code>libguestfs: error: /dev/kvm not found</code></td>
-<td>KVM device not available in the init container</td>
-<td>Verify the node supports KVM; some container runtimes restrict <code>/dev/kvm</code> access</td>
+<td><code>libguestfs: error: /dev/kvm not found</code> or the init container is unschedulable on <code>devices.kubevirt.io/kvm</code></td>
+<td>KVM requested but not available on the node</td>
+<td>Set <code>initContainer.requestKVMDevice=false</code> so libguestfs uses TCG, or schedule the VM on a KVM-capable node</td>
 </tr>
 <tr>
-<td><code>libguestfs: error: supermin appliance failed</code></td>
-<td>Appliance build failure</td>
-<td>Check disk space and memory limits on the init container</td>
+<td><code>virt-inspector: could not read key from user</code> (or mount fails on NTFS)</td>
+<td>BitLocker or another disk encryption layer is active</td>
+<td>Decrypt the OS volume in the guest (<code>manage-bde -off C:</code> from an elevated prompt), then stop/start the VM so rewrite can run</td>
 </tr>
 <tr>
 <td><code>No disk images or block devices found under /disks/</code></td>
@@ -2383,7 +2389,7 @@ Common guestfish issues:</p>
 <h3 id="unsupported-guest-os">Unsupported Guest OS<a class="headerlink" href="#unsupported-guest-os" title="Permanent link">&para;</a></h3>
 <p>If the init container logs show:</p>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>[ERROR] 2026-09-06T12:00:02Z Unsupported operating system: family=&lt;name&gt; distro=&lt;distro&gt;
-</span><span id="__span-20-2"><a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>[ERROR] 2026-09-06T12:00:02Z Supported operating systems: RHEL 7/8/9/10, Windows Server 2016/2019/2022/2025, Windows 10/11
+</span><span id="__span-20-2"><a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a>[ERROR] 2026-09-06T12:00:02Z Supported operating systems: RHEL 7/8/9/10, Windows Server 2016/2019/2022/2025, Windows 11
 </span></code></pre></div>
 <p>The VM's guest OS is not in the supported list. See the
 <a href="../../architecture/ip-rewrite/#supported-guest-operating-systems">Supported Guest Operating Systems</a>
@@ -2398,14 +2404,11 @@ down:</p>
 <li>The VM boots with its existing IP configuration</li>
 </ul>
 <p>To check webhook health:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-21-1"><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="c1"># Verify the webhook deployment is running</span>
-</span><span id="__span-21-2"><a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>kubectl<span class="w"> </span>get<span class="w"> </span>deployment<span class="w"> </span>-n<span class="w"> </span>soteria<span class="w"> </span>soteria-ip-rewrite-webhook
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-21-1"><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a><span class="c1"># Webhook deployment and Service (any install namespace)</span>
+</span><span id="__span-21-2"><a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a>kubectl<span class="w"> </span>get<span class="w"> </span>deploy,svc,endpoints<span class="w"> </span>-l<span class="w"> </span>app.kubernetes.io/name<span class="o">=</span>soteria-ip-rewrite<span class="w"> </span>-A
 </span><span id="__span-21-3"><a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a>
-</span><span id="__span-21-4"><a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="c1"># Check the webhook endpoint</span>
-</span><span id="__span-21-5"><a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a>kubectl<span class="w"> </span>get<span class="w"> </span>endpoints<span class="w"> </span>-n<span class="w"> </span>soteria<span class="w"> </span>soteria-ip-rewrite-webhook
-</span><span id="__span-21-6"><a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a>
-</span><span id="__span-21-7"><a id="__codelineno-21-7" name="__codelineno-21-7" href="#__codelineno-21-7"></a><span class="c1"># Verify the MutatingWebhookConfiguration</span>
-</span><span id="__span-21-8"><a id="__codelineno-21-8" name="__codelineno-21-8" href="#__codelineno-21-8"></a>kubectl<span class="w"> </span>get<span class="w"> </span>mutatingwebhookconfigurations<span class="w"> </span>soteria-ip-rewrite
+</span><span id="__span-21-4"><a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a><span class="c1"># MutatingWebhookConfiguration (name is &lt;fullname&gt;-mutating-webhook)</span>
+</span><span id="__span-21-5"><a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a>kubectl<span class="w"> </span>get<span class="w"> </span>mutatingwebhookconfigurations<span class="w"> </span>-l<span class="w"> </span>app.kubernetes.io/name<span class="o">=</span>soteria-ip-rewrite
 </span></code></pre></div>
 <h3 id="migration-pods-skip-ip-rewrite">Migration Pods Skip IP Rewrite<a class="headerlink" href="#migration-pods-skip-ip-rewrite" title="Permanent link">&para;</a></h3>
 <p>If you notice that IP rewrite does not run on a virt-launcher pod created
@@ -2419,13 +2422,20 @@ filesystem. Only pods created for initial VM boot receive the init container.</p
 <h2 id="known-limitations">Known Limitations<a class="headerlink" href="#known-limitations" title="Permanent link">&para;</a></h2>
 <ul>
 <li><strong>IPv6</strong> — Not supported. Only IPv4 addresses are handled.</li>
-<li><strong>DHCP-to-static</strong> — Not supported. The source VM must already have a
-  static IP configuration.</li>
+<li><strong>DHCP-to-static (RHEL)</strong> — Not supported when an <code>ifcfg</code> interface is
+  already DHCP. RHEL 8+ guests with no on-disk network config get a new
+  NetworkManager keyfile instead.</li>
+<li><strong>DHCP-to-static (Windows)</strong> — A single-NIC guest with only a DHCP adapter
+  is converted to static. Multi-NIC matching prefers an existing static
+  adapter or a subnet match.</li>
 <li><strong>Hostname rewrite</strong> — Not supported. Only IP, gateway, and DNS are
   modified.</li>
-<li><strong>ARM64 guests</strong> — ARM64 support is available (the init container image is
-  multi-architecture), but ARM Windows guests are not yet certified by OCP
-  Virtualization.</li>
+<li><strong>BitLocker / encrypted disks</strong> — Encrypted Windows volumes cannot be
+  inspected or rewritten. Decrypt the OS disk in the guest before failover.</li>
+<li><strong>Guest architecture</strong> — The supported guest OS matrix is x86_64. The
+  init-container and webhook images are multi-architecture so they can run
+  on <code>linux/amd64</code>, <code>linux/arm64</code>, and <code>linux/ppc64le</code> nodes. ARM Windows
+  guests are not certified by OpenShift Virtualization and are untested.</li>
 <li><strong>Non-RHEL Linux</strong> — Only RHEL 7–10 is supported. Ubuntu, Fedora, SUSE,
   and other distributions are not handled.</li>
 </ul>
